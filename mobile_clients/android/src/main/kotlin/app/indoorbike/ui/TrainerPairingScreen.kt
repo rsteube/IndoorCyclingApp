@@ -29,6 +29,7 @@ import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -144,6 +145,12 @@ fun TrainerPairingScreen(
                                 )
                             }
                         },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.s4))
+                    SecondaryBtn(
+                        text = "Use Mock Trainer",
+                        onClick = { TrainerManager.connectMock() },
                         modifier = Modifier.fillMaxWidth()
                     )
                     

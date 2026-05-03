@@ -106,8 +106,10 @@ fun WorkoutListScreen(
 
         val connectionState by app.indoorbike.shared.ble.TrainerManager.connectionState.collectAsState()
         val pairedTrainerId by app.indoorbike.shared.ble.TrainerManager.pairedTrainerId.collectAsState()
+        val isMockTrainer by app.indoorbike.shared.ble.TrainerManager.isMockTrainer.collectAsState()
+        val connectedTrainerName by app.indoorbike.shared.ble.TrainerManager.connectedTrainerName.collectAsState()
 
-        if (pairedTrainerId == null) {
+        if (pairedTrainerId == null && !isMockTrainer) {
             // Show Add Trainer empty state
             Box(
                 modifier = Modifier
@@ -127,7 +129,7 @@ fun WorkoutListScreen(
             }
         } else {
             TrainerStatusStrip(
-                deviceName = "Wahoo Kickr Core",
+                deviceName = connectedTrainerName ?: "Unknown Trainer",
                 statusLine = when (connectionState) {
                     app.indoorbike.shared.ble.TrainerConnectionState.Connected -> "Connected"
                     app.indoorbike.shared.ble.TrainerConnectionState.Connecting -> "Connecting..."

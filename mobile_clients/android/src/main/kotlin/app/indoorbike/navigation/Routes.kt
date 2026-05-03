@@ -20,3 +20,9 @@ data class RouteWorkoutDetail(val workoutId: String) : NavKey
 
 @Serializable
 data object RouteTrainerPairing : NavKey
+
+@Serializable
+data class RouteRideScreen(val workoutId: String) : NavKey
+
+@Serializable
+data class RouteWorkoutOverview(val sessionId: Long) : NavKey

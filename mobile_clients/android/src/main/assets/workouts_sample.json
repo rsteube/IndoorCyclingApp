@@ -1,5 +1,15 @@
 [
   {
+    "id": "sample-test",
+    "name": "App Test",
+    "description": "A short 30-second workout for testing the ride screen.",
+    "segments": [
+      { "lengthInSeconds": 10, "powerPercentFTP": 30, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 10, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 10, "powerPercentFTP": 20, "intervalType": "CONSTANT" }
+    ]
+  },
+  {
     "id": "sample-1001",
     "name": "Endurance Base Builder",
     "description": "A steady ride to build aerobic capacity without building up too much fatigue.",

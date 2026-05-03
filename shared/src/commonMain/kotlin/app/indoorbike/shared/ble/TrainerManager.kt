@@ -39,10 +39,86 @@ object TrainerManager {
     private val _pairedTrainerId = MutableStateFlow<String?>(null)
     val pairedTrainerId: StateFlow<String?> = _pairedTrainerId.asStateFlow()
 
+    private val _connectedTrainerName = MutableStateFlow<String?>(null)
+    val connectedTrainerName: StateFlow<String?> = _connectedTrainerName.asStateFlow()
+
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
     
     private var activePeripheral: Peripheral? = null
+
+    private val _power = MutableStateFlow(0)
+    val power: StateFlow<Int> = _power.asStateFlow()
+
+    private val _cadence = MutableStateFlow(0)
+    val cadence: StateFlow<Int> = _cadence.asStateFlow()
+
+    private val _heartRate = MutableStateFlow(0)
+    val heartRate: StateFlow<Int> = _heartRate.asStateFlow()
+
+    private val _targetPower = MutableStateFlow(0)
+    val targetPower: StateFlow<Int> = _targetPower.asStateFlow()
+
+    private val _isMockTrainer = MutableStateFlow(false)
+    val isMockTrainer: StateFlow<Boolean> = _isMockTrainer.asStateFlow()
+
+    private var isMockPedaling = false
+
+    private var mockJob: Job? = null
+
+    fun setTargetPower(watts: Int) {
+        _targetPower.value = watts
+        // TODO: Replace with real FTMS Control Point write
+    }
+
+    fun toggleMockPedaling() {
+        isMockPedaling = !isMockPedaling
+        if (!isMockPedaling) {
+            _power.value = 0
+            _cadence.value = 0
+            _heartRate.value = 0
+        }
+    }
+
+    fun connectMock() {
+        scanJob?.cancel()
+        _isMockTrainer.value = true
+        _connectedTrainerName.value = "Mock Trainer"
+        _connectionState.value = TrainerConnectionState.Connected
+        activePeripheral = null
+        startMockDataStream()
+    }
+
+    private fun startMockDataStream() {
+        mockJob?.cancel()
+        mockJob = scope.launch {
+            while(true) {
+                if (isMockPedaling) {
+                    val target = _targetPower.value
+                    if (target > 0) {
+                        // Simulate holding the target power (ERG mode)
+                        _power.value = target + (-5..5).random()
+                        _cadence.value = (85..95).random()
+                        _heartRate.value = (140..155).random()
+                    } else {
+                        // Simulate pedaling lightly
+                        _power.value = (20..50).random()
+                        _cadence.value = (60..80).random()
+                        _heartRate.value = (110..120).random()
+                    }
+                }
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+    }
+
+    private fun stopMockDataStream() {
+        mockJob?.cancel()
+        isMockPedaling = false
+        _power.value = 0
+        _cadence.value = 0
+        _heartRate.value = 0
+    }
 
     fun startScan() {
         if (_connectionState.value == TrainerConnectionState.Scanning || _connectionState.value == TrainerConnectionState.Connected) return
@@ -82,6 +158,7 @@ object TrainerManager {
         stopScan()
         _connectionState.value = TrainerConnectionState.Connecting
         _pairedTrainerId.value = advertisement.identifier
+        _connectedTrainerName.value = advertisement.name ?: "Unknown Trainer"
 
         connectionJob?.cancel()
         connectionJob = scope.launch {
@@ -92,11 +169,16 @@ object TrainerManager {
                 peripheral.state.onEach { state ->
                     when (state) {
                         is State.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
-                        is State.Connected -> _connectionState.value = TrainerConnectionState.Connected
+                        is State.Connected -> {
+                            _connectionState.value = TrainerConnectionState.Connected
+                            startMockDataStream()
+                        }
                         is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
                         is State.Disconnected -> {
                             _connectionState.value = TrainerConnectionState.Disconnected
                             activePeripheral = null
+                            _connectedTrainerName.value = null
+                            stopMockDataStream()
                         }
                     }
                 }.launchIn(scope)
@@ -105,6 +187,7 @@ object TrainerManager {
             } catch (e: Exception) {
                 _connectionState.value = TrainerConnectionState.Error
                 activePeripheral = null
+                stopMockDataStream()
             }
         }
     }

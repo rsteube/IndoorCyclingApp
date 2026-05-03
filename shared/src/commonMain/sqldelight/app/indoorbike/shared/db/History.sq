@@ -1,0 +1,40 @@
+CREATE TABLE WorkoutSession (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    workoutId TEXT NOT NULL,
+    workoutName TEXT NOT NULL,
+    startTimeEpoch INTEGER NOT NULL,
+    durationSeconds INTEGER NOT NULL,
+    avgPower INTEGER NOT NULL,
+    avgCadence INTEGER NOT NULL,
+    avgHeartRate INTEGER NOT NULL
+);
+
+CREATE TABLE WorkoutTelemetry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    sessionId INTEGER NOT NULL,
+    timestampEpoch INTEGER NOT NULL,
+    power INTEGER NOT NULL,
+    cadence INTEGER NOT NULL,
+    heartRate INTEGER NOT NULL,
+    FOREIGN KEY (sessionId) REFERENCES WorkoutSession(id) ON DELETE CASCADE
+);
+
+insertSession:
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+lastInsertRowId:
+SELECT last_insert_rowid();
+
+insertTelemetry:
+INSERT INTO WorkoutTelemetry (sessionId, timestampEpoch, power, cadence, heartRate)
+VALUES (?, ?, ?, ?, ?);
+
+selectAllSessions:
+SELECT * FROM WorkoutSession ORDER BY startTimeEpoch DESC;
+
+selectTelemetryForSession:
+SELECT * FROM WorkoutTelemetry WHERE sessionId = ? ORDER BY timestampEpoch ASC;
+
+selectSessionById:
+SELECT * FROM WorkoutSession WHERE id = ?;

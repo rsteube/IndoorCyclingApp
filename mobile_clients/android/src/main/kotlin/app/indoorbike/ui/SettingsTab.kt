@@ -39,6 +39,7 @@ import app.indoorbike.ui.theme.Spacing
 @Composable
 fun SettingsTab(onNavigateToPairing: () -> Unit) {
     val connectionState by TrainerManager.connectionState.collectAsState()
+    val connectedTrainerName by TrainerManager.connectedTrainerName.collectAsState()
 
     Column(
         modifier = Modifier
@@ -58,7 +59,7 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
             // Current Status Panel
             val isConnected = connectionState == TrainerConnectionState.Connected
             TrainerStatusStrip(
-                deviceName = if (isConnected) "Wahoo Kickr Core" else "No Trainer Connected",
+                deviceName = if (isConnected) (connectedTrainerName ?: "Unknown Trainer") else "No Trainer Connected",
                 statusLine = when (connectionState) {
                     TrainerConnectionState.Scanning -> "Scanning for devices..."
                     TrainerConnectionState.Connecting -> "Connecting to trainer..."
