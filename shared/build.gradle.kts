@@ -30,7 +30,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            // implementation(libs.kable.core) // BLE operations in shared if needed later
+            implementation(libs.kable.core) // BLE operations
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
