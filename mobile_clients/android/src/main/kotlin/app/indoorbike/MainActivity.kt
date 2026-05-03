@@ -51,6 +51,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        UserSettings.init(applicationContext)
         setContent {
             CadenceTheme {
                 Surface(
@@ -144,17 +145,20 @@ private fun AppNavigator(workouts: List<Workout>) {
             }
         }
         entry<TabHistory> { _ ->
-            Box(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
-                Text("History Tab", modifier = Modifier.align(Alignment.Center), color = CadenceColors.Fg1)
-            }
+            app.indoorbike.ui.HistoryTab()
         }
         entry<TabProgress> { _ ->
-            Box(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
-                Text("Progress Tab", modifier = Modifier.align(Alignment.Center), color = CadenceColors.Fg1)
-            }
+            app.indoorbike.ui.ProgressTab()
         }
         entry<TabSettings> { _ ->
-            SettingsTab()
+            app.indoorbike.ui.SettingsTab(
+                onNavigateToPairing = { navigator.navigate(app.indoorbike.navigation.RouteTrainerPairing) }
+            )
+        }
+        entry<app.indoorbike.navigation.RouteTrainerPairing> { _ ->
+            app.indoorbike.ui.TrainerPairingScreen(
+                onBack = { navigator.goBack() }
+            )
         }
     }
 

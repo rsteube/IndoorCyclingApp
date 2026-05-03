@@ -22,6 +22,8 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +53,8 @@ fun WorkoutDetailScreen(
     onBack: () -> Unit,
     onStart: () -> Unit
 ) {
-    val summary = remember(workout) { workout.toSummary() }
+    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    val summary = remember(workout, ftp) { workout.toSummary(ftp) }
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         AppBar(
             title = workout.name,
@@ -79,7 +82,7 @@ fun WorkoutDetailScreen(
                 )
             }
             itemsIndexed(summary.workout.segments) { _, segment ->
-                StepRow(segment)
+                StepRow(segment, ftp)
             }
             item { Spacer(Modifier.height(Spacing.s4)) }
         }
@@ -186,9 +189,9 @@ private fun StatCell(label: String, value: String, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun StepRow(segment: PowerZone) {
+private fun StepRow(segment: PowerZone, ftp: Int) {
     val zone = ZonePalette.fromFtpPercent(segment.powerPercentFTP)
-    val watts = (segment.powerPercentFTP / 100.0 * WorkoutSummary.AssumedFtpWatts).roundToInt()
+    val watts = (segment.powerPercentFTP / 100.0 * ftp).roundToInt()
     val mins = segment.lengthInSeconds / 60
     val secs = segment.lengthInSeconds % 60
     val durLabel = when {

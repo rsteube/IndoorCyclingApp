@@ -14,7 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.BluetoothConnected
-import androidx.compose.material.icons.outlined.BluetoothSearching
+import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -37,9 +37,8 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 
 @Composable
-fun SettingsTab() {
+fun SettingsTab(onNavigateToPairing: () -> Unit) {
     val connectionState by TrainerManager.connectionState.collectAsState()
-    val discoveredDevices by TrainerManager.discoveredDevices.collectAsState()
 
     Column(
         modifier = Modifier
@@ -74,158 +73,93 @@ fun SettingsTab() {
             
             Spacer(modifier = Modifier.height(Spacing.s5))
 
-            // Action Buttons
-            var permissionError by remember { mutableStateOf(false) }
-            val permissionLauncher = rememberLauncherForActivityResult(
-                ActivityResultContracts.RequestMultiplePermissions()
-            ) { permissions ->
-                val allGranted = permissions.entries.all { it.value }
-                if (allGranted) {
-                    permissionError = false
-                    TrainerManager.startScan()
-                } else {
-                    permissionError = true
-                }
-            }
-
-            when (connectionState) {
-                TrainerConnectionState.Disconnected, TrainerConnectionState.Error -> {
-                    PrimaryBtn(
-                        text = "Scan for Trainers",
-                        leadingIcon = Icons.Outlined.Search,
-                        onClick = {
-                            permissionError = false
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                permissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.BLUETOOTH_SCAN,
-                                        Manifest.permission.BLUETOOTH_CONNECT
-                                    )
-                                )
-                            } else {
-                                permissionLauncher.launch(
-                                    arrayOf(
-                                        Manifest.permission.ACCESS_FINE_LOCATION
-                                    )
-                                )
+            // User Settings Panel
+            Text(
+                text = "USER PROFILE",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(bottom = Spacing.s3)
+            )
+            
+            val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+            var ftpInput by remember(ftp) { mutableStateOf(ftp.toString()) }
+            
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(CadenceColors.Bg1)
+                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+                    .padding(16.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = "Functional Threshold Power (FTP)", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = "Used to calculate your power zones", style = CadenceType.body, color = CadenceColors.Fg3)
+                    }
+                    
+                    Spacer(modifier = Modifier.width(16.dp))
+                    
+                    androidx.compose.foundation.text.BasicTextField(
+                        value = ftpInput,
+                        onValueChange = { newValue ->
+                            val filtered = newValue.filter { it.isDigit() }.take(4)
+                            ftpInput = filtered
+                            val newFtp = filtered.toIntOrNull()
+                            if (newFtp != null && newFtp > 0) {
+                                app.indoorbike.UserSettings.setFtp(newFtp)
                             }
                         },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    if (permissionError) {
-                        Text(
-                            text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                "Bluetooth permissions are required to scan. Please enable them in Android Settings."
-                            } else {
-                                "Location permission is required to scan on older Android versions. Please enable it in Android Settings."
-                            },
-                            style = CadenceType.small,
-                            color = CadenceColors.Danger,
-                            modifier = Modifier.padding(top = Spacing.s3).fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-                    } else if (connectionState == TrainerConnectionState.Error) {
-                        Text(
-                            text = "Failed to start scan. Ensure Bluetooth & Location are turned ON.",
-                            style = CadenceType.small,
-                            color = CadenceColors.Danger,
-                            modifier = Modifier.padding(top = Spacing.s3).fillMaxWidth(),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-                TrainerConnectionState.Scanning -> {
-                    SecondaryBtn(
-                        text = "Stop Scanning",
-                        onClick = { TrainerManager.stopScan() },
-                        modifier = Modifier.fillMaxWidth()
+                        textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.width(110.dp),
+                        decorationBox = { innerTextField ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(Radii.sm))
+                                    .background(CadenceColors.Bg2)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                                    innerTextField()
+                                }
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("W", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                            }
+                        }
                     )
                 }
-                else -> {
+            }
+            
+            Spacer(modifier = Modifier.height(Spacing.s6))
+
+            // Action Buttons
+            when (connectionState) {
+                TrainerConnectionState.Connected, 
+                TrainerConnectionState.Connecting, 
+                TrainerConnectionState.Disconnecting -> {
                     SecondaryBtn(
-                        text = "Disconnect",
+                        text = if (connectionState == TrainerConnectionState.Connecting) "Cancel Connection" else "Disconnect",
                         onClick = { TrainerManager.disconnect() },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-            }
-
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            // Scanning UI / Device List
-            if (connectionState == TrainerConnectionState.Scanning) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.s4)
-                ) {
-                    CircularProgressIndicator(color = CadenceColors.Brand500)
-                    Text(
-                        text = "Actively scanning for smart trainers...",
-                        style = CadenceType.body,
-                        color = CadenceColors.Fg2,
-                        textAlign = TextAlign.Center
+                else -> {
+                    PrimaryBtn(
+                        text = "Pair Trainer",
+                        leadingIcon = Icons.AutoMirrored.Outlined.BluetoothSearching,
+                        onClick = onNavigateToPairing,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
-                Spacer(modifier = Modifier.height(Spacing.s5))
-            }
-
-            if (discoveredDevices.isNotEmpty()) {
-                Text(
-                    text = "DISCOVERED DEVICES",
-                    style = CadenceType.eyebrow,
-                    color = CadenceColors.Fg3,
-                    modifier = Modifier.padding(bottom = Spacing.s3)
-                )
-                
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(Spacing.s3),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    items(discoveredDevices) { device ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(Radii.md))
-                                .background(CadenceColors.Bg1)
-                                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-                                .clickable {
-                                    TrainerManager.connectToDevice(device)
-                                }
-                                .padding(Spacing.s4),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.BluetoothSearching,
-                                contentDescription = null,
-                                tint = CadenceColors.Brand500,
-                                modifier = Modifier.size(24.dp)
-                            )
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = device.name ?: "Unknown Trainer",
-                                    style = CadenceType.bodyStrong,
-                                    color = CadenceColors.Fg1
-                                )
-                                Text(
-                                    text = device.identifier,
-                                    style = CadenceType.small,
-                                    color = CadenceColors.Fg3
-                                )
-                            }
-                        }
-                    }
-                }
-            } else if (connectionState == TrainerConnectionState.Scanning) {
-                Text(
-                    text = "Ensure your trainer is plugged in and awake.",
-                    style = CadenceType.small,
-                    color = CadenceColors.Fg4,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = Spacing.s4)
-                )
             }
         }
     }

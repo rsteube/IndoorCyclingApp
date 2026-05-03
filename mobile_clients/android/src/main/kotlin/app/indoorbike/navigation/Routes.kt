@@ -17,3 +17,6 @@ data object TabSettings : NavKey
 
 @Serializable
 data class RouteWorkoutDetail(val workoutId: String) : NavKey
+
+@Serializable
+data object RouteTrainerPairing : NavKey

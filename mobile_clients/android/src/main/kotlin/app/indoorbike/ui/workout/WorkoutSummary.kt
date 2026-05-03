@@ -14,9 +14,10 @@ data class WorkoutSummary(
     val intensityFactor: Float,
     val tss: Int,
     val kilojoules: Int,
-    val zoneSegments: List<ZoneSegment>
+    val zoneSegments: List<ZoneSegment>,
+    val ftpWatts: Int
 ) {
-    val averagePowerWatts: Int get() = (intensityFactor * AssumedFtpWatts).roundToInt()
+    val averagePowerWatts: Int get() = (intensityFactor * ftpWatts).roundToInt()
 
     companion object {
         // Until the user can configure FTP, use the 248W placeholder from the design system.
@@ -55,7 +56,8 @@ fun Workout.toSummary(ftpWatts: Int = WorkoutSummary.AssumedFtpWatts): WorkoutSu
         intensityFactor = (rms * 100).roundToInt() / 100f,
         tss = tss,
         kilojoules = kj,
-        zoneSegments = zoneSegs
+        zoneSegments = zoneSegs,
+        ftpWatts = ftpWatts
     )
 }
 

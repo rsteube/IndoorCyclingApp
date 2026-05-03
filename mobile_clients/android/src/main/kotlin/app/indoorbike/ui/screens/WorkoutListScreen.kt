@@ -74,7 +74,8 @@ fun WorkoutListScreen(
     onTabSelected: (String) -> Unit = {}
 ) {
     var selectedFilter by remember { mutableStateOf("All") }
-    val summaries = remember(workouts) { workouts.map { it.toSummary() } }
+    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }
     val visible = remember(summaries, selectedFilter) {
         if (selectedFilter == "All") summaries
         else summaries.filter { it.tag.equals(selectedFilter, ignoreCase = true) }
