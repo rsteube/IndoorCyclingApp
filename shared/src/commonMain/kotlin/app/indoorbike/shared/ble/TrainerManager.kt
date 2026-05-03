@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import com.juul.kable.Filter
+import com.benasher44.uuid.uuidFrom
 
 enum class TrainerConnectionState {
     Disconnected,
@@ -34,6 +36,9 @@ object TrainerManager {
     private val _discoveredDevices = MutableStateFlow<List<Advertisement>>(emptyList())
     val discoveredDevices: StateFlow<List<Advertisement>> = _discoveredDevices.asStateFlow()
 
+    private val _pairedTrainerId = MutableStateFlow<String?>(null)
+    val pairedTrainerId: StateFlow<String?> = _pairedTrainerId.asStateFlow()
+
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
     
@@ -45,8 +50,14 @@ object TrainerManager {
         _connectionState.value = TrainerConnectionState.Scanning
         _discoveredDevices.value = emptyList()
 
-        // You can add Filter to Scanner to only find cycling power (1818) or FTMS (1826)
-        scanJob = Scanner().advertisements
+        // 1818 = Cycling Power Service
+        // 1826 = Fitness Machine Service
+        scanJob = Scanner {
+            filters = listOf(
+                Filter.Service(uuidFrom("00001818-0000-1000-8000-00805f9b34fb")),
+                Filter.Service(uuidFrom("00001826-0000-1000-8000-00805f9b34fb"))
+            )
+        }.advertisements
             .onEach { advertisement ->
                 val current = _discoveredDevices.value.toMutableList()
                 if (current.none { it.identifier == advertisement.identifier }) {
@@ -70,6 +81,7 @@ object TrainerManager {
     fun connectToDevice(advertisement: Advertisement) {
         stopScan()
         _connectionState.value = TrainerConnectionState.Connecting
+        _pairedTrainerId.value = advertisement.identifier
 
         connectionJob?.cancel()
         connectionJob = scope.launch {

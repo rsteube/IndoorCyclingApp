@@ -17,4 +17,4 @@ local.properties
 mobile_clients/android/build/
 shared/build/
 build/
-mobile_clients/android/src/main/assets/workouts_private.json
+mobile_clients/android/src/main/assets/workouts_private*.json

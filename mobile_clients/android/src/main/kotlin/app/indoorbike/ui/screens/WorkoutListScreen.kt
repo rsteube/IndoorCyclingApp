@@ -30,6 +30,7 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -102,13 +103,41 @@ fun WorkoutListScreen(
             trailing = { IconBtn(icon = Icons.Outlined.Search, contentDescription = "Search") }
         )
 
-        TrainerStatusStrip(
-            deviceName = "Wahoo Kickr Core",
-            statusLine = "Connected · FTP 248 W",
-            icon = Icons.Outlined.Bluetooth,
-            modifier = Modifier.padding(horizontal = Spacing.s5),
-            connected = true
-        )
+        val connectionState by app.indoorbike.shared.ble.TrainerManager.connectionState.collectAsState()
+        val pairedTrainerId by app.indoorbike.shared.ble.TrainerManager.pairedTrainerId.collectAsState()
+
+        if (pairedTrainerId == null) {
+            // Show Add Trainer empty state
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.s5)
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(CadenceColors.Brand500)
+                    .clickable { onTabSelected("settings") }
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Add Trainer",
+                    color = CadenceColors.Bg0,
+                    style = CadenceType.bodyStrong
+                )
+            }
+        } else {
+            TrainerStatusStrip(
+                deviceName = "Wahoo Kickr Core",
+                statusLine = when (connectionState) {
+                    app.indoorbike.shared.ble.TrainerConnectionState.Connected -> "Connected"
+                    app.indoorbike.shared.ble.TrainerConnectionState.Connecting -> "Connecting..."
+                    app.indoorbike.shared.ble.TrainerConnectionState.Scanning -> "Scanning..."
+                    else -> "Not Connected"
+                },
+                icon = Icons.Outlined.Bluetooth,
+                modifier = Modifier.padding(horizontal = Spacing.s5),
+                connected = connectionState == app.indoorbike.shared.ble.TrainerConnectionState.Connected
+            )
+        }
         Spacer(Modifier.height(Spacing.s4))
 
         Row(
@@ -136,8 +165,6 @@ fun WorkoutListScreen(
                 WorkoutCard(summary = summary, onClick = { onPick(summary.workout) })
             }
         }
-
-        TabBar(active = activeTab, tabs = Tabs, onTabSelected = onTabSelected)
     }
 }
 

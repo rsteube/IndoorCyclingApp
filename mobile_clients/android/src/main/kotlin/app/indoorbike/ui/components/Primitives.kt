@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -273,6 +275,7 @@ fun TabBar(active: String, tabs: List<TabItem>, onTabSelected: (String) -> Unit)
         modifier = Modifier
             .fillMaxWidth()
             .background(CadenceColors.Bg1)
+            .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = 8.dp, vertical = 4.dp)
     ) {
         tabs.forEach { tab ->

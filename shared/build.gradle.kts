@@ -30,7 +30,7 @@ kotlin {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
-            implementation(libs.kable.core) // BLE operations
+            api(libs.kable.core) // BLE operations
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -40,7 +40,7 @@ kotlin {
 
 android {
     namespace = "app.indoorbike.shared"
-    compileSdk = 34
+    compileSdk = 36
     defaultConfig {
         minSdk = 26
     }

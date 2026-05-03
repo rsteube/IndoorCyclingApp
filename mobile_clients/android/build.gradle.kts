@@ -2,16 +2,17 @@ plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.kotlinCompose)
+    alias(libs.plugins.kotlinSerialization)
 }
 
 android {
     namespace = "app.indoorbike"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "app.indoorbike"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
     }
@@ -39,7 +40,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
-    implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
     implementation(libs.compose.material.icons.extended)
     implementation(libs.compose.foundation)
 

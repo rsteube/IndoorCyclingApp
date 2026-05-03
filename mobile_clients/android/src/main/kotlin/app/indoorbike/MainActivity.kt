@@ -4,8 +4,27 @@ import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsBike
+import androidx.compose.material.icons.filled.Settings
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.ui.NavDisplay
+import app.indoorbike.navigation.*
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.outlined.AccessTime
+import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
+import app.indoorbike.ui.SettingsTab
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -31,6 +50,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         setContent {
             CadenceTheme {
                 Surface(
@@ -40,8 +60,11 @@ class MainActivity : ComponentActivity() {
                     var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
 
                     LaunchedEffect(Unit) {
-                        val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
-                        workouts = WorkoutRepository.parseWorkouts(jsonStrings)
+                        val parsedWorkouts = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
+                            WorkoutRepository.parseWorkouts(jsonStrings)
+                        }
+                        workouts = parsedWorkouts
                     }
 
                     AppNavigator(workouts = workouts)
@@ -67,15 +90,18 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private sealed interface Screen {
-    data object List : Screen
-    data class Detail(val workout: Workout) : Screen
-}
+
+
+
+private val TOP_LEVEL_ROUTES = mapOf<NavKey, app.indoorbike.ui.components.TabItem>(
+    TabRides to app.indoorbike.ui.components.TabItem("rides", Icons.AutoMirrored.Outlined.DirectionsBike, "Ride"),
+    TabHistory to app.indoorbike.ui.components.TabItem("history", Icons.Outlined.AccessTime, "History"),
+    TabProgress to app.indoorbike.ui.components.TabItem("progress", Icons.Outlined.EmojiEvents, "Progress"),
+    TabSettings to app.indoorbike.ui.components.TabItem("settings", Icons.Outlined.Settings, "Settings")
+)
 
 @Composable
 private fun AppNavigator(workouts: List<Workout>) {
-    var screen: Screen by remember { mutableStateOf(Screen.List) }
-    var activeTab by remember { mutableStateOf("rides") }
     val eyebrow = remember { currentDayEyebrow() }
 
     if (workouts.isEmpty()) {
@@ -83,19 +109,76 @@ private fun AppNavigator(workouts: List<Workout>) {
         return
     }
 
-    when (val s = screen) {
-        Screen.List -> WorkoutListScreen(
-            workouts = workouts,
-            eyebrow = eyebrow,
-            onPick = { screen = Screen.Detail(it) },
-            activeTab = activeTab,
-            onTabSelected = { activeTab = it }
-        )
-        is Screen.Detail -> WorkoutDetailScreen(
-            workout = s.workout,
-            onBack = { screen = Screen.List },
-            onStart = { /* TODO: navigate to RideScreen once BLE flow exists */ }
-        )
+    val navigationState = rememberNavigationState(
+        startRoute = TabRides,
+        topLevelRoutes = TOP_LEVEL_ROUTES.keys
+    )
+
+    val navigator = remember { Navigator(navigationState) }
+
+    val entryProvider = entryProvider<NavKey> {
+        entry<TabRides> { _ ->
+            WorkoutListScreen(
+                workouts = workouts,
+                eyebrow = eyebrow,
+                onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
+                activeTab = "rides",
+                onTabSelected = { tabId -> 
+                    val targetTab = TOP_LEVEL_ROUTES.entries.find { (k, v) -> v.id == tabId }?.key
+                    targetTab?.let { navigator.navigate(it) }
+                }
+            )
+        }
+        entry<RouteWorkoutDetail> { key: RouteWorkoutDetail ->
+            val workout = workouts.find { it.id == key.workoutId }
+            if (workout != null) {
+                WorkoutDetailScreen(
+                    workout = workout,
+                    onBack = { navigator.goBack() },
+                    onStart = { /* TODO: navigate to actual ride mode */ }
+                )
+            } else {
+                LaunchedEffect(Unit) {
+                    navigator.goBack()
+                }
+            }
+        }
+        entry<TabHistory> { _ ->
+            Box(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+                Text("History Tab", modifier = Modifier.align(Alignment.Center), color = CadenceColors.Fg1)
+            }
+        }
+        entry<TabProgress> { _ ->
+            Box(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+                Text("Progress Tab", modifier = Modifier.align(Alignment.Center), color = CadenceColors.Fg1)
+            }
+        }
+        entry<TabSettings> { _ ->
+            SettingsTab()
+        }
+    }
+
+    Scaffold(
+        bottomBar = {
+            // Only show bottom bar on top level routes
+            if (navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys) {
+                app.indoorbike.ui.components.TabBar(
+                    active = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides",
+                    tabs = TOP_LEVEL_ROUTES.values.toList(),
+                    onTabSelected = { tabId ->
+                        val targetTab = TOP_LEVEL_ROUTES.entries.find { (k, v) -> v.id == tabId }?.key
+                        targetTab?.let { navigator.navigate(it) }
+                    }
+                )
+            }
+        }
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            NavDisplay(
+                entries = navigationState.toDecoratedEntries(entryProvider),
+                onBack = { navigator.goBack() }
+            )
+        }
     }
 }
 
