@@ -1,18 +1,60 @@
+@file:OptIn(androidx.compose.ui.text.ExperimentalTextApi::class)
+
 package app.indoorbike.ui.theme
 
 import androidx.compose.material3.Typography
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import app.indoorbike.R
 
-// TODO: bundle Bebas Neue, Inter, JetBrains Mono OFL TTFs into res/font/
-// and replace these defaults. F-Droid requires local fonts, no Google Fonts CDN.
-val DisplayFontFamily: FontFamily = FontFamily.Default
-val BodyFontFamily: FontFamily = FontFamily.Default
-val MonoFontFamily: FontFamily = FontFamily.Monospace
+// Bundled OFL fonts. F-Droid clean — no Google Fonts CDN, no runtime download.
+// Bebas Neue (static), Inter (variable wght), JetBrains Mono (variable wght).
+val DisplayFontFamily: FontFamily = FontFamily(
+    Font(R.font.bebas_neue_regular, FontWeight.Normal)
+)
+
+val BodyFontFamily: FontFamily = FontFamily(
+    Font(
+        R.font.inter_variable,
+        weight = FontWeight.Normal,
+        variationSettings = FontVariation.Settings(FontVariation.weight(400))
+    ),
+    Font(
+        R.font.inter_variable,
+        weight = FontWeight.Medium,
+        variationSettings = FontVariation.Settings(FontVariation.weight(500))
+    ),
+    Font(
+        R.font.inter_variable,
+        weight = FontWeight.SemiBold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(600))
+    ),
+    Font(
+        R.font.inter_variable,
+        weight = FontWeight.Bold,
+        variationSettings = FontVariation.Settings(FontVariation.weight(700))
+    )
+)
+
+val MonoFontFamily: FontFamily = FontFamily(
+    Font(
+        R.font.jetbrains_mono_variable,
+        weight = FontWeight.Normal,
+        variationSettings = FontVariation.Settings(FontVariation.weight(400))
+    ),
+    Font(
+        R.font.jetbrains_mono_variable,
+        weight = FontWeight.Medium,
+        variationSettings = FontVariation.Settings(FontVariation.weight(500))
+    )
+)
 
 object CadenceType {
     val displayXl = TextStyle(
