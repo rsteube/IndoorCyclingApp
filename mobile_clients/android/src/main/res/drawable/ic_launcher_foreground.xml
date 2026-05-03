@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Foreground layer for the adaptive launcher icon.
+  Canvas is 108x108 dp. The central 72x72 dp is the "safe zone" — content
+  outside it may be cropped by OEM mask shapes (circle, squircle, teardrop,
+  etc.). The source SVG was 64x64; we translate by 18 and scale by 1.125
+  so its full content lands inside the 72x72 safe zone (18..90).
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:translateX="18"
+        android:translateY="18"
+        android:scaleX="1.125"
+        android:scaleY="1.125">
+
+        <path
+            android:pathData="M 4 28 L 14 18 L 22 24 L 32 12 L 44 22 L 54 16 L 60 22"
+            android:strokeColor="#F47A1F"
+            android:strokeWidth="2.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M 8 48 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0"
+            android:strokeColor="#F4ECDF"
+            android:strokeWidth="2.6" />
+        <path
+            android:pathData="M 40 48 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0"
+            android:strokeColor="#F4ECDF"
+            android:strokeWidth="2.6" />
+
+        <path
+            android:pathData="M 16 38 L 16 40 M 16 56 L 16 58 M 6 48 L 8 48 M 24 48 L 26 48 M 48 38 L 48 40 M 48 56 L 48 58 M 38 48 L 40 48 M 56 48 L 58 48"
+            android:strokeColor="#F4ECDF"
+            android:strokeAlpha="0.7"
+            android:strokeWidth="1"
+            android:strokeLineCap="round" />
+
+        <path
+            android:pathData="M 32 48 L 28 32 L 44 30 M 32 48 L 44 38 M 32 48 L 16 48 L 28 32 M 44 30 L 44 38 L 48 48"
+            android:strokeColor="#F47A1F"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M 40 28 Q 44 26 48 28 Q 50 30 49 33"
+            android:strokeColor="#F47A1F"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round" />
+
+        <path
+            android:pathData="M 24 32 L 32 32"
+            android:strokeColor="#F47A1F"
+            android:strokeWidth="2.4"
+            android:strokeLineCap="round" />
+    </group>
+</vector>
