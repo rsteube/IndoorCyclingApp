@@ -1,5 +1,6 @@
 package app.indoorbike
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -11,8 +12,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import app.indoorbike.shared.Workout
+import app.indoorbike.shared.WorkoutRepository
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -23,16 +31,41 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainScreen()
+                    var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
+                    
+                    LaunchedEffect(Unit) {
+                        val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
+                        workouts = WorkoutRepository.parseWorkouts(jsonStrings)
+                    }
+
+                    MainScreen(workouts)
                 }
             }
         }
+    }
+
+    private fun loadWorkoutJsonsFromAssets(context: Context): List<String> {
+        val jsonStrings = mutableListOf<String>()
+        try {
+            val assetManager = context.assets
+            val allAssets = assetManager.list("") ?: emptyArray()
+            
+            // Match any file starting with "workouts" and ending with ".json"
+            val workoutFiles = allAssets.filter { it.startsWith("workouts") && it.endsWith(".json") }
+            
+            for (fileName in workoutFiles) {
+                val jsonString = assetManager.open(fileName).bufferedReader().use { it.readText() }
+                jsonStrings.add(jsonString)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return jsonStrings
     }
 }
 
 @Composable
 fun CyclingAppTheme(content: @Composable () -> Unit) {
-    // Defaulting to Dark Theme as per requirements
     val colorScheme = darkColorScheme()
     MaterialTheme(
         colorScheme = colorScheme,
@@ -41,11 +74,14 @@ fun CyclingAppTheme(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun MainScreen() {
+fun MainScreen(workouts: List<Workout>) {
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        Text("Indoor Cycling App", color = MaterialTheme.colorScheme.onBackground)
+        Text(
+            text = "Indoor Cycling App\nLoaded ${workouts.size} workouts",
+            color = MaterialTheme.colorScheme.onBackground
+        )
     }
 }

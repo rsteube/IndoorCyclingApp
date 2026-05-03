@@ -1,29 +1,26 @@
 package app.indoorbike.shared
 
+import kotlinx.serialization.Serializable
+
 /**
- * Represents a single power zone within a workout.
- * 
- * @property durationSeconds Duration of the zone in seconds.
- * @property targetPowerPercentage Target power as a percentage of FTP (e.g., 0.65 for 65% FTP).
- * @property color Hex color string or descriptive name for the UI.
+ * Represents a single segment/power zone within a workout.
  */
+@Serializable
 data class PowerZone(
-    val durationSeconds: Int,
-    val targetPowerPercentage: Double,
-    val color: String
+    val lengthInSeconds: Int,
+    val powerPercentFTP: Int,
+    val intervalType: String
 )
 
 /**
  * Represents a structured workout based on power.
- * 
- * @property id Unique identifier.
- * @property name Name of the workout.
- * @property description Optional description.
- * @property zones Sequential list of power zones defining the structure.
  */
+@Serializable
 data class Workout(
     val id: String,
     val name: String,
     val description: String?,
-    val zones: List<PowerZone>
+    val screenshot: String? = null,
+    val url: String? = null,
+    val segments: List<PowerZone>
 )
