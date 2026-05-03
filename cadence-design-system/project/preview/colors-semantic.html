@@ -1,0 +1,27 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin:0; padding:20px; background:var(--bg-0); display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .sw { border-radius:var(--r-sm); padding:14px 12px; height:96px; display:flex; flex-direction:column; justify-content:space-between; border:1px solid var(--line-2); }
+  .top { display:flex; align-items:center; gap:8px; }
+  .dot { width:10px; height:10px; border-radius:50%; }
+  .name { font-family:var(--font-body); font-weight:600; font-size:13px; color:var(--fg-1); }
+  .desc { font-family:var(--font-body); font-size:11px; color:var(--fg-3); }
+  .hex { font-family:var(--font-mono); font-size:10px; color:var(--fg-2); }
+</style></head><body>
+  <div class="sw" style="background:rgba(31,179,115,0.10)">
+    <div class="top"><div class="dot" style="background:#1FB373"></div><div class="name">Success</div></div>
+    <div><div class="desc">Workout saved · sensor connected</div><div class="hex">#1FB373</div></div>
+  </div>
+  <div class="sw" style="background:rgba(240,196,25,0.10)">
+    <div class="top"><div class="dot" style="background:#F0C419"></div><div class="name">Warning</div></div>
+    <div><div class="desc">Trainer signal weak</div><div class="hex">#F0C419</div></div>
+  </div>
+  <div class="sw" style="background:rgba(235,59,59,0.10)">
+    <div class="top"><div class="dot" style="background:#EB3B3B"></div><div class="name">Danger</div></div>
+    <div><div class="desc">Connection lost</div><div class="hex">#EB3B3B</div></div>
+  </div>
+  <div class="sw" style="background:rgba(244,122,31,0.08)">
+    <div class="top"><div class="dot" style="background:#F47A1F"></div><div class="name">Info</div></div>
+    <div><div class="desc">Workout starts in 3s</div><div class="hex">#F47A1F</div></div>
+  </div>
+</body></html>

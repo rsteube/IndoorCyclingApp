@@ -21,3 +21,17 @@ Standard BLE APIs will be used to scan, connect, and set the ERG target power on
 
 ## Development Workflow
 When making changes, always ensure that KMM logic stays in the `shared` module and that UI additions in the Android client utilize the `app.indoorbike` namespace. Use Material 3 in Jetpack Compose, maintaining a high-fidelity dark aesthetic.
+
+## Android UI Architecture
+The Android client implements the **Cadence design system** (see [cadence-design-system/README.md](cadence-design-system/README.md)). Code is organized under `app.indoorbike.ui.*`:
+
+- `ui/theme/` — design tokens. `CadenceColors` (gravel-warm dark palette + brand ember + line/fg ramps), `CadenceType` (display/body/mono scale), `Spacing`, `Radii`, and `CadenceTheme` (M3 ColorScheme + Typography wrapper).
+- `ui/zones/PowerZones.kt` — 7-zone enum mapping FTP% → `PowerZone` with calibrated cool→hot color spectrum. Use `PowerZone.fromFtpPercent()` whenever an FTP% needs a zone color.
+- `ui/components/Primitives.kt` — reusable building blocks: `AppBar`, `IconBtn`, `PrimaryBtn`, `SecondaryBtn`, `ZoneBadge`, `MetaPill`, `ZoneBar`, `TabBar`, `TrainerStatusStrip`, `FilterChip`. All consume tokens from `ui/theme`.
+- `ui/workout/WorkoutSummary.kt` — derives display stats (duration, IF, TSS, kJ, dominant tag, zone-bar segments) from a `Workout`. FTP is currently a hardcoded 248W placeholder until user FTP storage exists.
+- `ui/screens/` — `WorkoutListScreen` and `WorkoutDetailScreen`. Ride / Summary / Progress screens are designed in the bundle but not yet implemented (they need BLE telemetry and completion data that don't exist yet).
+- `MainActivity.kt` — loads `workouts*.json` from assets, holds the current screen in a `sealed interface Screen` state holder. No navigation library yet; add one when screen count justifies it.
+
+**Fonts**: the design specifies Bebas Neue / Inter / JetBrains Mono. F-Droid requires locally bundled OFL TTFs — they are not yet present, so `Type.kt` falls back to `FontFamily.Default` / `Monospace`. Drop the TTFs into `mobile_clients/android/src/main/res/font/` and update `DisplayFontFamily` / `BodyFontFamily` / `MonoFontFamily` to bind them.
+
+**Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0, F-Droid clean) as a visual stand-in. Swap to a Lucide-for-Compose library or bundled SVG sprite if strict fidelity matters.

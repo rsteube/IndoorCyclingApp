@@ -26,3 +26,7 @@ Consider the possibility of connecting Zwift Click (v1) controller to adjust dif
 
 Techincal definition:
 Maintain TECH_SPEC_FOR_LLMS.md file for all techincal architecture and documentation. LLMs can use this file to quickly get up to speed with the project.
+
+
+Design system:
+Use the design system defined in cadence-design-system/README.md

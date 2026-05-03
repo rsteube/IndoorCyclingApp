@@ -1,0 +1,18 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin:0; padding:20px; background:var(--bg-0); display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .sw { border-radius:var(--r-sm); padding:14px 12px; display:flex; flex-direction:column; justify-content:flex-end; height:96px; }
+  .name { font-family:var(--font-mono); font-size:11px; letter-spacing:0.04em; }
+  .hex  { font-family:var(--font-mono); font-size:10px; opacity:0.7; margin-top:2px; }
+  .label { font-family:var(--font-body); font-size:11px; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:auto; opacity:0.85; }
+  .hero { grid-column: span 2; height:96px; background: linear-gradient(135deg,#F47A1F 0%,#D54F0A 100%); position:relative; overflow:hidden; }
+  .hero::after { content:""; position:absolute; inset:0; background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.25), transparent 60%); }
+</style></head><body>
+  <div class="sw hero"><div class="label" style="color:#fff">brand pulse → azure</div><div class="name" style="color:#fff">linear-gradient 135°</div><div class="hex" style="color:#fff">#F47A1F → #D54F0A</div></div>
+  <div class="sw" style="background:#F47A1F;color:#1a0a00"><div class="label">brand-500</div><div class="name">#F47A1F</div><div class="hex">primary accent</div></div>
+  <div class="sw" style="background:#E0660D;color:#1a0a00"><div class="label">brand-600</div><div class="name">#E0660D</div><div class="hex">hover</div></div>
+  <div class="sw" style="background:#B8520A;color:#fff"><div class="label">brand-700</div><div class="name">#B8520A</div><div class="hex">pressed</div></div>
+  <div class="sw" style="background:#FF9847;color:#1a0a00"><div class="label">brand-400</div><div class="name">#FF9847</div><div class="hex">light</div></div>
+  <div class="sw" style="background:#D54F0A;color:#fff"><div class="label">azure-600</div><div class="name">#D54F0A</div><div class="hex">sibling</div></div>
+  <div class="sw" style="background:#181410;color:#F47A1F;box-shadow:0 0 24px rgba(244,122,31,0.35),0 0 0 1px rgba(244,122,31,0.5) inset"><div class="label" style="color:#8A7E6C">glow</div><div class="name">brand glow</div><div class="hex">CTA only</div></div>
+</body></html>

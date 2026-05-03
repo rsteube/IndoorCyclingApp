@@ -1,0 +1,30 @@
+<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>
+  body { margin:0; padding:20px; background:var(--bg-0); }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
+  .sw { border-radius:var(--r-sm); padding:12px 10px; display:flex; flex-direction:column; justify-content:space-between; height:120px; color:#fff; }
+  .num { font-family:var(--font-display); font-weight:700; font-size:24px; letter-spacing:-0.02em; }
+  .label { font-family:var(--font-body); font-size:10px; text-transform:uppercase; letter-spacing:0.08em; opacity:0.9; }
+  .hex { font-family:var(--font-mono); font-size:10px; opacity:0.75; }
+  .ftp { font-family:var(--font-mono); font-size:10px; opacity:0.85; }
+</style></head><body>
+  <div class="grid">
+    <div class="sw" style="background:#6B8AA8"><div><div class="label">Z1</div><div class="ftp">&lt;55%</div></div><div><div class="num">Z1</div><div class="hex">#6B8AA8</div></div></div>
+    <div class="sw" style="background:#2E7BFF"><div><div class="label">Z2</div><div class="ftp">56–75%</div></div><div><div class="num">Z2</div><div class="hex">#2E7BFF</div></div></div>
+    <div class="sw" style="background:#1FB373"><div><div class="label">Z3</div><div class="ftp">76–90%</div></div><div><div class="num">Z3</div><div class="hex">#1FB373</div></div></div>
+    <div class="sw" style="background:#F0C419;color:#1a1200"><div><div class="label">Z4</div><div class="ftp">91–105%</div></div><div><div class="num">Z4</div><div class="hex">#F0C419</div></div></div>
+    <div class="sw" style="background:#FF8A1F"><div><div class="label">Z5</div><div class="ftp">106–120%</div></div><div><div class="num">Z5</div><div class="hex">#FF8A1F</div></div></div>
+    <div class="sw" style="background:#EB3B3B"><div><div class="label">Z6</div><div class="ftp">121–150%</div></div><div><div class="num">Z6</div><div class="hex">#EB3B3B</div></div></div>
+    <div class="sw" style="background:#C53BFF"><div><div class="label">Z7</div><div class="ftp">&gt;150%</div></div><div><div class="num">Z7</div><div class="hex">#C53BFF</div></div></div>
+  </div>
+  <div style="display:flex;height:14px;margin-top:14px;border-radius:999px;overflow:hidden">
+    <div style="flex:1;background:#6B8AA8"></div>
+    <div style="flex:1;background:#2E7BFF"></div>
+    <div style="flex:1;background:#1FB373"></div>
+    <div style="flex:1;background:#F0C419"></div>
+    <div style="flex:1;background:#FF8A1F"></div>
+    <div style="flex:1;background:#EB3B3B"></div>
+    <div style="flex:1;background:#C53BFF"></div>
+  </div>
+  <div style="font-family:var(--font-mono);font-size:10px;color:var(--fg-3);text-transform:uppercase;letter-spacing:0.1em;margin-top:8px;text-align:center">7-step FTP power-zone spectrum · cool → hot</div>
+</body></html>
