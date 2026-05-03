@@ -38,18 +38,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.Workout
+import app.indoorbike.shared.workout.WorkoutSummary
+import app.indoorbike.shared.workout.formatDurationPretty
+import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.TrainerStatusStrip
 import app.indoorbike.ui.components.ZoneBar
+import app.indoorbike.ui.workout.zoneSegments
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
-import app.indoorbike.ui.workout.WorkoutSummary
-import app.indoorbike.ui.workout.toSummary
 
 @Composable
 fun WorkoutListScreen(
@@ -59,8 +62,9 @@ fun WorkoutListScreen(
     activeTab: String = "rides",
     onTabSelected: (String) -> Unit = {}
 ) {
+    val container = LocalAppContainer.current
     var selectedFilter by remember { mutableStateOf("All") }
-    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsState()
     val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }
     val availableTags = remember(summaries) {
         // Derive filter chips from the actual workouts present, not a hardcoded list.
@@ -93,10 +97,10 @@ fun WorkoutListScreen(
             }
         )
 
-        val connectionState by app.indoorbike.shared.ble.TrainerManager.connectionState.collectAsState()
-        val pairedTrainerId by app.indoorbike.shared.ble.TrainerManager.pairedTrainerId.collectAsState()
-        val isMockTrainer by app.indoorbike.shared.ble.TrainerManager.isMockTrainer.collectAsState()
-        val connectedTrainerName by app.indoorbike.shared.ble.TrainerManager.connectedTrainerName.collectAsState()
+        val connectionState by container.trainerManager.connectionState.collectAsState()
+        val pairedTrainerId by container.trainerManager.pairedTrainerId.collectAsState()
+        val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
+        val connectedTrainerName by container.trainerManager.connectedTrainerName.collectAsState()
 
         if (pairedTrainerId == null && !isMockTrainer) {
             // Friendly nudge: not a saturated banner.
@@ -254,9 +258,9 @@ private fun WorkoutCard(summary: WorkoutSummary, onClick: () -> Unit) {
                 color = CadenceColors.Fg1
             )
         }
-        ZoneBar(segments = summary.zoneSegments, height = 8.dp)
+        ZoneBar(segments = summary.zoneSegments(), height = 8.dp)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            MetaPill(text = summary.durationLabel.uppercase())
+            MetaPill(text = formatDurationPretty(summary.totalSeconds).uppercase())
             MetaPill(text = "TSS ${summary.tss}")
             MetaPill(text = "IF ${"%.2f".format(summary.intensityFactor)}")
         }

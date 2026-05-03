@@ -1,11 +1,15 @@
 package app.indoorbike.shared.session
 
-import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.ble.TrainerManager
+import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.util.getCurrentEpochMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,8 +18,6 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
-import app.indoorbike.shared.db.TelemetryPoint
-import app.indoorbike.shared.util.getCurrentEpochMillis
 
 enum class WorkoutState {
     Idle,
@@ -23,11 +25,24 @@ enum class WorkoutState {
     Countdown,
     Active,
     Paused,
-    Completed
+    Completed,
 }
 
-object WorkoutSessionManager {
-    private val scope = CoroutineScope(Dispatchers.Default)
+/**
+ * Owns the active workout session and drives the trainer in ERG mode.
+ *
+ * State updates are driven by wall-clock time anchored at [sessionStartTimeEpoch]
+ * so we don't drift over a 60+ minute ride if the coroutine dispatcher hiccups.
+ *
+ * Telemetry is captured by sampling power/cadence/HR once per second from the
+ * injected [TrainerManager]; samples are buffered in memory until the session
+ * completes, at which point they are persisted via [HistoryRepository].
+ */
+class WorkoutSessionManager(
+    private val trainerManager: TrainerManager,
+    private val activeSessionStore: ActiveSessionStore? = null,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val _state = MutableStateFlow(WorkoutState.Idle)
     val state: StateFlow<WorkoutState> = _state.asStateFlow()
@@ -48,8 +63,16 @@ object WorkoutSessionManager {
     val elapsedInSegment: StateFlow<Int> = _elapsedInSegment.asStateFlow()
 
     private val _telemetry = mutableListOf<TelemetryPoint>()
-    val telemetry: List<TelemetryPoint> get() = _telemetry.toList()
+    /**
+     * Snapshot of telemetry buffered so far. Reads only from the timer coroutine's
+     * dispatcher — callers should marshal through scope.launch if invoking from
+     * outside; for the common UI case (end-of-ride save) we guarantee the writer
+     * is paused (state == Completed) before this is read.
+     */
+    fun telemetrySnapshot(): List<TelemetryPoint> = _telemetry.toList()
+
     var sessionStartTimeEpoch: Long = 0
+        private set
 
     private val _targetBiasPercent = MutableStateFlow(0)
     val targetBiasPercent: StateFlow<Int> = _targetBiasPercent.asStateFlow()
@@ -57,6 +80,11 @@ object WorkoutSessionManager {
     private var ftpWatts = 200
     private var timerJob: Job? = null
     private var pedalingDetectionJob: Job? = null
+
+    // Wall-clock anchors — updated on resume so accumulated paused time doesn't count.
+    private var activePhaseStartEpochMs: Long = 0
+    private var elapsedAtPhaseStart: Int = 0
+    private var elapsedInSegAtPhaseStart: Int = 0
 
     fun prepareWorkout(workout: Workout, ftp: Int) {
         if (_state.value != WorkoutState.Idle && _state.value != WorkoutState.Completed) {
@@ -71,21 +99,78 @@ object WorkoutSessionManager {
         _targetBiasPercent.value = 0
         _telemetry.clear()
         sessionStartTimeEpoch = 0
-        
-        // Listen for pedaling to trigger countdown
+
         pedalingDetectionJob?.cancel()
-        pedalingDetectionJob = TrainerManager.power.onEach { watts ->
+        pedalingDetectionJob = trainerManager.power.onEach { watts ->
             if (_state.value == WorkoutState.Standby && watts > 10) {
                 startCountdown()
             }
         }.launchIn(scope)
     }
 
+    fun adjustDifficulty(deltaPercent: Int) {
+        val newBias = (_targetBiasPercent.value + deltaPercent).coerceIn(-30, 30)
+        _targetBiasPercent.value = newBias
+        if (_state.value == WorkoutState.Active) updateTrainerTarget()
+    }
+
+    fun skipSegment() {
+        val workout = _activeWorkout.value ?: return
+        if (_state.value != WorkoutState.Active && _state.value != WorkoutState.Paused) return
+        val idx = _currentSegmentIndex.value
+        if (idx >= workout.segments.size) return
+
+        val skippedSegLength = workout.segments[idx].lengthInSeconds
+        // Roll elapsed forward to segment boundary so the timeline stays consistent.
+        val rollForward = (skippedSegLength - _elapsedInSegment.value).coerceAtLeast(0)
+        _elapsedSeconds.value += rollForward
+        _elapsedInSegment.value = 0
+        _currentSegmentIndex.value = idx + 1
+        // Re-anchor wall-clock so the resumed timer doesn't double-count the skip.
+        if (_state.value == WorkoutState.Active) anchorActivePhase()
+
+        if (_currentSegmentIndex.value >= workout.segments.size) {
+            completeWorkout()
+        } else {
+            updateTrainerTarget()
+        }
+    }
+
+    fun pauseWorkout() {
+        if (_state.value != WorkoutState.Active) return
+        _state.value = WorkoutState.Paused
+        trainerManager.setTargetPower(0)
+        timerJob?.cancel()
+    }
+
+    fun resumeWorkout() {
+        if (_state.value != WorkoutState.Paused) return
+        _state.value = WorkoutState.Active
+        anchorActivePhase()
+        updateTrainerTarget()
+        startTimerLoop()
+    }
+
+    fun stopWorkout() {
+        timerJob?.cancel()
+        pedalingDetectionJob?.cancel()
+        trainerManager.setTargetPower(0)
+        _state.value = WorkoutState.Idle
+        _activeWorkout.value = null
+        clearPersistedSnapshot()
+    }
+
+    fun dispose() {
+        scope.cancel()
+    }
+
+    // Internals ──────────────────────────────────────────────────────────────
+
     private fun startCountdown() {
         pedalingDetectionJob?.cancel()
         _state.value = WorkoutState.Countdown
         _countdownSeconds.value = 3
-        
+
         scope.launch {
             while (_countdownSeconds.value > 0) {
                 delay(1000)
@@ -97,48 +182,96 @@ object WorkoutSessionManager {
 
     private fun startActiveWorkout() {
         _state.value = WorkoutState.Active
-        
         if (sessionStartTimeEpoch == 0L) {
             sessionStartTimeEpoch = getCurrentEpochMillis()
         }
-
-        // Initialize trainer with first segment's target power
+        anchorActivePhase()
         updateTrainerTarget()
+        startTimerLoop()
+    }
 
+    private fun anchorActivePhase() {
+        activePhaseStartEpochMs = getCurrentEpochMillis()
+        elapsedAtPhaseStart = _elapsedSeconds.value
+        elapsedInSegAtPhaseStart = _elapsedInSegment.value
+    }
+
+    private fun startTimerLoop() {
         timerJob?.cancel()
         timerJob = scope.launch {
             while (_state.value == WorkoutState.Active) {
+                tick()
                 delay(1000)
-                advanceTime()
             }
         }
     }
 
-    private fun advanceTime() {
+    private var lastSnapshotEpoch: Long = 0
+
+    private fun maybePersistSnapshot(now: Long) {
+        val store = activeSessionStore ?: return
+        if (now - lastSnapshotEpoch < SNAPSHOT_INTERVAL_MS) return
+        lastSnapshotEpoch = now
         val workout = _activeWorkout.value ?: return
-        if (_currentSegmentIndex.value >= workout.segments.size) {
+        val snapshot = ActiveSessionSnapshot(
+            workoutId = workout.id,
+            sessionStartTimeEpochMs = sessionStartTimeEpoch,
+            ftp = ftpWatts,
+            targetBiasPercent = _targetBiasPercent.value,
+            elapsedSeconds = _elapsedSeconds.value,
+            currentSegmentIndex = _currentSegmentIndex.value,
+            elapsedInSegment = _elapsedInSegment.value,
+            state = _state.value,
+        )
+        scope.launch { store.write(snapshot) }
+    }
+
+    private fun clearPersistedSnapshot() {
+        val store = activeSessionStore ?: return
+        scope.launch { store.clear() }
+    }
+
+    /**
+     * Read any persisted snapshot left from a previous process. Returns the
+     * snapshot if one exists; the caller (typically the App init path) decides
+     * how to surface a "Resume ride?" affordance.
+     */
+    suspend fun readPersistedSnapshot(): ActiveSessionSnapshot? = activeSessionStore?.read()
+
+    /**
+     * Compute elapsed from wall-clock so we don't drift; sample telemetry
+     * once per second; advance segments when the wall-clock crosses a
+     * boundary.
+     */
+    private fun tick() {
+        val workout = _activeWorkout.value ?: return
+        val now = getCurrentEpochMillis()
+        val deltaSeconds = ((now - activePhaseStartEpochMs) / 1000).toInt().coerceAtLeast(0)
+        _elapsedSeconds.value = elapsedAtPhaseStart + deltaSeconds
+        _elapsedInSegment.value = elapsedInSegAtPhaseStart + deltaSeconds
+
+        val sample = TelemetryPoint(
+            timestampEpoch = now,
+            power = trainerManager.power.value.toLong(),
+            cadence = trainerManager.cadence.value.toLong(),
+            heartRate = trainerManager.heartRate.value.toLong(),
+        )
+        _telemetry.add(sample)
+        maybePersistSnapshot(now)
+
+        val idx = _currentSegmentIndex.value
+        if (idx >= workout.segments.size) {
             completeWorkout()
             return
         }
-
-        _elapsedSeconds.value += 1
-        _elapsedInSegment.value += 1
-        
-        _telemetry.add(
-            TelemetryPoint(
-                timestampEpoch = getCurrentEpochMillis(),
-                power = TrainerManager.power.value.toLong(),
-                cadence = TrainerManager.cadence.value.toLong(),
-                heartRate = TrainerManager.heartRate.value.toLong()
-            )
-        )
-
-        val currentSeg = workout.segments[_currentSegmentIndex.value]
+        val currentSeg = workout.segments[idx]
         if (_elapsedInSegment.value >= currentSeg.lengthInSeconds) {
-            // Move to next segment
-            _currentSegmentIndex.value += 1
+            _currentSegmentIndex.value = idx + 1
             _elapsedInSegment.value = 0
-            
+            elapsedInSegAtPhaseStart = 0
+            elapsedAtPhaseStart = _elapsedSeconds.value
+            activePhaseStartEpochMs = now
+
             if (_currentSegmentIndex.value >= workout.segments.size) {
                 completeWorkout()
             } else {
@@ -154,70 +287,20 @@ object WorkoutSessionManager {
             val seg = workout.segments[idx]
             val biasMultiplier = 1.0 + (_targetBiasPercent.value / 100.0)
             val targetWatts = (seg.powerPercentFTP / 100.0 * ftpWatts * biasMultiplier).roundToInt()
-            TrainerManager.setTargetPower(targetWatts.coerceAtLeast(0))
+            trainerManager.setTargetPower(targetWatts.coerceAtLeast(0))
         }
-    }
-
-    fun adjustDifficulty(deltaPercent: Int) {
-        val newBias = (_targetBiasPercent.value + deltaPercent).coerceIn(-30, 30)
-        _targetBiasPercent.value = newBias
-        if (_state.value == WorkoutState.Active) {
-            updateTrainerTarget()
-        }
-    }
-
-    fun skipSegment() {
-        val workout = _activeWorkout.value ?: return
-        if (_state.value != WorkoutState.Active && _state.value != WorkoutState.Paused) return
-        val idx = _currentSegmentIndex.value
-        if (idx >= workout.segments.size) return
-
-        val skippedSegLength = workout.segments[idx].lengthInSeconds
-        // Roll the elapsed total forward to the segment boundary so the timeline stays consistent.
-        _elapsedSeconds.value += (skippedSegLength - _elapsedInSegment.value).coerceAtLeast(0)
-        _elapsedInSegment.value = 0
-        _currentSegmentIndex.value = idx + 1
-
-        if (_currentSegmentIndex.value >= workout.segments.size) {
-            completeWorkout()
-        } else {
-            updateTrainerTarget()
-        }
-    }
-
-    fun pauseWorkout() {
-        if (_state.value == WorkoutState.Active) {
-            _state.value = WorkoutState.Paused
-            TrainerManager.setTargetPower(0) // Release resistance
-        }
-    }
-
-    fun resumeWorkout() {
-        if (_state.value == WorkoutState.Paused) {
-            _state.value = WorkoutState.Active
-            updateTrainerTarget()
-            
-            timerJob?.cancel()
-            timerJob = scope.launch {
-                while (_state.value == WorkoutState.Active) {
-                    delay(1000)
-                    advanceTime()
-                }
-            }
-        }
-    }
-
-    fun stopWorkout() {
-        timerJob?.cancel()
-        pedalingDetectionJob?.cancel()
-        TrainerManager.setTargetPower(0)
-        _state.value = WorkoutState.Idle
-        _activeWorkout.value = null
     }
 
     private fun completeWorkout() {
         timerJob?.cancel()
-        TrainerManager.setTargetPower(0)
+        trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Completed
+        clearPersistedSnapshot()
+    }
+
+    companion object {
+        private const val TAG = "WorkoutSessionManager"
+        private const val SNAPSHOT_INTERVAL_MS = 5_000L
     }
 }
+

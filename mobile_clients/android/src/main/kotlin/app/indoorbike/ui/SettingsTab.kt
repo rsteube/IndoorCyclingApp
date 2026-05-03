@@ -22,8 +22,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.indoorbike.BuildConfig
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.ble.TrainerConnectionState
-import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
@@ -35,10 +35,12 @@ import app.indoorbike.ui.theme.Spacing
 
 @Composable
 fun SettingsTab(onNavigateToPairing: () -> Unit) {
-    val connectionState by TrainerManager.connectionState.collectAsState()
-    val connectedTrainerName by TrainerManager.connectedTrainerName.collectAsState()
-    val pairedTrainerId by TrainerManager.pairedTrainerId.collectAsState()
-    val isMockTrainer by TrainerManager.isMockTrainer.collectAsState()
+    val container = LocalAppContainer.current
+    val trainerManager = container.trainerManager
+    val connectionState by trainerManager.connectionState.collectAsState()
+    val connectedTrainerName by trainerManager.connectedTrainerName.collectAsState()
+    val pairedTrainerId by trainerManager.pairedTrainerId.collectAsState()
+    val isMockTrainer by trainerManager.isMockTrainer.collectAsState()
 
     Column(
         modifier = Modifier
@@ -111,7 +113,7 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
                 TrainerConnectionState.Disconnecting -> {
                     SecondaryBtn(
                         text = if (connectionState == TrainerConnectionState.Connecting) "Cancel Connection" else "Disconnect",
-                        onClick = { TrainerManager.disconnect() },
+                        onClick = { trainerManager.disconnect() },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -129,7 +131,7 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
                 SecondaryBtn(
                     text = "Forget Trainer",
-                    onClick = { TrainerManager.forgetTrainer() },
+                    onClick = { trainerManager.forgetTrainer() },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -153,15 +155,17 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
 
 @Composable
 private fun FtpRow() {
-    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    val container = LocalAppContainer.current
+    val userSettings = container.userSettings
+    val ftp by userSettings.ftp.collectAsState()
     var ftpInput by remember(ftp) { mutableStateOf(ftp.toString()) }
 
     fun commit() {
         val parsed = ftpInput.toIntOrNull()
-        if (parsed == null || parsed < 50 || parsed > 600) {
+        if (parsed == null || parsed !in app.indoorbike.shared.settings.MIN_FTP..app.indoorbike.shared.settings.MAX_FTP) {
             ftpInput = ftp.toString()  // revert to last good value
         } else if (parsed != ftp) {
-            app.indoorbike.UserSettings.setFtp(parsed)
+            userSettings.setFtp(parsed)
         }
     }
 

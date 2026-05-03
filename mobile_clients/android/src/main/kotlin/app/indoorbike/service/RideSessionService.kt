@@ -1,0 +1,211 @@
+package app.indoorbike.service
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
+import android.os.IBinder
+import android.os.PowerManager
+import androidx.core.app.NotificationCompat
+import app.indoorbike.IndoorBikeApp
+import app.indoorbike.MainActivity
+import app.indoorbike.R
+import app.indoorbike.shared.session.WorkoutSessionManager
+import app.indoorbike.shared.session.WorkoutState
+import app.indoorbike.shared.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+
+/**
+ * Keeps the workout running while the screen is off or the user is in another
+ * app. Holds:
+ *   - a foreground notification with current target / elapsed
+ *   - a partial wake lock so the BLE connection and timer don't get suspended
+ *
+ * The session itself lives in [WorkoutSessionManager] (process-singleton via
+ * AppContainer). This service just keeps the process alive long enough for
+ * the singleton to do its job, and surfaces user-visible status.
+ */
+class RideSessionService : Service() {
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var stateObserver: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        ensureNotificationChannel()
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val action = intent?.action ?: ACTION_START
+        when (action) {
+            ACTION_START -> startRide()
+            ACTION_STOP -> {
+                stopRide()
+                return START_NOT_STICKY
+            }
+        }
+        return START_STICKY
+    }
+
+    private fun startRide() {
+        startForegroundCompat(buildNotification("Ride starting…", null))
+        acquireWake()
+
+        val container = (applicationContext as IndoorBikeApp).container
+        val session = container.sessionManager
+        val trainer = container.trainerManager
+
+        stateObserver?.cancel()
+        stateObserver = combine(
+            session.state,
+            session.elapsedSeconds,
+            trainer.targetPower
+        ) { state, elapsed, target -> Triple(state, elapsed, target) }
+            .onEach { (state, elapsed, target) ->
+                if (state == WorkoutState.Completed || state == WorkoutState.Idle) {
+                    stopRide()
+                    return@onEach
+                }
+                updateNotification(buildNotification("$target W · ${formatHHMM(elapsed)}", state.name))
+            }
+            .launchIn(scope)
+    }
+
+    private fun stopRide() {
+        stateObserver?.cancel()
+        stateObserver = null
+        releaseWake()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION")
+            stopForeground(true)
+        }
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        scope.cancel()
+        releaseWake()
+        super.onDestroy()
+    }
+
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = getSystemService(NotificationManager::class.java)
+        if (nm.getNotificationChannel(CHANNEL_ID) == null) {
+            val channel = NotificationChannel(CHANNEL_ID, "Ride session", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Active workout status"
+                setShowBadge(false)
+            }
+            nm.createNotificationChannel(channel)
+        }
+    }
+
+    private fun buildNotification(line: String, subline: String?): Notification {
+        val openAppIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pi = PendingIntent.getActivity(
+            this, 0, openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Indoor Bike — Ride in progress")
+            .setContentText(line)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setOngoing(true)
+            .setContentIntent(pi)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_WORKOUT)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+        if (subline != null) builder.setSubText(subline)
+        return builder.build()
+    }
+
+    private fun updateNotification(notification: Notification) {
+        try {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.notify(NOTIFICATION_ID, notification)
+        } catch (e: SecurityException) {
+            Log.w("RideService", "Notification update denied (POST_NOTIFICATIONS)", e)
+        }
+    }
+
+    private fun startForegroundCompat(notification: Notification) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    private fun acquireWake() {
+        if (wakeLock?.isHeld == true) return
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "IndoorBike::RideSession"
+        ).apply { setReferenceCounted(false); acquire(MAX_WAKE_DURATION_MS) }
+    }
+
+    private fun releaseWake() {
+        try {
+            wakeLock?.takeIf { it.isHeld }?.release()
+        } catch (_: Exception) {
+        } finally {
+            wakeLock = null
+        }
+    }
+
+    private fun formatHHMM(seconds: Int): String {
+        val s = seconds.coerceAtLeast(0)
+        val h = s / 3600
+        val m = (s % 3600) / 60
+        val sec = s % 60
+        return if (h > 0) "$h:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}"
+        else "$m:${sec.toString().padStart(2, '0')}"
+    }
+
+    companion object {
+        private const val CHANNEL_ID = "ride_session"
+        private const val NOTIFICATION_ID = 1001
+        private const val MAX_WAKE_DURATION_MS = 4 * 60 * 60 * 1000L // 4 hours hard cap
+
+        const val ACTION_START = "app.indoorbike.action.START_RIDE"
+        const val ACTION_STOP = "app.indoorbike.action.STOP_RIDE"
+
+        fun start(context: Context) {
+            val intent = Intent(context, RideSessionService::class.java).apply { action = ACTION_START }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        fun stop(context: Context) {
+            val intent = Intent(context, RideSessionService::class.java).apply { action = ACTION_STOP }
+            context.startService(intent)
+        }
+    }
+}

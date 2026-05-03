@@ -27,12 +27,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.indoorbike.shared.db.HistoryRepository
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.progression.Badge
 import app.indoorbike.shared.progression.computeBadges
 import app.indoorbike.shared.progression.computeRiderLevel
 import app.indoorbike.shared.progression.computeStreak
 import app.indoorbike.shared.util.getCurrentEpochMillis
+import java.util.TimeZone
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -40,12 +41,14 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 
 @Composable
-fun ProgressTab(historyRepository: HistoryRepository) {
-    val sessions by historyRepository.getAllSessions().collectAsState(initial = emptyList())
+fun ProgressTab() {
+    val container = LocalAppContainer.current
+    val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
     val now = remember { getCurrentEpochMillis() }
-    val streak = remember(sessions) { computeStreak(sessions, now) }
+    val tzOffset = remember { TimeZone.getDefault().getOffset(now).toLong() }
+    val streak = remember(sessions) { computeStreak(sessions, now, timeZoneOffsetMs = tzOffset) }
     val level = remember(sessions) { computeRiderLevel(sessions) }
-    val badges = remember(sessions) { computeBadges(sessions, now) }
+    val badges = remember(sessions) { computeBadges(sessions, now, timeZoneOffsetMs = tzOffset) }
 
     Column(
         modifier = Modifier

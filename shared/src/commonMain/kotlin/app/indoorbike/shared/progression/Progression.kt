@@ -80,12 +80,19 @@ fun computeStreak(
     sessions: List<WorkoutSession>,
     nowEpochMs: Long,
     windowDays: Int = 14,
+    /**
+     * Local timezone offset in milliseconds (e.g. +3 h = 10_800_000). Used to
+     * align day boundaries to the user's local midnight rather than UTC.
+     */
+    timeZoneOffsetMs: Long = 0,
 ): StreakInfo {
+    val localDay = { epochMs: Long -> (epochMs + timeZoneOffsetMs) / MS_PER_DAY }
+
     val activeDays: Set<Long> = sessions
-        .map { it.startTimeEpoch / MS_PER_DAY }
+        .map { localDay(it.startTimeEpoch) }
         .toSet()
 
-    val today = nowEpochMs / MS_PER_DAY
+    val today = localDay(nowEpochMs)
 
     // Current streak counts back from today (or yesterday if today empty).
     var current = 0
@@ -123,11 +130,15 @@ data class Badge(
     val unlocked: Boolean get() = unlockedAtEpochMs != null
 }
 
-fun computeBadges(sessions: List<WorkoutSession>, nowEpochMs: Long): List<Badge> {
+fun computeBadges(
+    sessions: List<WorkoutSession>,
+    nowEpochMs: Long,
+    timeZoneOffsetMs: Long = 0,
+): List<Badge> {
     if (sessions.isEmpty()) return emptyList()
 
     val sortedAsc = sessions.sortedBy { it.startTimeEpoch }
-    val streak = computeStreak(sessions, nowEpochMs)
+    val streak = computeStreak(sessions, nowEpochMs, timeZoneOffsetMs = timeZoneOffsetMs)
     val totalKj = sessions.sumOf { kjFromSession(it) }
     val totalSeconds = sessions.sumOf { it.durationSeconds }
     val out = mutableListOf<Badge>()

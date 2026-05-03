@@ -23,13 +23,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.Workout
-import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.progression.timeInZoneSeconds
+import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -38,7 +39,6 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
-import app.indoorbike.ui.workout.formatHHMM
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -49,18 +49,19 @@ import kotlinx.coroutines.launch
 fun WorkoutOverviewScreen(
     sessionId: Long,
     workoutList: List<Workout>,
-    historyRepository: HistoryRepository,
     onBack: () -> Unit,
     fromRide: Boolean = false,
     onDone: () -> Unit = {}
 ) {
+    val container = LocalAppContainer.current
+    val historyRepository = container.historyRepository
     val scope = rememberCoroutineScope()
     var session by remember { mutableStateOf<WorkoutSession?>(null) }
     var telemetry by remember { mutableStateOf<List<WorkoutTelemetry>>(emptyList()) }
     var targetWorkout by remember { mutableStateOf<Workout?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
 
-    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsState()
 
     LaunchedEffect(sessionId) {
         scope.launch {
@@ -129,7 +130,7 @@ fun WorkoutOverviewScreen(
                 OverviewGlassCard(
                     modifier = Modifier.weight(1f),
                     label = "DURATION",
-                    value = formatHHMM(activeSession.durationSeconds.toInt()),
+                    value = formatClock(activeSession.durationSeconds.toInt()),
                     unit = "",
                     valueColor = CadenceColors.Fg1
                 )
@@ -320,7 +321,7 @@ private fun TimeInZoneCard(ttzSeconds: IntArray, totalSeconds: Int) {
                     )
                 }
                 Text(
-                    text = formatHHMM(secs),
+                    text = formatClock(secs),
                     style = CadenceType.tick,
                     color = CadenceColors.Fg2,
                     modifier = Modifier.width(56.dp)

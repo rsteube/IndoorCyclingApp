@@ -43,16 +43,15 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.indoorbike.BuildConfig
-import app.indoorbike.shared.ble.TrainerManager
-import app.indoorbike.shared.session.WorkoutSessionManager
+import app.indoorbike.LocalAppContainer
+import app.indoorbike.service.RideSessionService
 import app.indoorbike.shared.session.WorkoutState
+import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
-import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
-import app.indoorbike.ui.workout.formatHHMM
 import app.indoorbike.ui.zones.PowerZone
 import kotlinx.coroutines.launch
 
@@ -90,31 +89,43 @@ fun Context.findActivity(): Activity? = when (this) {
 fun RideScreen(
     onBack: () -> Unit,
     onNavigateToOverview: (Long) -> Unit,
-    historyRepository: app.indoorbike.shared.db.HistoryRepository
 ) {
     LockScreenOrientationAndFullScreen(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
 
-    val state by WorkoutSessionManager.state.collectAsState()
-    val workout by WorkoutSessionManager.activeWorkout.collectAsState()
-    val elapsed by WorkoutSessionManager.elapsedSeconds.collectAsState()
-    val elapsedInSeg by WorkoutSessionManager.elapsedInSegment.collectAsState()
-    val currentSegIdx by WorkoutSessionManager.currentSegmentIndex.collectAsState()
-    val countdown by WorkoutSessionManager.countdownSeconds.collectAsState()
-    val biasPercent by WorkoutSessionManager.targetBiasPercent.collectAsState()
+    val container = LocalAppContainer.current
+    val context = LocalContext.current
+    val sessionManager = container.sessionManager
+    val trainerManager = container.trainerManager
+    val historyRepository = container.historyRepository
 
-    val currentPower by TrainerManager.power.collectAsState()
-    val currentCadence by TrainerManager.cadence.collectAsState()
-    val currentHr by TrainerManager.heartRate.collectAsState()
-    val targetPower by TrainerManager.targetPower.collectAsState()
-    val isMockTrainer by TrainerManager.isMockTrainer.collectAsState()
+    val state by sessionManager.state.collectAsState()
+    val workout by sessionManager.activeWorkout.collectAsState()
+    val elapsed by sessionManager.elapsedSeconds.collectAsState()
+    val elapsedInSeg by sessionManager.elapsedInSegment.collectAsState()
+    val currentSegIdx by sessionManager.currentSegmentIndex.collectAsState()
+    val countdown by sessionManager.countdownSeconds.collectAsState()
+    val biasPercent by sessionManager.targetBiasPercent.collectAsState()
+
+    val currentPower by trainerManager.power.collectAsState()
+    val currentCadence by trainerManager.cadence.collectAsState()
+    val currentHr by trainerManager.heartRate.collectAsState()
+    val targetPower by trainerManager.targetPower.collectAsState()
+    val isMockTrainer by trainerManager.isMockTrainer.collectAsState()
 
     val scope = rememberCoroutineScope()
     var continueRequested by remember { mutableStateOf(false) }
 
+    // Foreground service: started on first composition (the ride is active),
+    // stopped on completion or back-out.
+    DisposableEffect(Unit) {
+        RideSessionService.start(context)
+        onDispose { RideSessionService.stop(context) }
+    }
+
     LaunchedEffect(state, continueRequested) {
         if (state == WorkoutState.Completed && workout != null && continueRequested) {
-            val telemetry = WorkoutSessionManager.telemetry
-            val startEpoch = WorkoutSessionManager.sessionStartTimeEpoch
+            val telemetry = sessionManager.telemetrySnapshot()
+            val startEpoch = sessionManager.sessionStartTimeEpoch
 
             val avgPower = if (telemetry.isNotEmpty()) telemetry.map { it.power }.average().toLong() else 0L
             val avgCadence = if (telemetry.isNotEmpty()) telemetry.map { it.cadence }.average().toLong() else 0L
@@ -151,7 +162,8 @@ fun RideScreen(
 
     val animatedBgColor by animateColorAsState(
         targetValue = currentZone.color.copy(alpha = 0.15f),
-        animationSpec = tween(1000)
+        animationSpec = tween(1000),
+        label = "ride-bg"
     )
     val bgBrush = Brush.radialGradient(
         colors = listOf(animatedBgColor, CadenceColors.Bg0),
@@ -160,9 +172,7 @@ fun RideScreen(
     )
 
     val handleBack = {
-        if (state != WorkoutState.Completed) {
-            WorkoutSessionManager.stopWorkout()
-        }
+        if (state != WorkoutState.Completed) sessionManager.stopWorkout()
         onBack()
     }
 
@@ -175,7 +185,6 @@ fun RideScreen(
 
     Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0).background(bgBrush)) {
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
-            // Header
             RideHeader(
                 workoutName = workout!!.name,
                 state = state,
@@ -185,16 +194,15 @@ fun RideScreen(
                 onBack = handleBack,
                 onPauseToggle = {
                     when (state) {
-                        WorkoutState.Active -> WorkoutSessionManager.pauseWorkout()
-                        WorkoutState.Paused -> WorkoutSessionManager.resumeWorkout()
+                        WorkoutState.Active -> sessionManager.pauseWorkout()
+                        WorkoutState.Paused -> sessionManager.resumeWorkout()
                         else -> {}
                     }
                 },
-                onSkipStep = { WorkoutSessionManager.skipSegment() },
-                onMockToggle = { TrainerManager.toggleMockPedaling() }
+                onSkipStep = { sessionManager.skipSegment() },
+                onMockToggle = { trainerManager.toggleMockPedaling() }
             )
 
-            // Main metrics
             Row(
                 modifier = Modifier
                     .weight(1f)
@@ -227,14 +235,13 @@ fun RideScreen(
                         target = targetPower,
                         bias = biasPercent,
                         ergLocked = state == WorkoutState.Active && targetPower > 0,
-                        onAdjust = { delta -> WorkoutSessionManager.adjustDifficulty(delta) }
+                        onAdjust = { delta -> sessionManager.adjustDifficulty(delta) }
                     )
                 }
 
                 GlassCard { MetricBox("HEART RATE", hrDisplay, "BPM", CadenceColors.Danger) }
             }
 
-            // Segment progress + timeline
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -261,7 +268,7 @@ fun RideScreen(
                             )
                         }
                     }
-                    Text(text = formatHHMM(remainingInSeg), style = CadenceType.h2, color = CadenceColors.Fg1)
+                    Text(text = formatClock(remainingInSeg), style = CadenceType.h2, color = CadenceColors.Fg1)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -275,7 +282,6 @@ fun RideScreen(
             }
         }
 
-        // Countdown overlay
         AnimatedVisibility(
             visible = state == WorkoutState.Countdown,
             enter = fadeIn(),
@@ -295,7 +301,6 @@ fun RideScreen(
             }
         }
 
-        // Completed overlay with manual continue
         AnimatedVisibility(
             visible = state == WorkoutState.Completed,
             enter = fadeIn(tween(1000)),
@@ -387,7 +392,7 @@ private fun RideHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "${formatHHMM(elapsed)}  /  ${formatHHMM(totalDuration)}",
+                text = "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}",
                 style = CadenceType.h3,
                 color = CadenceColors.Fg1
             )
@@ -554,7 +559,6 @@ fun ActiveWorkoutGraph(
                 )
             }
         }
-        // Vertical progress cursor
         Box(
             modifier = Modifier
                 .fillMaxWidth(progressFraction)

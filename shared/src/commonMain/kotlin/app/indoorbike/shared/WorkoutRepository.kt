@@ -1,29 +1,39 @@
 package app.indoorbike.shared
 
+import app.indoorbike.shared.util.Log
 import kotlinx.serialization.json.Json
 
 object WorkoutRepository {
-    
+
+    private const val TAG = "WorkoutRepository"
+
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
 
     /**
-     * Parses a list of JSON strings (each representing a list of workouts)
-     * and combines them into a single list of Workouts.
+     * Parses a list of JSON strings (each representing a list of workouts) and
+     * combines them. Workouts with duplicate ids are de-duped (first wins) and
+     * a warning is logged.
      */
     fun parseWorkouts(jsonStrings: List<String>): List<Workout> {
-        val allWorkouts = mutableListOf<Workout>()
+        val seen = mutableSetOf<String>()
+        val out = mutableListOf<Workout>()
         for (jsonString in jsonStrings) {
             try {
                 val workouts = json.decodeFromString<List<Workout>>(jsonString)
-                allWorkouts.addAll(workouts)
+                for (w in workouts) {
+                    if (seen.add(w.id)) {
+                        out.add(w)
+                    } else {
+                        Log.w(TAG, "Duplicate workout id '${w.id}' — keeping first occurrence.")
+                    }
+                }
             } catch (e: Exception) {
-                // In a production app, log this using a cross-platform logger.
-                println("Failed to parse workout json: ${e.message}")
+                Log.e(TAG, "Failed to parse workout json", e)
             }
         }
-        return allWorkouts
+        return out
     }
 }

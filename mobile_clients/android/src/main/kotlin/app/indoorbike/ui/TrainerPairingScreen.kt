@@ -28,8 +28,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.TrainerCandidate
 import app.indoorbike.shared.ble.TrainerConnectionState
-import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -43,20 +44,19 @@ import app.indoorbike.ui.theme.Spacing
 fun TrainerPairingScreen(
     onBack: () -> Unit
 ) {
-    val connectionState by TrainerManager.connectionState.collectAsState()
-    val discoveredDevices by TrainerManager.discoveredDevices.collectAsState()
+    val container = LocalAppContainer.current
+    val trainerManager = container.trainerManager
+    val connectionState by trainerManager.connectionState.collectAsState()
+    val discoveredDevices by trainerManager.discoveredDevices.collectAsState()
 
-    // Automatically pop back when connected
     LaunchedEffect(connectionState) {
-        if (connectionState == TrainerConnectionState.Connected) {
-            onBack()
-        }
+        if (connectionState == TrainerConnectionState.Connected) onBack()
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            if (TrainerManager.connectionState.value == TrainerConnectionState.Scanning) {
-                TrainerManager.stopScan()
+            if (trainerManager.connectionState.value == TrainerConnectionState.Scanning) {
+                trainerManager.stopScan()
             }
         }
     }
@@ -68,7 +68,7 @@ fun TrainerPairingScreen(
         val allGranted = permissions.entries.all { it.value }
         if (allGranted) {
             permissionError = false
-            TrainerManager.startScan()
+            trainerManager.startScan()
         } else {
             permissionError = true
         }
@@ -156,7 +156,7 @@ fun TrainerPairingScreen(
                     Spacer(modifier = Modifier.height(Spacing.s4))
                     SecondaryBtn(
                         text = "Use Mock Trainer",
-                        onClick = { TrainerManager.connectMock() },
+                        onClick = { trainerManager.connectMock() },
                         modifier = Modifier.fillMaxWidth()
                     )
                     
@@ -213,7 +213,9 @@ fun TrainerPairingScreen(
                             textAlign = TextAlign.Center
                         )
                     } else {
-                        DeviceList(discoveredDevices)
+                        DeviceList(discoveredDevices) { candidate ->
+                            trainerManager.connectToCandidate(candidate.id)
+                        }
                     }
                 }
                 
@@ -272,7 +274,7 @@ fun TrainerPairingScreen(
 }
 
 @Composable
-private fun DeviceList(devices: List<com.juul.kable.Advertisement>) {
+private fun DeviceList(devices: List<TrainerCandidate>, onConnect: (TrainerCandidate) -> Unit) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         modifier = Modifier.fillMaxWidth()
@@ -284,9 +286,7 @@ private fun DeviceList(devices: List<com.juul.kable.Advertisement>) {
                     .clip(RoundedCornerShape(Radii.md))
                     .background(CadenceColors.Bg1)
                     .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-                    .clickable {
-                        TrainerManager.connectToDevice(device)
-                    }
+                    .clickable { onConnect(device) }
                     .padding(Spacing.s4),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
@@ -304,7 +304,7 @@ private fun DeviceList(devices: List<com.juul.kable.Advertisement>) {
                         color = CadenceColors.Fg1
                     )
                     Text(
-                        text = device.identifier,
+                        text = device.id,
                         style = CadenceType.small,
                         color = CadenceColors.Fg3
                     )

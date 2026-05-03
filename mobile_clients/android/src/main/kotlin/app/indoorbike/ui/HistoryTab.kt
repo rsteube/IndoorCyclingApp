@@ -20,7 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import app.indoorbike.shared.db.HistoryRepository
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.progression.durationLabelLong
 import app.indoorbike.shared.progression.totalDurationSeconds
@@ -37,10 +37,10 @@ import java.util.Locale
 
 @Composable
 fun HistoryTab(
-    historyRepository: HistoryRepository,
     onNavigateToOverview: (Long) -> Unit
 ) {
-    val sessions by historyRepository.getAllSessions().collectAsState(initial = emptyList())
+    val container = LocalAppContainer.current
+    val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
     Column(
         modifier = Modifier
             .fillMaxSize()

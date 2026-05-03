@@ -1,34 +1,25 @@
 package app.indoorbike
 
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.DirectionsBike
-import androidx.compose.material.icons.filled.Settings
-import androidx.navigation3.runtime.NavKey
-import androidx.navigation3.runtime.entryProvider
-import androidx.navigation3.ui.NavDisplay
-import app.indoorbike.navigation.*
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
-import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
-import app.indoorbike.ui.SettingsTab
-import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,54 +27,72 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.navigation3.runtime.NavKey
+import androidx.navigation3.runtime.entryProvider
+import androidx.navigation3.ui.NavDisplay
+import app.indoorbike.navigation.RouteRideScreen
+import app.indoorbike.navigation.RouteTrainerPairing
+import app.indoorbike.navigation.RouteWorkoutDetail
+import app.indoorbike.navigation.RouteWorkoutOverview
+import app.indoorbike.navigation.TabHistory
+import app.indoorbike.navigation.TabProgress
+import app.indoorbike.navigation.TabRides
+import app.indoorbike.navigation.TabSettings
+import app.indoorbike.navigation.Navigator
+import app.indoorbike.navigation.rememberNavigationState
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.ui.HistoryTab
+import app.indoorbike.ui.ProgressTab
+import app.indoorbike.ui.SettingsTab
+import app.indoorbike.ui.TrainerPairingScreen
+import app.indoorbike.ui.components.TabBar
+import app.indoorbike.ui.components.TabItem
+import app.indoorbike.ui.screens.RideScreen
 import app.indoorbike.ui.screens.WorkoutDetailScreen
 import app.indoorbike.ui.screens.WorkoutListScreen
+import app.indoorbike.ui.screens.WorkoutOverviewScreen
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceTheme
 import app.indoorbike.ui.theme.CadenceType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import app.indoorbike.shared.db.DatabaseDriverFactory
-import app.indoorbike.shared.db.HistoryRepository
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         val metrics = resources.displayMetrics
         val dpWidth = metrics.widthPixels / metrics.density
         val dpHeight = metrics.heightPixels / metrics.density
         val smallestWidth = minOf(dpWidth, dpHeight)
-        
         if (smallestWidth < 600) {
-            requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         }
-        
+
         enableEdgeToEdge()
-        UserSettings.init(applicationContext)
+
+        val container = (application as IndoorBikeApp).container
+
         setContent {
             CadenceTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = CadenceColors.Bg0
-                ) {
-                    var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
-
-                    LaunchedEffect(Unit) {
-                        val parsedWorkouts = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
-                            WorkoutRepository.parseWorkouts(jsonStrings)
+                CompositionLocalProvider(LocalAppContainer provides container) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = CadenceColors.Bg0
+                    ) {
+                        var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
+                        LaunchedEffect(Unit) {
+                            workouts = withContext(Dispatchers.IO) {
+                                val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
+                                WorkoutRepository.parseWorkouts(jsonStrings)
+                            }
                         }
-                        workouts = parsedWorkouts
+                        AppNavigator(workouts = workouts)
                     }
-                    val historyRepository = remember {
-                        HistoryRepository(DatabaseDriverFactory(applicationContext))
-                    }
-
-                    AppNavigator(workouts = workouts, historyRepository = historyRepository)
                 }
             }
         }
@@ -100,24 +109,23 @@ class MainActivity : ComponentActivity() {
                 jsonStrings.add(jsonString)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            app.indoorbike.shared.util.Log.e("MainActivity", "Asset load failed", e)
         }
         return jsonStrings
     }
 }
 
 
-
-
-private val TOP_LEVEL_ROUTES = mapOf<NavKey, app.indoorbike.ui.components.TabItem>(
-    TabRides to app.indoorbike.ui.components.TabItem("rides", Icons.AutoMirrored.Outlined.DirectionsBike, "Ride"),
-    TabHistory to app.indoorbike.ui.components.TabItem("history", Icons.Outlined.AccessTime, "History"),
-    TabProgress to app.indoorbike.ui.components.TabItem("progress", Icons.Outlined.EmojiEvents, "Progress"),
-    TabSettings to app.indoorbike.ui.components.TabItem("settings", Icons.Outlined.Settings, "Settings")
+private val TOP_LEVEL_ROUTES = mapOf<NavKey, TabItem>(
+    TabRides to TabItem("rides", Icons.AutoMirrored.Outlined.DirectionsBike, "Ride"),
+    TabHistory to TabItem("history", Icons.Outlined.AccessTime, "History"),
+    TabProgress to TabItem("progress", Icons.Outlined.EmojiEvents, "Progress"),
+    TabSettings to TabItem("settings", Icons.Outlined.Settings, "Settings")
 )
 
 @Composable
-private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepository) {
+private fun AppNavigator(workouts: List<Workout>) {
+    val container = LocalAppContainer.current
     val eyebrow = remember { currentDayEyebrow() }
 
     if (workouts.isEmpty()) {
@@ -129,7 +137,6 @@ private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepo
         startRoute = TabRides,
         topLevelRoutes = TOP_LEVEL_ROUTES.keys
     )
-
     val navigator = remember { Navigator(navigationState) }
 
     val entryProvider = entryProvider<NavKey> {
@@ -139,8 +146,8 @@ private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepo
                 eyebrow = eyebrow,
                 onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
                 activeTab = "rides",
-                onTabSelected = { tabId -> 
-                    val targetTab = TOP_LEVEL_ROUTES.entries.find { (k, v) -> v.id == tabId }?.key
+                onTabSelected = { tabId ->
+                    val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
                     targetTab?.let { navigator.navigate(it) }
                 }
             )
@@ -151,75 +158,66 @@ private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepo
                 WorkoutDetailScreen(
                     workout = workout,
                     onBack = { navigator.goBack() },
-                    onStart = { 
-                        app.indoorbike.shared.session.WorkoutSessionManager.prepareWorkout(
+                    onStart = {
+                        container.sessionManager.prepareWorkout(
                             workout = workout,
-                            ftp = app.indoorbike.UserSettings.ftp.value
+                            ftp = container.userSettings.ftp.value
                         )
-                        navigator.navigate(app.indoorbike.navigation.RouteRideScreen(workout.id))
+                        navigator.navigate(RouteRideScreen(workout.id))
                     }
                 )
             } else {
-                LaunchedEffect(Unit) {
-                    navigator.goBack()
-                }
+                LaunchedEffect(Unit) { navigator.goBack() }
             }
         }
         entry<TabHistory> { _ ->
-            app.indoorbike.ui.HistoryTab(
-                historyRepository = historyRepository,
+            HistoryTab(
                 onNavigateToOverview = { sessionId ->
-                    navigator.navigate(app.indoorbike.navigation.RouteWorkoutOverview(sessionId, fromRide = false))
+                    navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = false))
                 }
             )
         }
         entry<TabProgress> { _ ->
-            app.indoorbike.ui.ProgressTab(historyRepository = historyRepository)
+            ProgressTab()
         }
         entry<TabSettings> { _ ->
-            app.indoorbike.ui.SettingsTab(
-                onNavigateToPairing = { navigator.navigate(app.indoorbike.navigation.RouteTrainerPairing) }
+            SettingsTab(
+                onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) }
             )
         }
-        entry<app.indoorbike.navigation.RouteTrainerPairing> { _ ->
-            app.indoorbike.ui.TrainerPairingScreen(
-                onBack = { navigator.goBack() }
-            )
+        entry<RouteTrainerPairing> { _ ->
+            TrainerPairingScreen(onBack = { navigator.goBack() })
         }
-        entry<app.indoorbike.navigation.RouteRideScreen> { _ ->
-            app.indoorbike.ui.screens.RideScreen(
+        entry<RouteRideScreen> { _ ->
+            RideScreen(
                 onBack = { navigator.goBack() },
                 onNavigateToOverview = { sessionId ->
-                    navigator.replace(app.indoorbike.navigation.RouteWorkoutOverview(sessionId, fromRide = true))
-                },
-                historyRepository = historyRepository
+                    navigator.replace(RouteWorkoutOverview(sessionId, fromRide = true))
+                }
             )
         }
-        entry<app.indoorbike.navigation.RouteWorkoutOverview> { key: app.indoorbike.navigation.RouteWorkoutOverview ->
-            app.indoorbike.ui.screens.WorkoutOverviewScreen(
+        entry<RouteWorkoutOverview> { key: RouteWorkoutOverview ->
+            WorkoutOverviewScreen(
                 sessionId = key.sessionId,
                 fromRide = key.fromRide,
                 workoutList = workouts,
-                historyRepository = historyRepository,
-                onBack = {
-                    navigator.goBack()
-                },
-                onDone = {
-                    navigator.popToRoot()
-                }
+                onBack = { navigator.goBack() },
+                onDone = { navigator.popToRoot() }
             )
         }
     }
 
     Scaffold(
         bottomBar = {
-            // Only show bottom bar on top level routes
-            if (navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys && navigationState.backStacks[navigationState.topLevelRoute]?.size == 1) {
-                app.indoorbike.ui.components.TabBar(
+            // Only show bottom bar on tab roots (depth == 1).
+            if (navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys &&
+                navigationState.backStacks[navigationState.topLevelRoute]?.size == 1
+            ) {
+                TabBar(
                     active = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides",
                     tabs = TOP_LEVEL_ROUTES.values.toList(),
                     onTabSelected = { tabId ->
-                        val targetTab = TOP_LEVEL_ROUTES.entries.find { (k, v) -> v.id == tabId }?.key
+                        val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
                         targetTab?.let { navigator.navigate(it) }
                     }
                 )

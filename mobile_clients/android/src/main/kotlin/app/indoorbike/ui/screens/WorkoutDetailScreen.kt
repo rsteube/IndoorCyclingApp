@@ -48,8 +48,10 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
-import app.indoorbike.ui.workout.WorkoutSummary
-import app.indoorbike.ui.workout.toSummary
+import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.workout.WorkoutSummary
+import app.indoorbike.shared.workout.formatDurationPretty
+import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
 import kotlin.math.roundToInt
 
@@ -59,7 +61,8 @@ fun WorkoutDetailScreen(
     onBack: () -> Unit,
     onStart: () -> Unit
 ) {
-    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    val container = LocalAppContainer.current
+    val ftp by container.userSettings.ftp.collectAsState()
     val summary = remember(workout, ftp) { workout.toSummary(ftp) }
     var stepsExpanded by remember(workout.id) { mutableStateOf(false) }
     val stepCutoff = 6
@@ -138,7 +141,7 @@ private fun ZoneProfileCard(summary: WorkoutSummary) {
                 Text(text = "WORKOUT PROFILE", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = summary.durationLabel,
+                    text = formatDurationPretty(summary.totalSeconds),
                     style = CadenceType.h2.copy(fontSize = 22.sp),
                     color = CadenceColors.Fg1
                 )
@@ -158,7 +161,7 @@ private fun ZoneProfileCard(summary: WorkoutSummary) {
         Spacer(Modifier.height(6.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(text = "0:00", style = CadenceType.tick.copy(fontSize = 10.sp), color = CadenceColors.Fg3)
-            Text(text = summary.durationLabel, style = CadenceType.tick.copy(fontSize = 10.sp), color = CadenceColors.Fg3)
+            Text(text = formatDurationPretty(summary.totalSeconds), style = CadenceType.tick.copy(fontSize = 10.sp), color = CadenceColors.Fg3)
         }
     }
 }
