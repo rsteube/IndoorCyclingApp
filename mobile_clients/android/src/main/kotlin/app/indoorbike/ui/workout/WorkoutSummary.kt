@@ -17,7 +17,8 @@ data class WorkoutSummary(
     val zoneSegments: List<ZoneSegment>,
     val ftpWatts: Int
 ) {
-    val averagePowerWatts: Int get() = (intensityFactor * ftpWatts).roundToInt()
+    /** Normalized power: Intensity Factor × FTP. */
+    val normalizedPowerWatts: Int get() = (intensityFactor * ftpWatts).roundToInt()
 
     companion object {
         // Until the user can configure FTP, use the 248W placeholder from the design system.

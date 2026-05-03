@@ -1,7 +1,10 @@
 package app.indoorbike.ui
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -22,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.indoorbike.shared.ble.TrainerConnectionState
@@ -70,11 +74,12 @@ fun TrainerPairingScreen(
         }
     }
 
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
-            .safeDrawingPadding()
     ) {
         AppBar(
             title = "Connect Trainer",
@@ -87,7 +92,8 @@ fun TrainerPairingScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = Spacing.s5),
+                .padding(horizontal = Spacing.s5)
+                .windowInsetsPadding(WindowInsets.navigationBars),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(Spacing.s6))
@@ -158,30 +164,47 @@ fun TrainerPairingScreen(
                         Spacer(modifier = Modifier.height(Spacing.s3))
                         Text(
                             text = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                                "Bluetooth permissions are required to scan. Please enable them in Android Settings."
+                                "Bluetooth permissions are required to scan."
                             } else {
-                                "Location permissions are required for Bluetooth scanning on this Android version. Please enable them."
+                                "Location permissions are required for Bluetooth scanning on this Android version."
                             },
                             color = CadenceColors.Danger,
                             style = CadenceType.small,
                             textAlign = TextAlign.Center
                         )
+                        Spacer(modifier = Modifier.height(Spacing.s3))
+                        SecondaryBtn(
+                            text = "Open Android Settings",
+                            onClick = {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
                 
                 TrainerConnectionState.Scanning -> {
-                    CircularProgressIndicator(
-                        color = CadenceColors.Brand500,
-                        modifier = Modifier.size(64.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+                    ) {
+                        CircularProgressIndicator(
+                            color = CadenceColors.Brand500,
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 3.dp
+                        )
+                        Text(
+                            text = "Scanning · ${discoveredDevices.size} found",
+                            style = CadenceType.h3,
+                            color = CadenceColors.Fg1
+                        )
+                    }
                     Spacer(modifier = Modifier.height(Spacing.s5))
-                    Text(
-                        text = "Scanning...",
-                        style = CadenceType.h3,
-                        color = CadenceColors.Fg1
-                    )
-                    Spacer(modifier = Modifier.height(Spacing.s6))
-                    
+
                     if (discoveredDevices.isEmpty()) {
                         Text(
                             text = "Looking for nearby smart trainers...",

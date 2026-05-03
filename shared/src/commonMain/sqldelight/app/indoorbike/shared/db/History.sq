@@ -38,3 +38,9 @@ SELECT * FROM WorkoutTelemetry WHERE sessionId = ? ORDER BY timestampEpoch ASC;
 
 selectSessionById:
 SELECT * FROM WorkoutSession WHERE id = ?;
+
+deleteTelemetryForSession:
+DELETE FROM WorkoutTelemetry WHERE sessionId = ?;
+
+deleteSession:
+DELETE FROM WorkoutSession WHERE id = ?;

@@ -67,6 +67,15 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
             dbQuery.selectSessionById(sessionId).executeAsOneOrNull()
         }
     }
+
+    suspend fun deleteSession(sessionId: Long) {
+        withContext(Dispatchers.IO) {
+            database.transaction {
+                dbQuery.deleteTelemetryForSession(sessionId)
+                dbQuery.deleteSession(sessionId)
+            }
+        }
+    }
 }
 
 data class TelemetryPoint(

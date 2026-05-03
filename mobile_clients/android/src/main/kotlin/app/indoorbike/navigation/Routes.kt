@@ -25,4 +25,4 @@ data object RouteTrainerPairing : NavKey
 data class RouteRideScreen(val workoutId: String) : NavKey
 
 @Serializable
-data class RouteWorkoutOverview(val sessionId: Long) : NavKey
+data class RouteWorkoutOverview(val sessionId: Long, val fromRide: Boolean = false) : NavKey

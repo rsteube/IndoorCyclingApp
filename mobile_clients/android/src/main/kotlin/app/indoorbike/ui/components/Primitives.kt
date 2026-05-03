@@ -364,7 +364,7 @@ fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
                 shape
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
     ) {
         Text(
             text = label,

@@ -168,13 +168,13 @@ private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepo
         entry<TabHistory> { _ ->
             app.indoorbike.ui.HistoryTab(
                 historyRepository = historyRepository,
-                onNavigateToOverview = { sessionId -> 
-                    navigator.navigate(app.indoorbike.navigation.RouteWorkoutOverview(sessionId)) 
+                onNavigateToOverview = { sessionId ->
+                    navigator.navigate(app.indoorbike.navigation.RouteWorkoutOverview(sessionId, fromRide = false))
                 }
             )
         }
         entry<TabProgress> { _ ->
-            app.indoorbike.ui.ProgressTab()
+            app.indoorbike.ui.ProgressTab(historyRepository = historyRepository)
         }
         entry<TabSettings> { _ ->
             app.indoorbike.ui.SettingsTab(
@@ -189,8 +189,8 @@ private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepo
         entry<app.indoorbike.navigation.RouteRideScreen> { _ ->
             app.indoorbike.ui.screens.RideScreen(
                 onBack = { navigator.goBack() },
-                onNavigateToOverview = { sessionId -> 
-                    navigator.replace(app.indoorbike.navigation.RouteWorkoutOverview(sessionId)) 
+                onNavigateToOverview = { sessionId ->
+                    navigator.replace(app.indoorbike.navigation.RouteWorkoutOverview(sessionId, fromRide = true))
                 },
                 historyRepository = historyRepository
             )
@@ -198,10 +198,14 @@ private fun AppNavigator(workouts: List<Workout>, historyRepository: HistoryRepo
         entry<app.indoorbike.navigation.RouteWorkoutOverview> { key: app.indoorbike.navigation.RouteWorkoutOverview ->
             app.indoorbike.ui.screens.WorkoutOverviewScreen(
                 sessionId = key.sessionId,
+                fromRide = key.fromRide,
                 workoutList = workouts,
                 historyRepository = historyRepository,
-                onBack = { 
+                onBack = {
                     navigator.goBack()
+                },
+                onDone = {
+                    navigator.popToRoot()
                 }
             )
         }
@@ -246,6 +250,6 @@ private fun EmptyState() {
 }
 
 private fun currentDayEyebrow(): String {
-    val fmt = SimpleDateFormat("EEEE · h:mm a", Locale.getDefault())
+    val fmt = SimpleDateFormat("EEEE", Locale.getDefault())
     return fmt.format(Date())
 }

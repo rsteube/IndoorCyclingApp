@@ -1,30 +1,27 @@
 package app.indoorbike.ui
 
-import android.Manifest
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.BluetoothConnected
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import app.indoorbike.BuildConfig
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.ui.components.AppBar
@@ -40,23 +37,27 @@ import app.indoorbike.ui.theme.Spacing
 fun SettingsTab(onNavigateToPairing: () -> Unit) {
     val connectionState by TrainerManager.connectionState.collectAsState()
     val connectedTrainerName by TrainerManager.connectedTrainerName.collectAsState()
+    val pairedTrainerId by TrainerManager.pairedTrainerId.collectAsState()
+    val isMockTrainer by TrainerManager.isMockTrainer.collectAsState()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
-            .safeDrawingPadding()
     ) {
         AppBar(
             title = "Trainer Settings",
             eyebrow = "Preferences"
         )
-        
-        Spacer(modifier = Modifier.height(Spacing.s5))
 
-        Column(modifier = Modifier.padding(horizontal = Spacing.s5).fillMaxWidth()) {
-            
-            // Current Status Panel
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.s5)
+        ) {
+            Spacer(modifier = Modifier.height(Spacing.s5))
+
             val isConnected = connectionState == TrainerConnectionState.Connected
             TrainerStatusStrip(
                 deviceName = if (isConnected) (connectedTrainerName ?: "Unknown Trainer") else "No Trainer Connected",
@@ -71,81 +72,42 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
                 icon = if (isConnected) Icons.Outlined.BluetoothConnected else Icons.Outlined.Bluetooth,
                 connected = isConnected
             )
-            
+
             Spacer(modifier = Modifier.height(Spacing.s5))
 
-            // User Settings Panel
             Text(
                 text = "USER PROFILE",
                 style = CadenceType.eyebrow,
                 color = CadenceColors.Fg3,
                 modifier = Modifier.padding(bottom = Spacing.s3)
             )
-            
-            val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
-            var ftpInput by remember(ftp) { mutableStateOf(ftp.toString()) }
-            
+
+            FtpRow()
+
+            Spacer(modifier = Modifier.height(Spacing.s3))
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Radii.md))
-                    .background(CadenceColors.Bg1)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-                    .padding(16.dp)
+                    .background(CadenceColors.Bg1.copy(alpha = 0.6f))
+                    .border(1.dp, CadenceColors.Line1, RoundedCornerShape(Radii.md))
+                    .padding(14.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = "Functional Threshold Power (FTP)", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = "Used to calculate your power zones", style = CadenceType.body, color = CadenceColors.Fg3)
-                    }
-                    
-                    Spacer(modifier = Modifier.width(16.dp))
-                    
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = ftpInput,
-                        onValueChange = { newValue ->
-                            val filtered = newValue.filter { it.isDigit() }.take(4)
-                            ftpInput = filtered
-                            val newFtp = filtered.toIntOrNull()
-                            if (newFtp != null && newFtp > 0) {
-                                app.indoorbike.UserSettings.setFtp(newFtp)
-                            }
-                        },
-                        textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                        singleLine = true,
-                        modifier = Modifier.width(110.dp),
-                        decorationBox = { innerTextField ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.End,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(Radii.sm))
-                                    .background(CadenceColors.Bg2)
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
-                            ) {
-                                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                                    innerTextField()
-                                }
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("W", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
-                            }
-                        }
-                    )
-                }
+                Text(
+                    text = "Don't know your FTP? Try a 20-minute all-out test ride and " +
+                            "take 95 % of your average power as a starting estimate.",
+                    style = CadenceType.small,
+                    color = CadenceColors.Fg3
+                )
             }
-            
+
             Spacer(modifier = Modifier.height(Spacing.s6))
 
-            // Action Buttons
+            // Action buttons
             when (connectionState) {
-                TrainerConnectionState.Connected, 
-                TrainerConnectionState.Connecting, 
+                TrainerConnectionState.Connected,
+                TrainerConnectionState.Connecting,
                 TrainerConnectionState.Disconnecting -> {
                     SecondaryBtn(
                         text = if (connectionState == TrainerConnectionState.Connecting) "Cancel Connection" else "Disconnect",
@@ -162,6 +124,139 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
                     )
                 }
             }
+
+            if (pairedTrainerId != null || isMockTrainer) {
+                Spacer(modifier = Modifier.height(Spacing.s3))
+                SecondaryBtn(
+                    text = "Forget Trainer",
+                    onClick = { TrainerManager.forgetTrainer() },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Spacing.s7))
+
+            // About section
+            Text(
+                text = "ABOUT",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(bottom = Spacing.s3)
+            )
+            AboutCard()
+
+            Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+            Spacer(modifier = Modifier.height(Spacing.s5))
         }
+    }
+}
+
+@Composable
+private fun FtpRow() {
+    val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
+    var ftpInput by remember(ftp) { mutableStateOf(ftp.toString()) }
+
+    fun commit() {
+        val parsed = ftpInput.toIntOrNull()
+        if (parsed == null || parsed < 50 || parsed > 600) {
+            ftpInput = ftp.toString()  // revert to last good value
+        } else if (parsed != ftp) {
+            app.indoorbike.UserSettings.setFtp(parsed)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Functional Threshold Power (FTP)", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Used to calculate your power zones", style = CadenceType.body, color = CadenceColors.Fg3)
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            androidx.compose.foundation.text.BasicTextField(
+                value = ftpInput,
+                onValueChange = { newValue ->
+                    ftpInput = newValue.filter { it.isDigit() }.take(4)
+                },
+                textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = { commit() }
+                ),
+                singleLine = true,
+                modifier = Modifier
+                    .width(110.dp)
+                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                decorationBox = { innerTextField ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(Radii.sm))
+                            .background(CadenceColors.Bg2)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                            innerTextField()
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("W", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                    }
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun AboutCard() {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s2)
+    ) {
+        AboutRow(
+            label = "App version",
+            value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
+        )
+        AboutRow(
+            label = "Build",
+            value = if (BuildConfig.DEBUG) "Debug" else "Release"
+        )
+        AboutRow(
+            label = "License",
+            value = "Open source"
+        )
+    }
+}
+
+@Composable
+private fun AboutRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, style = CadenceType.body, color = CadenceColors.Fg2)
+        Text(text = value, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
     }
 }

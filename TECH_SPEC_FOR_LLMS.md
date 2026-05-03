@@ -27,11 +27,23 @@ The Android client implements the **Cadence design system** (see [cadence-design
 
 - `ui/theme/` — design tokens. `CadenceColors` (gravel-warm dark palette + brand ember + line/fg ramps), `CadenceType` (display/body/mono scale), `Spacing`, `Radii`, and `CadenceTheme` (M3 ColorScheme + Typography wrapper).
 - `ui/zones/PowerZones.kt` — 7-zone enum mapping FTP% → `PowerZone` with calibrated cool→hot color spectrum. Use `PowerZone.fromFtpPercent()` whenever an FTP% needs a zone color.
-- `ui/components/Primitives.kt` — reusable building blocks: `AppBar`, `IconBtn`, `PrimaryBtn`, `SecondaryBtn`, `ZoneBadge`, `MetaPill`, `ZoneBar`, `TabBar`, `TrainerStatusStrip`, `FilterChip`. All consume tokens from `ui/theme`.
-- `ui/workout/WorkoutSummary.kt` — derives display stats (duration, IF, TSS, kJ, dominant tag, zone-bar segments) from a `Workout`. FTP is currently a hardcoded 248W placeholder until user FTP storage exists.
-- `ui/screens/` — `WorkoutListScreen` and `WorkoutDetailScreen`. Ride / Summary / Progress screens are designed in the bundle but not yet implemented (they need BLE telemetry and completion data that don't exist yet).
-- `MainActivity.kt` — loads `workouts*.json` from assets, holds the current screen in a `sealed interface Screen` state holder. No navigation library yet; add one when screen count justifies it.
+- `ui/components/Primitives.kt` — reusable building blocks: `AppBar`, `IconBtn`, `PrimaryBtn`, `SecondaryBtn`, `ZoneBadge`, `MetaPill`, `ZoneBar`, `TabBar`, `TrainerStatusStrip`, `FilterChip`.
+- `ui/workout/WorkoutSummary.kt` — derives display stats from a `Workout` definition (planned ride view: duration, IF, TSS, kJ, dominant tag, zone-bar segments, normalized power). Uses `UserSettings.ftp` (default 200, persisted in SharedPreferences).
+- `ui/screens/` — `WorkoutListScreen`, `WorkoutDetailScreen`, `RideScreen` (live HUD), `WorkoutOverviewScreen` (post-ride). The list screen derives filter chips from the loaded workouts (no hardcoded categories); the detail screen truncates the step list to 6 with a "tap to expand" pill; the overview deletes a session via the `HistoryRepository.deleteSession()` cascade.
+- `ui/HistoryTab.kt` — week-grouped session list with totals card (rides / time / kJ) at the top. Empty state shown when no sessions exist.
+- `ui/ProgressTab.kt` — local progression: streak hero (current days + longest + 14-day mini-grid), rider-level meter with kJ thresholds, badge grid. Computes everything from `HistoryRepository.getAllSessions()` via the shared `progression/Progression.kt` helper. No backend, no account.
+- `ui/SettingsTab.kt` — connection status, FTP input (commits on focus loss / IME-Done; rejects values outside 50–600 W), Forget-Trainer action, About card with version + license info.
+- `ui/TrainerPairingScreen.kt` — BLE scan screen with live "Scanning · N found" indicator and an Open-Settings escape hatch when permissions are denied.
+- `MainActivity.kt` — loads `workouts*.json` from assets, holds a `Navigator` over `androidx.navigation3` back stacks. Each top-level tab keeps its own back stack; the bottom `TabBar` only renders when on a top-level route at depth 1.
 
-**Fonts**: the design specifies Bebas Neue / Inter / JetBrains Mono. F-Droid requires locally bundled OFL TTFs — they are not yet present, so `Type.kt` falls back to `FontFamily.Default` / `Monospace`. Drop the TTFs into `mobile_clients/android/src/main/res/font/` and update `DisplayFontFamily` / `BodyFontFamily` / `MonoFontFamily` to bind them.
+### Shared (KMM) helpers
 
-**Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0, F-Droid clean) as a visual stand-in. Swap to a Lucide-for-Compose library or bundled SVG sprite if strict fidelity matters.
+- `shared/src/commonMain/kotlin/app/indoorbike/shared/progression/Progression.kt` — pure functions for streak / rider-level / badge / time-in-zone / NP+IF+TSS+kJ computations. All inputs are `WorkoutSession` lists or 1Hz telemetry samples; no UI dependencies. Reused by Android `ProgressTab` and `WorkoutOverviewScreen`.
+- `shared/src/commonMain/kotlin/app/indoorbike/shared/session/WorkoutSessionManager.kt` — also exposes `targetBiasPercent` (for Zwift Click-style ±difficulty fallback in the UI), `adjustDifficulty(deltaPercent)`, and `skipSegment()`. Bias is applied multiplicatively when computing trainer target watts.
+
+### F-Droid hygiene checklist
+
+- **Fonts**: design specifies Bebas Neue / Inter / JetBrains Mono. OFL TTFs must be bundled locally (no Google Fonts CDN) — drop them into `mobile_clients/android/src/main/res/font/` and rebind `DisplayFontFamily` / `BodyFontFamily` / `MonoFontFamily` in `ui/theme/Type.kt`.
+- **Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0) as a visual stand-in.
+- **Mock trainer toggle**: in-ride mock toggle is gated behind `BuildConfig.DEBUG` so release builds don't expose dev affordances.
+- **FIT export**: not yet implemented. Sessions persist to SQLite via SqlDelight (`HistoryDatabase`); a future change should add a FIT writer for sharing.

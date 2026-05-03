@@ -23,9 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Bluetooth
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.EmojiEvents
-import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -43,10 +41,7 @@ import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.Workout
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
-import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.MetaPill
-import app.indoorbike.ui.components.TabBar
-import app.indoorbike.ui.components.TabItem
 import app.indoorbike.ui.components.TrainerStatusStrip
 import app.indoorbike.ui.components.ZoneBar
 import app.indoorbike.ui.theme.CadenceColors
@@ -55,15 +50,6 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.workout.WorkoutSummary
 import app.indoorbike.ui.workout.toSummary
-
-private val Filters = listOf("All", "Endurance", "Tempo", "Threshold", "VO2 Max", "Recovery")
-
-private val Tabs = listOf(
-    TabItem("rides", Icons.AutoMirrored.Outlined.DirectionsBike, "Ride"),
-    TabItem("history", Icons.Outlined.AccessTime, "History"),
-    TabItem("progress", Icons.Outlined.EmojiEvents, "Progress"),
-    TabItem("settings", Icons.Outlined.Settings, "Settings")
-)
 
 @Composable
 fun WorkoutListScreen(
@@ -76,6 +62,10 @@ fun WorkoutListScreen(
     var selectedFilter by remember { mutableStateOf("All") }
     val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
     val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }
+    val availableTags = remember(summaries) {
+        // Derive filter chips from the actual workouts present, not a hardcoded list.
+        listOf("All") + summaries.map { it.tag }.distinct().sorted()
+    }
     val visible = remember(summaries, selectedFilter) {
         if (selectedFilter == "All") summaries
         else summaries.filter { it.tag.equals(selectedFilter, ignoreCase = true) }
@@ -100,8 +90,7 @@ fun WorkoutListScreen(
                         modifier = Modifier.size(18.dp)
                     )
                 }
-            },
-            trailing = { IconBtn(icon = Icons.Outlined.Search, contentDescription = "Search") }
+            }
         )
 
         val connectionState by app.indoorbike.shared.ble.TrainerManager.connectionState.collectAsState()
@@ -110,22 +99,42 @@ fun WorkoutListScreen(
         val connectedTrainerName by app.indoorbike.shared.ble.TrainerManager.connectedTrainerName.collectAsState()
 
         if (pairedTrainerId == null && !isMockTrainer) {
-            // Show Add Trainer empty state
-            Box(
+            // Friendly nudge: not a saturated banner.
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = Spacing.s5)
                     .clip(RoundedCornerShape(Radii.md))
-                    .background(CadenceColors.Brand500)
+                    .background(CadenceColors.Bg1)
+                    .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.4f), RoundedCornerShape(Radii.md))
                     .clickable { onTabSelected("settings") }
-                    .padding(16.dp),
-                contentAlignment = Alignment.Center
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
             ) {
-                Text(
-                    text = "Add Trainer",
-                    color = CadenceColors.Bg0,
-                    style = CadenceType.bodyStrong
-                )
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Bluetooth,
+                        contentDescription = null,
+                        tint = CadenceColors.Brand500,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = "Add a trainer", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                    Text(
+                        text = "Pair your Wahoo Kickr or use the mock trainer",
+                        style = CadenceType.tick,
+                        color = CadenceColors.Fg3
+                    )
+                }
+                Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
             }
         } else {
             TrainerStatusStrip(
@@ -150,24 +159,72 @@ fun WorkoutListScreen(
                 .padding(horizontal = Spacing.s5),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Filters.forEach { f ->
+            availableTags.forEach { f ->
                 FilterChip(label = f, selected = f == selectedFilter, onClick = { selectedFilter = f })
             }
         }
         Spacer(Modifier.height(Spacing.s3))
 
-        LazyColumn(
-            modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(
-                start = Spacing.s5, end = Spacing.s5,
-                top = 0.dp, bottom = Spacing.s5
-            ),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(visible, key = { it.workout.id }) { summary ->
-                WorkoutCard(summary = summary, onClick = { onPick(summary.workout) })
+        if (workouts.isEmpty()) {
+            // Skeleton placeholders while the assets parser is still loading.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = Spacing.s5),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                repeat(3) { SkeletonCard() }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(
+                    start = Spacing.s5, end = Spacing.s5,
+                    top = 0.dp, bottom = Spacing.s5
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(visible, key = { it.workout.id }) { summary ->
+                    WorkoutCard(summary = summary, onClick = { onPick(summary.workout) })
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun SkeletonCard() {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line1, shape)
+            .padding(Spacing.s4),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Box(
+            modifier = Modifier
+                .height(14.dp)
+                .fillMaxWidth(0.4f)
+                .clip(RoundedCornerShape(4.dp))
+                .background(CadenceColors.Bg2)
+        )
+        Box(
+            modifier = Modifier
+                .height(20.dp)
+                .fillMaxWidth(0.7f)
+                .clip(RoundedCornerShape(4.dp))
+                .background(CadenceColors.Bg2)
+        )
+        Box(
+            modifier = Modifier
+                .height(8.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .background(CadenceColors.Bg2)
+        )
     }
 }
 
@@ -184,25 +241,17 @@ private fun WorkoutCard(summary: WorkoutSummary, onClick: () -> Unit) {
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
-        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = summary.tag.uppercase(),
-                    style = CadenceType.eyebrow,
-                    color = CadenceColors.Fg3
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = summary.workout.name,
-                    style = CadenceType.h3.copy(fontSize = 18.sp),
-                    color = CadenceColors.Fg1
-                )
-            }
-            Icon(
-                imageVector = Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = CadenceColors.Fg3,
-                modifier = Modifier.size(18.dp)
+        Column {
+            Text(
+                text = summary.tag.uppercase(),
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = summary.workout.name,
+                style = CadenceType.h3.copy(fontSize = 18.sp),
+                color = CadenceColors.Fg1
             )
         }
         ZoneBar(segments = summary.zoneSegments, height = 8.dp)

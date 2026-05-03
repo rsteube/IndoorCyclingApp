@@ -196,5 +196,19 @@ object TrainerManager {
         scope.launch {
             activePeripheral?.disconnect()
         }
+        if (_isMockTrainer.value) {
+            _isMockTrainer.value = false
+            _connectionState.value = TrainerConnectionState.Disconnected
+            _connectedTrainerName.value = null
+            stopMockDataStream()
+        }
+    }
+
+    fun forgetTrainer() {
+        disconnect()
+        _pairedTrainerId.value = null
+        _isMockTrainer.value = false
+        _connectedTrainerName.value = null
+        _connectionState.value = TrainerConnectionState.Disconnected
     }
 }

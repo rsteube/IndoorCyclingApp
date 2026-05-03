@@ -14,17 +14,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,15 +61,19 @@ fun WorkoutDetailScreen(
 ) {
     val ftp by app.indoorbike.UserSettings.ftp.collectAsState()
     val summary = remember(workout, ftp) { workout.toSummary(ftp) }
+    var stepsExpanded by remember(workout.id) { mutableStateOf(false) }
+    val stepCutoff = 6
+    val totalSteps = summary.workout.segments.size
+    val visibleSteps = if (stepsExpanded || totalSteps <= stepCutoff)
+        summary.workout.segments
+    else summary.workout.segments.take(stepCutoff)
+
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         AppBar(
             title = workout.name,
             eyebrow = summary.tag,
             leading = {
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
-            },
-            trailing = {
-                IconBtn(icon = Icons.Outlined.MoreVert, contentDescription = "More")
             }
         )
 
@@ -76,13 +86,30 @@ fun WorkoutDetailScreen(
             item { StatsGrid(summary) }
             item {
                 Text(
-                    text = "STEPS · ${summary.workout.segments.size}",
+                    text = "STEPS · $totalSteps",
                     style = CadenceType.eyebrow,
                     color = CadenceColors.Fg3
                 )
             }
-            itemsIndexed(summary.workout.segments) { _, segment ->
+            itemsIndexed(visibleSteps) { _, segment ->
                 StepRow(segment, ftp)
+            }
+            if (!stepsExpanded && totalSteps > stepCutoff) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { stepsExpanded = true }
+                            .padding(vertical = Spacing.s2),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "+ ${totalSteps - stepCutoff} more · tap to expand",
+                            style = CadenceType.small,
+                            color = CadenceColors.Fg3
+                        )
+                    }
+                }
             }
             item { Spacer(Modifier.height(Spacing.s4)) }
         }
@@ -117,10 +144,10 @@ private fun ZoneProfileCard(summary: WorkoutSummary) {
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(text = "AVG POWER", style = CadenceType.tick, color = CadenceColors.Fg3)
+                Text(text = "NORMALIZED", style = CadenceType.tick, color = CadenceColors.Fg3)
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "${summary.averagePowerWatts} W",
+                    text = "${summary.normalizedPowerWatts} W",
                     style = CadenceType.h2.copy(fontSize = 22.sp),
                     color = CadenceColors.Brand500
                 )
@@ -234,6 +261,7 @@ private fun StartCta(onStart: () -> Unit) {
             .fillMaxWidth()
             .background(CadenceColors.Bg0)
             .border(1.dp, CadenceColors.Line1)
+            .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
     ) {
         PrimaryBtn(

@@ -51,6 +51,9 @@ object WorkoutSessionManager {
     val telemetry: List<TelemetryPoint> get() = _telemetry.toList()
     var sessionStartTimeEpoch: Long = 0
 
+    private val _targetBiasPercent = MutableStateFlow(0)
+    val targetBiasPercent: StateFlow<Int> = _targetBiasPercent.asStateFlow()
+
     private var ftpWatts = 200
     private var timerJob: Job? = null
     private var pedalingDetectionJob: Job? = null
@@ -65,6 +68,7 @@ object WorkoutSessionManager {
         _elapsedSeconds.value = 0
         _currentSegmentIndex.value = 0
         _elapsedInSegment.value = 0
+        _targetBiasPercent.value = 0
         _telemetry.clear()
         sessionStartTimeEpoch = 0
         
@@ -148,8 +152,36 @@ object WorkoutSessionManager {
         val idx = _currentSegmentIndex.value
         if (idx < workout.segments.size) {
             val seg = workout.segments[idx]
-            val targetWatts = (seg.powerPercentFTP / 100.0 * ftpWatts).roundToInt()
-            TrainerManager.setTargetPower(targetWatts)
+            val biasMultiplier = 1.0 + (_targetBiasPercent.value / 100.0)
+            val targetWatts = (seg.powerPercentFTP / 100.0 * ftpWatts * biasMultiplier).roundToInt()
+            TrainerManager.setTargetPower(targetWatts.coerceAtLeast(0))
+        }
+    }
+
+    fun adjustDifficulty(deltaPercent: Int) {
+        val newBias = (_targetBiasPercent.value + deltaPercent).coerceIn(-30, 30)
+        _targetBiasPercent.value = newBias
+        if (_state.value == WorkoutState.Active) {
+            updateTrainerTarget()
+        }
+    }
+
+    fun skipSegment() {
+        val workout = _activeWorkout.value ?: return
+        if (_state.value != WorkoutState.Active && _state.value != WorkoutState.Paused) return
+        val idx = _currentSegmentIndex.value
+        if (idx >= workout.segments.size) return
+
+        val skippedSegLength = workout.segments[idx].lengthInSeconds
+        // Roll the elapsed total forward to the segment boundary so the timeline stays consistent.
+        _elapsedSeconds.value += (skippedSegLength - _elapsedInSegment.value).coerceAtLeast(0)
+        _elapsedInSegment.value = 0
+        _currentSegmentIndex.value = idx + 1
+
+        if (_currentSegmentIndex.value >= workout.segments.size) {
+            completeWorkout()
+        } else {
+            updateTrainerTarget()
         }
     }
 
