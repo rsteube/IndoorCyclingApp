@@ -1,0 +1,8 @@
+app.indoorbike.android-pngs-0 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\build\generated\res\pngs\debug
+app.indoorbike.android-resValues-1 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\build\generated\res\resValues\debug
+app.indoorbike.android-updated_navigation_xml-2 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\build\generated\updated_navigation_xml\debug
+app.indoorbike.android-packageDebugResources-3 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+app.indoorbike.android-packageDebugResources-4 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+app.indoorbike.android-debug-5 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\build\intermediates\merged_res\debug\mergeDebugResources
+app.indoorbike.android-debug-6 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\src\debug\res
+app.indoorbike.android-main-7 C:\Users\juhan\vibes\cycling_app\mobile_clients\android\src\main\res
