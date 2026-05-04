@@ -26,6 +26,7 @@ import app.indoorbike.shared.progression.durationLabelLong
 import app.indoorbike.shared.progression.totalDurationSeconds
 import app.indoorbike.shared.progression.totalKjAcross
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -49,6 +50,10 @@ fun HistoryTab(
         AppBar(
             title = "Ride History",
             eyebrow = "Past Activity"
+        )
+
+        UnfinishedRideBanner(
+            modifier = Modifier.padding(horizontal = Spacing.s5, vertical = Spacing.s2)
         )
 
         if (sessions.isEmpty()) {

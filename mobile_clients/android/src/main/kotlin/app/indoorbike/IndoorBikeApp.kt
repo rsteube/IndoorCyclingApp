@@ -3,6 +3,10 @@ package app.indoorbike
 import android.app.Application
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.indoorbike.session.AndroidActiveSessionStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import app.indoorbike.settings.AndroidUserSettings
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.shared.ble.TrainerManager
@@ -60,10 +64,15 @@ class IndoorBikeApp : Application() {
     lateinit var container: AppContainer
         private set
 
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         Log.i("IndoorBikeApp", "App start")
         container = AppContainer.create(this)
+        // Surface any unfinished ride snapshot to the UI (banner) by populating
+        // the session manager's persistedSnapshot StateFlow from disk.
+        initScope.launch { container.sessionManager.loadPersistedSnapshot() }
     }
 
     override fun onTerminate() {
@@ -79,4 +88,17 @@ class IndoorBikeApp : Application() {
  */
 val LocalAppContainer = staticCompositionLocalOf<AppContainer> {
     error("AppContainer not provided. Wrap your composables in CompositionLocalProvider(LocalAppContainer provides container).")
+}
+
+/** Loaded workouts from JSON assets — exposed so the unfinished-ride banner can resolve workoutId → Workout. */
+val LocalWorkouts = staticCompositionLocalOf<List<app.indoorbike.shared.Workout>> { emptyList() }
+
+/** UI handle for the unfinished-ride banner: continue and abandon callbacks wired to the navigator. */
+data class RideResumer(
+    val continueRide: (app.indoorbike.shared.Workout, app.indoorbike.shared.session.ActiveSessionSnapshot) -> Unit,
+    val abandonRide: () -> Unit,
+)
+
+val LocalRideResumer = staticCompositionLocalOf<RideResumer> {
+    error("RideResumer not provided. Wrap your composables in CompositionLocalProvider(LocalRideResumer provides ...).")
 }

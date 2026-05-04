@@ -79,18 +79,21 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             CadenceTheme {
-                CompositionLocalProvider(LocalAppContainer provides container) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = CadenceColors.Bg0
-                    ) {
-                        var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
-                        LaunchedEffect(Unit) {
-                            workouts = withContext(Dispatchers.IO) {
-                                val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
-                                WorkoutRepository.parseWorkouts(jsonStrings)
-                            }
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = CadenceColors.Bg0
+                ) {
+                    var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
+                    LaunchedEffect(Unit) {
+                        workouts = withContext(Dispatchers.IO) {
+                            val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
+                            WorkoutRepository.parseWorkouts(jsonStrings)
                         }
+                    }
+                    CompositionLocalProvider(
+                        LocalAppContainer provides container,
+                        LocalWorkouts provides workouts,
+                    ) {
                         AppNavigator(workouts = workouts)
                     }
                 }
@@ -138,6 +141,16 @@ private fun AppNavigator(workouts: List<Workout>) {
         topLevelRoutes = TOP_LEVEL_ROUTES.keys
     )
     val navigator = remember { Navigator(navigationState) }
+
+    val resumer = remember(navigator) {
+        RideResumer(
+            continueRide = { workout, snapshot ->
+                container.sessionManager.restoreFromSnapshot(snapshot, workout)
+                navigator.continueRide(workout.id)
+            },
+            abandonRide = { container.sessionManager.abandonUnfinishedRide() }
+        )
+    }
 
     val entryProvider = entryProvider<NavKey> {
         entry<TabRides> { _ ->
@@ -207,28 +220,30 @@ private fun AppNavigator(workouts: List<Workout>) {
         }
     }
 
-    Scaffold(
-        bottomBar = {
-            // Only show bottom bar on tab roots (depth == 1).
-            if (navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys &&
-                navigationState.backStacks[navigationState.topLevelRoute]?.size == 1
-            ) {
-                TabBar(
-                    active = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides",
-                    tabs = TOP_LEVEL_ROUTES.values.toList(),
-                    onTabSelected = { tabId ->
-                        val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
-                        targetTab?.let { navigator.navigate(it) }
-                    }
+    CompositionLocalProvider(LocalRideResumer provides resumer) {
+        Scaffold(
+            bottomBar = {
+                // Only show bottom bar on tab roots (depth == 1).
+                if (navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys &&
+                    navigationState.backStacks[navigationState.topLevelRoute]?.size == 1
+                ) {
+                    TabBar(
+                        active = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides",
+                        tabs = TOP_LEVEL_ROUTES.values.toList(),
+                        onTabSelected = { tabId ->
+                            val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
+                            targetTab?.let { navigator.navigate(it) }
+                        }
+                    )
+                }
+            }
+        ) { innerPadding ->
+            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+                NavDisplay(
+                    entries = navigationState.toDecoratedEntries(entryProvider),
+                    onBack = { navigator.goBack() }
                 )
             }
-        }
-    ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
-            NavDisplay(
-                entries = navigationState.toDecoratedEntries(entryProvider),
-                onBack = { navigator.goBack() }
-            )
         }
     }
 }

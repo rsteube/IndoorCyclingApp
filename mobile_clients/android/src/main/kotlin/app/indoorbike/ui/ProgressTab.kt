@@ -35,6 +35,7 @@ import app.indoorbike.shared.progression.computeStreak
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import java.util.TimeZone
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -58,6 +59,10 @@ fun ProgressTab() {
         AppBar(
             title = "Your Progress",
             eyebrow = "Stats & Achievements"
+        )
+
+        UnfinishedRideBanner(
+            modifier = Modifier.padding(horizontal = Spacing.s5, vertical = Spacing.s2)
         )
 
         if (sessions.isEmpty()) {

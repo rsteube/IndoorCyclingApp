@@ -15,7 +15,12 @@
       "PowerShell(adb -s 82bc875c shell input tap 540 1757)",
       "PowerShell(adb -s 82bc875c shell input tap 576 2099)",
       "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-hero-v3.png\")",
-      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-active-v3.png\")"
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-active-v3.png\")",
+      "PowerShell(.\\\\gradlew.bat :shared:testDebugUnitTest --no-daemon 2>&1)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-banner-list-2.png\")",
+      "PowerShell(adb -s 82bc875c shell \"run-as app.indoorbike ls files/\" 2>&1)",
+      "PowerShell(adb -s 82bc875c shell \"run-as app.indoorbike sh -c 'cat /data/data/app.indoorbike/files/active_session.json 2>/dev/null | head -c 400'\" 2>&1)",
+      "PowerShell(adb -s 82bc875c logcat -d -s WorkoutSessionManager IndoorBikeApp ActiveSessionStore RideService TrainerManager 2>&1)"
     ]
   }
 }

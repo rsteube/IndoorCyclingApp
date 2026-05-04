@@ -77,6 +77,14 @@ class WorkoutSessionManager(
     private val _targetBiasPercent = MutableStateFlow(0)
     val targetBiasPercent: StateFlow<Int> = _targetBiasPercent.asStateFlow()
 
+    /**
+     * The most recently persisted snapshot of an in-flight ride, or null if
+     * nothing is unfinished. Updated whenever we write or clear the on-disk
+     * snapshot. UI observes this to render the "unfinished ride" banner.
+     */
+    private val _persistedSnapshot = MutableStateFlow<ActiveSessionSnapshot?>(null)
+    val persistedSnapshot: StateFlow<ActiveSessionSnapshot?> = _persistedSnapshot.asStateFlow()
+
     private var ftpWatts = 200
     private var timerJob: Job? = null
     private var pedalingDetectionJob: Job? = null
@@ -90,6 +98,9 @@ class WorkoutSessionManager(
         if (_state.value != WorkoutState.Idle && _state.value != WorkoutState.Completed) {
             stopWorkout()
         }
+        // Starting a fresh workout — discard any stale unfinished snapshot. The
+        // user implicitly abandons the prior ride by starting a new one.
+        clearPersistedSnapshot()
         _activeWorkout.value = workout
         ftpWatts = ftp
         _state.value = WorkoutState.Standby
@@ -99,7 +110,35 @@ class WorkoutSessionManager(
         _targetBiasPercent.value = 0
         _telemetry.clear()
         sessionStartTimeEpoch = 0
+        startPedalingDetection()
+    }
 
+    /**
+     * Restore a previously persisted snapshot. Sets state to Standby so the
+     * rider has to pedal to resume, mirroring the start-of-ride flow. Existing
+     * in-memory telemetry from this process is discarded — only post-resume
+     * samples will contribute to the saved session's averages.
+     */
+    fun restoreFromSnapshot(snapshot: ActiveSessionSnapshot, workout: Workout) {
+        if (snapshot.workoutId != workout.id) return
+        // Tear down any active timing without clearing the snapshot we're restoring.
+        timerJob?.cancel()
+        pedalingDetectionJob?.cancel()
+        trainerManager.setTargetPower(0)
+
+        _activeWorkout.value = workout
+        ftpWatts = snapshot.ftp
+        _elapsedSeconds.value = snapshot.elapsedSeconds
+        _currentSegmentIndex.value = snapshot.currentSegmentIndex
+        _elapsedInSegment.value = snapshot.elapsedInSegment
+        _targetBiasPercent.value = snapshot.targetBiasPercent
+        _telemetry.clear()
+        sessionStartTimeEpoch = snapshot.sessionStartTimeEpochMs
+        _state.value = WorkoutState.Standby
+        startPedalingDetection()
+    }
+
+    private fun startPedalingDetection() {
         pedalingDetectionJob?.cancel()
         pedalingDetectionJob = trainerManager.power.onEach { watts ->
             if (_state.value == WorkoutState.Standby && watts > 10) {
@@ -151,13 +190,32 @@ class WorkoutSessionManager(
         startTimerLoop()
     }
 
+    /**
+     * Tears down the in-memory active session but **leaves the persisted
+     * snapshot intact** so the user can resume from the workout list banner.
+     * Use [abandonUnfinishedRide] to also discard the snapshot.
+     */
     fun stopWorkout() {
         timerJob?.cancel()
         pedalingDetectionJob?.cancel()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Idle
         _activeWorkout.value = null
+    }
+
+    /**
+     * Discard the persisted snapshot — invoked when the user explicitly taps
+     * "Abandon" on the unfinished-ride banner.
+     */
+    fun abandonUnfinishedRide() {
+        if (_state.value != WorkoutState.Idle) stopWorkout()
         clearPersistedSnapshot()
+    }
+
+    /** One-time loader, called from app startup so the banner lights up if we crashed mid-ride. */
+    suspend fun loadPersistedSnapshot() {
+        val store = activeSessionStore ?: return
+        _persistedSnapshot.value = store.read()
     }
 
     fun dispose() {
@@ -223,20 +281,15 @@ class WorkoutSessionManager(
             elapsedInSegment = _elapsedInSegment.value,
             state = _state.value,
         )
+        _persistedSnapshot.value = snapshot
         scope.launch { store.write(snapshot) }
     }
 
     private fun clearPersistedSnapshot() {
+        _persistedSnapshot.value = null
         val store = activeSessionStore ?: return
         scope.launch { store.clear() }
     }
-
-    /**
-     * Read any persisted snapshot left from a previous process. Returns the
-     * snapshot if one exists; the caller (typically the App init path) decides
-     * how to surface a "Resume ride?" affordance.
-     */
-    suspend fun readPersistedSnapshot(): ActiveSessionSnapshot? = activeSessionStore?.read()
 
     /**
      * Compute elapsed from wall-clock so we don't drift; sample telemetry

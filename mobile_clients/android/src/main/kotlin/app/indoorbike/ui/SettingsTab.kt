@@ -28,6 +28,7 @@ import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.components.TrainerStatusStrip
+import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -58,7 +59,11 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.s5)
         ) {
-            Spacer(modifier = Modifier.height(Spacing.s5))
+            Spacer(modifier = Modifier.height(Spacing.s3))
+
+            UnfinishedRideBanner()
+
+            Spacer(modifier = Modifier.height(Spacing.s4))
 
             val isConnected = connectionState == TrainerConnectionState.Connected
             TrainerStatusStrip(

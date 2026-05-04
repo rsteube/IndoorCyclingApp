@@ -40,4 +40,25 @@ class Navigator(val state: NavigationState) {
             currentStack.add(root)
         }
     }
+
+    /**
+     * Switch to the rides tab, clear any leftover sub-navigation in any tab's
+     * stack, then push the ride screen on top. Used by the unfinished-ride
+     * banner so "Continue" always lands the user back on the active ride.
+     */
+    fun continueRide(workoutId: String) {
+        // Reset every back-stack to its root so we don't accumulate dead history
+        // when the user navigates from e.g. Settings → Continue.
+        state.backStacks.values.forEach { stack ->
+            if (stack.size > 1) {
+                val root = stack.first()
+                stack.clear()
+                stack.add(root)
+            }
+        }
+        state.topLevelRoute = state.startRoute
+        state.backStacks[state.startRoute]?.add(
+            app.indoorbike.navigation.RouteRideScreen(workoutId)
+        )
+    }
 }

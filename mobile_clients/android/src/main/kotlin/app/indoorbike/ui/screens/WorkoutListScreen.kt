@@ -47,6 +47,7 @@ import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.TrainerStatusStrip
+import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.components.ZoneBar
 import app.indoorbike.ui.workout.zoneSegments
 import app.indoorbike.ui.theme.CadenceColors
@@ -95,6 +96,10 @@ fun WorkoutListScreen(
                     )
                 }
             }
+        )
+
+        UnfinishedRideBanner(
+            modifier = Modifier.padding(horizontal = Spacing.s5, vertical = Spacing.s2)
         )
 
         val connectionState by container.trainerManager.connectionState.collectAsState()
