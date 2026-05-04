@@ -22,6 +22,9 @@ data class RouteWorkoutDetail(val workoutId: String) : NavKey
 data object RouteTrainerPairing : NavKey
 
 @Serializable
+data object RouteHrmPairing : NavKey
+
+@Serializable
 data class RouteRideScreen(val workoutId: String) : NavKey
 
 @Serializable

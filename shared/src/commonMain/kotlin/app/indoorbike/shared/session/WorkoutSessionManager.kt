@@ -41,6 +41,12 @@ enum class WorkoutState {
 class WorkoutSessionManager(
     private val trainerManager: TrainerManager,
     private val activeSessionStore: ActiveSessionStore? = null,
+    /**
+     * How to get the user's current heart rate at sample time. The default
+     * reads from the trainer's HR characteristic; a [HeartRateMonitor]-aware
+     * caller (AppContainer) overrides this to prefer the external HRM.
+     */
+    private val effectiveHeartRate: () -> Int = { trainerManager.heartRate.value },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -307,7 +313,7 @@ class WorkoutSessionManager(
             timestampEpoch = now,
             power = trainerManager.power.value.toLong(),
             cadence = trainerManager.cadence.value.toLong(),
-            heartRate = trainerManager.heartRate.value.toLong(),
+            heartRate = effectiveHeartRate().toLong(),
         )
         _telemetry.add(sample)
         maybePersistSnapshot(now)

@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.BluetoothConnected
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
+import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -21,8 +22,10 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.PrimaryBtn
@@ -35,13 +38,21 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 
 @Composable
-fun SettingsTab(onNavigateToPairing: () -> Unit) {
+fun SettingsTab(
+    onNavigateToPairing: () -> Unit,
+    onNavigateToHrmPairing: () -> Unit
+) {
     val container = LocalAppContainer.current
     val trainerManager = container.trainerManager
+    val hrm = container.heartRateMonitor
     val connectionState by trainerManager.connectionState.collectAsState()
     val connectedTrainerName by trainerManager.connectedTrainerName.collectAsState()
     val pairedTrainerId by trainerManager.pairedTrainerId.collectAsState()
     val isMockTrainer by trainerManager.isMockTrainer.collectAsState()
+    val hrmState by hrm.connectionState.collectAsState()
+    val hrmName by hrm.connectedDeviceName.collectAsState()
+    val hrmPairedId by hrm.pairedDeviceId.collectAsState()
+    val hrmHeartRate by hrm.heartRate.collectAsState()
 
     Column(
         modifier = Modifier
@@ -143,6 +154,73 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
 
             Spacer(modifier = Modifier.height(Spacing.s7))
 
+            // ─── Heart Rate Monitor ──────────────────────────────────────
+            Text(
+                text = "HEART RATE MONITOR",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(bottom = Spacing.s3)
+            )
+
+            HrmStatusStrip(
+                state = hrmState,
+                deviceName = hrmName,
+                liveHeartRate = hrmHeartRate
+            )
+
+            Spacer(modifier = Modifier.height(Spacing.s3))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(CadenceColors.Bg1.copy(alpha = 0.6f))
+                    .border(1.dp, CadenceColors.Line1, RoundedCornerShape(Radii.md))
+                    .padding(14.dp)
+            ) {
+                Text(
+                    text = "Optional. Pair a Bluetooth chest strap (Polar H10, Wahoo Tickr, Garmin HRM-Dual, etc.) to record heart rate during rides. Most modern HRMs work — wake the strap by snapping it on or moistening the contacts before scanning.",
+                    style = CadenceType.small,
+                    color = CadenceColors.Fg3
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Spacing.s5))
+
+            when (hrmState) {
+                HrmConnectionState.Connected,
+                HrmConnectionState.Connecting,
+                HrmConnectionState.Disconnecting -> {
+                    SecondaryBtn(
+                        text = if (hrmState == HrmConnectionState.Connecting) "Cancel Connection" else "Disconnect",
+                        onClick = { hrm.disconnect() },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                else -> {
+                    PrimaryBtn(
+                        text = "Pair Heart Rate Monitor",
+                        leadingIcon = Icons.Outlined.MonitorHeart,
+                        onClick = onNavigateToHrmPairing,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            if (hrmPairedId != null) {
+                Spacer(modifier = Modifier.height(Spacing.s3))
+                SecondaryBtn(
+                    text = "Forget HRM",
+                    onClick = {
+                        hrm.forgetDevice()
+                        container.userSettings.setPairedHrmId(null)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Spacer(modifier = Modifier.height(Spacing.s7))
+
             // About section
             Text(
                 text = "ABOUT",
@@ -155,6 +233,62 @@ fun SettingsTab(onNavigateToPairing: () -> Unit) {
             Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             Spacer(modifier = Modifier.height(Spacing.s5))
         }
+    }
+}
+
+@Composable
+private fun HrmStatusStrip(
+    state: HrmConnectionState,
+    deviceName: String?,
+    liveHeartRate: Int,
+) {
+    val isConnected = state == HrmConnectionState.Connected
+    val statusLine = when (state) {
+        HrmConnectionState.Scanning -> "Scanning for heart-rate monitors…"
+        HrmConnectionState.Connecting -> "Connecting…"
+        HrmConnectionState.Connected -> if (liveHeartRate > 0) "$liveHeartRate BPM" else "Connected · waiting for first sample"
+        HrmConnectionState.Disconnecting -> "Disconnecting…"
+        HrmConnectionState.Disconnected -> "Not paired"
+        HrmConnectionState.Error -> "Error connecting. Try again."
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            .padding(horizontal = 14.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Danger.copy(alpha = 0.10f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.MonitorHeart,
+                contentDescription = null,
+                tint = CadenceColors.Danger,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (isConnected) (deviceName ?: "Heart Rate Monitor") else "No HRM Paired",
+                style = CadenceType.bodyStrong.copy(fontSize = 14.sp),
+                color = CadenceColors.Fg1
+            )
+            Text(text = statusLine, style = CadenceType.tick, color = CadenceColors.Fg3)
+        }
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(androidx.compose.foundation.shape.CircleShape)
+                .background(if (isConnected) CadenceColors.Success else CadenceColors.Fg4)
+        )
     }
 }
 

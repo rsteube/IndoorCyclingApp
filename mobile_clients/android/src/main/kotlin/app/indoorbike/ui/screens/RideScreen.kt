@@ -1,11 +1,15 @@
 package app.indoorbike.ui.screens
 
+import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.os.Build
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -110,7 +114,10 @@ fun RideScreen(
 
     val currentPower by trainerManager.power.collectAsState()
     val currentCadence by trainerManager.cadence.collectAsState()
-    val currentHr by trainerManager.heartRate.collectAsState()
+    val trainerHr by trainerManager.heartRate.collectAsState()
+    val hrmHr by container.heartRateMonitor.heartRate.collectAsState()
+    // Prefer the dedicated HRM if it's emitting; fall back to whatever the trainer has.
+    val currentHr = if (hrmHr > 0) hrmHr else trainerHr
     val targetPower by trainerManager.targetPower.collectAsState()
     val isMockTrainer by trainerManager.isMockTrainer.collectAsState()
 
@@ -119,7 +126,17 @@ fun RideScreen(
 
     // Foreground service: started on first composition (the ride is active),
     // stopped on completion or back-out.
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* no-op: service runs even without notification visibility */ }
+
     DisposableEffect(Unit) {
+        // On Android 13+, ask for runtime notification permission so the
+        // foreground-service notification is visible. The service still runs
+        // if the user denies — they just won't see the workout chip.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
         RideSessionService.start(context)
         onDispose { RideSessionService.stop(context) }
     }

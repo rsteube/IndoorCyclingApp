@@ -13,6 +13,10 @@ interface UserSettings {
     /** id of the last paired trainer ("mock" for the simulator). */
     val pairedTrainerId: StateFlow<String?>
     fun setPairedTrainerId(id: String?)
+
+    /** id of the last paired heart rate monitor (BLE peripheral identifier). */
+    val pairedHrmId: StateFlow<String?>
+    fun setPairedHrmId(id: String?)
 }
 
 const val DEFAULT_FTP = 200

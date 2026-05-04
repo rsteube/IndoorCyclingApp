@@ -58,6 +58,21 @@ class RideSessionService : Service() {
                 stopRide()
                 return START_NOT_STICKY
             }
+            else -> {
+                // System-redelivered start (process kill recovery). Only stay
+                // alive if the session actually has an active workout — otherwise
+                // bail so we don't keep an orphan service running.
+                val container = (applicationContext as IndoorBikeApp).container
+                val state = container.sessionManager.state.value
+                if (state == WorkoutState.Active || state == WorkoutState.Paused ||
+                    state == WorkoutState.Standby || state == WorkoutState.Countdown
+                ) {
+                    startRide()
+                } else {
+                    stopRide()
+                    return START_NOT_STICKY
+                }
+            }
         }
         return START_STICKY
     }
@@ -134,6 +149,9 @@ class RideSessionService : Service() {
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_WORKOUT)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            // Show notification text on the lock screen so the rider can glance
+            // at target/elapsed without unlocking.
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         if (subline != null) builder.setSubText(subline)
         return builder.build()
     }

@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import app.indoorbike.settings.AndroidUserSettings
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.shared.ble.HeartRateMonitor
 import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.db.DatabaseDriverFactory
 import app.indoorbike.shared.db.HistoryRepository
@@ -28,6 +29,7 @@ import app.indoorbike.shared.util.Log
  */
 class AppContainer(
     val trainerManager: TrainerManager,
+    val heartRateMonitor: HeartRateMonitor,
     val sessionManager: WorkoutSessionManager,
     val historyRepository: HistoryRepository,
     val userSettings: UserSettings,
@@ -35,6 +37,7 @@ class AppContainer(
 ) {
     fun dispose() {
         trainerManager.dispose()
+        heartRateMonitor.dispose()
         sessionManager.dispose()
         if (userSettings is AndroidUserSettings) userSettings.dispose()
     }
@@ -42,15 +45,23 @@ class AppContainer(
     companion object {
         fun create(application: Application): AppContainer {
             val trainerManager = TrainerManager()
+            val heartRateMonitor = HeartRateMonitor()
             val activeSessionStore = AndroidActiveSessionStore(application)
             val sessionManager = WorkoutSessionManager(
                 trainerManager = trainerManager,
                 activeSessionStore = activeSessionStore,
+                // Prefer the dedicated HRM when one is connected and emitting samples;
+                // fall back to whatever the trainer reports (often 0 for trainer-only).
+                effectiveHeartRate = {
+                    val hrm = heartRateMonitor.heartRate.value
+                    if (hrm > 0) hrm else trainerManager.heartRate.value
+                },
             )
             val userSettings = AndroidUserSettings(application)
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             return AppContainer(
                 trainerManager = trainerManager,
+                heartRateMonitor = heartRateMonitor,
                 sessionManager = sessionManager,
                 historyRepository = historyRepository,
                 userSettings = userSettings,

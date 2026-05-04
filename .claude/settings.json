@@ -20,7 +20,24 @@
       "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-banner-list-2.png\")",
       "PowerShell(adb -s 82bc875c shell \"run-as app.indoorbike ls files/\" 2>&1)",
       "PowerShell(adb -s 82bc875c shell \"run-as app.indoorbike sh -c 'cat /data/data/app.indoorbike/files/active_session.json 2>/dev/null | head -c 400'\" 2>&1)",
-      "PowerShell(adb -s 82bc875c logcat -d -s WorkoutSessionManager IndoorBikeApp ActiveSessionStore RideService TrainerManager 2>&1)"
+      "PowerShell(adb -s 82bc875c logcat -d -s WorkoutSessionManager IndoorBikeApp ActiveSessionStore RideService TrainerManager 2>&1)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-settings-with-hrm.png\")",
+      "PowerShell(adb -s 82bc875c shell input swipe 540 1500 540 500 400)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-settings-hrm-section.png\")",
+      "PowerShell(adb -s 82bc875c shell input swipe 540 1500 540 500 300)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-settings-hrm-button.png\")",
+      "PowerShell(adb -s 82bc875c shell input tap 576 1382)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-hrm-pairing.png\")",
+      "PowerShell(adb -s 82bc875c shell input tap 540 1529)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-hrm-pairing-2.png\")",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-settings-banner-context.png\")",
+      "Bash(android screen *)",
+      "Bash(android describe *)",
+      "Bash(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q)",
+      "Bash(android run *)",
+      "Bash(android layout *)",
+      "Bash(adb shell *)"
     ]
   }
 }

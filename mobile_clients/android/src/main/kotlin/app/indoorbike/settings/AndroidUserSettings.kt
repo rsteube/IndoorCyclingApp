@@ -37,19 +37,26 @@ class AndroidUserSettings(
     private val _ftp = MutableStateFlow(loadFtpBlocking())
     override val ftp: StateFlow<Int> = _ftp.asStateFlow()
 
-    private val _pairedTrainerId = MutableStateFlow<String?>(loadPairedIdBlocking())
+    private val _pairedTrainerId = MutableStateFlow<String?>(loadStringBlocking(KEY_TRAINER))
     override val pairedTrainerId: StateFlow<String?> = _pairedTrainerId.asStateFlow()
 
+    private val _pairedHrmId = MutableStateFlow<String?>(loadStringBlocking(KEY_HRM))
+    override val pairedHrmId: StateFlow<String?> = _pairedHrmId.asStateFlow()
+
     init {
-        // Subscribe to external mutations (rare, but possible if multiple stores write).
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
                 if (value != _ftp.value) _ftp.value = value
             }
         }
         scope.launch {
-            store.data.map { it[KEY_PAIRED] }.collect { value ->
+            store.data.map { it[KEY_TRAINER] }.collect { value ->
                 if (value != _pairedTrainerId.value) _pairedTrainerId.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_HRM] }.collect { value ->
+                if (value != _pairedHrmId.value) _pairedHrmId.value = value
             }
         }
     }
@@ -57,16 +64,23 @@ class AndroidUserSettings(
     override fun setFtp(newFtp: Int) {
         if (newFtp !in MIN_FTP..MAX_FTP) return
         _ftp.value = newFtp
-        scope.launch {
-            store.edit { it[KEY_FTP] = newFtp }
-        }
+        scope.launch { store.edit { it[KEY_FTP] = newFtp } }
     }
 
     override fun setPairedTrainerId(id: String?) {
         _pairedTrainerId.value = id
         scope.launch {
             store.edit {
-                if (id == null) it.remove(KEY_PAIRED) else it[KEY_PAIRED] = id
+                if (id == null) it.remove(KEY_TRAINER) else it[KEY_TRAINER] = id
+            }
+        }
+    }
+
+    override fun setPairedHrmId(id: String?) {
+        _pairedHrmId.value = id
+        scope.launch {
+            store.edit {
+                if (id == null) it.remove(KEY_HRM) else it[KEY_HRM] = id
             }
         }
     }
@@ -75,19 +89,16 @@ class AndroidUserSettings(
         scope.cancel()
     }
 
-    // Initial load is blocking so the first composition can read a stable value;
-    // DataStore's first read is fast (in-memory or single small file). Acceptable
-    // for app startup.
     private fun loadFtpBlocking(): Int = runBlocking {
         store.data.first()[KEY_FTP] ?: DEFAULT_FTP
     }
 
-    private fun loadPairedIdBlocking(): String? = runBlocking {
-        store.data.first()[KEY_PAIRED]
-    }
+    private fun loadStringBlocking(key: androidx.datastore.preferences.core.Preferences.Key<String>): String? =
+        runBlocking { store.data.first()[key] }
 
     companion object {
         private val KEY_FTP = intPreferencesKey("user_ftp")
-        private val KEY_PAIRED = stringPreferencesKey("paired_trainer_id")
+        private val KEY_TRAINER = stringPreferencesKey("paired_trainer_id")
+        private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
     }
 }

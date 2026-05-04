@@ -19,9 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.LocalRideResumer
 import app.indoorbike.LocalWorkouts
@@ -142,15 +143,18 @@ fun UnfinishedRideBanner(
     }
 }
 
+private val BannerButtonHeight = 44.dp
+private val BannerButtonShape = RoundedCornerShape(12.dp)
+
 @Composable
 private fun ContinueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
     Row(
         modifier = modifier
-            .clip(shape)
+            .height(BannerButtonHeight)
+            .clip(BannerButtonShape)
             .background(CadenceColors.Brand500)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 11.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
     ) {
@@ -170,14 +174,14 @@ private fun ContinueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
 @Composable
 private fun AbandonButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(12.dp)
     Row(
         modifier = modifier
-            .clip(shape)
+            .height(BannerButtonHeight)
+            .clip(BannerButtonShape)
             .background(CadenceColors.Bg2)
-            .border(1.dp, CadenceColors.Line2, shape)
+            .border(1.dp, CadenceColors.Line2, BannerButtonShape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 11.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -197,12 +201,9 @@ private fun AbandonConfirmDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.65f))
-            .clickable(onClick = onCancel),
-        contentAlignment = Alignment.Center
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Column(
             modifier = Modifier
@@ -210,7 +211,6 @@ private fun AbandonConfirmDialog(
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
                 .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
-                .clickable(enabled = false, onClick = {})
                 .padding(Spacing.s5),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
@@ -229,11 +229,11 @@ private fun AbandonConfirmDialog(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(BannerButtonHeight)
+                        .clip(BannerButtonShape)
                         .background(CadenceColors.Bg2)
-                        .border(1.dp, CadenceColors.Line2, RoundedCornerShape(12.dp))
-                        .clickable(onClick = onCancel)
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                        .border(1.dp, CadenceColors.Line2, BannerButtonShape)
+                        .clickable(onClick = onCancel),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -245,10 +245,10 @@ private fun AbandonConfirmDialog(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clip(RoundedCornerShape(12.dp))
+                        .height(BannerButtonHeight)
+                        .clip(BannerButtonShape)
                         .background(CadenceColors.Danger)
-                        .clickable(onClick = onConfirm)
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
+                        .clickable(onClick = onConfirm),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
