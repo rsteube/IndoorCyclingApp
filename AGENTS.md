@@ -30,3 +30,14 @@ Maintain TECH_SPEC_FOR_LLMS.md file for all techincal architecture and documenta
 
 Design system:
 Use the design system defined in cadence-design-system/README.md
+
+
+Running the app on a connected Android device (Windows host, PowerShell):
+- The repo has only `gradlew.bat` — invoke it via PowerShell, not bash.
+- Build + install in one step:
+  `.\gradlew.bat :mobile_clients:android:installDebug`
+- Then launch:
+  `adb -s <device-serial> shell am start -n app.indoorbike/.MainActivity`
+- List devices first with `adb devices` if you don't already know the serial.
+- The `android` CLI's `android run` requires `--apks` paths and is more awkward than the gradle install task above; prefer `installDebug` + `am start`.
+- The `:shared` module's compile task is `:shared:compileDebugKotlinAndroid` (not `compileKotlinAndroid` — that name is ambiguous and fails).

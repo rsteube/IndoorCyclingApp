@@ -42,7 +42,21 @@
       "Bash(Select-Object -ExpandProperty FullName)",
       "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q 2>&1)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\juhan\\\\vibes\\\\cycling_app\" -Recurse -Filter \"WorkoutSessionManager.kt\" -ErrorAction SilentlyContinue)",
-      "Bash(xargs grep *)"
+      "Bash(xargs grep *)",
+      "Read(//c/Users/juhan/.gradle/caches/modules-2/files-2.1/com.juul.kable/**)",
+      "Bash(mkdir -p /tmp/kable-src)",
+      "Read(//tmp/**)",
+      "Bash(unzip -o /c/Users/juhan/.gradle/caches/modules-2/files-2.1/com.juul.kable/core/0.29.0/b248ef647ee57ce5f0f5d93efe15fa3225081b39/core-0.29.0-sources.jar 'com/juul/kable/Advertisement*')",
+      "Read(//tmp/kable-src/com/juul/**)",
+      "Bash(unzip -l /c/Users/juhan/.gradle/caches/modules-2/files-2.1/com.juul.kable/core/0.29.0/b248ef647ee57ce5f0f5d93efe15fa3225081b39/core-0.29.0-sources.jar)",
+      "Bash(./gradlew :shared:compileKotlinAndroid)",
+      "PowerShell(.\\\\gradlew.bat :shared:compileKotlinAndroid 2>&1)",
+      "PowerShell(.\\\\gradlew.bat :shared:compileDebugKotlinAndroid 2>&1)",
+      "Bash(android --help)",
+      "Bash(adb devices *)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:installDebug 2>&1)",
+      "Bash(adb -s 82bc875c shell pm list packages indoorbike)",
+      "Bash(adb -s 82bc875c shell am start -n app.indoorbike/.MainActivity)"
     ]
   }
 }

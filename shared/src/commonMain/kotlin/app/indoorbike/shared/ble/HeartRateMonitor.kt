@@ -4,7 +4,6 @@ import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
-import com.juul.kable.Filter
 import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
 import com.juul.kable.State
@@ -34,9 +33,12 @@ typealias HrmCandidate = TrainerCandidate
  *  - just an HRM (no trainer — useful for outdoor rides imported later),
  *  - both (HRM data takes precedence over any HR the trainer might surface).
  *
- * Filters scan results to devices advertising the standard BLE Heart Rate
- * Service (0x180D), so any modern HRM (Polar H10/H9, Wahoo Tickr, Garmin
- * HRM-Dual/Pro, Coros, Suunto, generic chest straps) shows up.
+ * Scans without a service-UUID filter and post-filters by either (a) the
+ * Heart Rate Service (0x180D) being present in the advertisement payload,
+ * or (b) the device name matching a known HRM keyword. The unfiltered scan
+ * matters because Garmin HRM-Pro / HRM-Pro Plus omit 0x180D from their
+ * advertisement to save bytes — the service is only visible after GATT
+ * connect — so a service-UUID filter would never match them.
  *
  * ANT+-only HRMs are NOT supported — Android lacks a universal ANT+ stack
  * and the available SDKs depend on Google Play services not allowed in F-Droid.
@@ -88,9 +90,7 @@ class HeartRateMonitor {
         scanJob = scope.launch {
             val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
                 try {
-                    Scanner {
-                        filters = listOf(Filter.Service(uuidFrom(HEART_RATE_SERVICE_UUID)))
-                    }.advertisements
+                    Scanner().advertisements
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.identifier == pairedId }
                 } catch (e: Exception) {
@@ -116,9 +116,7 @@ class HeartRateMonitor {
         advertisementById.clear()
 
         scanJob?.cancel()
-        scanJob = Scanner {
-            filters = listOf(Filter.Service(uuidFrom(HEART_RATE_SERVICE_UUID)))
-        }.advertisements
+        scanJob = Scanner().advertisements
             .onEach { ad -> addDiscovered(ad) }
             .catch { e ->
                 Log.e(TAG, "HRM scan failed", e)
@@ -169,7 +167,10 @@ class HeartRateMonitor {
     // ─── internals ───────────────────────────────────────────────────────
 
     private fun addDiscovered(ad: Advertisement) {
+        // Always remember the advertisement so auto-connect can match by identifier,
+        // even if the heuristic below would hide it from the UI list.
         advertisementById[ad.identifier] = ad
+        if (!looksLikeHrm(ad)) return
         val current = _discoveredDevices.value
         if (current.none { it.id == ad.identifier }) {
             _discoveredDevices.value = current + HrmCandidate(
@@ -178,6 +179,13 @@ class HeartRateMonitor {
                 rssi = ad.rssi
             )
         }
+    }
+
+    private fun looksLikeHrm(ad: Advertisement): Boolean {
+        val hrServiceUuid = uuidFrom(HEART_RATE_SERVICE_UUID)
+        if (ad.uuids.any { it == hrServiceUuid }) return true
+        val name = ad.name ?: ad.peripheralName ?: return false
+        return HRM_NAME_KEYWORDS.any { name.contains(it, ignoreCase = true) }
     }
 
     private fun connectInternal(advertisement: Advertisement) {
@@ -251,5 +259,19 @@ class HeartRateMonitor {
 
     companion object {
         private const val TAG = "HeartRateMonitor"
+
+        // Substrings (case-insensitive) used to recognise HRMs that omit the
+        // 0x180D service from their advertisement payload — most notably
+        // Garmin HRM-Pro / HRM-Pro Plus, which advertise only their name.
+        private val HRM_NAME_KEYWORDS = listOf(
+            "HRM",      // Garmin HRM-Pro / HRM-Dual / HRM-Tri / HRM 200
+            "Polar",    // Polar H10 / H9 / OH1 / Verity Sense
+            "TICKR",    // Wahoo TICKR / TICKR X / TICKR FIT
+            "Coros",
+            "Suunto",
+            "Magene",
+            "Verity",
+            "Heart",
+        )
     }
 }
