@@ -17,6 +17,21 @@ android {
         versionName = "1.0"
     }
 
+    buildTypes {
+        debug {
+            // Side-by-side install: the debug build has its own application id
+            // and label so it sits next to a production build on the same device.
+            // Combined with the grayscale launcher icon (src/debug/res), the two
+            // are unambiguous at a glance.
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            isDebuggable = true
+        }
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true

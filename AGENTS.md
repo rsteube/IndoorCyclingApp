@@ -34,10 +34,25 @@ Use the design system defined in cadence-design-system/README.md
 
 Running the app on a connected Android device (Windows host, PowerShell):
 - The repo has only `gradlew.bat` — invoke it via PowerShell, not bash.
-- Build + install in one step:
+- Build + install the debug variant:
   `.\gradlew.bat :mobile_clients:android:installDebug`
-- Then launch:
-  `adb -s <device-serial> shell am start -n app.indoorbike/.MainActivity`
+- Launch (note the `.debug` suffix on the application id — the manifest activity name stays `app.indoorbike.MainActivity`):
+  `adb -s <device-serial> shell am start -n app.indoorbike.debug/app.indoorbike.MainActivity`
+- For the release variant: `am start -n app.indoorbike/app.indoorbike.MainActivity`.
 - List devices first with `adb devices` if you don't already know the serial.
 - The `android` CLI's `android run` requires `--apks` paths and is more awkward than the gradle install task above; prefer `installDebug` + `am start`.
 - The `:shared` module's compile task is `:shared:compileDebugKotlinAndroid` (not `compileKotlinAndroid` — that name is ambiguous and fails).
+
+Build variants and side-by-side install (since v1.0):
+- Debug: `applicationId = app.indoorbike.debug`, `versionName = 1.0-debug`, label "Indoor Bike Debug", grayscale launcher icon. Lives at `src/debug/res/`.
+- Release: `applicationId = app.indoorbike`, `versionName = 1.0`, label "Indoor Bike", brand-orange icon.
+- Both can be installed on the same device simultaneously and have completely separate storage (DataStore + SQLDelight DB).
+- After a fresh `pm clear app.indoorbike.debug` the next launch is a true first-run (no FTP / weight / paired devices, onboarding banner shows).
+
+Testing:
+- Smoke test (build + install + walk through onboarding + mock-trainer ride + logcat scan):
+  `.\scripts\smoke_test.ps1`
+- Full manual checklist + smoke-test docs: see [TESTING.md](TESTING.md).
+- Shared-module unit tests: `.\gradlew.bat :shared:allTests`.
+
+Versioning: bump `versionCode` and `versionName` in [mobile_clients/android/build.gradle.kts](mobile_clients/android/build.gradle.kts). The debug build automatically picks up `-debug` suffix on the version name.

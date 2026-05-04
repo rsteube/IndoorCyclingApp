@@ -61,7 +61,9 @@
       "Bash(adb -s 82bc875c shell pm clear app.indoorbike)",
       "Bash(adb -s 82bc875c logcat -c)",
       "Bash(adb -s 82bc875c logcat -d -t 500 *:E)",
-      "Bash(adb -s 82bc875c logcat -d -t 1000)"
+      "Bash(adb -s 82bc875c logcat -d -t 1000)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:installDebug :mobile_clients:android:assembleRelease 2>&1)",
+      "PowerShell(.\\\\scripts\\\\smoke_test.ps1 -DeviceId 82bc875c -SkipBuild 2>&1)"
     ]
   }
 }
