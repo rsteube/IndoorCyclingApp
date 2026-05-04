@@ -63,7 +63,10 @@
       "Bash(adb -s 82bc875c logcat -d -t 500 *:E)",
       "Bash(adb -s 82bc875c logcat -d -t 1000)",
       "PowerShell(.\\\\gradlew.bat :mobile_clients:android:installDebug :mobile_clients:android:assembleRelease 2>&1)",
-      "PowerShell(.\\\\scripts\\\\smoke_test.ps1 -DeviceId 82bc875c -SkipBuild 2>&1)"
+      "PowerShell(.\\\\scripts\\\\smoke_test.ps1 -DeviceId 82bc875c -SkipBuild 2>&1)",
+      "Bash(./gradlew.bat :shared:allTests)",
+      "Bash(./gradlew.bat :shared:testDebugUnitTest --rerun)",
+      "Bash(awk '{s+=$1} END {print \"Total tests:\", s}')"
     ]
   }
 }
