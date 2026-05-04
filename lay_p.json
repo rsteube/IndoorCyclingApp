@@ -1,0 +1,61 @@
+[
+  {
+    "text": "Find Your Trainer",
+    "center": "[540,761]",
+    "key": 3506402
+  },
+  {
+    "text": "Make sure your smart trainer is plugged in and awake.",
+    "center": "[540,902]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1118]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1307]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[112,267]",
+    "key": 3506402
+  },
+  {
+    "text": "PAIRING",
+    "center": "[293,219]",
+    "key": 3506402
+  },
+  {
+    "text": "CONNECT TRAINER",
+    "center": "[416,294]",
+    "key": 3506402
+  },
+  {
+    "text": "Scan for Devices",
+    "center": "[576,1118]",
+    "key": 3506402
+  },
+  {
+    "text": "Use Mock Trainer",
+    "center": "[540,1307]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Back",
+    "center": "[112,267]",
+    "key": 3506402
+  }
+]

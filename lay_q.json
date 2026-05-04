@@ -1,0 +1,141 @@
+[
+  {
+    "interactions": [
+      "scrollable"
+    ],
+    "center": "[540,1182]",
+    "bounds": "[0,371][1080,1993]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[112,267]",
+    "key": 3506402
+  },
+  {
+    "text": "RECOVERY",
+    "center": "[323,219]",
+    "key": 3506402
+  },
+  {
+    "text": "APP TEST",
+    "center": "[312,294]",
+    "key": 3506402
+  },
+  {
+    "text": "STEPS · 3",
+    "center": "[166,1375]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,2099]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Back",
+    "center": "[112,267]",
+    "key": 3506402
+  },
+  {
+    "text": "WORKOUT PROFILE",
+    "center": "[327,449]",
+    "key": 3506402
+  },
+  {
+    "text": "1 min",
+    "center": "[170,527]",
+    "key": 3506402
+  },
+  {
+    "text": "NORMALIZED",
+    "center": "[851,447]",
+    "key": 3506402
+  },
+  {
+    "text": "72 W",
+    "center": "[917,527]",
+    "key": 3506402
+  },
+  {
+    "text": "0:00",
+    "center": "[153,956]",
+    "key": 3506402
+  },
+  {
+    "text": "1 min",
+    "center": "[915,956]",
+    "key": 3506402
+  },
+  {
+    "text": "TSS",
+    "center": "[133,1145]",
+    "key": 3506402
+  },
+  {
+    "text": "0",
+    "center": "[109,1220]",
+    "key": 3506402
+  },
+  {
+    "text": "IF",
+    "center": "[450,1145]",
+    "key": 3506402
+  },
+  {
+    "text": "0.36",
+    "center": "[477,1220]",
+    "key": 3506402
+  },
+  {
+    "text": "KJ",
+    "center": "[780,1145]",
+    "key": 3506402
+  },
+  {
+    "text": "2",
+    "center": "[769,1220]",
+    "key": 3506402
+  },
+  {
+    "text": "10s · 60 W",
+    "center": "[645,1523]",
+    "key": 3506402
+  },
+  {
+    "text": "10s · 100 W",
+    "center": "[645,1713]",
+    "key": 3506402
+  },
+  {
+    "text": "10s · 40 W",
+    "center": "[645,1903]",
+    "key": 3506402
+  },
+  {
+    "text": "Start workout",
+    "center": "[576,2099]",
+    "key": 3506402
+  },
+  {
+    "text": "Z1",
+    "center": "[216,1523]",
+    "key": 3506402
+  },
+  {
+    "text": "Z1",
+    "center": "[216,1713]",
+    "key": 3506402
+  },
+  {
+    "text": "Z1",
+    "center": "[216,1903]",
+    "key": 3506402
+  }
+]

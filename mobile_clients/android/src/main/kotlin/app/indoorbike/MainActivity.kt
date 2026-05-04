@@ -6,18 +6,28 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -85,7 +95,10 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = CadenceColors.Bg0
                 ) {
-                    var workouts by remember { mutableStateOf<List<Workout>>(emptyList()) }
+                    // null = still loading from assets; emptyList() = loaded but no
+                    // workouts (genuine empty state). Distinguishing the two prevents
+                    // the "no workouts saved yet" message from flashing during launch.
+                    var workouts by remember { mutableStateOf<List<Workout>?>(null) }
                     LaunchedEffect(Unit) {
                         workouts = withContext(Dispatchers.IO) {
                             val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
@@ -94,9 +107,12 @@ class MainActivity : ComponentActivity() {
                     }
                     CompositionLocalProvider(
                         LocalAppContainer provides container,
-                        LocalWorkouts provides workouts,
+                        LocalWorkouts provides (workouts ?: emptyList()),
                     ) {
-                        AppNavigator(workouts = workouts)
+                        when (val w = workouts) {
+                            null -> LoadingState()
+                            else -> AppNavigator(workouts = w)
+                        }
                     }
                 }
             }
@@ -264,6 +280,33 @@ private fun EmptyState() {
             text = "No workouts saved yet.\nDrop a workouts*.json into assets/ to start.",
             color = CadenceColors.Fg2,
             style = CadenceType.body
+        )
+    }
+}
+
+@Composable
+private fun LoadingState() {
+    val transition = rememberInfiniteTransition(label = "splashPulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "splashPulseAlpha"
+    )
+    Box(
+        modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.DirectionsBike,
+            contentDescription = null,
+            tint = CadenceColors.Brand500,
+            modifier = Modifier
+                .alpha(pulse)
+                .size(56.dp)
         )
     }
 }

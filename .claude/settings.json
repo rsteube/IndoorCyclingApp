@@ -37,7 +37,10 @@
       "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q)",
       "Bash(android run *)",
       "Bash(android layout *)",
-      "Bash(adb shell *)"
+      "Bash(adb shell *)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\juhan\\\\vibes\\\\cycling_app\" -Recurse -Filter \"*.kt\")",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q 2>&1)"
     ]
   }
 }

@@ -147,7 +147,10 @@ fun SettingsTab(
                 Spacer(modifier = Modifier.height(Spacing.s3))
                 SecondaryBtn(
                     text = "Forget Trainer",
-                    onClick = { trainerManager.forgetTrainer() },
+                    onClick = {
+                        trainerManager.forgetTrainer()
+                        container.userSettings.setPairedTrainerId(null)
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
             }

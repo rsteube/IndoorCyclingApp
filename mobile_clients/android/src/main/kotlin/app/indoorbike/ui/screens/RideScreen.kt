@@ -12,10 +12,12 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -344,7 +346,9 @@ fun RideScreen(
                     transitionSpec = {
                         // Each tick punches in oversized with a spring overshoot,
                         // while the previous tick shrinks and fades so the beat lands.
-                        (scaleIn(
+                        // SizeTransform is disabled so the content box doesn't grow/
+                        // shrink between digits — keeps every glyph centered in place.
+                        ((scaleIn(
                             initialScale = 2.6f,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -355,8 +359,9 @@ fun RideScreen(
                                 targetScale = 0.4f,
                                 animationSpec = tween(220, easing = FastOutSlowInEasing)
                             ) + fadeOut(tween(180))
-                        )
+                        )).using(SizeTransform(clip = false) { _, _ -> snap() })
                     },
+                    contentAlignment = Alignment.Center,
                     label = "countdownNumber"
                 ) { value ->
                     val isGo = value <= 0
@@ -364,7 +369,8 @@ fun RideScreen(
                         text = if (isGo) "GO!" else value.toString(),
                         fontSize = if (isGo) 160.sp else 200.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (isGo) CadenceColors.Success else CadenceColors.Brand500
+                        color = if (isGo) CadenceColors.Success else CadenceColors.Brand500,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
             }

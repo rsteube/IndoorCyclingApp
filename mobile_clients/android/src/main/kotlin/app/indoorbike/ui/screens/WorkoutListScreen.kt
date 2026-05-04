@@ -45,6 +45,7 @@ import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
+import app.indoorbike.ui.components.HrmHeartIndicator
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.TrainerStatusStrip
 import app.indoorbike.ui.components.UnfinishedRideBanner
@@ -76,6 +77,8 @@ fun WorkoutListScreen(
         else summaries.filter { it.tag.equals(selectedFilter, ignoreCase = true) }
     }
 
+    val hrmState by container.heartRateMonitor.connectionState.collectAsState()
+
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         AppBar(
             title = "Pick a workout",
@@ -95,7 +98,8 @@ fun WorkoutListScreen(
                         modifier = Modifier.size(18.dp)
                     )
                 }
-            }
+            },
+            trailing = { HrmHeartIndicator(state = hrmState) }
         )
 
         UnfinishedRideBanner(

@@ -50,7 +50,12 @@ fun TrainerPairingScreen(
     val discoveredDevices by trainerManager.discoveredDevices.collectAsState()
 
     LaunchedEffect(connectionState) {
-        if (connectionState == TrainerConnectionState.Connected) onBack()
+        if (connectionState == TrainerConnectionState.Connected) {
+            // Persist the paired ID so the next launch auto-connects.
+            val id = trainerManager.pairedTrainerId.value
+            if (id != null && id != "mock") container.userSettings.setPairedTrainerId(id)
+            onBack()
+        }
     }
 
     DisposableEffect(Unit) {

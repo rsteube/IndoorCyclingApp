@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -68,6 +69,42 @@ class HeartRateMonitor {
     private var observeJob: Job? = null
     private var activePeripheral: Peripheral? = null
     private val advertisementById = mutableMapOf<String, Advertisement>()
+
+    /**
+     * Try to silently re-connect to a previously paired HRM at app launch.
+     * Mirrors [TrainerManager.autoConnectIfPaired]: scans briefly for [pairedId]
+     * and connects when seen, otherwise drops back to Disconnected after [timeoutMillis].
+     */
+    fun autoConnectIfPaired(pairedId: String?, timeoutMillis: Long = 15_000) {
+        if (pairedId.isNullOrBlank()) return
+        if (_connectionState.value != HrmConnectionState.Disconnected) return
+
+        _pairedDeviceId.value = pairedId
+        _connectionState.value = HrmConnectionState.Scanning
+        _discoveredDevices.value = emptyList()
+        advertisementById.clear()
+
+        scanJob?.cancel()
+        scanJob = scope.launch {
+            val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+                try {
+                    Scanner {
+                        filters = listOf(Filter.Service(uuidFrom(HEART_RATE_SERVICE_UUID)))
+                    }.advertisements
+                        .onEach { addDiscovered(it) }
+                        .firstOrNull { it.identifier == pairedId }
+                } catch (e: Exception) {
+                    Log.w(TAG, "HRM auto-connect scan failed", e)
+                    null
+                }
+            }
+            if (found != null) {
+                connectInternal(found)
+            } else if (_connectionState.value == HrmConnectionState.Scanning) {
+                _connectionState.value = HrmConnectionState.Disconnected
+            }
+        }
+    }
 
     fun startScan() {
         if (_connectionState.value == HrmConnectionState.Scanning ||

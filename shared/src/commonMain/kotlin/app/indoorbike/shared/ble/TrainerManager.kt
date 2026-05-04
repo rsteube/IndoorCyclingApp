@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -139,6 +140,47 @@ class TrainerManager {
         _connectionState.value = TrainerConnectionState.Connected
         activePeripheral = null
         startMockTelemetryStream()
+    }
+
+    /**
+     * Try to silently re-connect to a previously paired trainer at app launch.
+     * Scans briefly for an advertisement matching [pairedId]; if found within
+     * [timeoutMillis], connects. Otherwise drops back to Disconnected so the
+     * UI doesn't get stuck in Scanning forever.
+     *
+     * No-op for the "mock" trainer pseudo-id and when already connected/scanning.
+     */
+    fun autoConnectIfPaired(pairedId: String?, timeoutMillis: Long = 15_000) {
+        if (pairedId.isNullOrBlank() || pairedId == "mock") return
+        if (_connectionState.value != TrainerConnectionState.Disconnected) return
+
+        _pairedTrainerId.value = pairedId
+        _connectionState.value = TrainerConnectionState.Scanning
+        _discoveredDevices.value = emptyList()
+
+        scanJob?.cancel()
+        scanJob = scope.launch {
+            val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+                try {
+                    Scanner {
+                        filters = listOf(
+                            Filter.Service(uuidFrom(CYCLING_POWER_SERVICE)),
+                            Filter.Service(uuidFrom(FITNESS_MACHINE_SERVICE))
+                        )
+                    }.advertisements
+                        .onEach { addDiscovered(it) }
+                        .firstOrNull { it.identifier == pairedId }
+                } catch (e: Exception) {
+                    Log.w(TAG, "auto-connect scan failed", e)
+                    null
+                }
+            }
+            if (found != null) {
+                connectInternal(found)
+            } else if (_connectionState.value == TrainerConnectionState.Scanning) {
+                _connectionState.value = TrainerConnectionState.Disconnected
+            }
+        }
     }
 
     fun startScan() {

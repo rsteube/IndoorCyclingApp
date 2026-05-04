@@ -1,0 +1,292 @@
+[
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[151,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[410,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[669,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[928,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "scrollable"
+    ],
+    "center": "[540,650]",
+    "bounds": "[0,599][1080,701]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "scrollable"
+    ],
+    "center": "[540,1412]",
+    "bounds": "[0,734][1080,2091]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Ride",
+    "center": "[151,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "Ride",
+    "center": "[151,2218]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "History",
+    "center": "[410,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "History",
+    "center": "[411,2218]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Progress",
+    "center": "[669,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "Progress",
+    "center": "[669,2218]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Settings",
+    "center": "[928,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "Settings",
+    "center": "[928,2218]",
+    "key": 3506402
+  },
+  {
+    "text": "MONDAY",
+    "center": "[278,219]",
+    "key": 3506402
+  },
+  {
+    "text": "PICK A WORKOUT",
+    "center": "[376,294]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Heart rate monitor not connected",
+    "center": "[993,266]",
+    "key": 3506402
+  },
+  {
+    "text": "Mock Trainer",
+    "center": "[394,436]",
+    "key": 3506402
+  },
+  {
+    "text": "Connected",
+    "center": "[338,494]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[121,650]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[354,650]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[658,650]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[922,650]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1064,650]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,927]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1342]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1757]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,2040]",
+    "key": 3506402
+  },
+  {
+    "text": "All",
+    "center": "[121,650]",
+    "key": 3506402
+  },
+  {
+    "text": "Endurance",
+    "center": "[354,650]",
+    "key": 3506402
+  },
+  {
+    "text": "Recovery",
+    "center": "[658,650]",
+    "key": 3506402
+  },
+  {
+    "text": "Tempo",
+    "center": "[922,650]",
+    "key": 3506402
+  },
+  {
+    "text": "RECOVERY",
+    "center": "[223,803]",
+    "key": 3506402
+  },
+  {
+    "text": "App Test",
+    "center": "[231,870]",
+    "key": 3506402
+  },
+  {
+    "text": "ENDURANCE",
+    "center": "[244,1218]",
+    "key": 3506402
+  },
+  {
+    "text": "Endurance Base Builder",
+    "center": "[442,1285]",
+    "key": 3506402
+  },
+  {
+    "text": "THRESHOLD",
+    "center": "[239,1633]",
+    "key": 3506402
+  },
+  {
+    "text": "Threshold Intervals 3x5",
+    "center": "[445,1700]",
+    "key": 3506402
+  },
+  {
+    "text": "VO2 MAX",
+    "center": "[207,2048]",
+    "key": 3506402
+  },
+  {
+    "text": "VO2 Max Bursts",
+    "center": "[333,2085]",
+    "key": 3506402
+  },
+  {
+    "text": "1 MIN",
+    "center": "[193,1035]",
+    "key": 3506402
+  },
+  {
+    "text": "TSS 0",
+    "center": "[395,1035]",
+    "key": 3506402
+  },
+  {
+    "text": "IF 0.36",
+    "center": "[622,1035]",
+    "key": 3506402
+  },
+  {
+    "text": "30 MIN",
+    "center": "[205,1450]",
+    "key": 3506402
+  },
+  {
+    "text": "TSS 18",
+    "center": "[431,1450]",
+    "key": 3506402
+  },
+  {
+    "text": "IF 0.60",
+    "center": "[670,1450]",
+    "key": 3506402
+  },
+  {
+    "text": "31 MIN",
+    "center": "[205,1865]",
+    "key": 3506402
+  },
+  {
+    "text": "TSS 33",
+    "center": "[431,1865]",
+    "key": 3506402
+  },
+  {
+    "text": "IF 0.79",
+    "center": "[670,1865]",
+    "key": 3506402
+  }
+]

@@ -84,6 +84,14 @@ class IndoorBikeApp : Application() {
         // Surface any unfinished ride snapshot to the UI (banner) by populating
         // the session manager's persistedSnapshot StateFlow from disk.
         initScope.launch { container.sessionManager.loadPersistedSnapshot() }
+        // Silently re-connect to previously paired BLE devices so users don't
+        // have to dig into settings every launch.
+        initScope.launch {
+            container.trainerManager.autoConnectIfPaired(container.userSettings.pairedTrainerId.value)
+        }
+        initScope.launch {
+            container.heartRateMonitor.autoConnectIfPaired(container.userSettings.pairedHrmId.value)
+        }
     }
 
     override fun onTerminate() {
