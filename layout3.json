@@ -1,0 +1,38 @@
+[
+  {
+    "text": "Abandon this ride?",
+    "center": "[431,954]",
+    "key": 3506402
+  },
+  {
+    "text": "Threshold Intervals 3x5 — 6:11 of 31:00 won\u0027t be saved. This can\u0027t be undone.",
+    "center": "[540,1155]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[330,1378]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[749,1378]",
+    "key": 3506402
+  },
+  {
+    "text": "Keep ride",
+    "center": "[330,1378]",
+    "key": 3506402
+  },
+  {
+    "text": "Abandon",
+    "center": "[750,1378]",
+    "key": 3506402
+  }
+]

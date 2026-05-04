@@ -143,7 +143,7 @@ class RideSessionService : Service() {
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Indoor Bike — Ride in progress")
             .setContentText(line)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_bike)
             .setOngoing(true)
             .setContentIntent(pi)
             .setOnlyAlertOnce(true)

@@ -240,6 +240,8 @@ class WorkoutSessionManager(
                 delay(1000)
                 _countdownSeconds.value -= 1
             }
+            // Hold "GO!" on screen so the impact lands before the ride UI takes over.
+            delay(2000)
             startActiveWorkout()
         }
     }

@@ -10,13 +10,19 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -326,19 +332,41 @@ fun RideScreen(
         AnimatedVisibility(
             visible = state == WorkoutState.Countdown,
             enter = fadeIn(),
-            exit = fadeOut(),
+            exit = fadeOut(tween(500)),
             modifier = Modifier.align(Alignment.Center)
         ) {
             Box(
                 modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0.copy(alpha = 0.9f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (countdown > 0) countdown.toString() else "GO!",
-                    fontSize = 120.sp,
-                    fontWeight = FontWeight.Black,
-                    color = CadenceColors.Brand500
-                )
+                AnimatedContent(
+                    targetState = countdown,
+                    transitionSpec = {
+                        // Each tick punches in oversized with a spring overshoot,
+                        // while the previous tick shrinks and fades so the beat lands.
+                        (scaleIn(
+                            initialScale = 2.6f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + fadeIn(tween(120))).togetherWith(
+                            scaleOut(
+                                targetScale = 0.4f,
+                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                            ) + fadeOut(tween(180))
+                        )
+                    },
+                    label = "countdownNumber"
+                ) { value ->
+                    val isGo = value <= 0
+                    Text(
+                        text = if (isGo) "GO!" else value.toString(),
+                        fontSize = if (isGo) 160.sp else 200.sp,
+                        fontWeight = FontWeight.Black,
+                        color = if (isGo) CadenceColors.Success else CadenceColors.Brand500
+                    )
+                }
             }
         }
 

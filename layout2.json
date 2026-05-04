@@ -1,0 +1,290 @@
+[
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[151,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[410,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[669,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[928,2182]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1025]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "scrollable"
+    ],
+    "center": "[540,1242]",
+    "bounds": "[0,1191][1080,1293]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "scrollable"
+    ],
+    "center": "[540,1708]",
+    "bounds": "[0,1326][1080,2091]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Ride",
+    "center": "[151,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "Ride",
+    "center": "[151,2218]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "History",
+    "center": "[410,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "History",
+    "center": "[411,2218]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Progress",
+    "center": "[669,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "Progress",
+    "center": "[669,2218]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Settings",
+    "center": "[928,2154]",
+    "key": 3506402
+  },
+  {
+    "text": "Settings",
+    "center": "[928,2218]",
+    "key": 3506402
+  },
+  {
+    "text": "MONDAY",
+    "center": "[278,219]",
+    "key": 3506402
+  },
+  {
+    "text": "PICK A WORKOUT",
+    "center": "[376,294]",
+    "key": 3506402
+  },
+  {
+    "text": "UNFINISHED RIDE",
+    "center": "[369,457]",
+    "key": 3506402
+  },
+  {
+    "text": "Threshold Intervals 3x5",
+    "center": "[466,539]",
+    "key": 3506402
+  },
+  {
+    "text": "6:11 / 31:00 · 19% complete",
+    "center": "[426,661]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[309,782]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[770,782]",
+    "key": 3506402
+  },
+  {
+    "text": "Add a trainer",
+    "center": "[402,972]",
+    "key": 3506402
+  },
+  {
+    "text": "Pair your Wahoo Kickr or use the mock trainer",
+    "center": "[582,1060]",
+    "key": 3506402
+  },
+  {
+    "text": "›",
+    "center": "[977,1026]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[121,1242]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[354,1242]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[658,1242]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[922,1242]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1064,1242]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1519]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[540,1921]",
+    "key": 3506402
+  },
+  {
+    "text": "Continue",
+    "center": "[340,782]",
+    "key": 3506402
+  },
+  {
+    "text": "Abandon",
+    "center": "[771,782]",
+    "key": 3506402
+  },
+  {
+    "text": "All",
+    "center": "[121,1242]",
+    "key": 3506402
+  },
+  {
+    "text": "Endurance",
+    "center": "[354,1242]",
+    "key": 3506402
+  },
+  {
+    "text": "Recovery",
+    "center": "[658,1242]",
+    "key": 3506402
+  },
+  {
+    "text": "Tempo",
+    "center": "[922,1242]",
+    "key": 3506402
+  },
+  {
+    "text": "RECOVERY",
+    "center": "[223,1395]",
+    "key": 3506402
+  },
+  {
+    "text": "App Test",
+    "center": "[231,1462]",
+    "key": 3506402
+  },
+  {
+    "text": "ENDURANCE",
+    "center": "[244,1810]",
+    "key": 3506402
+  },
+  {
+    "text": "Endurance Base Builder",
+    "center": "[442,1877]",
+    "key": 3506402
+  },
+  {
+    "text": "1 MIN",
+    "center": "[193,1627]",
+    "key": 3506402
+  },
+  {
+    "text": "TSS 0",
+    "center": "[395,1627]",
+    "key": 3506402
+  },
+  {
+    "text": "IF 0.36",
+    "center": "[622,1627]",
+    "key": 3506402
+  },
+  {
+    "text": "30 MIN",
+    "center": "[205,2042]",
+    "key": 3506402
+  },
+  {
+    "text": "TSS 18",
+    "center": "[431,2042]",
+    "key": 3506402
+  },
+  {
+    "text": "IF 0.60",
+    "center": "[670,2042]",
+    "key": 3506402
+  }
+]
