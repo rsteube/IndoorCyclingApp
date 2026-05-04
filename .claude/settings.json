@@ -40,7 +40,9 @@
       "Bash(adb shell *)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\juhan\\\\vibes\\\\cycling_app\" -Recurse -Filter \"*.kt\")",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q 2>&1)"
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug -q 2>&1)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\juhan\\\\vibes\\\\cycling_app\" -Recurse -Filter \"WorkoutSessionManager.kt\" -ErrorAction SilentlyContinue)",
+      "Bash(xargs grep *)"
     ]
   }
 }

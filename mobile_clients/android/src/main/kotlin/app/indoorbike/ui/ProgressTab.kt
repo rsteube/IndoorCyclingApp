@@ -7,12 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
-import androidx.compose.material.icons.outlined.AccessTime
-import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.EmojiEvents
-import androidx.compose.material.icons.outlined.Flag
-import androidx.compose.material.icons.outlined.LocalFireDepartment
-import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -23,13 +17,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.shared.progression.Badge
-import app.indoorbike.shared.progression.computeBadges
+import app.indoorbike.shared.progression.WeekActivity
 import app.indoorbike.shared.progression.computeRiderLevel
 import app.indoorbike.shared.progression.computeStreak
 import app.indoorbike.shared.util.getCurrentEpochMillis
@@ -40,16 +31,17 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import kotlin.math.roundToInt
 
 @Composable
 fun ProgressTab() {
     val container = LocalAppContainer.current
     val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
+    val weightKg by container.userSettings.weightKg.collectAsState()
     val now = remember { getCurrentEpochMillis() }
     val tzOffset = remember { TimeZone.getDefault().getOffset(now).toLong() }
     val streak = remember(sessions) { computeStreak(sessions, now, timeZoneOffsetMs = tzOffset) }
-    val level = remember(sessions) { computeRiderLevel(sessions) }
-    val badges = remember(sessions) { computeBadges(sessions, now, timeZoneOffsetMs = tzOffset) }
+    val level = remember(sessions, weightKg) { computeRiderLevel(sessions, weightKg) }
 
     Column(
         modifier = Modifier
@@ -58,7 +50,7 @@ fun ProgressTab() {
     ) {
         AppBar(
             title = "Your Progress",
-            eyebrow = "Stats & Achievements"
+            eyebrow = "Stats & XP"
         )
 
         UnfinishedRideBanner(
@@ -75,17 +67,16 @@ fun ProgressTab() {
             contentPadding = PaddingValues(horizontal = Spacing.s5, vertical = Spacing.s4),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
-            item { StreakCard(streak.currentDays, streak.longestDays, streak.recentDayActivity) }
-            item { LevelCard(level.name, level.nextName, level.totalKj, level.tierFloorKj, level.tierCeilingKj, level.progressFraction) }
+            item { WeeklyStreakCard(streak.currentWeeks, streak.longestWeeks, streak.recentWeekActivity) }
             item {
-                Text(
-                    text = "RECENT BADGES",
-                    style = CadenceType.eyebrow,
-                    color = CadenceColors.Fg3,
-                    modifier = Modifier.padding(top = Spacing.s2)
+                LevelCard(
+                    level = level.level,
+                    totalXp = level.totalXp,
+                    floorXp = level.levelFloorXp,
+                    ceilingXp = level.levelCeilingXp,
+                    progress = level.progressFraction
                 )
             }
-            item { BadgesGrid(badges) }
         }
     }
 }
@@ -112,7 +103,7 @@ private fun EmptyProgress() {
             )
             Spacer(modifier = Modifier.height(Spacing.s2))
             Text(
-                text = "Complete workouts to track your fitness\ngains and achievements over time.",
+                text = "Complete workouts to track your fitness\ngains and XP over time.",
                 style = CadenceType.body,
                 color = CadenceColors.Fg3,
                 textAlign = TextAlign.Center
@@ -122,7 +113,7 @@ private fun EmptyProgress() {
 }
 
 @Composable
-private fun StreakCard(currentDays: Int, longestDays: Int, recent: List<Boolean>) {
+private fun WeeklyStreakCard(currentWeeks: Int, longestWeeks: Int, recent: List<WeekActivity>) {
     val shape = RoundedCornerShape(Radii.lg)
     Box(
         modifier = Modifier
@@ -133,58 +124,76 @@ private fun StreakCard(currentDays: Int, longestDays: Int, recent: List<Boolean>
     ) {
         Column(modifier = Modifier.padding(Spacing.s5)) {
             Text(
-                text = "CURRENT STREAK",
+                text = "WEEKLY STREAK",
                 style = CadenceType.eyebrow,
                 color = CadenceColors.Fg3
             )
             Spacer(modifier = Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    text = currentDays.toString(),
+                    text = currentWeeks.toString(),
                     style = CadenceType.displayM,
                     color = CadenceColors.Fg1
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (currentDays == 1) "day" else "days",
+                    text = if (currentWeeks == 1) "week" else "weeks",
                     style = CadenceType.h3,
                     color = CadenceColors.Fg3,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "BEST · $longestDays",
+                    text = "BEST · $longestWeeks",
                     style = CadenceType.tick,
                     color = CadenceColors.Fg3
                 )
             }
             Spacer(modifier = Modifier.height(Spacing.s4))
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                recent.forEachIndexed { i, active ->
-                    val intensity = if (active) (0.4f + i * 0.04f).coerceAtMost(1f) else 1f
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(
-                                if (active) CadenceColors.Brand500.copy(alpha = intensity)
-                                else CadenceColors.Bg3
-                            )
-                    )
+                recent.forEach { week ->
+                    WeekBox(daysActive = week.daysActive, modifier = Modifier.weight(1f))
                 }
             }
         }
     }
 }
 
+/**
+ * One box on the streak chart = one week. Fills bottom-up by 1/7 per ride day,
+ * so a 4-day week is just over half full. Empty weeks read as a flat dim base.
+ */
+@Composable
+private fun WeekBox(daysActive: Int, modifier: Modifier = Modifier) {
+    val safeDays = daysActive.coerceIn(0, 7)
+    val fillFraction = safeDays / 7f
+    Box(
+        modifier = modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(4.dp))
+            .background(CadenceColors.Bg3)
+    ) {
+        // Bottom-anchored fill: place a child Box that fills (fraction) of the
+        // height and align it to the bottom of the parent.
+        if (safeDays > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .fillMaxHeight(fillFraction)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(CadenceColors.Brand500)
+            )
+        }
+    }
+}
+
 @Composable
 private fun LevelCard(
-    name: String,
-    nextName: String,
-    totalKj: Long,
-    floorKj: Long,
-    ceilingKj: Long,
+    level: Int,
+    totalXp: Double,
+    floorXp: Double,
+    ceilingXp: Double,
     progress: Float
 ) {
     val shape = RoundedCornerShape(Radii.lg)
@@ -204,10 +213,10 @@ private fun LevelCard(
             Column {
                 Text(text = "RIDER LEVEL", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(text = name, style = CadenceType.h2, color = CadenceColors.Fg1)
+                Text(text = "Level $level", style = CadenceType.h2, color = CadenceColors.Fg1)
             }
             Text(
-                text = "$totalKj / $ceilingKj kJ",
+                text = "${formatXp(totalXp)} / ${formatXp(ceilingXp)} XP",
                 style = CadenceType.tick,
                 color = CadenceColors.Brand500
             )
@@ -232,104 +241,43 @@ private fun LevelCard(
             )
         }
         Spacer(modifier = Modifier.height(Spacing.s2))
+        val toGo = (ceilingXp - totalXp).coerceAtLeast(0.0)
         Text(
-            text = "NEXT · ${nextName.uppercase()}",
+            text = "${formatXp(toGo)} XP TO LEVEL ${level + 1}",
             style = CadenceType.tick,
             color = CadenceColors.Fg3
         )
-    }
-}
-
-@Composable
-private fun BadgesGrid(badges: List<Badge>) {
-    if (badges.isEmpty()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(Radii.md))
-                .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Line1, RoundedCornerShape(Radii.md))
-                .padding(Spacing.s5),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = "Complete a ride to start unlocking badges.",
-                style = CadenceType.small,
-                color = CadenceColors.Fg3,
-                textAlign = TextAlign.Center
-            )
-        }
-        return
-    }
-    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-        badges.chunked(3).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
-                row.forEach { b ->
-                    BadgeCell(b, modifier = Modifier.weight(1f))
-                }
-                repeat(3 - row.size) { Spacer(modifier = Modifier.weight(1f)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BadgeCell(badge: Badge, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(vertical = Spacing.s4, horizontal = Spacing.s2),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            CadenceColors.Brand500.copy(alpha = 0.20f),
-                            CadenceColors.Brand400.copy(alpha = 0.20f)
-                        )
-                    )
-                )
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(999.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = iconForBadge(badge.iconHint),
-                contentDescription = null,
-                tint = CadenceColors.Brand500,
-                modifier = Modifier.size(20.dp)
-            )
-        }
+        Spacer(modifier = Modifier.height(Spacing.s3))
         Text(
-            text = badge.title,
-            style = CadenceType.bodyStrong,
-            color = CadenceColors.Fg1,
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
-        Text(
-            text = badge.subtitle,
+            text = "XP = Watt-minutes per kilogram. Heavier efforts and longer rides earn more.",
             style = CadenceType.small,
-            color = CadenceColors.Fg3,
-            textAlign = TextAlign.Center,
-            maxLines = 2
+            color = CadenceColors.Fg3
         )
+        // Floor reference (small, debug-y but useful) — not shown when level is 0
+        // because the floor is also 0 and the progress bar already says it.
+        if (level > 0) {
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "Level $level unlocked at ${formatXp(floorXp)} XP",
+                style = CadenceType.small,
+                color = CadenceColors.Fg4
+            )
+        }
     }
 }
 
-private fun iconForBadge(hint: String): ImageVector = when (hint) {
-    "flag" -> Icons.Outlined.Flag
-    "trophy" -> Icons.Outlined.EmojiEvents
-    "clock" -> Icons.Outlined.AccessTime
-    "bolt" -> Icons.Outlined.Bolt
-    "fire" -> Icons.Outlined.LocalFireDepartment
-    "flame" -> Icons.Outlined.Whatshot
-    else -> Icons.Outlined.EmojiEvents
+private fun formatXp(xp: Double): String {
+    // Below 1000 show whole numbers (avoid noisy decimals on small values);
+    // above 1000 use a "1.2k" form so the headline doesn't blow out width.
+    return when {
+        xp < 1_000.0 -> xp.roundToInt().toString()
+        xp < 100_000.0 -> {
+            val k = xp / 1_000.0
+            // one decimal, e.g. 12.4k
+            val whole = k.toInt()
+            val frac = ((k - whole) * 10).toInt()
+            if (frac == 0) "${whole}k" else "$whole.${frac}k"
+        }
+        else -> "${(xp / 1_000.0).roundToInt()}k"
+    }
 }

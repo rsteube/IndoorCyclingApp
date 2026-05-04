@@ -17,6 +17,13 @@ data class ActiveSessionSnapshot(
     val currentSegmentIndex: Int,
     val elapsedInSegment: Int,
     val state: WorkoutState,
+    /**
+     * Wall-clock seconds the rider has actually spent in [WorkoutState.Active]
+     * — distinct from [elapsedSeconds], which advances when segments are
+     * skipped. Defaulted for backward-compatibility with snapshots written
+     * before this field existed.
+     */
+    val actualRideSeconds: Int = 0,
 )
 
 /**

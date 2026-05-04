@@ -104,6 +104,10 @@ fun SettingsTab(
 
             Spacer(modifier = Modifier.height(Spacing.s3))
 
+            WeightRow()
+
+            Spacer(modifier = Modifier.height(Spacing.s3))
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -113,8 +117,8 @@ fun SettingsTab(
                     .padding(14.dp)
             ) {
                 Text(
-                    text = "Don't know your FTP? Try a 20-minute all-out test ride and " +
-                            "take 95 % of your average power as a starting estimate.",
+                    text = "FTP gauges your sustainable hour-long power; weight scales it into W/kg and your XP. " +
+                            "Don't know your FTP? Try a 20-minute all-out test ride and take 95 % of the average.",
                     style = CadenceType.small,
                     color = CadenceColors.Fg3
                 )
@@ -293,6 +297,102 @@ private fun HrmStatusStrip(
                 .background(if (isConnected) CadenceColors.Success else CadenceColors.Fg4)
         )
     }
+}
+
+@Composable
+private fun WeightRow() {
+    val container = LocalAppContainer.current
+    val userSettings = container.userSettings
+    val weight by userSettings.weightKg.collectAsState()
+    // Show one decimal but accept either "75" or "75.5". remember key on the
+    // committed value so external changes (e.g. import) reset the field.
+    var weightInput by remember(weight) { mutableStateOf(formatWeightForInput(weight)) }
+
+    fun commit() {
+        val parsed = weightInput.replace(',', '.').toFloatOrNull()
+        if (parsed == null ||
+            parsed !in app.indoorbike.shared.settings.MIN_WEIGHT_KG..app.indoorbike.shared.settings.MAX_WEIGHT_KG
+        ) {
+            weightInput = formatWeightForInput(weight)
+        } else if (parsed != weight) {
+            userSettings.setWeightKg(parsed)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Body Weight", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Used for W/kg and XP scoring", style = CadenceType.body, color = CadenceColors.Fg3)
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            androidx.compose.foundation.text.BasicTextField(
+                value = weightInput,
+                onValueChange = { newValue ->
+                    // Allow digits and at most one separator (. or ,), max 5 chars (e.g. "150.5")
+                    val filtered = buildString {
+                        var seenDot = false
+                        for (c in newValue.take(6)) {
+                            if (c.isDigit()) append(c)
+                            else if ((c == '.' || c == ',') && !seenDot) {
+                                append('.')
+                                seenDot = true
+                            }
+                        }
+                    }
+                    weightInput = filtered
+                },
+                textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = { commit() }
+                ),
+                singleLine = true,
+                modifier = Modifier
+                    .width(110.dp)
+                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                decorationBox = { innerTextField ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(Radii.sm))
+                            .background(CadenceColors.Bg2)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                            innerTextField()
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("kg", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                    }
+                }
+            )
+        }
+    }
+}
+
+private fun formatWeightForInput(kg: Float): String {
+    // Strip trailing ".0" so a whole-number weight reads "75", not "75.0".
+    val rounded = kotlin.math.round(kg * 10f) / 10f
+    return if (rounded == kotlin.math.floor(rounded)) rounded.toInt().toString() else rounded.toString()
 }
 
 @Composable

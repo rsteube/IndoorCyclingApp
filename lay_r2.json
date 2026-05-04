@@ -1,0 +1,121 @@
+[
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[193,100]",
+    "key": 3506402
+  },
+  {
+    "text": "App Test",
+    "center": "[1016,73]",
+    "key": 3506402
+  },
+  {
+    "text": "STANDBY · PEDAL TO START",
+    "center": "[1015,139]",
+    "key": 3506402
+  },
+  {
+    "text": "0:00  /  0:30",
+    "center": "[2091,100]",
+    "key": 3506402
+  },
+  {
+    "text": "POWER · ERG IDLE",
+    "center": "[1229,223]",
+    "key": 3506402
+  },
+  {
+    "text": "0",
+    "center": "[1177,441]",
+    "key": 3506402
+  },
+  {
+    "text": " W",
+    "center": "[1273,536]",
+    "key": 3506402
+  },
+  {
+    "text": "—",
+    "center": "[1210,676]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[946,690]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1475,699]",
+    "key": 3506402
+  },
+  {
+    "text": "▲",
+    "center": "[166,775]",
+    "key": 3506402
+  },
+  {
+    "text": "CONSTANT · 30% FTP",
+    "center": "[517,775]",
+    "key": 3506402
+  },
+  {
+    "text": "UP NEXT · Z1 RECOVERY",
+    "center": "[2026,775]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Back",
+    "center": "[193,100]",
+    "key": 3506402
+  },
+  {
+    "text": "CADENCE",
+    "center": "[346,394]",
+    "key": 3506402
+  },
+  {
+    "text": "0",
+    "center": "[277,473]",
+    "key": 3506402
+  },
+  {
+    "text": " RPM",
+    "center": "[376,482]",
+    "key": 3506402
+  },
+  {
+    "text": "HEART RATE",
+    "center": "[2075,394]",
+    "key": 3506402
+  },
+  {
+    "text": "--",
+    "center": "[2006,473]",
+    "key": 3506402
+  },
+  {
+    "text": " BPM",
+    "center": "[2117,482]",
+    "key": 3506402
+  },
+  {
+    "text": "⏱ ",
+    "center": "[900,775]",
+    "key": 3506402
+  },
+  {
+    "text": "0:10",
+    "center": "[980,775]",
+    "key": 3506402
+  }
+]

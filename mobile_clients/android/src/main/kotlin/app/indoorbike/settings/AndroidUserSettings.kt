@@ -3,12 +3,16 @@ package app.indoorbike.settings
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.indoorbike.shared.settings.DEFAULT_FTP
+import app.indoorbike.shared.settings.DEFAULT_WEIGHT_KG
 import app.indoorbike.shared.settings.MAX_FTP
+import app.indoorbike.shared.settings.MAX_WEIGHT_KG
 import app.indoorbike.shared.settings.MIN_FTP
+import app.indoorbike.shared.settings.MIN_WEIGHT_KG
 import app.indoorbike.shared.settings.UserSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +41,9 @@ class AndroidUserSettings(
     private val _ftp = MutableStateFlow(loadFtpBlocking())
     override val ftp: StateFlow<Int> = _ftp.asStateFlow()
 
+    private val _weightKg = MutableStateFlow(loadWeightBlocking())
+    override val weightKg: StateFlow<Float> = _weightKg.asStateFlow()
+
     private val _pairedTrainerId = MutableStateFlow<String?>(loadStringBlocking(KEY_TRAINER))
     override val pairedTrainerId: StateFlow<String?> = _pairedTrainerId.asStateFlow()
 
@@ -47,6 +54,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
                 if (value != _ftp.value) _ftp.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG }.collect { value ->
+                if (value != _weightKg.value) _weightKg.value = value
             }
         }
         scope.launch {
@@ -65,6 +77,12 @@ class AndroidUserSettings(
         if (newFtp !in MIN_FTP..MAX_FTP) return
         _ftp.value = newFtp
         scope.launch { store.edit { it[KEY_FTP] = newFtp } }
+    }
+
+    override fun setWeightKg(newWeightKg: Float) {
+        if (newWeightKg !in MIN_WEIGHT_KG..MAX_WEIGHT_KG) return
+        _weightKg.value = newWeightKg
+        scope.launch { store.edit { it[KEY_WEIGHT] = newWeightKg } }
     }
 
     override fun setPairedTrainerId(id: String?) {
@@ -93,11 +111,16 @@ class AndroidUserSettings(
         store.data.first()[KEY_FTP] ?: DEFAULT_FTP
     }
 
+    private fun loadWeightBlocking(): Float = runBlocking {
+        store.data.first()[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG
+    }
+
     private fun loadStringBlocking(key: androidx.datastore.preferences.core.Preferences.Key<String>): String? =
         runBlocking { store.data.first()[key] }
 
     companion object {
         private val KEY_FTP = intPreferencesKey("user_ftp")
+        private val KEY_WEIGHT = floatPreferencesKey("user_weight_kg")
         private val KEY_TRAINER = stringPreferencesKey("paired_trainer_id")
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
     }

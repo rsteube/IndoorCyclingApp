@@ -59,6 +59,19 @@ class WorkoutSessionManager(
     private val _elapsedSeconds = MutableStateFlow(0)
     val elapsedSeconds: StateFlow<Int> = _elapsedSeconds.asStateFlow()
 
+    /**
+     * Wall-clock seconds the rider has actually spent pedaling in
+     * [WorkoutState.Active]. Distinct from [elapsedSeconds] in two ways:
+     *  - skipping a segment fast-forwards [elapsedSeconds] to keep the planned
+     *    timeline aligned but does NOT advance this counter, and
+     *  - pauses don't count (same as [elapsedSeconds]).
+     *
+     * Used when persisting the finished session so the history reflects how
+     * long the ride actually took, not the planned workout length.
+     */
+    private val _actualRideSeconds = MutableStateFlow(0)
+    val actualRideSeconds: StateFlow<Int> = _actualRideSeconds.asStateFlow()
+
     private val _countdownSeconds = MutableStateFlow(3)
     val countdownSeconds: StateFlow<Int> = _countdownSeconds.asStateFlow()
 
@@ -99,6 +112,7 @@ class WorkoutSessionManager(
     private var activePhaseStartEpochMs: Long = 0
     private var elapsedAtPhaseStart: Int = 0
     private var elapsedInSegAtPhaseStart: Int = 0
+    private var actualRideAtPhaseStart: Int = 0
 
     fun prepareWorkout(workout: Workout, ftp: Int) {
         if (_state.value != WorkoutState.Idle && _state.value != WorkoutState.Completed) {
@@ -111,6 +125,7 @@ class WorkoutSessionManager(
         ftpWatts = ftp
         _state.value = WorkoutState.Standby
         _elapsedSeconds.value = 0
+        _actualRideSeconds.value = 0
         _currentSegmentIndex.value = 0
         _elapsedInSegment.value = 0
         _targetBiasPercent.value = 0
@@ -135,6 +150,7 @@ class WorkoutSessionManager(
         _activeWorkout.value = workout
         ftpWatts = snapshot.ftp
         _elapsedSeconds.value = snapshot.elapsedSeconds
+        _actualRideSeconds.value = snapshot.actualRideSeconds
         _currentSegmentIndex.value = snapshot.currentSegmentIndex
         _elapsedInSegment.value = snapshot.elapsedInSegment
         _targetBiasPercent.value = snapshot.targetBiasPercent
@@ -260,6 +276,7 @@ class WorkoutSessionManager(
         activePhaseStartEpochMs = getCurrentEpochMillis()
         elapsedAtPhaseStart = _elapsedSeconds.value
         elapsedInSegAtPhaseStart = _elapsedInSegment.value
+        actualRideAtPhaseStart = _actualRideSeconds.value
     }
 
     private fun startTimerLoop() {
@@ -288,6 +305,7 @@ class WorkoutSessionManager(
             currentSegmentIndex = _currentSegmentIndex.value,
             elapsedInSegment = _elapsedInSegment.value,
             state = _state.value,
+            actualRideSeconds = _actualRideSeconds.value,
         )
         _persistedSnapshot.value = snapshot
         scope.launch { store.write(snapshot) }
@@ -310,6 +328,10 @@ class WorkoutSessionManager(
         val deltaSeconds = ((now - activePhaseStartEpochMs) / 1000).toInt().coerceAtLeast(0)
         _elapsedSeconds.value = elapsedAtPhaseStart + deltaSeconds
         _elapsedInSegment.value = elapsedInSegAtPhaseStart + deltaSeconds
+        // actualRideSeconds shares the same wall-clock anchor as elapsedSeconds
+        // during a single Active phase, but skipSegment never bumps its phase
+        // anchor — so skipped time is never added.
+        _actualRideSeconds.value = actualRideAtPhaseStart + deltaSeconds
 
         val sample = TelemetryPoint(
             timestampEpoch = now,
@@ -331,6 +353,7 @@ class WorkoutSessionManager(
             _elapsedInSegment.value = 0
             elapsedInSegAtPhaseStart = 0
             elapsedAtPhaseStart = _elapsedSeconds.value
+            actualRideAtPhaseStart = _actualRideSeconds.value
             activePhaseStartEpochMs = now
 
             if (_currentSegmentIndex.value >= workout.segments.size) {

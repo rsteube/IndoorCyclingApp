@@ -1,0 +1,142 @@
+[
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[193,104]",
+    "key": 3506402
+  },
+  {
+    "text": "App Test",
+    "center": "[873,104]",
+    "key": 3506402
+  },
+  {
+    "text": "0:30  /  0:30",
+    "center": "[1807,104]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[2152,103]",
+    "key": 3506402
+  },
+  {
+    "text": "POWER · ERG IDLE",
+    "center": "[1388,231]",
+    "key": 3506402
+  },
+  {
+    "text": "37",
+    "center": "[1177,502]",
+    "key": 3506402
+  },
+  {
+    "text": " W",
+    "center": "[1335,510]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[946,699]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1475,699]",
+    "key": 3506402
+  },
+  {
+    "text": "▲",
+    "center": "[166,775]",
+    "key": 3506402
+  },
+  {
+    "text": "Segment · 0% FTP",
+    "center": "[462,775]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Back",
+    "center": "[193,104]",
+    "key": 3506402
+  },
+  {
+    "text": "Mock",
+    "center": "[2152,103]",
+    "key": 3506402
+  },
+  {
+    "text": "CADENCE",
+    "center": "[346,398]",
+    "key": 3506402
+  },
+  {
+    "text": "78",
+    "center": "[276,477]",
+    "key": 3506402
+  },
+  {
+    "text": " RPM",
+    "center": "[400,486]",
+    "key": 3506402
+  },
+  {
+    "text": "HEART RATE",
+    "center": "[2075,398]",
+    "key": 3506402
+  },
+  {
+    "text": "115",
+    "center": "[2005,477]",
+    "key": 3506402
+  },
+  {
+    "text": " BPM",
+    "center": "[2140,486]",
+    "key": 3506402
+  },
+  {
+    "text": "⏱ ",
+    "center": "[789,775]",
+    "key": 3506402
+  },
+  {
+    "text": "0:00",
+    "center": "[875,775]",
+    "key": 3506402
+  },
+  {
+    "content-desc": "Finished",
+    "center": "[1170,306]",
+    "key": 3506402
+  },
+  {
+    "text": "FINISHED!",
+    "center": "[1170,623]",
+    "key": 3506402
+  },
+  {
+    "interactions": [
+      "clickable",
+      "focusable"
+    ],
+    "center": "[1170,868]",
+    "key": 3506402
+  },
+  {
+    "text": "View Summary",
+    "center": "[1170,868]",
+    "key": 3506402
+  }
+]

@@ -242,23 +242,25 @@ fun HeroPowerReadout(
     powerWatts: Int,
     isStale: Boolean,
     targetWatts: Int,
-    ftpPercent: Int,
+    wattsPerKg: Float,
     zoneColor: Color,
     biasPercent: Int,
     ergLocked: Boolean,
     onAdjust: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Smoothly tween power and FTP% across 1-second BLE samples.
+    // Smoothly tween power and W/kg across 1-second BLE samples. We tween W/kg
+    // as an Int * 100 (centiwatts/kg) so the existing Int animator works without
+    // pulling in a Float animator just for one readout.
     val animatedPower by animateIntAsState(
         targetValue = if (isStale) 0 else powerWatts,
         animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
         label = "power"
     )
-    val animatedFtpPct by animateIntAsState(
-        targetValue = ftpPercent.coerceIn(0, 250),
+    val animatedWkgCenti by animateIntAsState(
+        targetValue = if (isStale) 0 else (wattsPerKg * 100f).toInt().coerceIn(0, 2000),
         animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "ftp"
+        label = "wkg"
     )
 
     Column(
@@ -308,7 +310,7 @@ fun HeroPowerReadout(
             }
         }
 
-        AltitudeBar(percent = animatedFtpPct.coerceIn(0, 200), zoneColor = zoneColor)
+        WattsPerKgBar(wkgCenti = animatedWkgCenti, zoneColor = zoneColor)
 
         Spacer(Modifier.height(10.dp))
 
@@ -323,10 +325,18 @@ fun HeroPowerReadout(
     }
 }
 
+/**
+ * Thin power-to-weight indicator. Bar fills at 5.0 W/kg (the rough boundary
+ * into "elite-amateur" sustained-power territory) so the typical training
+ * range sits in the middle third.
+ *
+ * @param wkgCenti current W/kg expressed as integer centiwatts/kg (e.g. 245 = 2.45 W/kg).
+ *   Using ints keeps the animator stable and avoids float-tween jitter at 1 Hz.
+ */
 @Composable
-private fun AltitudeBar(percent: Int, zoneColor: Color) {
-    val safe = percent.coerceIn(0, 200)
-    val fraction = (safe / 150f).coerceIn(0f, 1f)  // 150% FTP = full bar
+private fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color) {
+    val safe = wkgCenti.coerceAtLeast(0)
+    val fraction = (safe / 500f).coerceIn(0f, 1f)
     Box(
         modifier = Modifier
             .padding(top = 6.dp)
@@ -346,12 +356,18 @@ private fun AltitudeBar(percent: Int, zoneColor: Color) {
                 )
         )
     }
-    // Tiny FTP% tick label.
     Text(
-        text = if (safe > 0) "$safe% FTP" else "—",
+        text = if (safe > 0) "${formatWkg(safe)} W/kg" else "—",
         style = CadenceType.tick.copy(fontSize = 10.sp),
         color = CadenceColors.Fg3,
     )
+}
+
+private fun formatWkg(centi: Int): String {
+    val whole = centi / 100
+    val frac = centi % 100
+    // Always show two decimals so the readout doesn't shift width as the value crosses .x0.
+    return "$whole.${frac.toString().padStart(2, '0')}"
 }
 
 @Composable

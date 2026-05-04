@@ -11,113 +11,135 @@ import kotlin.math.pow
  */
 
 private const val MS_PER_DAY: Long = 86_400_000L
+private const val DAYS_PER_WEEK: Int = 7
 
+/**
+ * XP-based progression. XP = Watt-minutes / kg, summed across every session:
+ *  xp = (avgPower W × duration s / 60) / weightKg.
+ *
+ * Level thresholds form a geometric series: each level requires the previous
+ * level's threshold × 2.5 (i.e. previous + previous × 1.5).
+ *  L1 = 20, L2 = 50, L3 = 125, L4 = 312.5, ...
+ *
+ * A rider with totalXp < 20 is at level 0 (still working toward L1).
+ */
 data class RiderLevel(
-    val tier: Int,            // 1-based tier index
-    val name: String,         // e.g. "Threshold IV"
-    val totalKj: Long,        // lifetime kJ across all sessions
-    val tierFloorKj: Long,
-    val tierCeilingKj: Long,
+    val level: Int,
+    val totalXp: Double,
+    val levelFloorXp: Double,    // XP threshold that put rider at current level (0 for L0)
+    val levelCeilingXp: Double,  // XP threshold for next level
 ) {
     val progressFraction: Float
         get() {
-            val span = (tierCeilingKj - tierFloorKj).coerceAtLeast(1L)
-            val into = (totalKj - tierFloorKj).coerceAtLeast(0L)
-            return (into.toFloat() / span.toFloat()).coerceIn(0f, 1f)
+            val span = (levelCeilingXp - levelFloorXp).coerceAtLeast(1.0)
+            val into = (totalXp - levelFloorXp).coerceAtLeast(0.0)
+            return (into / span).toFloat().coerceIn(0f, 1f)
         }
 
-    val nextName: String
-        get() = TIER_NAMES.getOrNull(tier) ?: "Maxed"
+    val xpToNextLevel: Double
+        get() = (levelCeilingXp - totalXp).coerceAtLeast(0.0)
 }
 
-private val TIER_NAMES = listOf(
-    "Spinner I", "Spinner II", "Spinner III",
-    "Endurance I", "Endurance II", "Endurance III",
-    "Tempo I", "Tempo II", "Tempo III",
-    "Threshold I", "Threshold II", "Threshold III", "Threshold IV",
-    "VO2 I", "VO2 II", "VO2 III",
-    "Anaerobic", "Neuromuscular"
-)
+const val FIRST_LEVEL_XP: Double = 20.0
+const val LEVEL_GROWTH_FACTOR: Double = 2.5  // each level = previous × 2.5
 
-// Roughly geometric — first level at 200 kJ, doubles every 3 tiers.
-private val TIER_THRESHOLDS_KJ: List<Long> = run {
-    val out = mutableListOf(0L, 200L, 500L, 1_000L)
-    var step = 1_500L
-    while (out.size < TIER_NAMES.size + 1) {
-        out += out.last() + step
-        step = (step * 1.25).toLong()
+/** Watt-minutes/kg contributed by a single session. Returns 0 for nonsense input. */
+fun xpFromSession(s: WorkoutSession, weightKg: Float): Double {
+    if (weightKg <= 0f || s.durationSeconds <= 0L || s.avgPower <= 0L) return 0.0
+    val wattMinutes = s.avgPower.toDouble() * s.durationSeconds.toDouble() / 60.0
+    return wattMinutes / weightKg.toDouble()
+}
+
+fun totalXp(sessions: List<WorkoutSession>, weightKg: Float): Double =
+    sessions.sumOf { xpFromSession(it, weightKg) }
+
+fun computeRiderLevel(sessions: List<WorkoutSession>, weightKg: Float): RiderLevel {
+    val xp = totalXp(sessions, weightKg)
+    var level = 0
+    var floor = 0.0
+    var ceiling = FIRST_LEVEL_XP
+    while (xp >= ceiling) {
+        floor = ceiling
+        ceiling *= LEVEL_GROWTH_FACTOR
+        level += 1
     }
-    out
-}
-
-fun computeRiderLevel(sessions: List<WorkoutSession>): RiderLevel {
-    val totalKj = sessions.sumOf { kjFromSession(it) }
-    val tierIdx = TIER_THRESHOLDS_KJ
-        .indexOfLast { it <= totalKj }
-        .coerceAtLeast(0)
-    val name = TIER_NAMES.getOrElse(tierIdx) { TIER_NAMES.last() }
-    val floor = TIER_THRESHOLDS_KJ.getOrElse(tierIdx) { 0L }
-    val ceiling = TIER_THRESHOLDS_KJ.getOrElse(tierIdx + 1) { floor + 1L }
-    return RiderLevel(
-        tier = tierIdx + 1,
-        name = name,
-        totalKj = totalKj,
-        tierFloorKj = floor,
-        tierCeilingKj = ceiling
-    )
+    return RiderLevel(level = level, totalXp = xp, levelFloorXp = floor, levelCeilingXp = ceiling)
 }
 
 private fun kjFromSession(s: WorkoutSession): Long =
     (s.avgPower * s.durationSeconds) / 1000L
 
-data class StreakInfo(
-    val currentDays: Int,
-    val longestDays: Int,
-    val recentDayActivity: List<Boolean>, // last N days, oldest → newest
+/** Week activity row for the streak chart: which week, and how many distinct days had a ride (0..7). */
+data class WeekActivity(
+    val weekBucket: Long,
+    val daysActive: Int,
 )
 
+data class StreakInfo(
+    /** Current consecutive-week streak (weeks where the rider rode at least once). */
+    val currentWeeks: Int,
+    /** Longest such weekly streak ever recorded. */
+    val longestWeeks: Int,
+    /** Most recent N weeks, oldest → newest, with how many days were active in each. */
+    val recentWeekActivity: List<WeekActivity>,
+)
+
+/**
+ * Compute weekly ride streak. A "week" is Monday–Sunday in local time. The
+ * streak continues as long as each consecutive week contains at least one ride.
+ * If no ride yet this week, the previous week still counts (grace), so users
+ * don't see a broken streak on Monday morning.
+ *
+ * The recent-week window is filled with day counts (0..7) so the UI can render
+ * each box with a fill fraction.
+ */
 fun computeStreak(
     sessions: List<WorkoutSession>,
     nowEpochMs: Long,
-    windowDays: Int = 14,
+    windowWeeks: Int = 14,
     /**
      * Local timezone offset in milliseconds (e.g. +3 h = 10_800_000). Used to
-     * align day boundaries to the user's local midnight rather than UTC.
+     * align day/week boundaries to the user's local midnight rather than UTC.
      */
     timeZoneOffsetMs: Long = 0,
 ): StreakInfo {
     val localDay = { epochMs: Long -> (epochMs + timeZoneOffsetMs) / MS_PER_DAY }
+    // Day 0 of the Unix epoch (Jan 1 1970) was a Thursday. Adding 3 shifts the
+    // bucket boundary so each integer division yields a Monday-anchored week.
+    val weekBucket = { day: Long -> (day + 3).floorDiv(DAYS_PER_WEEK.toLong()) }
 
-    val activeDays: Set<Long> = sessions
-        .map { localDay(it.startTimeEpoch) }
-        .toSet()
+    // Distinct local days with at least one ride.
+    val activeDays: Set<Long> = sessions.map { localDay(it.startTimeEpoch) }.toSet()
+    val daysPerWeek: Map<Long, Int> = activeDays.groupBy { weekBucket(it) }.mapValues { it.value.size }
 
-    val today = localDay(nowEpochMs)
+    val thisWeek = weekBucket(localDay(nowEpochMs))
 
-    // Current streak counts back from today (or yesterday if today empty).
+    // Current streak counts back from this week (with one-week grace for the
+    // common "haven't ridden yet this week" case).
     var current = 0
-    var d = today
-    if (d !in activeDays) d -= 1 // grace: missing today still counts if yesterday was active
-    while (d in activeDays) {
+    var w = thisWeek
+    if ((daysPerWeek[w] ?: 0) == 0) w -= 1
+    while ((daysPerWeek[w] ?: 0) > 0) {
         current += 1
-        d -= 1
+        w -= 1
     }
 
-    // Longest streak: scan all active days.
-    val sortedDays = activeDays.sorted()
+    // Longest streak: scan all weeks with rides.
+    val sortedWeeks = daysPerWeek.keys.sorted()
     var longest = 0
     var run = 0
     var prev: Long? = null
-    for (day in sortedDays) {
-        run = if (prev == null || day == prev + 1) run + 1 else 1
+    for (week in sortedWeeks) {
+        run = if (prev == null || week == prev + 1) run + 1 else 1
         longest = max(longest, run)
-        prev = day
+        prev = week
     }
 
-    val window = (windowDays - 1 downTo 0).map { offset ->
-        (today - offset) in activeDays
+    val window = (windowWeeks - 1 downTo 0).map { offset ->
+        val bucket = thisWeek - offset
+        WeekActivity(weekBucket = bucket, daysActive = daysPerWeek[bucket] ?: 0)
     }
-    return StreakInfo(currentDays = current, longestDays = longest, recentDayActivity = window)
+    return StreakInfo(currentWeeks = current, longestWeeks = longest, recentWeekActivity = window)
 }
 
 data class Badge(
@@ -184,21 +206,21 @@ fun computeBadges(
         )
     }
 
-    if (streak.longestDays >= 3) {
+    if (streak.longestWeeks >= 3) {
         out += Badge(
             id = "consistency-3",
             title = "Three in a Row",
-            subtitle = "${streak.longestDays} day streak",
+            subtitle = "${streak.longestWeeks} week streak",
             iconHint = "fire",
             unlockedAtEpochMs = nowEpochMs
         )
     }
 
-    if (streak.longestDays >= 7) {
+    if (streak.longestWeeks >= 7) {
         out += Badge(
             id = "consistency-7",
             title = "On Fire",
-            subtitle = "7 day streak",
+            subtitle = "7 week streak",
             iconHint = "flame",
             unlockedAtEpochMs = nowEpochMs
         )

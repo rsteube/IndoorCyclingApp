@@ -153,6 +153,11 @@ fun RideScreen(
         if (state == WorkoutState.Completed && workout != null && continueRequested) {
             val telemetry = sessionManager.telemetrySnapshot()
             val startEpoch = sessionManager.sessionStartTimeEpoch
+            // Persist actual time spent riding, not the planned timeline:
+            // skipping a segment fast-forwards `elapsed` so it would inflate the
+            // saved duration. `actualRideSeconds` only counts wall-clock time
+            // spent in the Active state.
+            val actualRide = sessionManager.actualRideSeconds.value
 
             val avgPower = if (telemetry.isNotEmpty()) telemetry.map { it.power }.average().toLong() else 0L
             val avgCadence = if (telemetry.isNotEmpty()) telemetry.map { it.cadence }.average().toLong() else 0L
@@ -163,7 +168,7 @@ fun RideScreen(
                     workoutId = workout!!.id,
                     workoutName = workout!!.name,
                     startTimeEpoch = startEpoch,
-                    durationSeconds = elapsed.toLong(),
+                    durationSeconds = actualRide.toLong(),
                     avgPower = avgPower,
                     avgCadence = avgCadence,
                     avgHeartRate = avgHr,
@@ -196,8 +201,8 @@ fun RideScreen(
 
     val showStaleHr = currentHr <= 0
     val showStalePower = currentPower <= 0 && (state == WorkoutState.Active)
-    val ftp by container.userSettings.ftp.collectAsState()
-    val ftpPctClean = if (ftp > 0 && currentPower > 0) (currentPower * 100 / ftp) else 0
+    val weightKg by container.userSettings.weightKg.collectAsState()
+    val wattsPerKg = if (weightKg > 0f && currentPower > 0) currentPower / weightKg else 0f
 
     // Single animated zone color — drives every zone-tinted element on the screen so
     // the crossfade across segment boundaries stays in sync.
@@ -266,7 +271,7 @@ fun RideScreen(
                     powerWatts = currentPower,
                     isStale = showStalePower,
                     targetWatts = targetPower,
-                    ftpPercent = ftpPctClean,
+                    wattsPerKg = wattsPerKg,
                     zoneColor = animatedZoneColor,
                     biasPercent = biasPercent,
                     ergLocked = state == WorkoutState.Active && targetPower > 0,

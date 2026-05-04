@@ -10,6 +10,10 @@ interface UserSettings {
     val ftp: StateFlow<Int>
     fun setFtp(newFtp: Int)
 
+    /** Body mass in kilograms — used for W/kg and XP calculations. */
+    val weightKg: StateFlow<Float>
+    fun setWeightKg(newWeightKg: Float)
+
     /** id of the last paired trainer ("mock" for the simulator). */
     val pairedTrainerId: StateFlow<String?>
     fun setPairedTrainerId(id: String?)
@@ -22,3 +26,7 @@ interface UserSettings {
 const val DEFAULT_FTP = 200
 const val MIN_FTP = 50
 const val MAX_FTP = 600
+
+const val DEFAULT_WEIGHT_KG = 75f
+const val MIN_WEIGHT_KG = 30f
+const val MAX_WEIGHT_KG = 250f
