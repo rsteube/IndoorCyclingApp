@@ -8,6 +8,8 @@ import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -160,17 +162,6 @@ fun RideScreen(
     val currentZone = currentSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) } ?: PowerZone.Z1
     val nextZone = nextSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) }
 
-    val animatedBgColor by animateColorAsState(
-        targetValue = currentZone.color.copy(alpha = 0.15f),
-        animationSpec = tween(1000),
-        label = "ride-bg"
-    )
-    val bgBrush = Brush.radialGradient(
-        colors = listOf(animatedBgColor, CadenceColors.Bg0),
-        center = Offset.Unspecified,
-        radius = 1200f
-    )
-
     val handleBack = {
         if (state != WorkoutState.Completed) sessionManager.stopWorkout()
         onBack()
@@ -180,10 +171,37 @@ fun RideScreen(
 
     val showStaleHr = currentHr <= 0
     val showStalePower = currentPower <= 0 && (state == WorkoutState.Active)
-    val powerDisplay = if (showStalePower) "--" else currentPower.toString()
-    val hrDisplay = if (showStaleHr) "--" else currentHr.toString()
+    val ftp by container.userSettings.ftp.collectAsState()
+    val ftpPctClean = if (ftp > 0 && currentPower > 0) (currentPower * 100 / ftp) else 0
 
-    Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0).background(bgBrush)) {
+    // Single animated zone color — drives every zone-tinted element on the screen so
+    // the crossfade across segment boundaries stays in sync.
+    val animatedZoneColor by animateColorAsState(
+        targetValue = currentZone.color,
+        animationSpec = tween(durationMillis = 1200),
+        label = "zone-color"
+    )
+
+    // Cadence + HR also tween to absorb 1-Hz BLE jitter.
+    val animatedCadence by animateIntAsState(
+        targetValue = currentCadence.coerceAtLeast(0),
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
+        label = "cadence"
+    )
+    val animatedHr by animateIntAsState(
+        targetValue = currentHr.coerceAtLeast(0),
+        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+        label = "hr"
+    )
+
+    Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+        HorizonRidgeBackdrop(
+            workout = workout!!,
+            tintColor = animatedZoneColor,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Layer 2: foreground content
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             RideHeader(
                 workoutName = workout!!.name,
@@ -211,35 +229,33 @@ fun RideScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                GlassCard { MetricBox("CADENCE", currentCadence.toString(), "RPM", CadenceColors.Fg1) }
+                FlankMetric(
+                    label = "CADENCE",
+                    value = animatedCadence.toString(),
+                    unit = "RPM",
+                    isStale = false,
+                    valueColor = CadenceColors.Fg1
+                )
 
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = "POWER", style = CadenceType.eyebrow, color = currentZone.color)
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            text = powerDisplay,
-                            fontSize = 72.sp,
-                            fontWeight = FontWeight.Black,
-                            fontStyle = FontStyle.Italic,
-                            color = currentZone.color
-                        )
-                        Text(
-                            text = " W",
-                            style = CadenceType.h1,
-                            color = CadenceColors.Fg2,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                    }
+                HeroPowerReadout(
+                    powerWatts = currentPower,
+                    isStale = showStalePower,
+                    targetWatts = targetPower,
+                    ftpPercent = ftpPctClean,
+                    zoneColor = animatedZoneColor,
+                    biasPercent = biasPercent,
+                    ergLocked = state == WorkoutState.Active && targetPower > 0,
+                    onAdjust = { delta -> sessionManager.adjustDifficulty(delta) },
+                    modifier = Modifier.weight(1f)
+                )
 
-                    TargetWithDifficulty(
-                        target = targetPower,
-                        bias = biasPercent,
-                        ergLocked = state == WorkoutState.Active && targetPower > 0,
-                        onAdjust = { delta -> sessionManager.adjustDifficulty(delta) }
-                    )
-                }
-
-                GlassCard { MetricBox("HEART RATE", hrDisplay, "BPM", CadenceColors.Danger) }
+                FlankMetric(
+                    label = "HEART RATE",
+                    value = if (showStaleHr) "--" else animatedHr.toString(),
+                    unit = "BPM",
+                    isStale = showStaleHr,
+                    valueColor = CadenceColors.Danger
+                )
             }
 
             Column(
@@ -247,37 +263,45 @@ fun RideScreen(
                     .fillMaxWidth()
                     .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
             ) {
+                val segLabel = currentSeg?.intervalType ?: "Segment"
+                val segPower = currentSeg?.powerPercentFTP ?: 0
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val segLabel = currentSeg?.intervalType ?: "Segment"
-                    val segPower = currentSeg?.powerPercentFTP ?: 0
-                    Column {
+                    // Topographic peak glyph in zone color.
+                    Text(
+                        text = "▲",
+                        style = CadenceType.bodyStrong,
+                        color = animatedZoneColor
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "$segLabel · $segPower% FTP",
+                        style = CadenceType.bodyStrong,
+                        color = CadenceColors.Fg1
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    // Timer attached to the segment label as a chip — reads as
+                    // "this segment, ending in 4:25". Fixed width: clock format
+                    // is M:SS (or H:MM:SS for very long segments).
+                    SegmentTimerChip(remainingSeconds = remainingInSeg, zoneColor = animatedZoneColor)
+                    Spacer(Modifier.weight(1f))
+                    if (nextZone != null) {
                         Text(
-                            text = "$segLabel · $segPower% FTP",
-                            style = CadenceType.bodyStrong,
-                            color = CadenceColors.Fg2
+                            text = "UP NEXT · Z${nextZone.number} ${nextZone.label.uppercase()}",
+                            style = CadenceType.tick,
+                            color = nextZone.color
                         )
-                        if (nextZone != null) {
-                            Text(
-                                text = "UP NEXT · Z${nextZone.number} ${nextZone.label.uppercase()}",
-                                style = CadenceType.tick,
-                                color = nextZone.color
-                            )
-                        }
                     }
-                    Text(text = formatClock(remainingInSeg), style = CadenceType.h2, color = CadenceColors.Fg1)
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                ActiveWorkoutGraph(
+                RidgeTimeline(
                     workout = workout!!,
                     currentSegIdx = currentSegIdx,
-                    elapsedInSeg = elapsedInSeg,
-                    chartHeight = 60
+                    elapsedInSeg = elapsedInSeg
                 )
             }
         }
@@ -391,12 +415,19 @@ private fun RideHeader(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}",
-                style = CadenceType.h3,
-                color = CadenceColors.Fg1
-            )
-            if (isMockTrainer && BuildConfig.DEBUG) {
+            // Fixed width so the elapsed clock ticking from "0:00" → "31:00" doesn't
+            // resize the time block and shove the buttons around.
+            Box(
+                modifier = Modifier.width(180.dp),
+                contentAlignment = Alignment.CenterEnd
+            ) {
+                Text(
+                    text = "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}",
+                    style = CadenceType.h3,
+                    color = CadenceColors.Fg1
+                )
+            }
+            if (isMockTrainer) {
                 SecondaryBtn(text = "Mock", onClick = onMockToggle)
             }
             if (state == WorkoutState.Active || state == WorkoutState.Paused) {
@@ -412,165 +443,68 @@ private fun RideHeader(
 }
 
 @Composable
-private fun TargetWithDifficulty(
-    target: Int,
-    bias: Int,
-    ergLocked: Boolean,
-    onAdjust: (Int) -> Unit
-) {
-    val biasLabel = when {
-        bias > 0 -> "+$bias%"
-        bias < 0 -> "$bias%"
-        else -> null
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
-    ) {
-        StepperButton(icon = Icons.Outlined.Remove, contentDescription = "Decrease difficulty") { onAdjust(-5) }
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(CadenceColors.Bg1.copy(alpha = 0.5f))
-                .border(1.dp, CadenceColors.Line1, RoundedCornerShape(50))
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "TARGET: $target W",
-                    style = CadenceType.bodyStrong,
-                    color = CadenceColors.Fg1
-                )
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(if (ergLocked) PowerZone.Z3.color else CadenceColors.Fg4)
-                    )
-                    Text(
-                        text = if (ergLocked) "ERG LOCKED" else "ERG IDLE",
-                        style = CadenceType.tick.copy(fontSize = 9.sp),
-                        color = if (ergLocked) PowerZone.Z3.color else CadenceColors.Fg3
-                    )
-                    if (biasLabel != null) {
-                        Text(
-                            text = " · $biasLabel",
-                            style = CadenceType.tick.copy(fontSize = 9.sp),
-                            color = if (bias > 0) CadenceColors.Brand500 else CadenceColors.Fg2
-                        )
-                    }
-                }
-            }
-        }
-        StepperButton(icon = Icons.Outlined.Add, contentDescription = "Increase difficulty") { onAdjust(5) }
-    }
-}
-
-@Composable
-private fun StepperButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit) {
+private fun SegmentTimerChip(remainingSeconds: Int, zoneColor: Color) {
     Box(
         modifier = Modifier
-            .size(36.dp)
-            .clip(CircleShape)
-            .background(CadenceColors.Bg2)
-            .border(1.dp, CadenceColors.Line2, CircleShape)
-            .clickable(onClick = onClick),
+            .widthIn(min = 76.dp)
+            .clip(RoundedCornerShape(50))
+            .background(zoneColor.copy(alpha = 0.18f))
+            .border(1.dp, zoneColor.copy(alpha = 0.4f), RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = CadenceColors.Fg1,
-            modifier = Modifier.size(18.dp)
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "⏱ ",
+                style = CadenceType.tick,
+                color = zoneColor
+            )
+            Text(
+                text = formatClock(remainingSeconds.coerceAtLeast(0)),
+                style = CadenceType.bodyStrong.copy(fontSize = 14.sp),
+                color = CadenceColors.Fg1
+            )
+        }
     }
 }
 
 @Composable
-fun GlassCard(content: @Composable () -> Unit) {
-    Box(
+private fun FlankMetric(
+    label: String,
+    value: String,
+    unit: String,
+    valueColor: Color,
+    isStale: Boolean = false
+) {
+    // Fixed width so 2-digit ↔ 3-digit transitions don't reflow the row.
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .width(150.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(CadenceColors.Bg1.copy(alpha = 0.4f))
-            .border(1.dp, CadenceColors.Line2.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-            .padding(12.dp),
-        contentAlignment = Alignment.Center
+            .background(CadenceColors.Bg1.copy(alpha = 0.35f))
+            .border(1.dp, CadenceColors.Line2.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        content()
-    }
-}
-
-@Composable
-private fun MetricBox(label: String, value: String, unit: String, valueColor: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(
-                text = value,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                color = valueColor
-            )
-            Text(
-                text = " $unit",
-                style = CadenceType.bodyStrong,
-                color = CadenceColors.Fg3,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-        }
-    }
-}
-
-@Composable
-fun ActiveWorkoutGraph(
-    workout: app.indoorbike.shared.Workout,
-    currentSegIdx: Int,
-    elapsedInSeg: Int,
-    chartHeight: Int
-) {
-    val maxPct = (workout.segments.maxOfOrNull { it.powerPercentFTP } ?: 100).coerceAtLeast(60)
-    val totalSeconds = workout.segments.sumOf { it.lengthInSeconds }.coerceAtLeast(1)
-    val elapsedTotal = workout.segments.take(currentSegIdx).sumOf { it.lengthInSeconds } + elapsedInSeg
-    val progressFraction = (elapsedTotal.toFloat() / totalSeconds).coerceIn(0f, 1f)
-
-    Box(modifier = Modifier.fillMaxWidth().height(chartHeight.dp)) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(0.dp)
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
         ) {
-            workout.segments.forEachIndexed { index, seg ->
-                val zone = PowerZone.fromFtpPercent(seg.powerPercentFTP)
-                val h = (seg.powerPercentFTP.toFloat() / maxPct).coerceIn(0.1f, 1f)
-                val isPast = index < currentSegIdx
-                val isCurrent = index == currentSegIdx
-                val alpha = when {
-                    isCurrent -> 1f
-                    isPast -> 0.55f
-                    else -> 0.30f
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(seg.lengthInSeconds.toFloat().coerceAtLeast(1f))
-                        .fillMaxHeight(h)
-                        .clip(RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
-                        .background(zone.color.copy(alpha = alpha))
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = value,
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = valueColor
+                )
+                Text(
+                    text = " $unit",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Fg3,
+                    modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(progressFraction)
-                .fillMaxHeight()
-        ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .width(2.dp)
-                    .fillMaxHeight()
-                    .background(CadenceColors.Brand500)
-            )
         }
     }
 }

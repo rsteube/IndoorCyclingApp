@@ -78,7 +78,11 @@ The Android client implements the **Cadence design system** (see [cadence-design
 
 ### F-Droid hygiene checklist
 
-- **Fonts**: design specifies Bebas Neue / Inter / JetBrains Mono. OFL TTFs must be bundled locally (no Google Fonts CDN) — drop them into `mobile_clients/android/src/main/res/font/` and rebind `DisplayFontFamily` / `BodyFontFamily` / `MonoFontFamily` in `ui/theme/Type.kt`.
+- **Fonts**: bundled locally as OFL TTFs in `mobile_clients/android/src/main/res/font/` — no Google Fonts CDN, no runtime download. Sources are the OFL distribution at rest in `github.com/google/fonts`:
+    - `bebas_neue_regular.ttf` (60 KB, static) — display headlines (`displayXl/L/M`, `h1`, `h2`).
+    - `inter_variable.ttf` (856 KB, variable wght axis 100–900) — body text (`h3`, `body`, `bodyStrong`, `small`, `micro`, `eyebrow`).
+    - `jetbrains_mono_variable.ttf` (183 KB, variable wght axis 100–800) — monospace ticks (`tick`, `mono`).
+  Variable fonts are wired via `Font(R.font.…, weight = FontWeight.X, variationSettings = FontVariation.Settings(FontVariation.weight(N)))` in [`ui/theme/Type.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/theme/Type.kt). Requires `@OptIn(ExperimentalTextApi::class)` on Compose 1.7.5; the API graduates to stable in newer Compose versions.
 - **Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0) as a visual stand-in.
 - **Mock trainer toggle**: in-ride mock toggle is gated behind `BuildConfig.DEBUG` so release builds don't expose dev affordances.
 - **FIT export**: not yet implemented. Sessions persist to SQLite via SqlDelight (`HistoryDatabase`); a future change should add a FIT writer for sharing.

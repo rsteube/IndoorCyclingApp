@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(adb -s 82bc875c shell input tap 576 1776)",
+      "PowerShell(adb -s 82bc875c shell input tap 2152 103)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-current.png\" 2>&1)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug --no-daemon 2>&1)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-standby.png\")",
+      "PowerShell(adb -s 82bc875c logcat -d -s TrainerManager IndoorBikeApp WorkoutSessionManager 2>&1)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-active.png\")",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-active-v2.png\")",
+      "PowerShell(adb -s 82bc875c shell input tap 540 1307)",
+      "PowerShell(adb -s 82bc875c shell input keyevent KEYCODE_BACK)",
+      "PowerShell(adb -s 82bc875c shell input tap 151 2154)",
+      "PowerShell(adb -s 82bc875c shell input tap 540 1757)",
+      "PowerShell(adb -s 82bc875c shell input tap 576 2099)",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-hero-v3.png\")",
+      "PowerShell(android screen capture -o \"c:/Users/juhan/vibes/cycling_app/build/screenshot-ride-active-v3.png\")"
+    ]
+  }
+}
