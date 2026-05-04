@@ -2,6 +2,7 @@ package app.indoorbike.settings
 
 import android.content.Context
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
@@ -50,6 +51,9 @@ class AndroidUserSettings(
     private val _pairedHrmId = MutableStateFlow<String?>(loadStringBlocking(KEY_HRM))
     override val pairedHrmId: StateFlow<String?> = _pairedHrmId.asStateFlow()
 
+    private val _hasCompletedOnboarding = MutableStateFlow(loadBooleanBlocking(KEY_ONBOARDED))
+    override val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
+
     init {
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
@@ -69,6 +73,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_HRM] }.collect { value ->
                 if (value != _pairedHrmId.value) _pairedHrmId.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_ONBOARDED] ?: false }.collect { value ->
+                if (value != _hasCompletedOnboarding.value) _hasCompletedOnboarding.value = value
             }
         }
     }
@@ -103,6 +112,11 @@ class AndroidUserSettings(
         }
     }
 
+    override fun setHasCompletedOnboarding(value: Boolean) {
+        _hasCompletedOnboarding.value = value
+        scope.launch { store.edit { it[KEY_ONBOARDED] = value } }
+    }
+
     fun dispose() {
         scope.cancel()
     }
@@ -118,10 +132,14 @@ class AndroidUserSettings(
     private fun loadStringBlocking(key: androidx.datastore.preferences.core.Preferences.Key<String>): String? =
         runBlocking { store.data.first()[key] }
 
+    private fun loadBooleanBlocking(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>): Boolean =
+        runBlocking { store.data.first()[key] ?: false }
+
     companion object {
         private val KEY_FTP = intPreferencesKey("user_ftp")
         private val KEY_WEIGHT = floatPreferencesKey("user_weight_kg")
         private val KEY_TRAINER = stringPreferencesKey("paired_trainer_id")
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
+        private val KEY_ONBOARDED = booleanPreferencesKey("has_completed_onboarding")
     }
 }

@@ -5,7 +5,9 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.content.ContextCompat
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -99,6 +101,18 @@ fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
+private fun bluetoothRuntimePerms(): Array<String> =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+    } else {
+        arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+    }
+
+private fun hasAnyBluetoothPermission(context: Context): Boolean =
+    bluetoothRuntimePerms().any { perm ->
+        ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
+    }
+
 @Composable
 fun RideScreen(
     onBack: () -> Unit,
@@ -138,14 +152,26 @@ fun RideScreen(
         ActivityResultContracts.RequestPermission()
     ) { /* no-op: service runs even without notification visibility */ }
 
+    // Android 14+ refuses to start a connectedDevice FGS unless at least one
+    // BLUETOOTH_* runtime permission is granted. Brand-new riders can reach
+    // Start without ever opening the pairing flow that would normally collect
+    // it, so request it here too. If the user denies, the ride still runs
+    // while the activity is foregrounded — we just skip the FGS.
+    val bluetoothLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.any { it }) RideSessionService.start(context)
+    }
+
     DisposableEffect(Unit) {
-        // On Android 13+, ask for runtime notification permission so the
-        // foreground-service notification is visible. The service still runs
-        // if the user denies — they just won't see the workout chip.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        RideSessionService.start(context)
+        if (hasAnyBluetoothPermission(context)) {
+            RideSessionService.start(context)
+        } else {
+            bluetoothLauncher.launch(bluetoothRuntimePerms())
+        }
         onDispose { RideSessionService.stop(context) }
     }
 

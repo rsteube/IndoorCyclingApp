@@ -115,16 +115,21 @@ fun PrimaryBtn(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     glow: Boolean = true,
-    leadingIcon: ImageVector? = Icons.Outlined.PlayArrow
+    leadingIcon: ImageVector? = Icons.Outlined.PlayArrow,
+    enabled: Boolean = true,
 ) {
     val shape = RoundedCornerShape(14.dp)
-    val borderModifier = if (glow) Modifier.border(1.dp, CadenceColors.Brand500.copy(alpha = 0.5f), shape) else Modifier
+    val bg = if (enabled) CadenceColors.Brand500 else CadenceColors.Brand500.copy(alpha = 0.35f)
+    val fg = if (enabled) CadenceColors.OnBrand else CadenceColors.OnBrand.copy(alpha = 0.55f)
+    val borderModifier = if (glow && enabled) {
+        Modifier.border(1.dp, CadenceColors.Brand500.copy(alpha = 0.5f), shape)
+    } else Modifier
     Row(
         modifier = modifier
             .clip(shape)
-            .background(CadenceColors.Brand500)
+            .background(bg)
             .then(borderModifier)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = 22.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2, Alignment.CenterHorizontally)
@@ -133,11 +138,11 @@ fun PrimaryBtn(
             Icon(
                 imageVector = leadingIcon,
                 contentDescription = null,
-                tint = CadenceColors.OnBrand,
+                tint = fg,
                 modifier = Modifier.size(18.dp)
             )
         }
-        Text(text = text, style = CadenceType.bodyStrong, color = CadenceColors.OnBrand)
+        Text(text = text, style = CadenceType.bodyStrong, color = fg)
     }
 }
 

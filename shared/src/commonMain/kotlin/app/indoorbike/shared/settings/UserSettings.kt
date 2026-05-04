@@ -21,7 +21,17 @@ interface UserSettings {
     /** id of the last paired heart rate monitor (BLE peripheral identifier). */
     val pairedHrmId: StateFlow<String?>
     fun setPairedHrmId(id: String?)
+
+    /**
+     * True once the user has dismissed the first-run welcome flow on the Rides
+     * tab. Used to gate the welcome banner so it only shows once per install.
+     */
+    val hasCompletedOnboarding: StateFlow<Boolean>
+    fun setHasCompletedOnboarding(value: Boolean)
 }
+
+/** FTP fallback used when a new rider taps "I don't know my FTP" in onboarding. */
+const val UNKNOWN_FTP_DEFAULT = 150
 
 const val DEFAULT_FTP = 200
 const val MIN_FTP = 50

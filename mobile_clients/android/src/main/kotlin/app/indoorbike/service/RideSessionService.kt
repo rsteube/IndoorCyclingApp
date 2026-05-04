@@ -166,14 +166,27 @@ class RideSessionService : Service() {
     }
 
     private fun startForegroundCompat(notification: Notification) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: SecurityException) {
+            // Android 14+ requires a runtime-granted BLUETOOTH_* permission to
+            // start a connectedDevice FGS. If none is granted (e.g. brand-new
+            // user starts a ride before ever pairing), bail gracefully — the
+            // ride still runs in-process while the activity is foregrounded.
+            Log.w(
+                "RideService",
+                "Foreground start denied — Bluetooth permission missing. Ride will only persist while the app is foregrounded.",
+                e
             )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+            stopSelf()
         }
     }
 

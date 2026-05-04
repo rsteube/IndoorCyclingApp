@@ -56,7 +56,12 @@
       "Bash(adb devices *)",
       "PowerShell(.\\\\gradlew.bat :mobile_clients:android:installDebug 2>&1)",
       "Bash(adb -s 82bc875c shell pm list packages indoorbike)",
-      "Bash(adb -s 82bc875c shell am start -n app.indoorbike/.MainActivity)"
+      "Bash(adb -s 82bc875c shell am start -n app.indoorbike/.MainActivity)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:compileDebugKotlin 2>&1)",
+      "Bash(adb -s 82bc875c shell pm clear app.indoorbike)",
+      "Bash(adb -s 82bc875c logcat -c)",
+      "Bash(adb -s 82bc875c logcat -d -t 500 *:E)",
+      "Bash(adb -s 82bc875c logcat -d -t 1000)"
     ]
   }
 }

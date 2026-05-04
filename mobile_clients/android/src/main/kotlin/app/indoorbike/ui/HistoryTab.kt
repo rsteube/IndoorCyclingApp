@@ -26,6 +26,7 @@ import app.indoorbike.shared.progression.durationLabelLong
 import app.indoorbike.shared.progression.totalDurationSeconds
 import app.indoorbike.shared.progression.totalKjAcross
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -38,7 +39,8 @@ import java.util.Locale
 
 @Composable
 fun HistoryTab(
-    onNavigateToOverview: (Long) -> Unit
+    onNavigateToOverview: (Long) -> Unit,
+    onNavigateToRides: () -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
@@ -81,6 +83,12 @@ fun HistoryTab(
                         style = CadenceType.body,
                         color = CadenceColors.Fg3,
                         textAlign = TextAlign.Center
+                    )
+                    Spacer(modifier = Modifier.height(Spacing.s5))
+                    PrimaryBtn(
+                        text = "Pick a workout",
+                        leadingIcon = null,
+                        onClick = onNavigateToRides
                     )
                 }
             }

@@ -1,5 +1,21 @@
 [
   {
+    "id": "starter-15min",
+    "name": "First Spin",
+    "description": "A welcoming 15-minute introduction. Easy warmup, then short tastes of tempo, threshold, and sweet-spot zones with plenty of recovery in between — so you can feel what each zone is like without committing to a hard ride.",
+    "segments": [
+      { "lengthInSeconds": 180, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 120, "powerPercentFTP": 60, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 90,  "powerPercentFTP": 80, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 60,  "powerPercentFTP": 55, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 90,  "powerPercentFTP": 95, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 60,  "powerPercentFTP": 55, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 90,  "powerPercentFTP": 88, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 60,  "powerPercentFTP": 55, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 150, "powerPercentFTP": 45, "intervalType": "CONSTANT" }
+    ]
+  },
+  {
     "id": "sample-test",
     "name": "App Test",
     "description": "A short 30-second workout for testing the ride screen.",

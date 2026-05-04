@@ -195,7 +195,8 @@ private fun AppNavigator(workouts: List<Workout>) {
                             ftp = container.userSettings.ftp.value
                         )
                         navigator.navigate(RouteRideScreen(workout.id))
-                    }
+                    },
+                    onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) }
                 )
             } else {
                 LaunchedEffect(Unit) { navigator.goBack() }
@@ -205,11 +206,14 @@ private fun AppNavigator(workouts: List<Workout>) {
             HistoryTab(
                 onNavigateToOverview = { sessionId ->
                     navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = false))
-                }
+                },
+                onNavigateToRides = { navigator.navigate(TabRides) }
             )
         }
         entry<TabProgress> { _ ->
-            ProgressTab()
+            ProgressTab(
+                onNavigateToRides = { navigator.navigate(TabRides) }
+            )
         }
         entry<TabSettings> { _ ->
             SettingsTab(

@@ -26,6 +26,7 @@ import app.indoorbike.shared.progression.computeStreak
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import java.util.TimeZone
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -34,7 +35,7 @@ import app.indoorbike.ui.theme.Spacing
 import kotlin.math.roundToInt
 
 @Composable
-fun ProgressTab() {
+fun ProgressTab(onNavigateToRides: () -> Unit = {}) {
     val container = LocalAppContainer.current
     val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
     val weightKg by container.userSettings.weightKg.collectAsState()
@@ -58,7 +59,7 @@ fun ProgressTab() {
         )
 
         if (sessions.isEmpty()) {
-            EmptyProgress()
+            EmptyProgress(onNavigateToRides)
             return
         }
 
@@ -82,7 +83,7 @@ fun ProgressTab() {
 }
 
 @Composable
-private fun EmptyProgress() {
+private fun EmptyProgress(onNavigateToRides: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.s5),
         contentAlignment = Alignment.Center
@@ -107,6 +108,12 @@ private fun EmptyProgress() {
                 style = CadenceType.body,
                 color = CadenceColors.Fg3,
                 textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(Spacing.s5))
+            PrimaryBtn(
+                text = "Pick a workout",
+                leadingIcon = null,
+                onClick = onNavigateToRides
             )
         }
     }

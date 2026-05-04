@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -49,6 +50,7 @@ import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.workout.WorkoutSummary
 import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.shared.workout.toSummary
@@ -59,10 +61,14 @@ import kotlin.math.roundToInt
 fun WorkoutDetailScreen(
     workout: Workout,
     onBack: () -> Unit,
-    onStart: () -> Unit
+    onStart: () -> Unit,
+    onNavigateToPairing: () -> Unit,
 ) {
     val container = LocalAppContainer.current
     val ftp by container.userSettings.ftp.collectAsState()
+    val trainerState by container.trainerManager.connectionState.collectAsState()
+    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
+    val isTrainerReady = trainerState == TrainerConnectionState.Connected || isMockTrainer
     val summary = remember(workout, ftp) { workout.toSummary(ftp) }
     var stepsExpanded by remember(workout.id) { mutableStateOf(false) }
     val stepCutoff = 6
@@ -117,7 +123,11 @@ fun WorkoutDetailScreen(
             item { Spacer(Modifier.height(Spacing.s4)) }
         }
 
-        StartCta(onStart = onStart)
+        StartCta(
+            isTrainerReady = isTrainerReady,
+            onStart = onStart,
+            onPairTrainer = onNavigateToPairing,
+        )
     }
 }
 
@@ -258,8 +268,12 @@ private fun StepRow(segment: PowerZone, ftp: Int) {
 }
 
 @Composable
-private fun StartCta(onStart: () -> Unit) {
-    Box(
+private fun StartCta(
+    isTrainerReady: Boolean,
+    onStart: () -> Unit,
+    onPairTrainer: () -> Unit,
+) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .background(CadenceColors.Bg0)
@@ -267,11 +281,28 @@ private fun StartCta(onStart: () -> Unit) {
             .windowInsetsPadding(WindowInsets.navigationBars)
             .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
     ) {
-        PrimaryBtn(
-            text = "Start workout",
-            onClick = onStart,
-            modifier = Modifier.fillMaxWidth(),
-            glow = true
-        )
+        if (isTrainerReady) {
+            PrimaryBtn(
+                text = "Start workout",
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth(),
+                glow = true
+            )
+        } else {
+            Text(
+                text = "Pair a smart trainer (or use the mock trainer) before starting a ride.",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.s2)
+            )
+            PrimaryBtn(
+                text = "Pair a trainer to ride",
+                leadingIcon = Icons.AutoMirrored.Outlined.BluetoothSearching,
+                onClick = onPairTrainer,
+                modifier = Modifier.fillMaxWidth(),
+                glow = true
+            )
+        }
     }
 }
