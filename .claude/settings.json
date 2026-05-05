@@ -91,7 +91,9 @@
       "PowerShell(adb -s 82bc875c shell screencap -p /sdcard/share_sheet.png)",
       "PowerShell(adb -s 82bc875c pull /sdcard/share_sheet.png c:/Users/juhan/vibes/cycling_app/share_sheet_test.png 2>&1)",
       "Bash(adb -s 82bc875c shell \"ls /sdcard/Pictures/Indoor*/\")",
-      "PowerShell(adb -s 82bc875c pull \"/sdcard/Pictures/Indoor Bike/indoorbike-app-test-1.png\" c:/Users/juhan/vibes/cycling_app/share_card_saved.png 2>&1)"
+      "PowerShell(adb -s 82bc875c pull \"/sdcard/Pictures/Indoor Bike/indoorbike-app-test-1.png\" c:/Users/juhan/vibes/cycling_app/share_card_saved.png 2>&1)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:installRelease 2>&1)",
+      "PowerShell(.\\\\gradlew.bat :shared:allTests 2>&1)"
     ],
     "additionalDirectories": [
       "c:\\Users\\juhan\\AppData\\Local\\Temp",

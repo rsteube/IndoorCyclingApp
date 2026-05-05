@@ -57,6 +57,15 @@ class AndroidUserSettings(
     private val _hasCompletedOnboarding = MutableStateFlow(loadBooleanBlocking(KEY_ONBOARDED))
     override val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
 
+    private val _intervalsAthleteId = MutableStateFlow<String?>(loadStringBlocking(KEY_INTERVALS_ATHLETE))
+    override val intervalsAthleteId: StateFlow<String?> = _intervalsAthleteId.asStateFlow()
+
+    private val _intervalsApiKey = MutableStateFlow<String?>(loadStringBlocking(KEY_INTERVALS_API_KEY))
+    override val intervalsApiKey: StateFlow<String?> = _intervalsApiKey.asStateFlow()
+
+    private val _intervalsAutoUpload = MutableStateFlow(loadBooleanBlocking(KEY_INTERVALS_AUTO))
+    override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
+
     init {
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
@@ -86,6 +95,21 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_ONBOARDED] ?: false }.collect { value ->
                 if (value != _hasCompletedOnboarding.value) _hasCompletedOnboarding.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_INTERVALS_ATHLETE] }.collect { value ->
+                if (value != _intervalsAthleteId.value) _intervalsAthleteId.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_INTERVALS_API_KEY] }.collect { value ->
+                if (value != _intervalsApiKey.value) _intervalsApiKey.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_INTERVALS_AUTO] ?: false }.collect { value ->
+                if (value != _intervalsAutoUpload.value) _intervalsAutoUpload.value = value
             }
         }
     }
@@ -134,6 +158,33 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_ONBOARDED] = value } }
     }
 
+    override fun setIntervalsAthleteId(id: String?) {
+        val cleaned = id?.trim()?.takeIf { it.isNotEmpty() }
+        _intervalsAthleteId.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_INTERVALS_ATHLETE)
+                else it[KEY_INTERVALS_ATHLETE] = cleaned
+            }
+        }
+    }
+
+    override fun setIntervalsApiKey(key: String?) {
+        val cleaned = key?.trim()?.takeIf { it.isNotEmpty() }
+        _intervalsApiKey.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_INTERVALS_API_KEY)
+                else it[KEY_INTERVALS_API_KEY] = cleaned
+            }
+        }
+    }
+
+    override fun setIntervalsAutoUpload(value: Boolean) {
+        _intervalsAutoUpload.value = value
+        scope.launch { store.edit { it[KEY_INTERVALS_AUTO] = value } }
+    }
+
     fun dispose() {
         scope.cancel()
     }
@@ -159,5 +210,12 @@ class AndroidUserSettings(
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
         private val KEY_CONTROLLER = stringPreferencesKey("paired_controller_id")
         private val KEY_ONBOARDED = booleanPreferencesKey("has_completed_onboarding")
+        // Intervals.icu sync — opt-in. The API key sits in DataStore (plaintext)
+        // for now; if/when device-credentials hardening lands we'll move it to
+        // EncryptedSharedPreferences (or AndroidX security-crypto) without
+        // touching the UserSettings interface.
+        private val KEY_INTERVALS_ATHLETE = stringPreferencesKey("intervals_athlete_id")
+        private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
+        private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
     }
 }

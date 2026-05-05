@@ -12,12 +12,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.SettingsRemote
+import androidx.compose.material.icons.outlined.Visibility
+import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
@@ -28,6 +33,9 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.indoorbike.BuildConfig
@@ -87,6 +95,11 @@ fun SettingsTab(
                 onHrmClick = { sheetTarget = DeviceSheetTarget.Hrm },
                 onControllerClick = { sheetTarget = DeviceSheetTarget.Controller }
             )
+
+            Spacer(modifier = Modifier.height(Spacing.s6))
+
+            SectionHeader("CLOUD SYNC")
+            IntervalsIcuCard()
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
@@ -769,5 +782,181 @@ private fun AboutRow(label: String, value: String) {
     ) {
         Text(text = label, style = CadenceType.body, color = CadenceColors.Fg2)
         Text(text = value, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+    }
+}
+
+// ─── Cloud Sync · Intervals.icu ──────────────────────────────────────────────
+
+/**
+ * Off-by-default cloud sync card for Intervals.icu. The whole section sits
+ * idle (no network, no upload) until the user fills in athlete id + API key.
+ * Auto-upload is its own opt-in toggle; manual upload from
+ * WorkoutOverviewScreen also picks up these credentials.
+ *
+ * F-Droid posture: nothing here triggers a network call by itself — only the
+ * upload path (manual or auto) does, and both require explicit user action.
+ */
+@Composable
+private fun IntervalsIcuCard() {
+    val container = LocalAppContainer.current
+    val settings = container.userSettings
+
+    val athleteId by settings.intervalsAthleteId.collectAsState()
+    val apiKey by settings.intervalsApiKey.collectAsState()
+    val autoUpload by settings.intervalsAutoUpload.collectAsState()
+    val configured = !athleteId.isNullOrBlank() && !apiKey.isNullOrBlank()
+
+    var showKey by remember { mutableStateOf(false) }
+
+    val shape = RoundedCornerShape(Radii.md)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .padding(Spacing.s5),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.CloudUpload,
+                    contentDescription = null,
+                    tint = CadenceColors.Brand500,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(Spacing.s3))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Intervals.icu", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Text(
+                    text = if (configured) "Configured" else "Not configured",
+                    style = CadenceType.tick,
+                    color = if (configured) CadenceColors.Success else CadenceColors.Fg3
+                )
+            }
+        }
+
+        Text(
+            text = "Sync your finished rides to intervals.icu. Off by default — your athlete id " +
+                "and API key live only on this phone, and the app only contacts intervals.icu " +
+                "when an upload is triggered (manually or via auto-upload below).",
+            style = CadenceType.small,
+            color = CadenceColors.Fg3
+        )
+
+        IntervalsTextField(
+            label = "ATHLETE ID",
+            placeholder = "i12345",
+            value = athleteId.orEmpty(),
+            onValueChange = { settings.setIntervalsAthleteId(it) },
+            keyboardType = KeyboardType.Ascii,
+            visualTransformation = VisualTransformation.None,
+        )
+
+        IntervalsTextField(
+            label = "API KEY",
+            placeholder = "Paste from intervals.icu/settings",
+            value = apiKey.orEmpty(),
+            onValueChange = { settings.setIntervalsApiKey(it) },
+            keyboardType = KeyboardType.Password,
+            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+            trailing = {
+                Icon(
+                    imageVector = if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                    contentDescription = if (showKey) "Hide key" else "Show key",
+                    tint = CadenceColors.Fg3,
+                    modifier = Modifier
+                        .size(20.dp)
+                        .clickable { showKey = !showKey }
+                )
+            }
+        )
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Spacing.s2),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Auto-upload finished rides", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Text(
+                    text = if (configured)
+                        "Each completed ride is sent immediately."
+                    else
+                        "Add credentials above to enable.",
+                    style = CadenceType.small,
+                    color = CadenceColors.Fg3
+                )
+            }
+            Switch(
+                checked = autoUpload && configured,
+                enabled = configured,
+                onCheckedChange = { settings.setIntervalsAutoUpload(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = CadenceColors.OnBrand,
+                    checkedTrackColor = CadenceColors.Brand500,
+                    uncheckedThumbColor = CadenceColors.Fg3,
+                    uncheckedTrackColor = CadenceColors.Bg2,
+                    uncheckedBorderColor = CadenceColors.Line2,
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun IntervalsTextField(
+    label: String,
+    placeholder: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    keyboardType: KeyboardType,
+    visualTransformation: VisualTransformation,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.sm))
+                .background(CadenceColors.Bg2)
+                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.sm))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            androidx.compose.foundation.text.BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Brand500),
+                visualTransformation = visualTransformation,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = keyboardType,
+                    imeAction = ImeAction.Done,
+                ),
+                modifier = Modifier.weight(1f),
+                decorationBox = { inner ->
+                    if (value.isEmpty()) {
+                        Text(text = placeholder, style = CadenceType.body, color = CadenceColors.Fg4)
+                    }
+                    inner()
+                }
+            )
+            if (trailing != null) {
+                Spacer(Modifier.width(Spacing.s3))
+                trailing()
+            }
+        }
     }
 }

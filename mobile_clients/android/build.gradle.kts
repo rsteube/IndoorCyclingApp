@@ -34,6 +34,10 @@ android {
         }
         release {
             isMinifyEnabled = false
+            // Personal-use release builds: sign with the debug keystore so the
+            // APK actually installs. Replace with a proper keystore when
+            // shipping to F-Droid (or anywhere outside your own devices).
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

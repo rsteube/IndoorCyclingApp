@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material3.Icon
@@ -29,6 +30,8 @@ import app.indoorbike.share.ShareSheet
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
+import app.indoorbike.sync.IntervalsIcuUploader
+import android.widget.Toast
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.progression.timeInZoneSeconds
@@ -65,6 +68,14 @@ fun WorkoutOverviewScreen(
     var showShareSheet by remember { mutableStateOf(false) }
 
     val ftp by container.userSettings.ftp.collectAsState()
+    val intervalsAthlete by container.userSettings.intervalsAthleteId.collectAsState()
+    val intervalsKey by container.userSettings.intervalsApiKey.collectAsState()
+    val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
+    val intervalsConfigured = !intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    var uploading by remember { mutableStateOf(false) }
+    var uploadAttemptedForSession by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(sessionId) {
         scope.launch {
@@ -121,6 +132,38 @@ fun WorkoutOverviewScreen(
         }
         val ttz: IntArray = remember(telemetry, ftp) {
             timeInZoneSeconds(telemetry.map { it.power }, ftp)
+        }
+
+        // Helper that runs the actual upload — used by both the manual button
+        // and the auto-upload-on-arrival LaunchedEffect below. Posts a toast
+        // with the result; doesn't block navigation.
+        fun runIntervalsUpload() {
+            if (uploading) return
+            uploading = true
+            scope.launch {
+                val outcome = container.intervalsIcuUploader.upload(
+                    session = activeSession,
+                    workout = targetWorkout,
+                    ftp = ftp,
+                )
+                val msg = when (outcome) {
+                    is IntervalsIcuUploader.Outcome.Success -> "Uploaded to Intervals.icu"
+                    is IntervalsIcuUploader.Outcome.NotConfigured -> "Add credentials in Settings → Cloud sync first"
+                    is IntervalsIcuUploader.Outcome.Failure -> outcome.message
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                uploading = false
+            }
+        }
+
+        // Auto-upload exactly once when arriving from a finished ride and the
+        // user has opted in. Recompositions don't retry — `uploadAttemptedForSession`
+        // gates per-session-id.
+        LaunchedEffect(activeSession.id, fromRide, autoUpload, intervalsConfigured) {
+            if (!fromRide || !autoUpload || !intervalsConfigured) return@LaunchedEffect
+            if (uploadAttemptedForSession == activeSession.id) return@LaunchedEffect
+            uploadAttemptedForSession = activeSession.id
+            runIntervalsUpload()
         }
 
         Column(
@@ -216,6 +259,15 @@ fun WorkoutOverviewScreen(
             if (telemetry.isNotEmpty() && ttz.any { it > 0 }) {
                 Spacer(modifier = Modifier.height(Spacing.s6))
                 TimeInZoneCard(ttzSeconds = ttz, totalSeconds = activeSession.durationSeconds.toInt())
+            }
+
+            if (intervalsConfigured) {
+                Spacer(modifier = Modifier.height(Spacing.s6))
+                IntervalsUploadCard(
+                    uploading = uploading,
+                    autoEnabled = autoUpload,
+                    onUpload = { runIntervalsUpload() }
+                )
             }
 
             Spacer(modifier = Modifier.height(Spacing.s6))
@@ -494,4 +546,56 @@ private fun DeleteConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
 private fun formatEpochToDate(epoch: Long): String {
     val fmt = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
     return fmt.format(Date(epoch))
+}
+
+/**
+ * Bottom-of-overview card that exposes the manual Intervals.icu upload. Only
+ * rendered when credentials are configured; the auto-upload toggle runs
+ * silently in the background via the LaunchedEffect above.
+ */
+@Composable
+private fun IntervalsUploadCard(
+    uploading: Boolean,
+    autoEnabled: Boolean,
+    onUpload: () -> Unit
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .padding(Spacing.s5),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CloudUpload,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(Modifier.width(Spacing.s3))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Intervals.icu", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(
+                text = if (autoEnabled) "Auto-upload is on. Tap to re-send."
+                else "Tap to upload this ride.",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
+        }
+        SecondaryBtn(
+            text = if (uploading) "Uploading…" else "Upload",
+            onClick = { if (!uploading) onUpload() }
+        )
+    }
 }

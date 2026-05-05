@@ -1,0 +1,152 @@
+package app.indoorbike.shared.fit
+
+import app.indoorbike.shared.PowerZone
+import app.indoorbike.shared.Workout
+import app.indoorbike.shared.db.WorkoutSession
+import app.indoorbike.shared.db.WorkoutTelemetry
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class FitWriterTest {
+
+    @Test
+    fun headerHasCorrectMagicAndProtocol() {
+        val w = FitWriter()
+        w.writePlaceholderHeader()
+        w.finalizeAndCrc()
+        val bytes = w.bytes()
+        assertEquals(14 + 2, bytes.size, "header-only file: 14 header bytes + 2 file CRC")
+        assertEquals(14, bytes[0].toInt() and 0xFF)
+        assertEquals(0x20, bytes[1].toInt() and 0xFF)         // protocol 2.0
+        assertEquals('.'.code, bytes[8].toInt() and 0xFF)
+        assertEquals('F'.code, bytes[9].toInt() and 0xFF)
+        assertEquals('I'.code, bytes[10].toInt() and 0xFF)
+        assertEquals('T'.code, bytes[11].toInt() and 0xFF)
+    }
+
+    @Test
+    fun fileCrcMatchesContent() {
+        // Round-trip: write a tiny file, then verify the CRC at the end
+        // matches what fitCrc reports over the rest of the bytes.
+        val w = FitWriter()
+        w.writePlaceholderHeader()
+        // Add one tiny definition + data message so there's a body to CRC.
+        w.writeDefinition(0, FitMessage.FILE_ID, listOf(
+            Triple(0, 1, FitBaseType.ENUM),
+            Triple(4, 4, FitBaseType.UINT32),
+        ))
+        w.writeDataHeader(0)
+        w.u8(4)
+        w.u32(123_456_789L)
+        w.finalizeAndCrc()
+        val bytes = w.bytes()
+        val storedCrc = (bytes[bytes.size - 2].toInt() and 0xFF) or
+            ((bytes[bytes.size - 1].toInt() and 0xFF) shl 8)
+        val expected = FitWriter.fitCrc(bytes.toList(), 0, bytes.size - 2)
+        assertEquals(expected, storedCrc, "trailing file CRC must match content")
+    }
+
+    @Test
+    fun headerCrcMatchesHeaderBytes() {
+        val w = FitWriter()
+        w.writePlaceholderHeader()
+        w.finalizeAndCrc()
+        val bytes = w.bytes()
+        val storedHeaderCrc = (bytes[12].toInt() and 0xFF) or
+            ((bytes[13].toInt() and 0xFF) shl 8)
+        val expected = FitWriter.fitCrc(bytes.toList(), 0, 12)
+        assertEquals(expected, storedHeaderCrc, "header CRC must match first 12 bytes")
+    }
+
+    @Test
+    fun dataSizeFieldEqualsBodyLength() {
+        val w = FitWriter()
+        w.writePlaceholderHeader()
+        w.writeDefinition(0, FitMessage.FILE_ID, listOf(
+            Triple(0, 1, FitBaseType.ENUM),
+        ))
+        w.writeDataHeader(0)
+        w.u8(4)
+        w.finalizeAndCrc()
+        val bytes = w.bytes()
+        // bytes[4..7] LE = total size of records (everything between header and trailing CRC)
+        val storedSize = (bytes[4].toInt() and 0xFF) or
+            ((bytes[5].toInt() and 0xFF) shl 8) or
+            ((bytes[6].toInt() and 0xFF) shl 16) or
+            ((bytes[7].toInt() and 0xFF) shl 24)
+        // Body = total - 14-byte header - 2-byte trailing CRC.
+        val expected = bytes.size - 14 - 2
+        assertEquals(expected, storedSize)
+    }
+
+    @Test
+    fun rideFitBuilderProducesAFile() {
+        // 30-minute ride at three different power levels.
+        val startEpoch = 1_700_000_000_000L
+        val workout = Workout(
+            id = "test", name = "Test", description = null,
+            segments = listOf(
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 50, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 100, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 60, intervalType = "CONSTANT"),
+            )
+        )
+        val telemetry = (0 until 1800).map { i ->
+            WorkoutTelemetry(
+                id = i.toLong(), sessionId = 1,
+                timestampEpoch = startEpoch + i * 1000L,
+                power = when {
+                    i < 600 -> 100L
+                    i < 1200 -> 200L
+                    else -> 120L
+                },
+                cadence = 90L,
+                heartRate = (130 + i / 60).coerceAtMost(170).toLong(),
+            )
+        }
+        val session = WorkoutSession(
+            id = 1, workoutId = "test", workoutName = "Test",
+            startTimeEpoch = startEpoch, durationSeconds = 1800,
+            avgPower = 140L, avgCadence = 90L, avgHeartRate = 150L,
+        )
+
+        val bytes = RideFitBuilder.build(session, telemetry, workout, ftp = 200)
+
+        // Magic + size sanity
+        assertEquals('.'.code, bytes[8].toInt() and 0xFF)
+        assertEquals('F'.code, bytes[9].toInt() and 0xFF)
+        assertTrue(bytes.size > 1000, "Should have substantial bytes for 1800 records")
+
+        // CRC integrity end-to-end
+        val storedCrc = (bytes[bytes.size - 2].toInt() and 0xFF) or
+            ((bytes[bytes.size - 1].toInt() and 0xFF) shl 8)
+        val expectedCrc = FitWriter.fitCrc(bytes.toList(), 0, bytes.size - 2)
+        assertEquals(expectedCrc, storedCrc)
+    }
+
+    @Test
+    fun rideFitBuilderHandlesNoWorkout() {
+        // Unstructured ride — single lap should cover the whole thing.
+        val session = WorkoutSession(
+            id = 42, workoutId = "freeride", workoutName = "Free Ride",
+            startTimeEpoch = 1_700_000_000_000L,
+            durationSeconds = 60,
+            avgPower = 150L, avgCadence = 85L, avgHeartRate = 140L,
+        )
+        val telemetry = (0 until 60).map { i ->
+            WorkoutTelemetry(
+                id = i.toLong(), sessionId = 42,
+                timestampEpoch = session.startTimeEpoch + i * 1000L,
+                power = 150L, cadence = 85L, heartRate = 140L,
+            )
+        }
+        val bytes = RideFitBuilder.build(session, telemetry, workout = null, ftp = 200)
+        assertTrue(bytes.size > 200)
+        // CRC integrity
+        val storedCrc = (bytes[bytes.size - 2].toInt() and 0xFF) or
+            ((bytes[bytes.size - 1].toInt() and 0xFF) shl 8)
+        val expectedCrc = FitWriter.fitCrc(bytes.toList(), 0, bytes.size - 2)
+        assertEquals(expectedCrc, storedCrc)
+    }
+}

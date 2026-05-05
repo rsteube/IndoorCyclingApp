@@ -6,6 +6,7 @@ import app.indoorbike.library.RepositoryManager
 import app.indoorbike.library.WorkoutImporter
 import app.indoorbike.library.WorkoutLibrary
 import app.indoorbike.session.AndroidActiveSessionStore
+import app.indoorbike.sync.IntervalsIcuUploader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,6 +43,7 @@ class AppContainer(
     val workoutImporter: WorkoutImporter,
     val repositoryManager: RepositoryManager,
     val workoutLibrary: WorkoutLibrary,
+    val intervalsIcuUploader: IntervalsIcuUploader,
 ) {
     fun dispose() {
         trainerManager.dispose()
@@ -80,6 +82,10 @@ class AppContainer(
                 importer = workoutImporter,
                 repositoryManager = repositoryManager,
             )
+            val intervalsIcuUploader = IntervalsIcuUploader(
+                historyRepository = historyRepository,
+                userSettings = userSettings,
+            )
             return AppContainer(
                 trainerManager = trainerManager,
                 heartRateMonitor = heartRateMonitor,
@@ -91,6 +97,7 @@ class AppContainer(
                 workoutImporter = workoutImporter,
                 repositoryManager = repositoryManager,
                 workoutLibrary = workoutLibrary,
+                intervalsIcuUploader = intervalsIcuUploader,
             )
         }
     }

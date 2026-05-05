@@ -1,5 +1,6 @@
 package app.indoorbike.library
 
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
@@ -59,5 +60,86 @@ object HttpFetcher {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Multipart-form POST of a single binary file. Used for activity uploads
+     * to Intervals.icu (and is generic enough for any other "POST a file"
+     * endpoint we might add later).
+     *
+     * Returns [PostResult] with the HTTP status code and response body so the
+     * caller can surface platform-specific error text in toasts.
+     */
+    suspend fun postMultipartFile(
+        url: String,
+        fileFieldName: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        fileMimeType: String = "application/octet-stream",
+        extraFormFields: Map<String, String> = emptyMap(),
+        headers: Map<String, String> = emptyMap(),
+    ): PostResult = withContext(Dispatchers.IO) {
+        val parsed = URL(url)
+        require(parsed.protocol.equals("https", ignoreCase = true)) {
+            "Only https:// URLs are allowed (got ${parsed.protocol})"
+        }
+        val boundary = "----IndoorBike${System.nanoTime().toString(16)}"
+        val body = buildMultipartBody(boundary, fileFieldName, fileName, fileBytes, fileMimeType, extraFormFields)
+
+        val connection = parsed.openConnection() as HttpURLConnection
+        connection.apply {
+            connectTimeout = TIMEOUT_MS
+            readTimeout = TIMEOUT_MS * 4   // uploads can take longer than fetches
+            requestMethod = "POST"
+            instanceFollowRedirects = true
+            doOutput = true
+            useCaches = false
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+            setRequestProperty("Content-Length", body.size.toString())
+            setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
+            for ((k, v) in headers) setRequestProperty(k, v)
+        }
+        try {
+            connection.outputStream.use { it.write(body) }
+            val code = connection.responseCode
+            // Read whichever stream actually has bytes (success vs error).
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(4096))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun buildMultipartBody(
+        boundary: String,
+        fileFieldName: String,
+        fileName: String,
+        fileBytes: ByteArray,
+        fileMimeType: String,
+        extraFormFields: Map<String, String>,
+    ): ByteArray {
+        val out = ByteArrayOutputStream()
+        val crlf = "\r\n".toByteArray(StandardCharsets.UTF_8)
+
+        // Plain string form fields
+        for ((k, v) in extraFormFields) {
+            out.write(("--$boundary").toByteArray(StandardCharsets.UTF_8)); out.write(crlf)
+            out.write(("Content-Disposition: form-data; name=\"$k\"").toByteArray(StandardCharsets.UTF_8)); out.write(crlf); out.write(crlf)
+            out.write(v.toByteArray(StandardCharsets.UTF_8)); out.write(crlf)
+        }
+        // File part
+        out.write(("--$boundary").toByteArray(StandardCharsets.UTF_8)); out.write(crlf)
+        out.write(("Content-Disposition: form-data; name=\"$fileFieldName\"; filename=\"$fileName\"").toByteArray(StandardCharsets.UTF_8)); out.write(crlf)
+        out.write(("Content-Type: $fileMimeType").toByteArray(StandardCharsets.UTF_8)); out.write(crlf); out.write(crlf)
+        out.write(fileBytes); out.write(crlf)
+
+        // Closing boundary
+        out.write(("--$boundary--").toByteArray(StandardCharsets.UTF_8)); out.write(crlf)
+        return out.toByteArray()
+    }
+
+    data class PostResult(val code: Int, val body: String) {
+        val isSuccess: Boolean get() = code in 200..299
     }
 }

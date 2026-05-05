@@ -290,7 +290,10 @@ private fun StartCta(
             )
         } else {
             Text(
-                text = "Pair a smart trainer (or use the mock trainer) before starting a ride.",
+                text = if (app.indoorbike.BuildConfig.DEBUG)
+                    "Pair a smart trainer (or use the mock trainer) before starting a ride."
+                else
+                    "Pair a smart trainer before starting a ride.",
                 style = CadenceType.small,
                 color = CadenceColors.Fg3,
                 textAlign = TextAlign.Center,

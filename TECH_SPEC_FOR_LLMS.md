@@ -212,6 +212,42 @@ The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](mobile_clients/androi
 
 **Permissions** — `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 
+### FIT export + Intervals.icu cloud sync
+
+End-to-end activity sync to [intervals.icu](https://intervals.icu). Strict opt-in posture — no network call happens unless the user explicitly configures credentials and either taps Upload or turns auto-upload on.
+
+**FIT writer — hand-rolled in shared, no third-party dep.** Lives in [`shared/src/commonMain/kotlin/app/indoorbike/shared/fit/`](shared/src/commonMain/kotlin/app/indoorbike/shared/fit/):
+
+- [`FitWriter.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/fit/FitWriter.kt) — low-level: 14-byte header (with header CRC), little-endian integer helpers, definition-message builder, data-message header byte, the FIT-spec nibble-table CRC-16, and `finalizeAndCrc()` that patches data-size + header-CRC + appends file-CRC. `FitBaseType`, `FitMessage` (global message numbers), `FIT_EPOCH_OFFSET_SECONDS = 631065600` (UTC 1989-12-31).
+- [`RideFitBuilder.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/fit/RideFitBuilder.kt) — high-level `build(session, telemetry, workout, ftp): ByteArray`. Emits file_id (manufacturer = 255 *development*), file_creator, timer-start event, one record per 1Hz telemetry sample (timestamp + power + HR + cadence), one lap per workout segment (interleaved with the records covering that segment), timer-stop event, session message (sport=cycling, sub_sport=indoor_cycling, plus avg/max power/HR/cadence, NP, IF, TSS×10, kJ, FTP), and an activity wrapper. Falls back to a single whole-ride lap when there's no structured workout.
+- [`FitWriterTest.kt`](shared/src/commonTest/kotlin/app/indoorbike/shared/fit/FitWriterTest.kt) — verifies header magic, header-CRC, file-CRC, data-size patching, and round-trips a 30-min synthetic ride. Run via `.\gradlew.bat :shared:allTests`.
+
+We claim manufacturer `255` (the FIT spec's *development* slot) — the honest answer for a non-commercial app, accepted by all major analysis platforms. CRC algorithm is the spec's nibble-table implementation; matches Garmin's SDK byte-for-byte.
+
+**Intervals.icu uploader — Android.**
+
+- [`HttpFetcher.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) gained `postMultipartFile(url, fileFieldName, fileName, fileBytes, fileMimeType, extraFormFields, headers): PostResult` — a vanilla `HttpURLConnection` multipart POST. HTTPS-only, generous timeouts for uploads, body capped at 4096 chars in the result.
+- [`IntervalsIcuUploader.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/sync/IntervalsIcuUploader.kt) — composes the upload: builds FIT bytes via `RideFitBuilder`, normalises athlete id (always `i…` prefix, never doubled), HTTP-Basic auth with literal username `"API_KEY"` + the user's API key as password (per Intervals.icu's documented scheme), POST to `https://intervals.icu/api/v1/athlete/{id}/activities`. Returns `Outcome.Success(activityId?)` / `NotConfigured` / `Failure(message)`. Cheap regex sniff for `"id":…` in the success body — no JSON parser pulled in just for that.
+
+**Settings + persistence.** Three new fields on the [`UserSettings`](shared/src/commonMain/kotlin/app/indoorbike/shared/settings/UserSettings.kt) interface:
+
+| field | type | persisted in |
+| --- | --- | --- |
+| `intervalsAthleteId` | `String?` | DataStore (plaintext) |
+| `intervalsApiKey` | `String?` | DataStore (plaintext) |
+| `intervalsAutoUpload` | `Boolean` | DataStore |
+
+The API key sits in plaintext DataStore for now. When device-credential hardening lands we'll move it to AndroidX `security-crypto` without touching the `UserSettings` interface (the property type is already `String?`).
+
+**Settings UI.** New `CLOUD SYNC` section between `DEVICES` and `ABOUT` in [`SettingsTab.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/SettingsTab.kt) hosting an `IntervalsIcuCard`: athlete-id input, API-key input (`PasswordVisualTransformation` with a show/hide eye toggle), and an auto-upload `Switch` that's disabled until both credential fields are filled. Copy explicitly states the F-Droid posture ("only contacts intervals.icu when an upload is triggered").
+
+**Upload triggers.** [`WorkoutOverviewScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt):
+
+- **Manual** — `IntervalsUploadCard` at the bottom of the scroll content, visible only when credentials are configured. "Upload" button posts a Toast with the result.
+- **Auto** — a `LaunchedEffect(activeSession.id, fromRide, autoUpload, intervalsConfigured)` fires once when the screen arrives from a finished ride. A `uploadAttemptedForSession` flag prevents config-change recompositions from re-firing the upload.
+
+**F-Droid posture.** Triggers `NonFreeNet` only when the user opts in. Manifest declares `INTERNET` (already present for the registry feature). No third-party libs added — FIT writing is pure Kotlin in shared, multipart POST is `HttpURLConnection`. Auto-upload is off by default and disabled in the UI until both credentials are provided. Can be unilaterally disabled from Settings without losing locally-stored ride history.
+
 ### F-Droid hygiene checklist
 
 - **Fonts**: bundled locally as OFL TTFs in `mobile_clients/android/src/main/res/font/` — no Google Fonts CDN, no runtime download. Sources are the OFL distribution at rest in `github.com/google/fonts`:

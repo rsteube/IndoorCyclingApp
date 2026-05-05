@@ -358,7 +358,10 @@ private fun AddTrainerNudge(onTap: () -> Unit, modifier: Modifier = Modifier) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = "Pair a trainer", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
             Text(
-                text = "Open Settings · Devices, or try the mock trainer",
+                text = if (app.indoorbike.BuildConfig.DEBUG)
+                    "Open Settings · Devices, or try the mock trainer"
+                else
+                    "Open Settings · Devices to pair over Bluetooth",
                 style = CadenceType.tick,
                 color = CadenceColors.Fg3
             )

@@ -158,13 +158,18 @@ fun TrainerPairingScreen(
                         },
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(Spacing.s4))
-                    SecondaryBtn(
-                        text = "Use Mock Trainer",
-                        onClick = { trainerManager.connectMock() },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
+                    // The mock trainer is a debug-only affordance — hidden in
+                    // release so users never see (or accidentally tap into) a
+                    // dev tool.
+                    if (app.indoorbike.BuildConfig.DEBUG) {
+                        Spacer(modifier = Modifier.height(Spacing.s4))
+                        SecondaryBtn(
+                            text = "Use Mock Trainer",
+                            onClick = { trainerManager.connectMock() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
                     if (permissionError) {
                         Spacer(modifier = Modifier.height(Spacing.s3))
                         Text(

@@ -32,6 +32,23 @@ interface UserSettings {
      */
     val hasCompletedOnboarding: StateFlow<Boolean>
     fun setHasCompletedOnboarding(value: Boolean)
+
+    // ── Intervals.icu cloud sync ──────────────────────────────────────────
+    // Off-by-default opt-in cloud sync for completed rides. When the athlete
+    // id and API key are both non-blank we treat the integration as
+    // "configured"; auto-upload only kicks in if the user also enables it.
+
+    /** Numeric Intervals.icu athlete id (e.g. "i12345" — the leading "i" is part of it). */
+    val intervalsAthleteId: StateFlow<String?>
+    fun setIntervalsAthleteId(id: String?)
+
+    /** Personal API key from the user's Intervals.icu settings page. */
+    val intervalsApiKey: StateFlow<String?>
+    fun setIntervalsApiKey(key: String?)
+
+    /** When true, finished rides upload to Intervals.icu automatically. */
+    val intervalsAutoUpload: StateFlow<Boolean>
+    fun setIntervalsAutoUpload(value: Boolean)
 }
 
 /** FTP fallback used when a new rider taps "I don't know my FTP" in onboarding. */
