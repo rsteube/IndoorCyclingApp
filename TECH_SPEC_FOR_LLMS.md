@@ -197,7 +197,18 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 - **Browse community** — registry-driven cards with Subscribe / SUBSCRIBED state. Loading + empty + unreachable states are distinct.
 - **Imported workouts** — flat list of user files with delete.
 
-[`QrScannerScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` — Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, fetches the URL, and routes the result through the same `WorkoutImporter` pipeline. Accepts both bare HTTPS URLs and the `indoorbike://import?url=…` deep-link form.
+[`QrScannerScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` — Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, decodes-or-fetches the URL, and routes the result through the same `WorkoutImporter` pipeline.
+
+**URL forms accepted by the QR scanner *and* the `indoorbike://import` deep-link:**
+
+| Form | Resolver |
+| --- | --- |
+| `https://example.com/whatever.json` | HTTP GET, parse JSON |
+| `indoorbike://import?url=<https-url>` | HTTP GET that URL, parse JSON |
+| `https://indoorbike.app/share/#w=<base64-url-safe-utf8-json>` | Local decode — no HTTP. Matches the website editor's "Show QR & link" output. |
+| `indoorbike://import?data=<base64-url-safe-utf8-json>` | Local decode — no HTTP. Tighter form for chats / NFC etc. |
+
+The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLinkParser.kt). When it returns non-null, the network fetch is skipped entirely — important because the website's `share/` URL serves HTML to a browser, not JSON, so a naive GET wouldn't work. Decoding uses `android.util.Base64.decode(s, URL_SAFE | NO_PADDING | NO_WRAP)` to match the JS encoder in [`website/editor/editor.js`](website/editor/editor.js).
 
 **Permissions** — `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 

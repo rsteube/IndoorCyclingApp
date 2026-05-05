@@ -172,18 +172,39 @@ class MainActivity : ComponentActivity() {
 
         if (uri == null) return
 
-        // indoorbike://import?url=… deep link.
+        // indoorbike://import deep link.
         if (uri.scheme.equals("indoorbike", ignoreCase = true) &&
             uri.host.equals("import", ignoreCase = true)
         ) {
+            // First try to decode an embedded payload (?data=… form, or `#w=…`
+            // tucked inside the URI).
+            val embedded = app.indoorbike.library.WorkoutLinkParser
+                .extractEmbeddedJson(uri.toString())
+            if (embedded != null) {
+                intentScope.launch {
+                    val result = container.workoutImporter.importJsonText(embedded)
+                    onImportResolved(result)
+                }
+                return
+            }
+
+            // Fall back to ?url=… HTTP fetch.
             val remoteUrl = uri.getQueryParameter("url")
             if (remoteUrl.isNullOrBlank()) {
-                Toast.makeText(this, "Missing ?url= in indoorbike://import link", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, "Missing ?url= or ?data= in indoorbike://import link", Toast.LENGTH_SHORT).show()
                 return
             }
             intentScope.launch {
                 try {
-                    val text = app.indoorbike.library.HttpFetcher.getString(remoteUrl)
+                    // The fetched URL itself may be a share-page URL with the
+                    // workout in its hash — try the embedded parser on it too
+                    // before doing an actual GET. This makes the editor's QR
+                    // and "Show link" outputs work even if a user pastes the
+                    // whole share-URL into ?url=…
+                    val maybeEmbedded = app.indoorbike.library.WorkoutLinkParser
+                        .extractEmbeddedJson(remoteUrl)
+                    val text = maybeEmbedded
+                        ?: app.indoorbike.library.HttpFetcher.getString(remoteUrl)
                     val result = container.workoutImporter.importJsonText(text)
                     onImportResolved(result)
                 } catch (t: Throwable) {

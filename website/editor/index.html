@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workout editor — Indoor Bike</title>
+  <meta name="description" content="Build power-zone workouts for the Indoor Bike app — visual editor, no account, no backend.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="editor.css">
+</head>
+<body class="editor-body">
+
+  <header class="editor-header">
+    <div class="editor-header-inner">
+      <a class="brand" href="../" aria-label="Indoor Bike home">
+        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <div class="editor-eyebrow">Workout editor</div>
+      <div class="editor-ftp">
+        <label for="ftp-input" class="t-eyebrow-inline">YOUR FTP</label>
+        <div class="ftp-input-wrap">
+          <input id="ftp-input" type="number" min="50" max="600" inputmode="numeric" value="200">
+          <span class="ftp-unit">W</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="editor-main">
+
+    <!-- STATS -->
+    <section class="stats-strip" aria-label="Workout stats">
+      <div class="stat"><div class="stat-label">DURATION</div><div class="stat-value" id="stat-duration">0:00</div></div>
+      <div class="stat"><div class="stat-label">TSS</div><div class="stat-value stat-value--accent" id="stat-tss">0</div></div>
+      <div class="stat"><div class="stat-label">IF</div><div class="stat-value" id="stat-if">0.00</div></div>
+      <div class="stat"><div class="stat-label">AVG %FTP</div><div class="stat-value" id="stat-avg">0<span class="stat-suffix">%</span></div></div>
+      <div class="stat"><div class="stat-label">PEAK %FTP</div><div class="stat-value" id="stat-peak">0<span class="stat-suffix">%</span></div></div>
+      <div class="stat"><div class="stat-label">kJ</div><div class="stat-value" id="stat-kj">0</div></div>
+    </section>
+
+    <!-- THE BUILDER: palette + interactive timeline + inspector -->
+    <section class="builder" aria-label="Workout builder">
+
+      <!-- Palette: drag tiles onto the timeline, or click to append -->
+      <div class="builder-palette">
+        <span class="t-eyebrow-inline">DRAG OR TAP TO ADD</span>
+        <div class="palette-tiles" id="palette"></div>
+        <button id="open-set-builder" class="btn-quiet" type="button">+ Interval set…</button>
+      </div>
+
+      <!-- Timeline -->
+      <div class="timeline-wrap">
+        <div class="timeline" id="timeline" tabindex="0" aria-label="Workout timeline">
+          <div class="timeline-grid" id="grid"></div>
+          <div class="timeline-clips" id="clips"></div>
+          <!-- gap indicators inserted dynamically -->
+        </div>
+        <div class="timeline-axis-x" id="time-axis"></div>
+      </div>
+
+      <!-- Inspector strip — content swaps based on selection -->
+      <div class="inspector" id="inspector"></div>
+    </section>
+
+    <!-- META -->
+    <section class="meta-section" aria-label="Workout details">
+      <h2 class="section-h">Workout details</h2>
+      <div class="meta-grid">
+        <label class="field">
+          <span class="t-eyebrow-inline">NAME</span>
+          <input id="workout-name" type="text" maxlength="80" placeholder="Threshold 3×8" autocomplete="off">
+        </label>
+        <label class="field">
+          <span class="t-eyebrow-inline">DESCRIPTION</span>
+          <textarea id="workout-description" rows="3" maxlength="600" placeholder="Three sets at threshold to push your hour-long power higher."></textarea>
+        </label>
+        <div class="field">
+          <span class="t-eyebrow-inline">TAGS</span>
+          <div class="tag-grid" id="tag-grid"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- EXPORT -->
+    <section class="export-section" aria-label="Export">
+      <h2 class="section-h">Export</h2>
+      <div class="export-row">
+        <button id="btn-download" class="btn btn-primary" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download .json
+        </button>
+        <button id="btn-share" class="btn btn-secondary" type="button" hidden>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share to phone
+        </button>
+        <button id="btn-qr" class="btn btn-secondary" type="button">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="17"/></svg>
+          Show QR &amp; link
+        </button>
+        <button id="btn-copy" class="btn btn-ghost" type="button">Copy JSON</button>
+        <span class="export-spacer"></span>
+        <button id="btn-load" class="btn btn-ghost" type="button">Load .json</button>
+        <button id="btn-reset" class="btn btn-ghost btn-danger" type="button">Reset</button>
+      </div>
+      <p class="export-hint">
+        On a phone, tap <b>Share to phone</b> and pick <b>Indoor Bike</b> from the share sheet.
+        On desktop, <b>Download .json</b> and AirDrop / email it to your phone, or <b>Show QR &amp; link</b> to scan from inside the app.
+      </p>
+    </section>
+
+    <footer class="editor-footer">
+      <span>Workouts live entirely in your browser. No account, no upload, no tracking.</span>
+      <a href="../">← Back to indoorbike.app</a>
+    </footer>
+  </main>
+
+  <input id="file-input" type="file" accept="application/json,.json" hidden>
+
+  <!-- QR / link modal -->
+  <div id="qr-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="qr-title">
+    <div class="modal-scrim" data-modal-close></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="qr-title">Share with Indoor Bike</h3>
+        <button class="icon-close" type="button" data-modal-close aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-lead">
+          Scan from <b>Library → Scan QR</b> in the app, or open the link on your phone.
+        </p>
+        <div class="qr-stage" id="qr-stage"></div>
+        <label class="field">
+          <span class="t-eyebrow-inline">IMPORT LINK</span>
+          <div class="link-row">
+            <input id="qr-link" type="text" readonly>
+            <button id="qr-copy-link" class="btn btn-secondary" type="button">Copy</button>
+          </div>
+        </label>
+        <p class="modal-hint" id="qr-size-hint"></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Interval-set builder modal -->
+  <div id="set-modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="set-title">
+    <div class="modal-scrim" data-modal-close></div>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="set-title">Add interval set</h3>
+        <button class="icon-close" type="button" data-modal-close aria-label="Close">×</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-lead">
+          A repeating block of work + recovery. Generates one segment per leg.
+        </p>
+        <div class="set-grid">
+          <label class="field">
+            <span class="t-eyebrow-inline">REPS</span>
+            <input id="set-reps" type="number" min="1" max="40" value="4">
+          </label>
+          <label class="field">
+            <span class="t-eyebrow-inline">WORK</span>
+            <div class="dual">
+              <input id="set-work-min" type="number" min="0" max="60" value="5"> min
+              <input id="set-work-pct" type="number" min="30" max="200" value="100"> %FTP
+            </div>
+          </label>
+          <label class="field">
+            <span class="t-eyebrow-inline">RECOVERY</span>
+            <div class="dual">
+              <input id="set-rec-min" type="number" min="0" max="60" value="5"> min
+              <input id="set-rec-pct" type="number" min="30" max="200" value="50"> %FTP
+            </div>
+          </label>
+        </div>
+        <div class="export-row" style="margin-top: var(--s-5)">
+          <button id="set-add" class="btn btn-primary" type="button">Add to workout</button>
+          <button class="btn btn-ghost" type="button" data-modal-close>Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+  <script src="editor.js"></script>
+</body>
+</html>

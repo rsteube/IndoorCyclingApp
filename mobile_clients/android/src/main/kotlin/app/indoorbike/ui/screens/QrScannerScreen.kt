@@ -47,6 +47,7 @@ import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.HttpFetcher
 import app.indoorbike.library.ImportResult
 import app.indoorbike.library.SubscribeResult
+import app.indoorbike.library.WorkoutLinkParser
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -269,23 +270,36 @@ private suspend fun handleScannedUrl(
     container: app.indoorbike.AppContainer,
     raw: String
 ) {
-    // Accept either a bare URL or `indoorbike://import?url=…`.
-    val url = if (raw.startsWith("indoorbike://", ignoreCase = true)) {
+    // 1) Try to decode an embedded workout straight from the URL — the
+    //    indoorbike.app/share#w=… and indoorbike://import?data=… forms.
+    //    No HTTP, no backend.
+    val embedded = WorkoutLinkParser.extractEmbeddedJson(raw)
+
+    // sourceUrl: only meaningful when we fetched from a known address. For
+    // embedded payloads it stays null because the URL itself *is* the data —
+    // future "refresh" against it wouldn't fetch anything new.
+    var sourceUrl: String? = null
+
+    val text: String = if (embedded != null) {
+        embedded
+    } else {
+        // 2) Otherwise treat it as either a bare HTTPS URL or
+        //    indoorbike://import?url=… and fetch.
+        val url = if (raw.startsWith("indoorbike://", ignoreCase = true)) {
+            try { android.net.Uri.parse(raw).getQueryParameter("url") } catch (_: Throwable) { null }
+        } else raw
+
+        if (url.isNullOrBlank() || !url.startsWith("https://", ignoreCase = true)) {
+            Toast.makeText(context, "QR didn't contain a workout or an HTTPS URL", Toast.LENGTH_LONG).show()
+            return
+        }
+        sourceUrl = url
         try {
-            android.net.Uri.parse(raw).getQueryParameter("url")
-        } catch (_: Throwable) { null }
-    } else raw
-
-    if (url.isNullOrBlank() || !url.startsWith("https://", ignoreCase = true)) {
-        Toast.makeText(context, "QR didn't contain an HTTPS URL", Toast.LENGTH_LONG).show()
-        return
-    }
-
-    val text = try {
-        HttpFetcher.getString(url)
-    } catch (t: Throwable) {
-        Toast.makeText(context, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG).show()
-        return
+            HttpFetcher.getString(url)
+        } catch (t: Throwable) {
+            Toast.makeText(context, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG).show()
+            return
+        }
     }
 
     when (val result = container.workoutImporter.importJsonText(text)) {
@@ -299,7 +313,7 @@ private suspend fun handleScannedUrl(
             ).show()
         }
         is ImportResult.Manifest -> {
-            val outcome = container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = url)
+            val outcome = container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = sourceUrl)
             when (outcome) {
                 is SubscribeResult.Ok -> Toast.makeText(
                     context,
