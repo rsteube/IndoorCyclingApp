@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Open in Indoor Bike</title>
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    body { background: var(--bg-0); color: var(--fg-1); }
+    .share-wrap {
+      max-width: 520px;
+      margin: 0 auto;
+      padding: var(--s-7) var(--s-5) var(--s-10);
+    }
+    .share-card {
+      background: var(--bg-1);
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-md);
+      padding: var(--s-6);
+      margin-top: var(--s-5);
+    }
+    .share-card h2 {
+      font-family: var(--font-display);
+      font-weight: 400;
+      font-size: 36px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      margin: 0 0 var(--s-2);
+    }
+    .share-card p { color: var(--fg-2); margin: 0 0 var(--s-4); }
+    .share-meta {
+      display: flex; flex-wrap: wrap; gap: var(--s-2);
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--fg-3); letter-spacing: 0.08em; text-transform: uppercase;
+    }
+    .share-meta span {
+      padding: 4px 10px;
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-pill);
+    }
+    .share-bar {
+      display: flex; height: 18px;
+      border-radius: var(--r-pill);
+      overflow: hidden; gap: 1px;
+      background: var(--bg-0);
+      margin: var(--s-5) 0;
+    }
+    .share-bar > div { height: 100%; }
+    .share-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-5); }
+    .share-error {
+      background: rgba(235,59,59,0.08);
+      border: 1px solid rgba(235,59,59,0.4);
+      color: #f7a;
+    }
+    .install-hint {
+      margin-top: var(--s-6);
+      font-size: 13px;
+      color: var(--fg-3);
+      line-height: 1.6;
+    }
+    .install-hint a { color: var(--brand-400); }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="../" aria-label="Indoor Bike home">
+        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+    </div>
+  </header>
+
+  <main class="share-wrap">
+    <p class="eyebrow" style="margin-bottom: var(--s-2);">SHARED WORKOUT</p>
+    <h1 style="font-family:var(--font-display);font-weight:400;font-size:48px;line-height:1;letter-spacing:0.02em;text-transform:uppercase;margin:0;">Open in Indoor Bike</h1>
+
+    <div id="content"><!-- filled by share.js --></div>
+
+    <p class="install-hint">
+      Don't have the app yet? It's an open-source indoor cycling app for
+      Android — <a href="../#download">find install instructions on the home page</a>.
+    </p>
+  </main>
+
+  <script src="share.js"></script>
+</body>
+</html>
