@@ -86,6 +86,8 @@ fun SettingsTab(
             FtpRow()
             Spacer(modifier = Modifier.height(Spacing.s3))
             WeightRow()
+            Spacer(modifier = Modifier.height(Spacing.s3))
+            MaxHrRow()
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
@@ -739,6 +741,84 @@ private fun FtpRow() {
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("W", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                    }
+                }
+            )
+        }
+    }
+}
+
+// ─── Max HR row ───────────────────────────────────────────────────────────────
+
+@Composable
+private fun MaxHrRow() {
+    val container = LocalAppContainer.current
+    val userSettings = container.userSettings
+    val maxHr by userSettings.maxHr.collectAsState()
+    var input by remember(maxHr) { mutableStateOf(maxHr.toString()) }
+
+    fun commit() {
+        val parsed = input.toIntOrNull()
+        if (parsed == null || parsed !in app.indoorbike.shared.settings.MIN_MAX_HR..app.indoorbike.shared.settings.MAX_MAX_HR) {
+            input = maxHr.toString()
+        } else if (parsed != maxHr) {
+            userSettings.setMaxHr(parsed)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            .padding(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Maximum heart rate", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Used to colour the live HR readout by zone",
+                    style = CadenceType.body,
+                    color = CadenceColors.Fg3
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            androidx.compose.foundation.text.BasicTextField(
+                value = input,
+                onValueChange = { newValue -> input = newValue.filter { it.isDigit() }.take(3) },
+                textStyle = CadenceType.h2.copy(color = CadenceColors.Danger, textAlign = TextAlign.End),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Danger),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { commit() }),
+                singleLine = true,
+                modifier = Modifier
+                    .width(110.dp)
+                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                decorationBox = { innerTextField ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(Radii.sm))
+                            .background(CadenceColors.Bg2)
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                            innerTextField()
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("BPM", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
                     }
                 }
             )

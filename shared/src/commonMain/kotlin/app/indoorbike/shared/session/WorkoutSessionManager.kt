@@ -7,6 +7,7 @@ import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -14,8 +15,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -49,6 +49,16 @@ class WorkoutSessionManager(
     private val effectiveHeartRate: () -> Int = { trainerManager.heartRate.value },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Single-thread dispatcher for snapshot persistence. Both write and clear
+     * operations go through this so they execute strictly in submission order
+     * (FIFO). Without this, a stale write queued just before [completeWorkout]
+     * could land on disk *after* the clear, leaving an "unfinished ride"
+     * banner for a workout that's actually done.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val snapshotDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     private val _state = MutableStateFlow(WorkoutState.Idle)
     val state: StateFlow<WorkoutState> = _state.asStateFlow()
@@ -160,13 +170,67 @@ class WorkoutSessionManager(
         startPedalingDetection()
     }
 
+    /**
+     * Background loop that bridges trainer activity to session state. Runs for
+     * the lifetime of the workout (created in [prepareWorkout] / [restoreFromSnapshot],
+     * cancelled in [stopWorkout] / [completeWorkout]).
+     *
+     * Two transitions, both based on the same "pedaling" signal (cadence > 5 rpm
+     * OR power > 10 W — either suffices, so a single foot resting on a pedal at
+     * idle doesn't count, and a hard coast at top of an interval doesn't either):
+     *
+     *   - **Standby → Countdown**: rider starts pedaling at the start of a ride
+     *     OR after an auto-pause. Existing 3-2-1-GO behaviour.
+     *   - **Active → Standby**: rider stops pedaling for [AUTO_PAUSE_AFTER_MS],
+     *     freezing the timer + zeroing the trainer target. Resumes naturally via
+     *     the first transition above when pedaling restarts.
+     *
+     * Polled every [DETECTION_TICK_MS] because the trainer's StateFlows are
+     * "distinct values only" — when power drops to 0 and stays there, no new
+     * events fire, so we can't react purely on edges.
+     */
     private fun startPedalingDetection() {
         pedalingDetectionJob?.cancel()
-        pedalingDetectionJob = trainerManager.power.onEach { watts ->
-            if (_state.value == WorkoutState.Standby && watts > 10) {
-                startCountdown()
+        pedalingDetectionJob = scope.launch {
+            var lastPedalingEpochMs = getCurrentEpochMillis()
+            while (isActive) {
+                val state = _state.value
+                if (state == WorkoutState.Idle || state == WorkoutState.Completed) break
+
+                val cadence = trainerManager.cadence.value
+                val power = trainerManager.power.value
+                val isPedaling = cadence > 5 || power > 10
+                val now = getCurrentEpochMillis()
+                if (isPedaling) lastPedalingEpochMs = now
+
+                when (state) {
+                    WorkoutState.Standby -> if (isPedaling) startCountdown()
+                    WorkoutState.Active -> {
+                        if (now - lastPedalingEpochMs >= AUTO_PAUSE_AFTER_MS) {
+                            autoPauseToStandby()
+                            // Reset so we don't immediately re-fire if the rider
+                            // bumps the pedal a moment later — the Standby branch
+                            // above will pick up the resume.
+                            lastPedalingEpochMs = now
+                        }
+                    }
+                    else -> { /* Countdown / Paused — leave alone */ }
+                }
+                delay(DETECTION_TICK_MS)
             }
-        }.launchIn(scope)
+        }
+    }
+
+    /**
+     * Stop-pedaling auto-pause. Mirrors [pauseWorkout] but lands in [WorkoutState.Standby]
+     * instead of [WorkoutState.Paused] so the existing pedaling-detection loop
+     * auto-resumes (via Countdown) the moment the rider starts pedaling again.
+     */
+    private fun autoPauseToStandby() {
+        if (_state.value != WorkoutState.Active) return
+        timerJob?.cancel()
+        trainerManager.setTargetPower(0)
+        _state.value = WorkoutState.Standby
     }
 
     fun adjustDifficulty(deltaPercent: Int) {
@@ -247,7 +311,8 @@ class WorkoutSessionManager(
     // Internals ──────────────────────────────────────────────────────────────
 
     private fun startCountdown() {
-        pedalingDetectionJob?.cancel()
+        // The detection loop keeps running — it's already a no-op while in
+        // Countdown / Active and we need it alive for the auto-pause path.
         _state.value = WorkoutState.Countdown
         _countdownSeconds.value = 3
 
@@ -294,6 +359,11 @@ class WorkoutSessionManager(
     private fun maybePersistSnapshot(now: Long) {
         val store = activeSessionStore ?: return
         if (now - lastSnapshotEpoch < SNAPSHOT_INTERVAL_MS) return
+        // Don't persist for finished or not-yet-started states. Without this
+        // guard, a final tick could write a snapshot for a ride that's already
+        // marked Completed, racing against the completion clear.
+        val state = _state.value
+        if (state == WorkoutState.Idle || state == WorkoutState.Completed) return
         lastSnapshotEpoch = now
         val workout = _activeWorkout.value ?: return
         val snapshot = ActiveSessionSnapshot(
@@ -304,17 +374,27 @@ class WorkoutSessionManager(
             elapsedSeconds = _elapsedSeconds.value,
             currentSegmentIndex = _currentSegmentIndex.value,
             elapsedInSegment = _elapsedInSegment.value,
-            state = _state.value,
+            state = state,
             actualRideSeconds = _actualRideSeconds.value,
         )
         _persistedSnapshot.value = snapshot
-        scope.launch { store.write(snapshot) }
+        scope.launch(snapshotDispatcher) {
+            // Re-check inside the dispatcher: by the time this lambda runs the
+            // workout may have completed, in which case we'd be writing a
+            // snapshot that the upcoming clear is supposed to delete.
+            val now2 = _state.value
+            if (now2 == WorkoutState.Idle || now2 == WorkoutState.Completed) return@launch
+            store.write(snapshot)
+        }
     }
 
     private fun clearPersistedSnapshot() {
         _persistedSnapshot.value = null
         val store = activeSessionStore ?: return
-        scope.launch { store.clear() }
+        // FIFO with the writes above — if any are still queued, they're
+        // skipped by the state guard inside their lambda, then this clear
+        // runs and removes whatever's on disk.
+        scope.launch(snapshotDispatcher) { store.clear() }
     }
 
     /**
@@ -377,6 +457,7 @@ class WorkoutSessionManager(
 
     private fun completeWorkout() {
         timerJob?.cancel()
+        pedalingDetectionJob?.cancel()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Completed
         clearPersistedSnapshot()
@@ -385,6 +466,10 @@ class WorkoutSessionManager(
     companion object {
         private const val TAG = "WorkoutSessionManager"
         private const val SNAPSHOT_INTERVAL_MS = 5_000L
+        /** Detection-loop cadence — small enough to catch the 3-second gap with sub-second slack. */
+        private const val DETECTION_TICK_MS = 500L
+        /** Stop-pedaling threshold before the active ride auto-pauses to Standby. */
+        private const val AUTO_PAUSE_AFTER_MS = 3_000L
     }
 }
 

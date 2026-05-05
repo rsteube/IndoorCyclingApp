@@ -14,6 +14,15 @@ interface UserSettings {
     val weightKg: StateFlow<Float>
     fun setWeightKg(newWeightKg: Float)
 
+    /**
+     * Maximum heart rate in bpm. Used to classify the live HR readout into
+     * zones (Garmin's default 5-zone scheme as % of max HR). Set explicitly
+     * by the rider in Settings — we don't auto-derive (the 220-age formula
+     * is wildly inaccurate for trained athletes).
+     */
+    val maxHr: StateFlow<Int>
+    fun setMaxHr(newMaxHr: Int)
+
     /** id of the last paired trainer ("mock" for the simulator). */
     val pairedTrainerId: StateFlow<String?>
     fun setPairedTrainerId(id: String?)
@@ -61,3 +70,8 @@ const val MAX_FTP = 600
 const val DEFAULT_WEIGHT_KG = 75f
 const val MIN_WEIGHT_KG = 30f
 const val MAX_WEIGHT_KG = 250f
+
+/** Sensible average; the rider should set their own in Settings. */
+const val DEFAULT_MAX_HR = 185
+const val MIN_MAX_HR = 100
+const val MAX_MAX_HR = 230

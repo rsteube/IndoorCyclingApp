@@ -142,6 +142,10 @@ fun RideScreen(
     val currentHr = if (hrmHr > 0) hrmHr else trainerHr
     val targetPower by trainerManager.targetPower.collectAsState()
     val isMockTrainer by trainerManager.isMockTrainer.collectAsState()
+    val maxHr by container.userSettings.maxHr.collectAsState()
+    val hrZone = remember(currentHr, maxHr) {
+        app.indoorbike.ui.zones.HeartRateZone.fromHr(currentHr, maxHr)
+    }
 
     val scope = rememberCoroutineScope()
     var continueRequested by remember { mutableStateOf(false) }
@@ -324,7 +328,9 @@ fun RideScreen(
                     value = if (showStaleHr) "--" else animatedHr.toString(),
                     unit = "BPM",
                     isStale = showStaleHr,
-                    valueColor = CadenceColors.Danger
+                    valueColor = hrZone?.color ?: CadenceColors.Danger,
+                    sublabel = if (showStaleHr) null
+                        else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" }
                 )
             }
 
@@ -570,7 +576,9 @@ private fun FlankMetric(
     value: String,
     unit: String,
     valueColor: Color,
-    isStale: Boolean = false
+    isStale: Boolean = false,
+    /** Small caption under the number — e.g. "Z3 · AEROBIC" for the HR zone. */
+    sublabel: String? = null,
 ) {
     // Fixed width so 2-digit ↔ 3-digit transitions don't reflow the row.
     Column(
@@ -601,6 +609,14 @@ private fun FlankMetric(
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
             }
+        }
+        if (sublabel != null) {
+            Text(
+                text = sublabel,
+                style = CadenceType.tick,
+                color = valueColor,
+                modifier = Modifier.padding(top = 2.dp)
+            )
         }
     }
 }

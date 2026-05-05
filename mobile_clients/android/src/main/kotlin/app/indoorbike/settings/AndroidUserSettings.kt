@@ -9,10 +9,13 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.indoorbike.shared.settings.DEFAULT_FTP
+import app.indoorbike.shared.settings.DEFAULT_MAX_HR
 import app.indoorbike.shared.settings.DEFAULT_WEIGHT_KG
 import app.indoorbike.shared.settings.MAX_FTP
+import app.indoorbike.shared.settings.MAX_MAX_HR
 import app.indoorbike.shared.settings.MAX_WEIGHT_KG
 import app.indoorbike.shared.settings.MIN_FTP
+import app.indoorbike.shared.settings.MIN_MAX_HR
 import app.indoorbike.shared.settings.MIN_WEIGHT_KG
 import app.indoorbike.shared.settings.UserSettings
 import kotlinx.coroutines.CoroutineScope
@@ -45,6 +48,9 @@ class AndroidUserSettings(
     private val _weightKg = MutableStateFlow(loadWeightBlocking())
     override val weightKg: StateFlow<Float> = _weightKg.asStateFlow()
 
+    private val _maxHr = MutableStateFlow(loadMaxHrBlocking())
+    override val maxHr: StateFlow<Int> = _maxHr.asStateFlow()
+
     private val _pairedTrainerId = MutableStateFlow<String?>(loadStringBlocking(KEY_TRAINER))
     override val pairedTrainerId: StateFlow<String?> = _pairedTrainerId.asStateFlow()
 
@@ -75,6 +81,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG }.collect { value ->
                 if (value != _weightKg.value) _weightKg.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_MAX_HR] ?: DEFAULT_MAX_HR }.collect { value ->
+                if (value != _maxHr.value) _maxHr.value = value
             }
         }
         scope.launch {
@@ -124,6 +135,12 @@ class AndroidUserSettings(
         if (newWeightKg !in MIN_WEIGHT_KG..MAX_WEIGHT_KG) return
         _weightKg.value = newWeightKg
         scope.launch { store.edit { it[KEY_WEIGHT] = newWeightKg } }
+    }
+
+    override fun setMaxHr(newMaxHr: Int) {
+        if (newMaxHr !in MIN_MAX_HR..MAX_MAX_HR) return
+        _maxHr.value = newMaxHr
+        scope.launch { store.edit { it[KEY_MAX_HR] = newMaxHr } }
     }
 
     override fun setPairedTrainerId(id: String?) {
@@ -197,6 +214,10 @@ class AndroidUserSettings(
         store.data.first()[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG
     }
 
+    private fun loadMaxHrBlocking(): Int = runBlocking {
+        store.data.first()[KEY_MAX_HR] ?: DEFAULT_MAX_HR
+    }
+
     private fun loadStringBlocking(key: androidx.datastore.preferences.core.Preferences.Key<String>): String? =
         runBlocking { store.data.first()[key] }
 
@@ -206,6 +227,7 @@ class AndroidUserSettings(
     companion object {
         private val KEY_FTP = intPreferencesKey("user_ftp")
         private val KEY_WEIGHT = floatPreferencesKey("user_weight_kg")
+        private val KEY_MAX_HR = intPreferencesKey("user_max_hr")
         private val KEY_TRAINER = stringPreferencesKey("paired_trainer_id")
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
         private val KEY_CONTROLLER = stringPreferencesKey("paired_controller_id")

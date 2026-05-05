@@ -11,6 +11,7 @@ import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,20 @@ fun UnfinishedRideBanner(
 
     val current = snapshot ?: return
     val workout = workouts.find { it.id == current.workoutId } ?: return
+
+    // Self-heal: a snapshot can land on disk for a *finished* ride if the
+    // process was killed in the half-second between the final tick and the
+    // completion clear (race fixed in WorkoutSessionManager — this guard
+    // catches old files written before the fix). When that happens, just
+    // discard the snapshot and don't render the banner at all.
+    val isAlreadyFinished = current.currentSegmentIndex >= workout.segments.size ||
+        current.elapsedSeconds >= workout.segments.sumOf { it.lengthInSeconds }
+    if (isAlreadyFinished) {
+        LaunchedEffect(current.workoutId, current.elapsedSeconds) {
+            container.sessionManager.abandonUnfinishedRide()
+        }
+        return
+    }
 
     var confirmingAbandon by remember { mutableStateOf(false) }
 
