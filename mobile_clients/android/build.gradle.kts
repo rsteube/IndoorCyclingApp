@@ -15,6 +15,11 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+
+        // Community workout-repository registry. Hardcoded so the app picks it
+        // up automatically once the file is hosted; absence is handled
+        // gracefully (Browse just shows an empty state).
+        buildConfigField("String", "REGISTRY_URL", "\"https://indoorbike.app/registry.json\"")
     }
 
     buildTypes {
@@ -66,6 +71,10 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     implementation(libs.compose.foundation)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.camerax.camera2)
+    implementation(libs.camerax.lifecycle)
+    implementation(libs.camerax.view)
+    implementation(libs.zxing.core)
 
     debugImplementation(libs.compose.ui.tooling)
 }

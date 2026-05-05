@@ -32,3 +32,9 @@ data class RouteRideScreen(val workoutId: String) : NavKey
 
 @Serializable
 data class RouteWorkoutOverview(val sessionId: Long, val fromRide: Boolean = false) : NavKey
+
+@Serializable
+data object RouteLibrary : NavKey
+
+@Serializable
+data object RouteQrScanner : NavKey

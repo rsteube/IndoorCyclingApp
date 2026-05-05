@@ -2,6 +2,9 @@ package app.indoorbike
 
 import android.app.Application
 import androidx.compose.runtime.staticCompositionLocalOf
+import app.indoorbike.library.RepositoryManager
+import app.indoorbike.library.WorkoutImporter
+import app.indoorbike.library.WorkoutLibrary
 import app.indoorbike.session.AndroidActiveSessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,12 +39,16 @@ class AppContainer(
     val historyRepository: HistoryRepository,
     val userSettings: UserSettings,
     val activeSessionStore: ActiveSessionStore,
+    val workoutImporter: WorkoutImporter,
+    val repositoryManager: RepositoryManager,
+    val workoutLibrary: WorkoutLibrary,
 ) {
     fun dispose() {
         trainerManager.dispose()
         heartRateMonitor.dispose()
         controllerManager.dispose()
         sessionManager.dispose()
+        workoutLibrary.dispose()
         if (userSettings is AndroidUserSettings) userSettings.dispose()
     }
 
@@ -63,6 +70,16 @@ class AppContainer(
             )
             val userSettings = AndroidUserSettings(application)
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
+            val workoutImporter = WorkoutImporter(application)
+            val repositoryManager = RepositoryManager(
+                context = application,
+                registryUrl = BuildConfig.REGISTRY_URL,
+            )
+            val workoutLibrary = WorkoutLibrary(
+                context = application,
+                importer = workoutImporter,
+                repositoryManager = repositoryManager,
+            )
             return AppContainer(
                 trainerManager = trainerManager,
                 heartRateMonitor = heartRateMonitor,
@@ -71,6 +88,9 @@ class AppContainer(
                 historyRepository = historyRepository,
                 userSettings = userSettings,
                 activeSessionStore = activeSessionStore,
+                workoutImporter = workoutImporter,
+                repositoryManager = repositoryManager,
+                workoutLibrary = workoutLibrary,
             )
         }
     }
@@ -86,6 +106,7 @@ class IndoorBikeApp : Application() {
         super.onCreate()
         Log.i("IndoorBikeApp", "App start")
         container = AppContainer.create(this)
+        container.workoutLibrary.start()
         // Surface any unfinished ride snapshot to the UI (banner) by populating
         // the session manager's persistedSnapshot StateFlow from disk.
         initScope.launch { container.sessionManager.loadPersistedSnapshot() }

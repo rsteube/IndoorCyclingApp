@@ -1,5 +1,9 @@
 package app.indoorbike.ui.screens
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +32,8 @@ import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -50,6 +56,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.library.WorkoutEntry
+import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.settings.MAX_FTP
 import app.indoorbike.shared.settings.MAX_WEIGHT_KG
@@ -62,6 +70,7 @@ import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.HrmHeartIndicator
+import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.TrainerStatusStrip
@@ -77,15 +86,18 @@ private const val STARTER_WORKOUT_ID = "starter-15min"
 
 @Composable
 fun WorkoutListScreen(
-    workouts: List<Workout>,
+    entries: List<WorkoutEntry>,
     eyebrow: String,
     onPick: (Workout) -> Unit,
+    onOpenLibrary: () -> Unit = {},
     activeTab: String = "rides",
     onTabSelected: (String) -> Unit = {}
 ) {
     val container = LocalAppContainer.current
     var selectedFilter by remember { mutableStateOf("All") }
     val ftp by container.userSettings.ftp.collectAsState()
+    val workouts = remember(entries) { entries.map { it.workout } }
+    val sourceById = remember(entries) { entries.associate { it.workout.id to it.source } }
     val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }
     val availableTags = remember(summaries) {
         // Derive filter chips from the actual workouts present, not a hardcoded list.
@@ -124,7 +136,17 @@ fun WorkoutListScreen(
                     )
                 }
             },
-            trailing = { HrmHeartIndicator(state = hrmState) }
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HrmHeartIndicator(state = hrmState)
+                    Spacer(Modifier.width(Spacing.s2))
+                    IconBtn(
+                        icon = Icons.AutoMirrored.Outlined.LibraryBooks,
+                        contentDescription = "Workout library and repositories",
+                        onClick = onOpenLibrary
+                    )
+                }
+            }
         )
 
         UnfinishedRideBanner(
@@ -205,7 +227,11 @@ fun WorkoutListScreen(
                     }
                 }
                 items(regularList, key = { it.workout.id }) { summary ->
-                    WorkoutCard(summary = summary, onClick = { onPick(summary.workout) })
+                    WorkoutCard(
+                        summary = summary,
+                        source = sourceById[summary.workout.id],
+                        onClick = { onPick(summary.workout) }
+                    )
                 }
             }
         }
@@ -213,13 +239,14 @@ fun WorkoutListScreen(
 
     if (showOnboardingSheet) {
         OnboardingSheet(
-            onSave = { newFtp, newWeight ->
+            onProfileSaved = { newFtp, newWeight ->
+                // Don't mark onboarding complete yet — the permission step still
+                // has to run. Persist the profile so closing the sheet mid-flow
+                // doesn't lose it.
                 container.userSettings.setFtp(newFtp)
                 container.userSettings.setWeightKg(newWeight)
-                container.userSettings.setHasCompletedOnboarding(true)
-                showOnboardingSheet = false
             },
-            onDismiss = {
+            onFinish = {
                 container.userSettings.setHasCompletedOnboarding(true)
                 showOnboardingSheet = false
             }
@@ -379,12 +406,39 @@ private fun StarterCard(summary: WorkoutSummary, onClick: () -> Unit) {
     }
 }
 
+private enum class OnboardingStep { Profile, Permissions }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OnboardingSheet(
-    onSave: (Int, Float) -> Unit,
-    onDismiss: () -> Unit,
+    onProfileSaved: (Int, Float) -> Unit,
+    onFinish: () -> Unit,
 ) {
+    var step by remember { mutableStateOf(OnboardingStep.Profile) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        // Sheet dismiss (swipe-down, scrim tap, back) on either step counts as
+        // finishing onboarding so the user isn't pestered next launch — the
+        // RideScreen permission request is the safety net.
+        onDismissRequest = onFinish,
+        sheetState = sheetState,
+        containerColor = CadenceColors.Bg1,
+        contentColor = CadenceColors.Fg1,
+    ) {
+        when (step) {
+            OnboardingStep.Profile -> ProfileStep(
+                onSaved = { ftp, weight ->
+                    onProfileSaved(ftp, weight)
+                    step = OnboardingStep.Permissions
+                }
+            )
+            OnboardingStep.Permissions -> PermissionsStep(onDone = onFinish)
+        }
+    }
+}
+
+@Composable
+private fun ProfileStep(onSaved: (Int, Float) -> Unit) {
     val container = LocalAppContainer.current
     val currentFtp by container.userSettings.ftp.collectAsState()
     val currentWeight by container.userSettings.weightKg.collectAsState()
@@ -398,89 +452,196 @@ private fun OnboardingSheet(
     val weightValid = parsedWeight != null && parsedWeight in MIN_WEIGHT_KG..MAX_WEIGHT_KG
     val canSave = ftpValid && weightValid
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = CadenceColors.Bg1,
-        contentColor = CadenceColors.Fg1,
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.s5)
+            .padding(bottom = Spacing.s5)
     ) {
-        Column(
+        StepHeader(eyebrow = "STEP 1 OF 2 · ABOUT YOU", title = "Set your FTP and weight")
+        Spacer(Modifier.height(Spacing.s2))
+        Text(
+            text = "We use these to scale every workout to your fitness. You can change them anytime in Settings.",
+            style = CadenceType.body,
+            color = CadenceColors.Fg3
+        )
+        Spacer(Modifier.height(Spacing.s5))
+
+        OnboardingNumberField(
+            label = "Functional Threshold Power",
+            sublabel = "Your sustainable hour-long power",
+            value = ftpInput,
+            onValueChange = { v -> ftpInput = v.filter { it.isDigit() }.take(4) },
+            unit = "W",
+            keyboardType = KeyboardType.Number,
+        )
+        Spacer(Modifier.height(Spacing.s2))
+        Text(
+            text = "Don't know your FTP? Start at ${UNKNOWN_FTP_DEFAULT}W",
+            style = CadenceType.small,
+            color = CadenceColors.Brand500,
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.s5)
-                .padding(bottom = Spacing.s5)
-        ) {
-            Text(
-                text = "TELL US ABOUT YOU",
-                style = CadenceType.eyebrow,
-                color = CadenceColors.Brand500
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Set your FTP and weight",
-                style = CadenceType.h2,
-                color = CadenceColors.Fg1
-            )
-            Spacer(Modifier.height(Spacing.s2))
-            Text(
-                text = "We use these to scale every workout to your fitness. You can change them anytime in Settings.",
-                style = CadenceType.body,
-                color = CadenceColors.Fg3
-            )
-            Spacer(Modifier.height(Spacing.s5))
+                .clickable { ftpInput = UNKNOWN_FTP_DEFAULT.toString() }
+                .padding(vertical = 4.dp)
+        )
 
-            OnboardingNumberField(
-                label = "Functional Threshold Power",
-                sublabel = "Your sustainable hour-long power",
-                value = ftpInput,
-                onValueChange = { v -> ftpInput = v.filter { it.isDigit() }.take(4) },
-                unit = "W",
-                keyboardType = KeyboardType.Number,
-            )
-            Spacer(Modifier.height(Spacing.s2))
-            Text(
-                text = "Don't know your FTP? Start at ${UNKNOWN_FTP_DEFAULT}W",
-                style = CadenceType.small,
-                color = CadenceColors.Brand500,
-                modifier = Modifier
-                    .clickable { ftpInput = UNKNOWN_FTP_DEFAULT.toString() }
-                    .padding(vertical = 4.dp)
-            )
+        Spacer(Modifier.height(Spacing.s4))
 
-            Spacer(Modifier.height(Spacing.s4))
-
-            OnboardingNumberField(
-                label = "Body Weight",
-                sublabel = "Used for W/kg and XP",
-                value = weightInput,
-                onValueChange = { v ->
-                    val filtered = buildString {
-                        var seenDot = false
-                        for (c in v.take(6)) {
-                            if (c.isDigit()) append(c)
-                            else if ((c == '.' || c == ',') && !seenDot) {
-                                append('.'); seenDot = true
-                            }
+        OnboardingNumberField(
+            label = "Body Weight",
+            sublabel = "Used for W/kg and XP",
+            value = weightInput,
+            onValueChange = { v ->
+                val filtered = buildString {
+                    var seenDot = false
+                    for (c in v.take(6)) {
+                        if (c.isDigit()) append(c)
+                        else if ((c == '.' || c == ',') && !seenDot) {
+                            append('.'); seenDot = true
                         }
                     }
-                    weightInput = filtered
-                },
-                unit = "kg",
-                keyboardType = KeyboardType.Decimal,
-            )
+                }
+                weightInput = filtered
+            },
+            unit = "kg",
+            keyboardType = KeyboardType.Decimal,
+        )
 
-            Spacer(Modifier.height(Spacing.s5))
+        Spacer(Modifier.height(Spacing.s5))
 
-            PrimaryBtn(
-                text = "Save & Continue",
-                leadingIcon = null,
-                onClick = {
-                    if (canSave) onSave(parsedFtp!!, parsedWeight!!)
-                },
-                enabled = canSave,
-                modifier = Modifier.fillMaxWidth()
+        PrimaryBtn(
+            text = "Continue",
+            leadingIcon = null,
+            onClick = { if (canSave) onSaved(parsedFtp!!, parsedWeight!!) },
+            enabled = canSave,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+/**
+ * Pre-flight rationale for Bluetooth (and POST_NOTIFICATIONS on T+). Showing
+ * this BEFORE the system dialog is Google's recommended pattern: it gives the
+ * user the "why" so the system prompt isn't a blind yes/no. We launch the
+ * system request the moment they tap "Allow access" — outcome doesn't matter
+ * for finishing onboarding (the in-RideScreen request is the safety net).
+ */
+@Composable
+private fun PermissionsStep(onDone: () -> Unit) {
+    val needsNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val bluetoothPerms = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+    }
+    val allPerms = remember(needsNotifications) {
+        if (needsNotifications) bluetoothPerms + Manifest.permission.POST_NOTIFICATIONS
+        else bluetoothPerms
+    }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        // Whether granted or not, we move on. RideScreen will re-prompt on
+        // first ride if Bluetooth was denied here.
+        onDone()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.s5)
+            .padding(bottom = Spacing.s5)
+    ) {
+        StepHeader(eyebrow = "STEP 2 OF 2 · CONNECT", title = "Allow trainer access")
+        Spacer(Modifier.height(Spacing.s2))
+        Text(
+            text = "Indoor Bike talks to your smart trainer over Bluetooth. No internet, no account, no data leaves your phone.",
+            style = CadenceType.body,
+            color = CadenceColors.Fg3
+        )
+
+        Spacer(Modifier.height(Spacing.s5))
+
+        PermissionRow(
+            icon = Icons.Outlined.Bluetooth,
+            title = "Bluetooth",
+            body = "Find and pair your smart trainer, heart-rate strap, and Zwift Click controller."
+        )
+        if (needsNotifications) {
+            Spacer(Modifier.height(Spacing.s3))
+            PermissionRow(
+                icon = Icons.Outlined.Notifications,
+                title = "Notifications",
+                body = "Show the active-ride strip so Android keeps the app alive while you ride."
             )
+        }
+
+        Spacer(Modifier.height(Spacing.s5))
+
+        PrimaryBtn(
+            text = "Allow access",
+            leadingIcon = null,
+            onClick = { launcher.launch(allPerms) },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(Spacing.s2))
+        Text(
+            text = "Not now",
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Fg3,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onDone)
+                .padding(vertical = 12.dp),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun StepHeader(eyebrow: String, title: String) {
+    Text(text = eyebrow, style = CadenceType.eyebrow, color = CadenceColors.Brand500)
+    Spacer(Modifier.height(6.dp))
+    Text(text = title, style = CadenceType.h2, color = CadenceColors.Fg1)
+}
+
+@Composable
+private fun PermissionRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    body: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg2)
+            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            .padding(14.dp),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Spacer(Modifier.height(2.dp))
+            Text(text = body, style = CadenceType.small, color = CadenceColors.Fg3)
         }
     }
 }
@@ -551,7 +712,11 @@ private fun formatWeightForInput(kg: Float): String {
 }
 
 @Composable
-private fun WorkoutCard(summary: WorkoutSummary, onClick: () -> Unit) {
+private fun WorkoutCard(
+    summary: WorkoutSummary,
+    source: WorkoutSource?,
+    onClick: () -> Unit
+) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         modifier = Modifier
@@ -564,11 +729,23 @@ private fun WorkoutCard(summary: WorkoutSummary, onClick: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
         Column {
-            Text(
-                text = summary.tag.uppercase(),
-                style = CadenceType.eyebrow,
-                color = CadenceColors.Fg3
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = summary.tag.uppercase(),
+                    style = CadenceType.eyebrow,
+                    color = CadenceColors.Fg3
+                )
+                if (source != null && source !is WorkoutSource.Bundled) {
+                    Text(
+                        text = "· ${source.attribution}",
+                        style = CadenceType.eyebrow,
+                        color = CadenceColors.Brand500
+                    )
+                }
+            }
             Spacer(Modifier.height(2.dp))
             Text(
                 text = summary.workout.name,

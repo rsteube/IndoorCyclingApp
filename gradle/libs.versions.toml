@@ -12,6 +12,8 @@ nav3Core = "1.0.0"
 sqldelight = "2.0.1"
 androidx-datastore = "1.1.1"
 androidx-lifecycle = "2.8.7"
+camerax = "1.4.0"
+zxing-core = "3.5.3"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -36,6 +38,10 @@ androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", vers
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
+camerax-camera2 = { module = "androidx.camera:camera-camera2", version.ref = "camerax" }
+camerax-lifecycle = { module = "androidx.camera:camera-lifecycle", version.ref = "camerax" }
+camerax-view = { module = "androidx.camera:camera-view", version.ref = "camerax" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing-core" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

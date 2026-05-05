@@ -1,7 +1,9 @@
 package app.indoorbike
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.ActivityInfo
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -52,9 +55,14 @@ import app.indoorbike.navigation.TabRides
 import app.indoorbike.navigation.TabSettings
 import app.indoorbike.navigation.Navigator
 import app.indoorbike.navigation.rememberNavigationState
+import app.indoorbike.library.WorkoutEntry
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.ui.ControllerPairingScreen
+import app.indoorbike.ui.screens.LibraryScreen
+import app.indoorbike.ui.screens.QrScannerScreen
+import app.indoorbike.navigation.RouteLibrary
+import app.indoorbike.navigation.RouteQrScanner
 import app.indoorbike.ui.HistoryTab
 import app.indoorbike.ui.HrmPairingScreen
 import app.indoorbike.ui.ProgressTab
@@ -72,10 +80,17 @@ import app.indoorbike.ui.theme.CadenceType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.widget.Toast
 
 class MainActivity : ComponentActivity() {
+
+    private val intentScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -91,29 +106,28 @@ class MainActivity : ComponentActivity() {
 
         val container = (application as IndoorBikeApp).container
 
+        // Workouts from any external app — file open, share-sheet, deep link —
+        // route through the same import pipeline as the in-app file picker.
+        handleImportIntent(intent)
+
         setContent {
             CadenceTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = CadenceColors.Bg0
                 ) {
-                    // null = still loading from assets; emptyList() = loaded but no
-                    // workouts (genuine empty state). Distinguishing the two prevents
-                    // the "no workouts saved yet" message from flashing during launch.
-                    var workouts by remember { mutableStateOf<List<Workout>?>(null) }
-                    LaunchedEffect(Unit) {
-                        workouts = withContext(Dispatchers.IO) {
-                            val jsonStrings = loadWorkoutJsonsFromAssets(this@MainActivity)
-                            WorkoutRepository.parseWorkouts(jsonStrings)
-                        }
-                    }
+                    val initialised by container.workoutLibrary.initialised.collectAsState()
+                    val entries by container.workoutLibrary.entries.collectAsState()
+                    val workouts = remember(entries) { entries.map { it.workout } }
+
                     CompositionLocalProvider(
                         LocalAppContainer provides container,
-                        LocalWorkouts provides (workouts ?: emptyList()),
+                        LocalWorkouts provides workouts,
                     ) {
-                        when (val w = workouts) {
-                            null -> LoadingState()
-                            else -> AppNavigator(workouts = w)
+                        if (!initialised) {
+                            LoadingState()
+                        } else {
+                            AppNavigator(entries = entries)
                         }
                     }
                 }
@@ -121,20 +135,100 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun loadWorkoutJsonsFromAssets(context: Context): List<String> {
-        val jsonStrings = mutableListOf<String>()
-        try {
-            val assetManager = context.assets
-            val allAssets = assetManager.list("") ?: emptyArray()
-            val workoutFiles = allAssets.filter { it.startsWith("workouts") && it.endsWith(".json") }
-            for (fileName in workoutFiles) {
-                val jsonString = assetManager.open(fileName).bufferedReader().use { it.readText() }
-                jsonStrings.add(jsonString)
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        handleImportIntent(intent)
+    }
+
+    /**
+     * Reacts to:
+     *  - ACTION_VIEW with content:// or file:// URI of application/json
+     *  - ACTION_SEND with EXTRA_STREAM
+     *  - ACTION_VIEW with `indoorbike://import?url=…` deep link
+     *
+     * On success surfaces a Toast; on failure the user keeps the app open and
+     * sees a Toast with the error reason. We deliberately don't auto-route to
+     * the Library screen — the app's just been launched/foregrounded and the
+     * user can find the new workout via its name in the regular Rides list.
+     */
+    private fun handleImportIntent(intent: Intent?) {
+        intent ?: return
+        val container = (application as IndoorBikeApp).container
+
+        val uri: Uri? = when (intent.action) {
+            Intent.ACTION_VIEW -> intent.data
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+                } else {
+                    intent.getParcelableExtra(Intent.EXTRA_STREAM)
+                }
             }
-        } catch (e: Exception) {
-            app.indoorbike.shared.util.Log.e("MainActivity", "Asset load failed", e)
+            else -> null
         }
-        return jsonStrings
+        // Clear so a config change / process recreation doesn't re-trigger.
+        intent.data = null
+
+        if (uri == null) return
+
+        // indoorbike://import?url=… deep link.
+        if (uri.scheme.equals("indoorbike", ignoreCase = true) &&
+            uri.host.equals("import", ignoreCase = true)
+        ) {
+            val remoteUrl = uri.getQueryParameter("url")
+            if (remoteUrl.isNullOrBlank()) {
+                Toast.makeText(this, "Missing ?url= in indoorbike://import link", Toast.LENGTH_SHORT).show()
+                return
+            }
+            intentScope.launch {
+                try {
+                    val text = app.indoorbike.library.HttpFetcher.getString(remoteUrl)
+                    val result = container.workoutImporter.importJsonText(text)
+                    onImportResolved(result)
+                } catch (t: Throwable) {
+                    Toast.makeText(this@MainActivity, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+            return
+        }
+
+        // Local content:// or file:// URI from a share-sheet or file open.
+        intentScope.launch {
+            val result = container.workoutImporter.importFromUri(uri)
+            onImportResolved(result)
+        }
+    }
+
+    private fun onImportResolved(result: app.indoorbike.library.ImportResult) {
+        val container = (application as IndoorBikeApp).container
+        when (result) {
+            is app.indoorbike.library.ImportResult.Workouts -> {
+                container.workoutLibrary.refreshImports()
+                val n = result.workouts.size
+                Toast.makeText(
+                    this,
+                    if (n == 1) "Imported \"${result.workouts.first().name}\"" else "Imported $n workouts",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            is app.indoorbike.library.ImportResult.Manifest -> {
+                val outcome = container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = null)
+                when (outcome) {
+                    is app.indoorbike.library.SubscribeResult.Ok -> Toast.makeText(
+                        this,
+                        "Subscribed to \"${result.manifest.name}\" (${result.manifest.workouts.size} workouts)",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    is app.indoorbike.library.SubscribeResult.Failure -> Toast.makeText(
+                        this, outcome.message, Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+            is app.indoorbike.library.ImportResult.Failure -> Toast.makeText(
+                this, result.message, Toast.LENGTH_LONG
+            ).show()
+        }
     }
 }
 
@@ -147,11 +241,12 @@ private val TOP_LEVEL_ROUTES = mapOf<NavKey, TabItem>(
 )
 
 @Composable
-private fun AppNavigator(workouts: List<Workout>) {
+private fun AppNavigator(entries: List<WorkoutEntry>) {
     val container = LocalAppContainer.current
     val eyebrow = remember { currentDayEyebrow() }
+    val workouts = remember(entries) { entries.map { it.workout } }
 
-    if (workouts.isEmpty()) {
+    if (entries.isEmpty()) {
         EmptyState()
         return
     }
@@ -175,15 +270,25 @@ private fun AppNavigator(workouts: List<Workout>) {
     val entryProvider = entryProvider<NavKey> {
         entry<TabRides> { _ ->
             WorkoutListScreen(
-                workouts = workouts,
+                entries = entries,
                 eyebrow = eyebrow,
                 onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
+                onOpenLibrary = { navigator.navigate(RouteLibrary) },
                 activeTab = "rides",
                 onTabSelected = { tabId ->
                     val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
                     targetTab?.let { navigator.navigate(it) }
                 }
             )
+        }
+        entry<RouteLibrary> { _ ->
+            LibraryScreen(
+                onBack = { navigator.goBack() },
+                onScanQr = { navigator.navigate(RouteQrScanner) }
+            )
+        }
+        entry<RouteQrScanner> { _ ->
+            QrScannerScreen(onBack = { navigator.goBack() })
         }
         entry<RouteWorkoutDetail> { key: RouteWorkoutDetail ->
             val workout = workouts.find { it.id == key.workoutId }

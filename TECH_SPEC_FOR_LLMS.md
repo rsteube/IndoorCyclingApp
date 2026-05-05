@@ -86,9 +86,10 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 
 Implemented inside [`WorkoutListScreen.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutListScreen.kt):
 
-- A **welcome banner** is the top item on the Rides tab when `userSettings.hasCompletedOnboarding == false`. Tapping **Get Started** opens a Material 3 `ModalBottomSheet` with FTP + Weight inputs.
-  - The FTP row has a brand-colored "Don't know your FTP? Start at 150W" link that fills the field with the shared constant `UNKNOWN_FTP_DEFAULT` (150).
-  - **Save & Continue** validates against `MIN_FTP..MAX_FTP` / `MIN_WEIGHT_KG..MAX_WEIGHT_KG`; any sheet dismissal (Save, swipe-down, back) marks `hasCompletedOnboarding = true`.
+- A **welcome banner** is the top item on the Rides tab when `userSettings.hasCompletedOnboarding == false`. Tapping **Get Started** opens a Material 3 `ModalBottomSheet` driven by an internal `OnboardingStep` enum with two steps:
+  - **Step 1 · Profile** — FTP + Weight inputs. The FTP row has a brand-colored "Don't know your FTP? Start at 150W" link that fills the field with the shared constant `UNKNOWN_FTP_DEFAULT` (150). **Continue** validates against `MIN_FTP..MAX_FTP` / `MIN_WEIGHT_KG..MAX_WEIGHT_KG` and persists the values immediately, then advances to step 2 — but **does not** mark onboarding complete yet (so a swipe-down mid-flow re-prompts on next launch via the welcome banner is acceptable, but a properly-finished step 1 doesn't lose the FTP/weight if the user backs out of step 2).
+  - **Step 2 · Permissions** — pre-flight rationale for `BLUETOOTH_CONNECT/SCAN` (or `ACCESS_FINE_LOCATION` on API < 31) and `POST_NOTIFICATIONS` on API ≥ 33. Each permission is shown as an icon row explaining what it's used for ("Find and pair your smart trainer …", "Show the active-ride strip so Android keeps the app alive while you ride."). **Allow access** launches the multi-permission system dialog via `ActivityResultContracts.RequestMultiplePermissions`; the outcome doesn't block onboarding — `RideScreen` re-prompts on first ride if the user denied or skipped, so the onboarding step is purely a UX improvement (a contextual rationale before the system prompt is the Android UX guidelines' recommended pattern).
+  - Sheet dismissal at any step (swipe-down, scrim tap, system back) marks `hasCompletedOnboarding = true` so the user isn't pestered next launch.
 - After onboarding, the welcome banner is replaced by the existing **Pair a trainer** nudge (until any trainer is paired, real or mock), which is replaced in turn by `TrainerStatusStrip`.
 - A **"Start here" pinned card** (orange-bordered, eyebrow `START HERE · YOUR FIRST RIDE`) is inserted as the first list item when `hasCompletedOnboarding && historyRepository.getAllSessions().isEmpty() && starter != null`. The starter workout is identified by the constant `STARTER_WORKOUT_ID = "starter-15min"` (defined in [workouts_sample.json](mobile_clients/android/src/main/assets/workouts_sample.json) — 15 min mixed-zone intro). The card disappears after the first completed ride. While pinned, the same workout is filtered out of the regular list to avoid duplication.
 
@@ -138,6 +139,67 @@ Two layers, both documented in [TESTING.md](TESTING.md):
 **Smoke test** ([scripts/smoke_test.ps1](scripts/smoke_test.ps1)) — installs the debug APK, clears data, walks through onboarding → mock-trainer pair → starter ride, captures a screenshot at each step into `build/test-artifacts/<timestamp>/`, and greps logcat for `FATAL` / `AndroidRuntime: FATAL`. Uses `uiautomator dump` + `input tap` (`Tap-Text` helper) to hit buttons by label, so renaming a CTA breaks the script — keep label strings in sync. Run with `.\scripts\smoke_test.ps1` (single connected device) or `.\scripts\smoke_test.ps1 -DeviceId <serial>`.
 
 **Manual test plan** — see [TESTING.md](TESTING.md) for the full checklist organised by feature area (onboarding, pairing, ride, history, progress, side-by-side install, etc.). Use this for anything the smoke test can't assert (BLE, label correctness, layout).
+
+### Ride share image
+
+A 1080×1080 PNG generated on-demand from a completed ride and surfaced via a Share button on the AppBar of [`WorkoutOverviewScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt). Lives under `app.indoorbike.share`:
+
+- [`RideShareCard.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/share/RideShareCard.kt) — the Composable. Header (date eyebrow + workout name in Bebas Neue caps), three KPI tiles (Duration / Avg Power in ember / TSS), a power-chart panel mirroring the on-screen "Power Adherence" chart (planned-zone bars + actual-power line in `Fg1`), a "TOUGHEST INTERVAL" callout (longest Z4+ segment by default, falls back to peak-power for unstructured rides), and an `INDOOR BIKE` wordmark + `indoorbike.app` footer. Pure Compose, no SVG assets — the brand mark and wordmark are drawn from primitives.
+- [`ShareImageGenerator.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/share/ShareImageGenerator.kt) — capture + persist + share helpers. `captureLayer(GraphicsLayer)` returns an Android `Bitmap` from `GraphicsLayer.toImageBitmap()`. `saveToGallery()` writes to `MediaStore.Images` with `RELATIVE_PATH = Pictures/Indoor Bike` on Q+, falling back to `Environment.DIRECTORY_PICTURES + /Indoor Bike` + the legacy `MediaStore.Images.Media.DATA` column on 26..28. `stageForShare()` writes to `cacheDir/shared_images/` and returns a `content://` URI via `FileProvider`. `launchShareChooser()` builds an `ACTION_SEND` intent with `image/png`, `EXTRA_STREAM`, `ClipData`, and `FLAG_GRANT_READ_URI_PERMISSION`, wrapped in `Intent.createChooser`.
+- [`ShareSheet.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/share/ShareSheet.kt) — Material 3 `ModalBottomSheet` with a thumbnail preview and Save / Share buttons. The card is rendered once inside a `CompositionLocalProvider(LocalDensity provides Density(1f, 1f))` so dp/sp/px are 1:1 in the captured bitmap (1080dp × 1080dp = 1080px × 1080px regardless of device density). The visible thumbnail is the same composable visually scaled via `Modifier.graphicsLayer(scaleX, scaleY)` — the GraphicsLayer always records the unscaled drawing.
+
+**Permissions / manifest:**
+- `WRITE_EXTERNAL_STORAGE` is declared with `android:maxSdkVersion="28"` ([AndroidManifest.xml](mobile_clients/android/src/main/AndroidManifest.xml)). Q+ uses scoped storage and skips the runtime prompt; pre-Q the share sheet requests it via `ActivityResultContracts.RequestPermission` before the first save.
+- `androidx.core.content.FileProvider` is registered with authority `${applicationId}.fileprovider` and `xml/file_paths.xml` exposing `cache-path/shared_images`. The cache directory is auto-cleaned by Android when storage is low, so staged share files are ephemeral by design.
+
+**F-Droid hygiene:** no third-party deps. Bitmap rendering uses `androidx.compose.ui:ui` (Compose 1.7+ `GraphicsLayer.toImageBitmap`), persistence uses `MediaStore` + AndroidX `FileProvider`. No analytics, no Firebase Dynamic Links, no network share endpoints — the user picks the destination via the system chooser.
+
+### Workout library — sources, import, repositories
+
+The Rides list aggregates workouts from three sources, all merged through [`WorkoutLibrary`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLibrary.kt) (`AppContainer.workoutLibrary`):
+
+1. **Bundled** — JSON files in `assets/workouts*.json`. Loaded once at startup via the same shared `WorkoutRepository.parseWorkouts()` parser as before.
+2. **Imported** — JSON files persisted to `filesDir/user_workouts/<sanitised-id>.json` by [`WorkoutImporter`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt). Atomic write via `tmp` + rename. Filename uses the workout's own id so re-importing is idempotent.
+3. **Subscribed repositories** — workouts cached at `filesDir/repos/<sanitised-id>/manifest.json` by [`RepositoryManager`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt). The manifest embeds workouts inline (single HTTP fetch).
+
+Duplicate workout ids are de-duped first-wins with priority **Imported > Subscribed > Bundled** — an explicit user import wins over a bundled or subscribed copy with the same id.
+
+**Source attribution** — `WorkoutLibrary.entries` exposes a `StateFlow<List<WorkoutEntry>>` where each entry carries a `WorkoutSource` (`Bundled` / `Imported` / `Repository(id, name)`). The Rides list tag-eyebrow row appends "· IMPORTED" or "· STARTER PACK" in ember accent for non-bundled workouts; bundled stay clean.
+
+**On-disk schemas** (both versioned `schemaVersion: 1`, defined in [`shared/.../repo/Manifests.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/repo/Manifests.kt)):
+
+- `RepositoryManifest` — `id`, `name`, `description?`, `author?`, `homepage?`, `updatedEpoch?`, `workouts: List<Workout>` (full workouts, not refs).
+- `RegistryIndex` — `repositories: List<RegistryEntry>` where each entry has `id`, `name`, `description?`, `author?`, `manifestUrl`, `tags`.
+
+`ManifestParser.classify(text)` heuristically identifies whether arbitrary JSON is a single workout, list of workouts, repository manifest, or registry index — used by the universal import pipeline so the user doesn't pick a mode up front.
+
+**Community registry URL** — hardcoded `BuildConfig.REGISTRY_URL = "https://indoorbike.app/registry.json"` ([app/build.gradle.kts](mobile_clients/android/build.gradle.kts)). Absence is graceful: `RepositoryManager.refreshRegistry()` returns `RegistryState.Failed(error, cachedIndex)` and the Library's "Browse community" section shows an empty hint pointing at the Scan QR / Add by URL escape hatches. When the URL goes live, the next refresh picks it up automatically — no app update needed.
+
+**Networking** — [`HttpFetcher`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) is a thin `HttpURLConnection` wrapper. F-Droid clean (no OkHttp / Ktor dep), HTTPS-only (rejects `http://`), 12s connect/read timeouts, 2 MB body cap so a malicious URL can't OOM the device.
+
+### Import entry points (4 paths, 1 pipeline)
+
+All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`Workouts` | `Manifest` | `Failure`):
+
+1. **In-app file picker** — `LibraryScreen` → `ActivityResultContracts.OpenDocument(arrayOf("application/json", "*/*"))`.
+2. **Share-target** — manifest intent-filter on `MainActivity` accepts `ACTION_SEND` with `application/json`. Any app's share sheet (Gmail, Files, Drive, browser) can hand a JSON to Indoor Bike.
+3. **File open** — manifest intent-filter on `ACTION_VIEW` with `content://` or `file://` schemes + `application/json` MIME. Tapping a downloaded `.json` from a file manager opens it in Indoor Bike.
+4. **Deep link** — `indoorbike://import?url=<encoded-https-url>` intent-filter. The web editor (or any chat message) can use this to "Send to phone": app fetches the URL, classifies, and routes through the same import pipeline.
+
+`MainActivity.handleImportIntent()` reads `intent.data` / `EXTRA_STREAM`, clears it after consumption (so config-change recreations don't re-trigger), and surfaces results as Toasts. Manifest results auto-subscribe via `RepositoryManager.subscribeFromManifest()` — the user doesn't get a separate confirmation prompt because they already chose the file.
+
+### Library screen + QR scanner
+
+[`LibraryScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/LibraryScreen.kt) is a single-page surface reachable from a `LibraryBooks` icon in the Rides tab AppBar. Sections:
+
+- **Action row** — three tiles: Import file (opens file picker), Scan QR (→ `RouteQrScanner`), By URL (modal sheet with HTTPS URL input).
+- **Subscribed repositories** — list with Refresh + Unsubscribe per row; "$N workouts · $shorthost" subtitle.
+- **Browse community** — registry-driven cards with Subscribe / SUBSCRIBED state. Loading + empty + unreachable states are distinct.
+- **Imported workouts** — flat list of user files with delete.
+
+[`QrScannerScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` — Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, fetches the URL, and routes the result through the same `WorkoutImporter` pipeline. Accepts both bare HTTPS URLs and the `indoorbike://import?url=…` deep-link form.
+
+**Permissions** — `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 
 ### F-Droid hygiene checklist
 

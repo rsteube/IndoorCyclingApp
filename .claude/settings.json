@@ -77,10 +77,25 @@
       "Bash(ls -lt c:/Users/juhan/AppData/Local/Temp/*.png 2>/dev/null | head -5; ls -lt c:/Users/juhan/vibes/cycling_app/*.png 2>/dev/null | head -5)",
       "Read(//c/Users/juhan/AppData/Local/Temp/**)",
       "Bash(xxd c:/Users/juhan/AppData/Local/Temp/957c51fe-3318-48af-9553-b98b56c23985.tmp)",
-      "Bash(cp c:/Users/juhan/AppData/Local/Temp/957c51fe-3318-48af-9553-b98b56c23985.tmp c:/Users/juhan/vibes/cycling_app/website/assets/app-screenshot-workout.png && ls -l c:/Users/juhan/vibes/cycling_app/website/assets/)"
+      "Bash(cp c:/Users/juhan/AppData/Local/Temp/957c51fe-3318-48af-9553-b98b56c23985.tmp c:/Users/juhan/vibes/cycling_app/website/assets/app-screenshot-workout.png && ls -l c:/Users/juhan/vibes/cycling_app/website/assets/)",
+      "PowerShell(.\\\\gradlew.bat :mobile_clients:android:assembleDebug 2>&1)",
+      "PowerShell($d = adb devices | Select-String -Pattern \"^\\\\S+\\\\s+device$\" | Select-Object -First 1; if \\($d\\) { \\($d.ToString\\(\\) -split \"\\\\s+\"\\)[0] } else { \"none\" })",
+      "PowerShell(adb -s 82bc875c install -r .\\\\mobile_clients\\\\android\\\\build\\\\outputs\\\\apk\\\\debug\\\\android-debug.apk 2>&1)",
+      "PowerShell(adb -s 82bc875c shell uiautomator dump /sdcard/dump.xml 2>&1 | Out-Null; adb -s 82bc875c shell cat /sdcard/dump.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -Unique | Select-Object -First 30)",
+      "PowerShell(adb -s 82bc875c shell input keyevent KEYCODE_BACK; Start-Sleep -Seconds 1; adb -s 82bc875c shell uiautomator dump /sdcard/dump.xml 2>&1 | Out-Null; adb -s 82bc875c shell cat /sdcard/dump.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -Unique | Select-Object -First 30)",
+      "PowerShell(adb -s 82bc875c shell input keyevent KEYCODE_BACK; Start-Sleep -Seconds 1; adb -s 82bc875c shell uiautomator dump /sdcard/dump.xml 2>&1 | Out-Null; adb -s 82bc875c shell cat /sdcard/dump.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -Unique | Select-Object -First 40)",
+      "PowerShell(adb -s 82bc875c shell input tap 410 2154; Start-Sleep -Seconds 1; adb -s 82bc875c shell uiautomator dump /sdcard/dump.xml 2>&1 | Out-Null; adb -s 82bc875c shell cat /sdcard/dump.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -Unique | Select-Object -First 30)",
+      "PowerShell(adb -s 82bc875c shell uiautomator dump /sdcard/dump.xml | Out-Null; adb -s 82bc875c shell cat /sdcard/dump.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 30)",
+      "PowerShell(adb -s 82bc875c shell uiautomator dump /sdcard/dump.xml | Out-Null; adb -s 82bc875c shell cat /sdcard/dump.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 25)",
+      "Bash(adb -s 82bc875c shell \"uiautomator dump /sdcard/dump.xml >/dev/null 2>&1; cat /sdcard/dump.xml\")",
+      "PowerShell(adb -s 82bc875c shell screencap -p /sdcard/share_sheet.png)",
+      "PowerShell(adb -s 82bc875c pull /sdcard/share_sheet.png c:/Users/juhan/vibes/cycling_app/share_sheet_test.png 2>&1)",
+      "Bash(adb -s 82bc875c shell \"ls /sdcard/Pictures/Indoor*/\")",
+      "PowerShell(adb -s 82bc875c pull \"/sdcard/Pictures/Indoor Bike/indoorbike-app-test-1.png\" c:/Users/juhan/vibes/cycling_app/share_card_saved.png 2>&1)"
     ],
     "additionalDirectories": [
-      "c:\\Users\\juhan\\AppData\\Local\\Temp"
+      "c:\\Users\\juhan\\AppData\\Local\\Temp",
+      "c:\\Users\\juhan\\.claude\\projects\\c--Users-juhan-vibes-cycling-app\\memory"
     ]
   }
 }

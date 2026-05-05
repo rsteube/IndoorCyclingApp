@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -24,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.share.ShareSheet
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
@@ -60,6 +62,7 @@ fun WorkoutOverviewScreen(
     var telemetry by remember { mutableStateOf<List<WorkoutTelemetry>>(emptyList()) }
     var targetWorkout by remember { mutableStateOf<Workout?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var showShareSheet by remember { mutableStateOf(false) }
 
     val ftp by container.userSettings.ftp.collectAsState()
 
@@ -86,11 +89,18 @@ fun WorkoutOverviewScreen(
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
             },
             trailing = {
-                IconBtn(
-                    icon = Icons.Outlined.DeleteOutline,
-                    contentDescription = "Delete session",
-                    onClick = { confirmDelete = true }
-                )
+                Row {
+                    IconBtn(
+                        icon = Icons.Outlined.IosShare,
+                        contentDescription = "Share ride",
+                        onClick = { showShareSheet = true }
+                    )
+                    IconBtn(
+                        icon = Icons.Outlined.DeleteOutline,
+                        contentDescription = "Delete session",
+                        onClick = { confirmDelete = true }
+                    )
+                }
             }
         )
 
@@ -244,6 +254,24 @@ fun WorkoutOverviewScreen(
                 }
             }
         )
+    }
+
+    if (showShareSheet) {
+        val sessionForSheet = session
+        if (sessionForSheet != null) {
+            ShareSheet(
+                session = sessionForSheet,
+                stats = computeRideStats(
+                    telemetryWatts = telemetry.map { it.power },
+                    durationSeconds = sessionForSheet.durationSeconds,
+                    ftp = ftp
+                ),
+                workout = targetWorkout,
+                telemetry = telemetry,
+                ftp = ftp,
+                onDismiss = { showShareSheet = false }
+            )
+        }
     }
 }
 
