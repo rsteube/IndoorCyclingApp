@@ -9,6 +9,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import app.indoorbike.settings.AndroidUserSettings
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.shared.ble.ControllerManager
 import app.indoorbike.shared.ble.HeartRateMonitor
 import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.db.DatabaseDriverFactory
@@ -30,6 +31,7 @@ import app.indoorbike.shared.util.Log
 class AppContainer(
     val trainerManager: TrainerManager,
     val heartRateMonitor: HeartRateMonitor,
+    val controllerManager: ControllerManager,
     val sessionManager: WorkoutSessionManager,
     val historyRepository: HistoryRepository,
     val userSettings: UserSettings,
@@ -38,6 +40,7 @@ class AppContainer(
     fun dispose() {
         trainerManager.dispose()
         heartRateMonitor.dispose()
+        controllerManager.dispose()
         sessionManager.dispose()
         if (userSettings is AndroidUserSettings) userSettings.dispose()
     }
@@ -46,6 +49,7 @@ class AppContainer(
         fun create(application: Application): AppContainer {
             val trainerManager = TrainerManager()
             val heartRateMonitor = HeartRateMonitor()
+            val controllerManager = ControllerManager()
             val activeSessionStore = AndroidActiveSessionStore(application)
             val sessionManager = WorkoutSessionManager(
                 trainerManager = trainerManager,
@@ -62,6 +66,7 @@ class AppContainer(
             return AppContainer(
                 trainerManager = trainerManager,
                 heartRateMonitor = heartRateMonitor,
+                controllerManager = controllerManager,
                 sessionManager = sessionManager,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
@@ -91,6 +96,9 @@ class IndoorBikeApp : Application() {
         }
         initScope.launch {
             container.heartRateMonitor.autoConnectIfPaired(container.userSettings.pairedHrmId.value)
+        }
+        initScope.launch {
+            container.controllerManager.autoConnectIfPaired(container.userSettings.pairedControllerId.value)
         }
     }
 

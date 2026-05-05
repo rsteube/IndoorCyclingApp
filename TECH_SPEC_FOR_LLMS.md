@@ -35,7 +35,7 @@ Implemented in `shared/.../ble/TrainerManager.kt` using **juul/kable** (KMM-frie
 - **Heart Rate Service** (`0x180D`) → Heart Rate Measurement (`0x2A37`) is subscribed if the peripheral exposes it.
 - The UI consumes a domain `TrainerCandidate(id, name, rssi)` rather than `com.juul.kable.Advertisement`, so swapping BLE libraries doesn't ripple into the UI layer.
 - `peripheral.state` listener and per-characteristic `observe` jobs are explicitly tracked and cancelled across reconnects (no leaks).
-- Zwift Click (v1) controller integration is not yet implemented; the in-app `±difficulty` stepper in `RideScreen` calls `WorkoutSessionManager.adjustDifficulty(±5)` as the fallback path.
+- Zwift Click v1 controller integration lives in [`shared/.../ble/ControllerManager.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/ble/ControllerManager.kt) — see "Rider Controller" section below. The in-app `±difficulty` stepper in `RideScreen` is the always-available fallback and remains the only path when no controller is paired.
 
 ## Development Workflow
 When making changes, always ensure that KMM logic stays in the `shared` module and that UI additions in the Android client utilize the `app.indoorbike` namespace. Use Material 3 in Jetpack Compose, maintaining a high-fidelity dark aesthetic.
@@ -60,6 +60,20 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 - Declares `foregroundServiceType="connectedDevice"` (manifest); `FOREGROUND_SERVICE_CONNECTED_DEVICE` and `POST_NOTIFICATIONS` permissions are declared.
 - Started/stopped via a `DisposableEffect(Unit)` in `RideScreen` so it's tightly coupled to the ride being on screen.
 - **Android 14+ caveat**: starting a `connectedDevice` FGS requires at least one runtime-granted `BLUETOOTH_*` permission. `RideScreen` requests `BLUETOOTH_CONNECT` / `BLUETOOTH_SCAN` (or `ACCESS_FINE_LOCATION` on API < 31) before starting the service so a brand-new user who reaches Start without ever opening the pairing flow doesn't crash. The service additionally wraps `startForeground` in `try/catch SecurityException` and `stopSelf()`s gracefully — defense in depth.
+
+### Rider Controller (Zwift Click v1)
+
+[`ControllerManager`](shared/src/commonMain/kotlin/app/indoorbike/shared/ble/ControllerManager.kt) is a third optional BLE peripheral, parallel to `TrainerManager` and `HeartRateMonitor`. It surfaces a `SharedFlow<ControllerEvent>` of `Plus` / `Minus` press-edges; `RideScreen` collects this and calls `WorkoutSessionManager.adjustDifficulty(±5)` so the controller hits the same code path as the in-app stepper.
+
+- **Service / characteristics** (Zwift custom GATT, unencrypted on Click v1):
+  - Service `0x00000001-19CA-4651-86E5-FA29DCDD09D1`
+  - Async (notify) `0x00000002-…` — keypad notifications arrive here.
+  - Sync RX (write) `0x00000003-…` — host writes the literal bytes `"RideOn"` (`52 69 64 65 4F 6E`) to open the pipe.
+  - Sync TX (indicate) `0x00000004-…` — handshake reply.
+- **Wire format**: each keypad notification starts with byte `0x37`, followed by a tiny protobuf with two varint fields. Inverse logic: 0 = pressed, 1 = released. Field 1 = Plus, field 2 = Minus. The pure parser (`parseClickKeypadStatus`) lives in the same file and is unit-tested under [shared/src/commonTest/.../ble/ClickKeypadParserTest.kt](shared/src/commonTest/kotlin/app/indoorbike/shared/ble/ClickKeypadParserTest.kt).
+- **Press edge detection**: only `released → pressed` transitions emit on `events`; holding does *not* auto-repeat. Acquiring auto-repeat is left to the consumer if/when needed.
+- **Scan filter**: unfiltered scan + name-keyword post-filter (`Zwift Click` / `Click` / `BC1` / `Zwift Play` / `Zwift Ride`), same approach as the HRM. Encrypted Play / Ride controllers advertise via the same custom service so they appear in the list, but the encrypted handshake (ECDH + AES-CCM) is not yet implemented — connecting to a Play / Ride will surface a connection-error.
+- **Auto-reconnect** on app launch via `autoConnectIfPaired(pairedControllerId)`; the paired id persists in `UserSettings.pairedControllerId` (DataStore key `paired_controller_id`).
 
 ### Heart Rate Monitor (separate from trainer)
 
@@ -100,9 +114,10 @@ The Android client implements the **Cadence design system** (see [cadence-design
 - `ui/screens/` — `WorkoutListScreen`, `WorkoutDetailScreen`, `RideScreen` (live HUD), `WorkoutOverviewScreen` (post-ride). The list screen derives filter chips from the loaded workouts (no hardcoded categories); the detail screen truncates the step list to 6 with a "tap to expand" pill; the overview deletes a session via the `HistoryRepository.deleteSession()` cascade.
 - `ui/HistoryTab.kt` — week-grouped session list with totals card (rides / time / kJ) at the top. Empty state shown when no sessions exist.
 - `ui/ProgressTab.kt` — local progression: streak hero (current days + longest + 14-day mini-grid), rider-level meter with kJ thresholds, badge grid. Computes everything from `HistoryRepository.getAllSessions()` via the shared `progression/Progression.kt` helper. No backend, no account.
-- `ui/SettingsTab.kt` — three grouped sections: **Profile** (FTP + Weight rows, commit on focus loss / IME-Done, validated against `MIN/MAX_FTP` and `MIN/MAX_WEIGHT_KG`), **Devices** (single grouped card with Trainer + HRM rows; tapping a row opens a Material 3 `ModalBottomSheet` for that device with state-aware Pair / Disconnect / Forget actions), **About** (version, build type, license). The bottom-sheet pattern keeps the destructive `Forget` action out of the always-visible scroll.
+- `ui/SettingsTab.kt` — three grouped sections: **Profile** (FTP + Weight rows, commit on focus loss / IME-Done, validated against `MIN/MAX_FTP` and `MIN/MAX_WEIGHT_KG`), **Devices** (single grouped card with Trainer + HRM + Controller rows; tapping a row opens a Material 3 `ModalBottomSheet` for that device with state-aware Pair / Disconnect / Forget actions), **About** (version, build type, license). The bottom-sheet pattern keeps the destructive `Forget` action out of the always-visible scroll.
 - `ui/TrainerPairingScreen.kt` — BLE scan screen with live "Scanning · N found" indicator and an Open-Settings escape hatch when permissions are denied. Includes a "Use Mock Trainer" secondary button for users without hardware.
 - `ui/HrmPairingScreen.kt` — parallel to the trainer pairing screen; uses `HeartRateMonitor` and the name-heuristic-based filter (so Garmin HRM-Pro shows up).
+- `ui/ControllerPairingScreen.kt` — parallel to the HRM pairing screen; uses `ControllerManager`. Click v1 only wakes when a button is pressed, so the empty-state copy explicitly tells the user to press a button before scanning.
 - `ui/HistoryTab.kt` / `ui/ProgressTab.kt` empty states each show a primary "Pick a workout" button that calls `onNavigateToRides` — wired in [`MainActivity.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/MainActivity.kt) to `navigator.navigate(TabRides)`.
 - `MainActivity.kt` — loads `workouts*.json` from assets, holds a `Navigator` over `androidx.navigation3` back stacks. Each top-level tab keeps its own back stack; the bottom `TabBar` only renders when on a top-level route at depth 1.
 

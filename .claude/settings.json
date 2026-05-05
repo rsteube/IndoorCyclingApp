@@ -66,7 +66,21 @@
       "PowerShell(.\\\\scripts\\\\smoke_test.ps1 -DeviceId 82bc875c -SkipBuild 2>&1)",
       "Bash(./gradlew.bat :shared:allTests)",
       "Bash(./gradlew.bat :shared:testDebugUnitTest --rerun)",
-      "Bash(awk '{s+=$1} END {print \"Total tests:\", s}')"
+      "Bash(awk '{s+=$1} END {print \"Total tests:\", s}')",
+      "WebSearch",
+      "PowerShell(gh api repos/jat255/zwift_click_handling/contents/)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:www.makinolo.com)",
+      "Bash(./gradlew.bat :shared:compileDebugKotlinAndroid)",
+      "Bash(./gradlew.bat :mobile_clients:android:assembleDebug)",
+      "Bash(./gradlew.bat :shared:testDebugUnitTest)",
+      "Bash(ls -lt c:/Users/juhan/AppData/Local/Temp/*.png 2>/dev/null | head -5; ls -lt c:/Users/juhan/vibes/cycling_app/*.png 2>/dev/null | head -5)",
+      "Read(//c/Users/juhan/AppData/Local/Temp/**)",
+      "Bash(xxd c:/Users/juhan/AppData/Local/Temp/957c51fe-3318-48af-9553-b98b56c23985.tmp)",
+      "Bash(cp c:/Users/juhan/AppData/Local/Temp/957c51fe-3318-48af-9553-b98b56c23985.tmp c:/Users/juhan/vibes/cycling_app/website/assets/app-screenshot-workout.png && ls -l c:/Users/juhan/vibes/cycling_app/website/assets/)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\juhan\\AppData\\Local\\Temp"
     ]
   }
 }

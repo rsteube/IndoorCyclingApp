@@ -51,6 +51,9 @@ class AndroidUserSettings(
     private val _pairedHrmId = MutableStateFlow<String?>(loadStringBlocking(KEY_HRM))
     override val pairedHrmId: StateFlow<String?> = _pairedHrmId.asStateFlow()
 
+    private val _pairedControllerId = MutableStateFlow<String?>(loadStringBlocking(KEY_CONTROLLER))
+    override val pairedControllerId: StateFlow<String?> = _pairedControllerId.asStateFlow()
+
     private val _hasCompletedOnboarding = MutableStateFlow(loadBooleanBlocking(KEY_ONBOARDED))
     override val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
 
@@ -73,6 +76,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_HRM] }.collect { value ->
                 if (value != _pairedHrmId.value) _pairedHrmId.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_CONTROLLER] }.collect { value ->
+                if (value != _pairedControllerId.value) _pairedControllerId.value = value
             }
         }
         scope.launch {
@@ -112,6 +120,15 @@ class AndroidUserSettings(
         }
     }
 
+    override fun setPairedControllerId(id: String?) {
+        _pairedControllerId.value = id
+        scope.launch {
+            store.edit {
+                if (id == null) it.remove(KEY_CONTROLLER) else it[KEY_CONTROLLER] = id
+            }
+        }
+    }
+
     override fun setHasCompletedOnboarding(value: Boolean) {
         _hasCompletedOnboarding.value = value
         scope.launch { store.edit { it[KEY_ONBOARDED] = value } }
@@ -140,6 +157,7 @@ class AndroidUserSettings(
         private val KEY_WEIGHT = floatPreferencesKey("user_weight_kg")
         private val KEY_TRAINER = stringPreferencesKey("paired_trainer_id")
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
+        private val KEY_CONTROLLER = stringPreferencesKey("paired_controller_id")
         private val KEY_ONBOARDED = booleanPreferencesKey("has_completed_onboarding")
     }
 }

@@ -22,6 +22,10 @@ interface UserSettings {
     val pairedHrmId: StateFlow<String?>
     fun setPairedHrmId(id: String?)
 
+    /** id of the last paired rider controller (e.g. Zwift Click v1) — BLE peripheral identifier. */
+    val pairedControllerId: StateFlow<String?>
+    fun setPairedControllerId(id: String?)
+
     /**
      * True once the user has dismissed the first-run welcome flow on the Rides
      * tab. Used to gate the welcome banner so it only shows once per install.

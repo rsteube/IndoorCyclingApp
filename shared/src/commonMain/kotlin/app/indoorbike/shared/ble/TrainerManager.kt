@@ -559,17 +559,3 @@ class TrainerManager {
 
 // nowMs() is provided by util.TimeUtils — re-exported for readability inside this file.
 private fun nowMs(): Long = app.indoorbike.shared.util.getCurrentEpochMillis()
-
-/**
- * Helper: walks `peripheral.services` (after connect) and returns the matching
- * characteristic, or null if absent.
- */
-private suspend fun Peripheral.findCharacteristic(
-    serviceUuidString: String,
-    characteristicUuidString: String,
-): com.juul.kable.Characteristic? {
-    val sUuid = uuidFrom(serviceUuidString)
-    val cUuid = uuidFrom(characteristicUuidString)
-    val service = services?.firstOrNull { it.serviceUuid == sUuid } ?: return null
-    return service.characteristics.firstOrNull { it.characteristicUuid == cUuid }
-}

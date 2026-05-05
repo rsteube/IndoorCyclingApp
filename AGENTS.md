@@ -56,3 +56,7 @@ Testing:
 - Shared-module unit tests: `.\gradlew.bat :shared:allTests`.
 
 Versioning: bump `versionCode` and `versionName` in [mobile_clients/android/build.gradle.kts](mobile_clients/android/build.gradle.kts). The debug build automatically picks up `-debug` suffix on the version name.
+
+
+Website:
+The app has a website that is just for app rpromotion purposes. The site is fully static website that can be deployed to any hosting provided. The domain is indoorbike.app

@@ -175,6 +175,20 @@ fun RideScreen(
         onDispose { RideSessionService.stop(context) }
     }
 
+    // Bridge: external controller (Zwift Click v1, …) → ±difficulty steps,
+    // matching the in-app stepper's ±5 % bias. Only active while the ride
+    // screen is composed; the manager keeps running in the background but
+    // emissions to nowhere are cheap.
+    LaunchedEffect(Unit) {
+        container.controllerManager.events.collect { event ->
+            val delta = when (event) {
+                app.indoorbike.shared.ble.ControllerEvent.Plus -> +5
+                app.indoorbike.shared.ble.ControllerEvent.Minus -> -5
+            }
+            sessionManager.adjustDifficulty(delta)
+        }
+    }
+
     LaunchedEffect(state, continueRequested) {
         if (state == WorkoutState.Completed && workout != null && continueRequested) {
             val telemetry = sessionManager.telemetrySnapshot()

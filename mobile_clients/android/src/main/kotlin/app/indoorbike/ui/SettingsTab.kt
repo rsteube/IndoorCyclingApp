@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.MonitorHeart
+import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.components.AppBar
@@ -43,12 +45,13 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
-private enum class DeviceSheetTarget { Trainer, Hrm }
+private enum class DeviceSheetTarget { Trainer, Hrm, Controller }
 
 @Composable
 fun SettingsTab(
     onNavigateToPairing: () -> Unit,
-    onNavigateToHrmPairing: () -> Unit
+    onNavigateToHrmPairing: () -> Unit,
+    onNavigateToControllerPairing: () -> Unit
 ) {
     var sheetTarget by remember { mutableStateOf<DeviceSheetTarget?>(null) }
 
@@ -81,7 +84,8 @@ fun SettingsTab(
             SectionHeader("DEVICES")
             DevicesCard(
                 onTrainerClick = { sheetTarget = DeviceSheetTarget.Trainer },
-                onHrmClick = { sheetTarget = DeviceSheetTarget.Hrm }
+                onHrmClick = { sheetTarget = DeviceSheetTarget.Hrm },
+                onControllerClick = { sheetTarget = DeviceSheetTarget.Controller }
             )
 
             Spacer(modifier = Modifier.height(Spacing.s6))
@@ -104,6 +108,10 @@ fun SettingsTab(
         onPairHrm = {
             sheetTarget = null
             onNavigateToHrmPairing()
+        },
+        onPairController = {
+            sheetTarget = null
+            onNavigateToControllerPairing()
         }
     )
 }
@@ -124,6 +132,7 @@ private fun SectionHeader(text: String) {
 private fun DevicesCard(
     onTrainerClick: () -> Unit,
     onHrmClick: () -> Unit,
+    onControllerClick: () -> Unit,
 ) {
     val container = LocalAppContainer.current
     val trainerState by container.trainerManager.connectionState.collectAsState()
@@ -132,6 +141,8 @@ private fun DevicesCard(
     val hrmState by container.heartRateMonitor.connectionState.collectAsState()
     val hrmName by container.heartRateMonitor.connectedDeviceName.collectAsState()
     val hrmHeartRate by container.heartRateMonitor.heartRate.collectAsState()
+    val controllerState by container.controllerManager.connectionState.collectAsState()
+    val controllerName by container.controllerManager.connectedDeviceName.collectAsState()
 
     Column(
         modifier = Modifier
@@ -156,6 +167,15 @@ private fun DevicesCard(
             statusLine = hrmStatusLine(hrmState, hrmHeartRate),
             statusColor = hrmStatusColor(hrmState),
             onClick = onHrmClick
+        )
+        HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+        DeviceRow(
+            icon = Icons.Outlined.SettingsRemote,
+            iconTint = CadenceColors.Brand500,
+            title = controllerTitle(controllerState, controllerName),
+            statusLine = controllerStatusLine(controllerState),
+            statusColor = controllerStatusColor(controllerState),
+            onClick = onControllerClick
         )
     }
 }
@@ -220,6 +240,7 @@ private fun DeviceSheet(
     onDismiss: () -> Unit,
     onPairTrainer: () -> Unit,
     onPairHrm: () -> Unit,
+    onPairController: () -> Unit,
 ) {
     if (target == null) return
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -236,6 +257,10 @@ private fun DeviceSheet(
             )
             DeviceSheetTarget.Hrm -> HrmSheetContent(
                 onPair = onPairHrm,
+                onClose = onDismiss
+            )
+            DeviceSheetTarget.Controller -> ControllerSheetContent(
+                onPair = onPairController,
                 onClose = onDismiss
             )
         }
@@ -355,6 +380,64 @@ private fun HrmSheetContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ControllerSheetContent(
+    onPair: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val container = LocalAppContainer.current
+    val controller = container.controllerManager
+    val state by controller.connectionState.collectAsState()
+    val name by controller.connectedDeviceName.collectAsState()
+    val pairedId by controller.pairedDeviceId.collectAsState()
+
+    SheetBody(
+        icon = Icons.Outlined.SettingsRemote,
+        iconTint = CadenceColors.Brand500,
+        title = controllerTitle(state, name),
+        statusLine = controllerStatusLine(state),
+        // Plus increases the workout's target power, minus decreases it. Same
+        // ±5 % step that the in-app stepper uses, so users feel the same beat
+        // whether or not the Click is paired.
+        helper = "Bluetooth ride controller for in-workout ± difficulty. " +
+                "Supported: Zwift Click v1 (BC1). Encrypted Zwift Play / Ride controllers " +
+                "are not yet supported. With no controller paired, the in-app ± buttons still work.",
+    ) {
+        when (state) {
+            ControllerConnectionState.Connected,
+            ControllerConnectionState.Connecting,
+            ControllerConnectionState.Disconnecting -> {
+                SecondaryBtn(
+                    text = if (state == ControllerConnectionState.Connecting) "Cancel Connection" else "Disconnect",
+                    onClick = { controller.disconnect() },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            else -> {
+                PrimaryBtn(
+                    text = "Pair Controller",
+                    leadingIcon = Icons.Outlined.SettingsRemote,
+                    onClick = onPair,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+        if (pairedId != null) {
+            Spacer(modifier = Modifier.height(Spacing.s3))
+            SecondaryBtn(
+                text = "Forget Controller",
+                onClick = {
+                    controller.forgetDevice()
+                    container.userSettings.setPairedControllerId(null)
+                    onClose()
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
 @Composable
 private fun SheetBody(
     icon: ImageVector,
@@ -458,6 +541,27 @@ private fun hrmStatusColor(state: HrmConnectionState): Color = when (state) {
     HrmConnectionState.Disconnecting -> CadenceColors.Warning
     HrmConnectionState.Error -> CadenceColors.Danger
     HrmConnectionState.Disconnected -> CadenceColors.Fg4
+}
+
+private fun controllerTitle(state: ControllerConnectionState, name: String?): String =
+    if (state == ControllerConnectionState.Connected && name != null) name else "Controller"
+
+private fun controllerStatusLine(state: ControllerConnectionState): String = when (state) {
+    ControllerConnectionState.Scanning -> "Scanning…"
+    ControllerConnectionState.Connecting -> "Connecting…"
+    ControllerConnectionState.Connected -> "Connected · in-ride ± control"
+    ControllerConnectionState.Disconnecting -> "Disconnecting…"
+    ControllerConnectionState.Disconnected -> "Not paired · use in-app ± buttons"
+    ControllerConnectionState.Error -> "Connection error · tap to retry"
+}
+
+private fun controllerStatusColor(state: ControllerConnectionState): Color = when (state) {
+    ControllerConnectionState.Connected -> CadenceColors.Success
+    ControllerConnectionState.Scanning,
+    ControllerConnectionState.Connecting,
+    ControllerConnectionState.Disconnecting -> CadenceColors.Warning
+    ControllerConnectionState.Error -> CadenceColors.Danger
+    ControllerConnectionState.Disconnected -> CadenceColors.Fg4
 }
 
 // ─── Profile rows (unchanged) ─────────────────────────────────────────────────

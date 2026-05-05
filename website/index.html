@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Indoor Bike — Structured workouts on your smart trainer</title>
+  <meta name="description" content="Open-source, offline-first indoor cycling app for Wahoo Kickr Core and other smart trainers. Power-zone workouts in ERG mode. No accounts, no Google services, F-Droid friendly.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+
+  <meta property="og:title" content="Indoor Bike — Structured workouts on your smart trainer">
+  <meta property="og:description" content="Open-source, offline-first indoor cycling app. Power-zone workouts in ERG mode.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://indoorbike.app/">
+
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="#top" aria-label="Indoor Bike home">
+        <img src="assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#how">How it works</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-primary" aria-disabled="true" href="#download">
+        Download <span class="btn-tag">soon</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container">
+        <div class="hero-copy">
+          <p class="eyebrow">Indoor cycling · Android · Open source</p>
+          <h1>Train by <span class="accent">power.</span><br>Ride by feel.</h1>
+          <p class="lead">
+            Structured ERG workouts for your smart trainer — defined as plain JSON,
+            ridden against your FTP, and saved to your phone. No subscriptions,
+            no accounts, no cloud required.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" aria-disabled="true" href="#download">
+              Download on F-Droid <span class="btn-tag">soon</span>
+            </a>
+            <a class="btn btn-secondary" href="#how">
+              See how it works <span class="arrow">→</span>
+            </a>
+          </div>
+          <div class="hero-meta">
+            <span class="dot" aria-hidden="true"></span>
+            <span>Wahoo Kickr Core ready</span>
+            <span aria-hidden="true">·</span>
+            <span>BLE FTMS</span>
+            <span aria-hidden="true">·</span>
+            <span>Local-first</span>
+          </div>
+        </div>
+
+        <!-- Phone screenshot -->
+        <div class="device" aria-hidden="true">
+          <div class="device-screen">
+            <img src="assets/app-screenshot-workout.png" alt="">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="topo-divider" aria-hidden="true"></div>
+
+    <!-- FEATURES -->
+    <section id="features">
+      <div class="container">
+        <p class="eyebrow">What's inside</p>
+        <h2 class="section-title">Built for the saddle, not the screen.</h2>
+        <p class="section-lead">
+          Every screen is designed for arm's-length legibility on a sweaty phone.
+          Telemetry first, decoration last.
+        </p>
+
+        <div class="features">
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M7 7l10 10"/><path d="M11 17l6-6-6-6v12z"/><path d="M11 7l6 6"/>
+              </svg>
+            </div>
+            <h3>BLE smart trainer</h3>
+            <p>Standard FTMS over Bluetooth LE. Pair your Wahoo Kickr Core or any FTMS-compatible trainer — no vendor SDK, no Google Play Services.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </div>
+            <h3>ERG mode control</h3>
+            <p>The app drives your trainer to hit each interval's target wattage automatically. You hold the cadence — it holds the watts.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 3v18h18"/><rect x="7" y="13" width="3" height="6"/><rect x="12" y="9" width="3" height="10"/><rect x="17" y="5" width="3" height="14"/>
+              </svg>
+            </div>
+            <h3>Power zones</h3>
+            <p>Z1 recovery through Z7 neuromuscular, calibrated as percentages of your FTP. Visualised on every workout, every interval, every chart.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
+              </svg>
+            </div>
+            <h3>JSON workouts</h3>
+            <p>Every workout is a readable JSON file. Use the bundled library, drop in your own, or hand-craft intervals in any text editor.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="9" cy="6" r="3"/><circle cx="15" cy="6" r="3"/><path d="M3 13l3-3h12l3 3"/><path d="M5 13v8h14v-8"/>
+              </svg>
+            </div>
+            <h3>Zwift Click ready</h3>
+            <p>Pair a Zwift Click v1 controller to nudge target power up or down mid-interval. On-screen +/- buttons work too — your handlebar, your call.</p>
+          </article>
+
+          <article class="feature-card">
+            <div class="feature-icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <h3>Yours, locally</h3>
+            <p>Rides, FTP, weight, paired devices — all on your phone. No telemetry leaves the device. Optional sync is opt-in and lazily loaded.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- WORKOUT DEMO -->
+    <section id="workouts">
+      <div class="container">
+        <p class="eyebrow">Workout library</p>
+        <h2 class="section-title">Familiar formats. Honest names.</h2>
+        <p class="section-lead">
+          Sweet Spot, Threshold, VO2 — the same intervals you already know from
+          TrainerRoad and Zwift, structured against your FTP and ridden in the
+          same colour-coded zones.
+        </p>
+
+        <div class="workout-demo">
+          <article class="workout-card">
+            <p class="eyebrow">Threshold</p>
+            <h3>Sweet Spot 3×12</h3>
+            <p class="meta">52 MIN · TSS 65 · IF 0.91</p>
+            <div class="workout-bar" aria-hidden="true">
+              <div style="background:#2E7BFF;flex:1"></div>
+              <div style="background:#1FB373;flex:3"></div>
+              <div style="background:#F0C419;flex:5"></div>
+              <div style="background:#1FB373;flex:1"></div>
+              <div style="background:#F0C419;flex:5"></div>
+              <div style="background:#1FB373;flex:1"></div>
+              <div style="background:#F0C419;flex:5"></div>
+              <div style="background:#2E7BFF;flex:1"></div>
+            </div>
+            <div class="workout-stats">
+              <div class="stat"><b>225</b>avg watts</div>
+              <div class="stat"><b>92</b>avg rpm</div>
+              <div class="stat"><b>3</b>intervals</div>
+            </div>
+          </article>
+
+          <article class="workout-card">
+            <p class="eyebrow">VO2 Max</p>
+            <h3>30/30s · 8 sets</h3>
+            <p class="meta">38 MIN · TSS 58 · IF 0.94</p>
+            <div class="workout-bar" aria-hidden="true">
+              <div style="background:#2E7BFF;flex:2"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
+              <div style="background:#2E7BFF;flex:2"></div>
+            </div>
+            <div class="workout-stats">
+              <div class="stat"><b>118</b>%FTP peak</div>
+              <div class="stat"><b>8</b>sets</div>
+              <div class="stat"><b>30s</b>on/off</div>
+            </div>
+          </article>
+        </div>
+
+        <div class="zone-legend" aria-label="Power zones">
+          <span class="zone-badge" style="background:rgba(107,138,168,0.16);color:#9DB1C6"><span class="swatch" style="background:#6B8AA8"></span>Z1 Recovery</span>
+          <span class="zone-badge" style="background:rgba(46,123,255,0.18);color:#7BA8FF"><span class="swatch" style="background:#2E7BFF"></span>Z2 Endurance</span>
+          <span class="zone-badge" style="background:rgba(31,179,115,0.18);color:#5DD3A4"><span class="swatch" style="background:#1FB373"></span>Z3 Tempo</span>
+          <span class="zone-badge" style="background:rgba(240,196,25,0.20);color:#F4D258"><span class="swatch" style="background:#F0C419"></span>Z4 Threshold</span>
+          <span class="zone-badge" style="background:rgba(255,138,31,0.20);color:#FFAE5C"><span class="swatch" style="background:#FF8A1F"></span>Z5 VO2</span>
+          <span class="zone-badge" style="background:rgba(235,59,59,0.20);color:#F47272"><span class="swatch" style="background:#EB3B3B"></span>Z6 Anaerobic</span>
+          <span class="zone-badge" style="background:rgba(197,59,255,0.20);color:#D777FF"><span class="swatch" style="background:#C53BFF"></span>Z7 Neuro</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS -->
+    <section id="how">
+      <div class="container">
+        <p class="eyebrow">From install to first sprint</p>
+        <h2 class="section-title">Four steps. No accounts.</h2>
+        <p class="section-lead">
+          Install the APK, pair your trainer, pick a workout, ride. No sign-up
+          screens, no subscription paywalls, no welcome carousels.
+        </p>
+
+        <div class="steps">
+          <div class="step">
+            <h3>Install</h3>
+            <p>Get the app from F-Droid (or sideload the APK from a release). Open it. The first screen asks for your FTP and weight — that's it.</p>
+          </div>
+          <div class="step">
+            <h3>Pair</h3>
+            <p>Tap the trainer icon. Power on your Kickr Core, the app discovers it over BLE, and remembers it. Optionally pair a HRM and a Zwift Click.</p>
+          </div>
+          <div class="step">
+            <h3>Pick</h3>
+            <p>Browse the workout library. Each card shows the zone profile, duration, TSS, and IF — pick one that fits your session and your legs.</p>
+          </div>
+          <div class="step">
+            <h3>Ride</h3>
+            <p>Hit start. ERG holds the target wattage. The HUD shows zone, power, cadence, HR, and time-in-step. The completed ride saves locally as a file.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRIVACY -->
+    <section id="privacy" class="privacy">
+      <div class="container">
+        <div>
+          <p class="eyebrow">F-Droid native</p>
+          <h2 class="section-title">No tracking. No accounts. No exceptions.</h2>
+          <p class="section-lead">
+            Indoor Bike was designed from day one to ship through F-Droid. That
+            means no proprietary blobs, no Google Play Services, no analytics
+            SDKs, no crash reporters phoning home.
+          </p>
+        </div>
+        <ul class="privacy-list">
+          <li>
+            <span class="check" aria-hidden="true">✓</span>
+            <span><b>Local-first storage.</b> Your FTP, weight, paired devices, and ride history live on your phone.</span>
+          </li>
+          <li>
+            <span class="check" aria-hidden="true">✓</span>
+            <span><b>No Google services.</b> Standard Android BLE APIs. No FCM, no Firebase, no Crashlytics.</span>
+          </li>
+          <li>
+            <span class="check" aria-hidden="true">✓</span>
+            <span><b>Open source.</b> Kotlin Multiplatform core and Jetpack Compose UI. Read it, fork it, build it yourself.</span>
+          </li>
+          <li>
+            <span class="check" aria-hidden="true">✓</span>
+            <span><b>Optional, opt-in sync.</b> Account login (Auth0) and cloud backup (CleverCloud) are off by default and lazily loaded only if you enable them.</span>
+          </li>
+          <li>
+            <span class="check" aria-hidden="true">✓</span>
+            <span><b>Open file formats.</b> Workouts are JSON. Saved rides are files you can copy off the device any time.</span>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section id="faq">
+      <div class="container">
+        <p class="eyebrow" style="text-align:center">Questions</p>
+        <h2 class="section-title" style="text-align:center">Good to know.</h2>
+
+        <div class="faq" style="margin-top:var(--s-7)">
+          <details class="faq-item">
+            <summary>Which trainers are supported?</summary>
+            <p>Any smart trainer that speaks the standard Bluetooth LE FTMS profile. The first-class target is the Wahoo Kickr Core; other FTMS-compatible trainers should work but aren't extensively tested yet.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Do I need an account?</summary>
+            <p>No. The app is fully functional offline with no sign-up. Optional Auth0 login and CleverCloud sync exist for users who want cross-device backup, but everything works without them.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Where do I get the app?</summary>
+            <p>The app is being prepared for F-Droid. Once published, the install link will appear here. Until then, you can build the Android project from source.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Can I use my own workouts?</summary>
+            <p>Yes. Workouts are plain JSON files describing a sequence of intervals (duration + power as % of FTP). Drop them into the workouts directory and they show up in the library. A visual editor is on the roadmap.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Is iOS supported?</summary>
+            <p>Not yet. The shared core is built with Kotlin Multiplatform Mobile so an iOS port is planned, but the current focus is shipping a polished Android release first.</p>
+          </details>
+          <details class="faq-item">
+            <summary>What about heart-rate monitors?</summary>
+            <p>Standard BLE HRMs (including the Garmin HRM) pair the same way as the trainer. HR shows on the ride HUD and is recorded with the ride file.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- DOWNLOAD CTA -->
+    <section id="download" class="cta">
+      <div class="container">
+        <h2>Ready when you are.</h2>
+        <p>The F-Droid release is in preparation. Watch the repository for updates, or build the latest debug APK from source today.</p>
+        <div class="hero-cta" style="justify-content:center">
+          <a class="btn btn-primary" aria-disabled="true" href="#download">
+            Download on F-Droid <span class="btn-tag">soon</span>
+          </a>
+          <a class="btn btn-secondary" href="#features">
+            Read the features <span class="arrow">→</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Indoor Bike · indoorbike.app</span>
+      <div class="footer-links">
+        <a href="#features">Features</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#faq">FAQ</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

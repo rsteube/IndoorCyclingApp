@@ -40,6 +40,7 @@ import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.ui.NavDisplay
+import app.indoorbike.navigation.RouteControllerPairing
 import app.indoorbike.navigation.RouteHrmPairing
 import app.indoorbike.navigation.RouteRideScreen
 import app.indoorbike.navigation.RouteTrainerPairing
@@ -53,6 +54,7 @@ import app.indoorbike.navigation.Navigator
 import app.indoorbike.navigation.rememberNavigationState
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.ui.ControllerPairingScreen
 import app.indoorbike.ui.HistoryTab
 import app.indoorbike.ui.HrmPairingScreen
 import app.indoorbike.ui.ProgressTab
@@ -218,7 +220,8 @@ private fun AppNavigator(workouts: List<Workout>) {
         entry<TabSettings> { _ ->
             SettingsTab(
                 onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) },
-                onNavigateToHrmPairing = { navigator.navigate(RouteHrmPairing) }
+                onNavigateToHrmPairing = { navigator.navigate(RouteHrmPairing) },
+                onNavigateToControllerPairing = { navigator.navigate(RouteControllerPairing) }
             )
         }
         entry<RouteTrainerPairing> { _ ->
@@ -226,6 +229,9 @@ private fun AppNavigator(workouts: List<Workout>) {
         }
         entry<RouteHrmPairing> { _ ->
             HrmPairingScreen(onBack = { navigator.goBack() })
+        }
+        entry<RouteControllerPairing> { _ ->
+            ControllerPairingScreen(onBack = { navigator.goBack() })
         }
         entry<RouteRideScreen> { _ ->
             RideScreen(
