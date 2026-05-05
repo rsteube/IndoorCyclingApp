@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Indoor Bike — Build journal & feature tour</title>
+  <meta name="description" content="A vibe-coded indoor cycling app. Three-day build journal with a feature tour of the Android app, the web workout editor, and the marketing site.">
+  <meta name="theme-color" content="#0F0C09">
+
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-0: #0F0C09;
+      --bg-1: #1A1611;
+      --bg-2: #221C16;
+      --bg-3: #2C241B;
+      --line-1: #2E261C;
+      --line-2: #3A3025;
+      --fg-1: #F4ECDF;
+      --fg-2: #C9BCA4;
+      --fg-3: #8A7E69;
+      --fg-4: #564E3F;
+      --brand-300: #FFB66E;
+      --brand-400: #FF9A3C;
+      --brand-500: #FF7A1A;
+      --brand-600: #E0590F;
+
+      --z1: #6B8AA8; --z2: #2E7BFF; --z3: #1FB373; --z4: #F0C419;
+      --z5: #FF8A1F; --z6: #EB3B3B; --z7: #C53BFF;
+
+      --r-1: 6px; --r-2: 10px; --r-3: 14px; --r-4: 20px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg-0);
+      color: var(--fg-1);
+      font-family: 'Inter', -apple-system, system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--brand-400); text-decoration: none; }
+    a:hover { color: var(--brand-300); }
+    h1, h2, h3, .display { font-family: 'Bebas Neue', 'Inter', sans-serif; letter-spacing: 0.5px; font-weight: 400; }
+    h1 { font-size: clamp(48px, 8vw, 96px); line-height: 0.95; margin: 0 0 20px; }
+    h2 { font-size: clamp(32px, 4.5vw, 56px); line-height: 1; margin: 0 0 12px; }
+    h3 { font-size: 22px; line-height: 1.1; margin: 0 0 8px; letter-spacing: 0.8px; }
+    .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.5px; }
+    .eyebrow {
+      font-family: 'Inter', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--brand-400);
+      margin: 0 0 12px;
+    }
+    .lead { font-size: 18px; color: var(--fg-2); max-width: 70ch; margin: 0 0 24px; }
+
+    .container { max-width: 1280px; margin: 0 auto; padding: 0 32px; }
+
+    /* HEADER */
+    .site-header {
+      border-bottom: 1px solid var(--line-1);
+      padding: 24px 0;
+      position: sticky;
+      top: 0;
+      backdrop-filter: blur(8px);
+      background: rgba(15, 12, 9, 0.85);
+      z-index: 50;
+    }
+    .site-header .container { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-family: 'Bebas Neue'; letter-spacing: 2px; font-size: 22px; color: var(--fg-1); }
+    .brand-mark {
+      width: 28px; height: 28px;
+      border: 2px solid var(--brand-500); border-radius: 50%;
+      position: relative;
+    }
+    .brand-mark::after {
+      content: ''; position: absolute; top: 50%; left: 50%;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--brand-500); transform: translate(-50%, -50%);
+    }
+    .brand b { color: var(--brand-500); }
+    .nav { display: flex; gap: 24px; font-size: 14px; }
+    .nav a { color: var(--fg-2); }
+    .nav a:hover { color: var(--fg-1); }
+
+    /* HERO */
+    .hero { padding: 96px 0 48px; }
+    .hero .accent { color: var(--brand-500); }
+    .hero-meta {
+      display: flex; gap: 20px; flex-wrap: wrap;
+      color: var(--fg-3); font-size: 13px;
+      margin-top: 32px; padding-top: 24px;
+      border-top: 1px solid var(--line-1);
+    }
+    .hero-meta b { color: var(--fg-1); font-weight: 600; }
+
+    /* TIMELINE */
+    .timeline-section {
+      padding: 48px 0 32px;
+      border-top: 1px solid var(--line-1);
+    }
+    .timeline-section .container { max-width: 1400px; }
+    .timeline-frame {
+      margin-top: 40px;
+      border: 1px solid var(--line-1);
+      border-radius: var(--r-4);
+      background: linear-gradient(180deg, var(--bg-1), var(--bg-0));
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-color: var(--line-2) var(--bg-1);
+    }
+    .timeline-frame::-webkit-scrollbar { height: 12px; }
+    .timeline-frame::-webkit-scrollbar-track { background: var(--bg-1); }
+    .timeline-frame::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 6px; }
+    .timeline {
+      position: relative;
+      width: 5200px;
+      height: 720px;
+      padding: 32px 0;
+    }
+    /* Day bands */
+    .day-band {
+      position: absolute;
+      top: 32px;
+      bottom: 100px;
+      border-radius: var(--r-3);
+      border: 1px solid transparent;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      padding: 12px 16px;
+    }
+    .day-band .day-label { font-family: 'Bebas Neue'; font-size: 24px; letter-spacing: 1px; color: var(--fg-1); }
+    .day-band .day-sub { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--fg-3); letter-spacing: 1.5px; text-transform: uppercase; }
+    .day-1 { background: rgba(46, 123, 255, 0.04); border-color: rgba(46, 123, 255, 0.18); }
+    .day-1 .day-label { color: #7BA8FF; }
+    .day-2 { background: rgba(31, 179, 115, 0.04); border-color: rgba(31, 179, 115, 0.18); }
+    .day-2 .day-label { color: #5DD3A4; }
+    .day-3 { background: rgba(255, 122, 26, 0.05); border-color: rgba(255, 122, 26, 0.22); }
+    .day-3 .day-label { color: var(--brand-300); }
+
+    /* Spine + ticks */
+    .spine {
+      position: absolute;
+      left: 120px; right: 120px;
+      top: 360px; height: 2px;
+      background: linear-gradient(90deg, var(--brand-600), var(--brand-400), var(--brand-600));
+      box-shadow: 0 0 20px rgba(255, 122, 26, 0.3);
+    }
+    .axis {
+      position: absolute;
+      left: 120px; right: 120px;
+      top: 640px; height: 1px;
+      background: var(--line-2);
+    }
+    .axis .tick {
+      position: absolute;
+      top: -4px; width: 1px; height: 9px; background: var(--line-2);
+    }
+    .axis .tick-label {
+      position: absolute;
+      top: 12px;
+      transform: translateX(-50%);
+      font-family: 'JetBrains Mono';
+      font-size: 11px;
+      color: var(--fg-3);
+      white-space: nowrap;
+    }
+    .axis-title {
+      position: absolute;
+      bottom: 8px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--fg-3);
+      text-transform: uppercase;
+    }
+
+    /* Commit nodes */
+    .node {
+      position: absolute;
+      top: 360px;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--brand-500);
+      border: 3px solid var(--bg-0);
+      box-shadow: 0 0 0 1px var(--brand-500), 0 0 18px rgba(255, 122, 26, 0.5);
+      z-index: 3;
+    }
+    .node.minor {
+      background: var(--fg-4);
+      box-shadow: 0 0 0 1px var(--fg-4);
+      width: 8px; height: 8px;
+    }
+    .node.major {
+      width: 18px; height: 18px;
+      box-shadow: 0 0 0 2px var(--brand-500), 0 0 24px rgba(255, 122, 26, 0.6);
+    }
+    .label {
+      position: absolute;
+      width: 180px;
+      transform: translateX(-50%);
+      z-index: 2;
+      display: flex;
+      flex-direction: column;
+    }
+    .label .connector {
+      width: 1px;
+      background: var(--line-2);
+      align-self: center;
+    }
+    .label-card {
+      background: var(--bg-2);
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-2);
+      padding: 10px 12px;
+      text-align: left;
+    }
+    .label-card .when { font-family: 'JetBrains Mono'; font-size: 10px; color: var(--brand-400); letter-spacing: 0.5px; margin-bottom: 4px; }
+    .label-card .what { font-size: 13px; font-weight: 600; color: var(--fg-1); line-height: 1.3; }
+    .label-card .sub { font-size: 11px; color: var(--fg-3); margin-top: 4px; line-height: 1.35; }
+    .label.minor .label-card { background: transparent; border: 1px dashed var(--line-2); }
+    .label.minor .label-card .what { font-weight: 500; color: var(--fg-3); font-style: italic; }
+
+    .legend {
+      display: flex; gap: 24px; flex-wrap: wrap;
+      margin-top: 16px;
+      font-size: 12px; color: var(--fg-3);
+    }
+    .legend-item { display: flex; gap: 8px; align-items: center; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+
+    /* TOTALS */
+    .totals {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-top: 32px;
+    }
+    .totals .stat {
+      border: 1px solid var(--line-1);
+      border-radius: var(--r-3);
+      padding: 20px;
+      background: var(--bg-1);
+    }
+    .totals .stat-label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: var(--fg-3);
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .totals .stat-value {
+      font-family: 'Bebas Neue';
+      font-size: 48px;
+      line-height: 1;
+      color: var(--fg-1);
+    }
+    .totals .stat-value b { color: var(--brand-500); font-weight: 400; }
+    .totals .stat-sub { font-size: 12px; color: var(--fg-3); margin-top: 4px; }
+
+    /* FEATURES */
+    .features-section {
+      padding: 96px 0 48px;
+      border-top: 1px solid var(--line-1);
+    }
+    .surface-tabs {
+      display: flex; gap: 8px;
+      margin: 32px 0 48px;
+      flex-wrap: wrap;
+    }
+    .surface-tab {
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid var(--line-2);
+      background: transparent;
+      color: var(--fg-2);
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .surface-tab.active {
+      background: rgba(255, 122, 26, 0.12);
+      border-color: var(--brand-500);
+      color: var(--brand-300);
+    }
+
+    .feature-block { margin-bottom: 64px; }
+    .feature-block h3.surface-title {
+      font-size: 36px;
+      letter-spacing: 1.5px;
+      margin-bottom: 4px;
+    }
+    .surface-meta {
+      display: flex; gap: 16px;
+      font-size: 12px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--fg-3);
+      margin-bottom: 32px;
+    }
+    .surface-meta b { color: var(--brand-400); font-weight: 600; }
+
+    /* App feature grid */
+    .app-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 24px;
+    }
+    .shot-card {
+      background: var(--bg-1);
+      border: 1px solid var(--line-1);
+      border-radius: var(--r-3);
+      overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .shot-card:hover { transform: translateY(-2px); border-color: var(--line-2); }
+    .shot-card .frame {
+      background: linear-gradient(180deg, var(--bg-2), var(--bg-0));
+      padding: 24px 16px 0;
+      display: flex; justify-content: center;
+      aspect-ratio: 9/16;
+      max-height: 480px;
+      overflow: hidden;
+    }
+    .shot-card .frame.wide {
+      aspect-ratio: 16/9;
+      padding: 16px;
+      max-height: 280px;
+    }
+    .shot-card .frame img {
+      width: 100%;
+      height: auto;
+      object-fit: contain;
+      object-position: top center;
+      border-radius: 18px 18px 0 0;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+    }
+    .shot-card .frame.wide img { border-radius: 8px; max-height: 100%; }
+    .shot-card .body { padding: 18px 20px 22px; }
+    .shot-card h4 {
+      font-family: 'Bebas Neue';
+      font-size: 22px;
+      letter-spacing: 1px;
+      margin: 0 0 6px;
+      color: var(--fg-1);
+    }
+    .shot-card .tag {
+      display: inline-block;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--brand-400);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .shot-card p { margin: 0; color: var(--fg-2); font-size: 13px; line-height: 1.5; }
+    .shot-card ul { margin: 8px 0 0; padding: 0 0 0 16px; color: var(--fg-2); font-size: 12.5px; }
+    .shot-card ul li { margin-bottom: 3px; }
+
+    /* Hero feature: large screenshot beside list */
+    .hero-feature {
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 48px;
+      align-items: start;
+      margin-bottom: 64px;
+    }
+    .hero-feature .shot {
+      background: var(--bg-1);
+      border: 1px solid var(--line-1);
+      border-radius: 28px;
+      padding: 16px;
+    }
+    .hero-feature .shot img {
+      width: 100%;
+      height: auto;
+      border-radius: 18px;
+      display: block;
+    }
+    .hero-feature .feature-list {
+      display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px;
+    }
+    .feature-list .item {
+      border-left: 2px solid var(--brand-500);
+      padding: 6px 0 6px 16px;
+    }
+    .feature-list .item h4 {
+      margin: 0 0 4px;
+      font-family: 'Bebas Neue';
+      font-size: 18px;
+      letter-spacing: 1px;
+      color: var(--fg-1);
+    }
+    .feature-list .item p { margin: 0; font-size: 13px; color: var(--fg-2); }
+
+    /* Editor wide screenshot */
+    .wide-shot {
+      background: var(--bg-1);
+      border: 1px solid var(--line-1);
+      border-radius: var(--r-4);
+      padding: 12px;
+      margin-bottom: 24px;
+    }
+    .wide-shot img {
+      width: 100%;
+      height: auto;
+      border-radius: var(--r-3);
+      display: block;
+    }
+    .editor-cols {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .feat-pill {
+      border: 1px solid var(--line-2);
+      border-radius: var(--r-3);
+      padding: 16px 18px;
+      background: var(--bg-1);
+    }
+    .feat-pill .num {
+      font-family: 'Bebas Neue';
+      font-size: 32px;
+      color: var(--brand-500);
+      line-height: 1;
+      display: block;
+      margin-bottom: 8px;
+    }
+    .feat-pill h4 { margin: 0 0 6px; font-family: 'Bebas Neue'; font-size: 18px; letter-spacing: 1px; }
+    .feat-pill p { margin: 0; font-size: 12.5px; color: var(--fg-2); }
+
+    /* Zone legend */
+    .zones {
+      display: flex; gap: 8px; flex-wrap: wrap;
+      margin: 16px 0 0;
+    }
+    .zone-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 11px; font-weight: 600;
+      font-family: 'JetBrains Mono';
+    }
+    .zone-pill .sw { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* FOOTER */
+    .site-footer {
+      padding: 48px 0;
+      border-top: 1px solid var(--line-1);
+      color: var(--fg-3);
+      font-size: 13px;
+      margin-top: 64px;
+    }
+    .site-footer .container { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+
+    @media (max-width: 800px) {
+      .hero-feature { grid-template-columns: 1fr; }
+      .totals { grid-template-columns: repeat(2, 1fr); }
+      .nav { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <div class="brand"><span class="brand-mark"></span> INDOOR <b>BIKE</b></div>
+      <nav class="nav">
+        <a href="#timeline">Timeline</a>
+        <a href="#android">Android app</a>
+        <a href="#editor">Workout editor</a>
+        <a href="#site">Marketing site</a>
+        <a href="../website/">Live site →</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- HERO -->
+    <section class="hero">
+      <div class="container">
+        <p class="eyebrow">Build journal · 2026-05-03 → 2026-05-05</p>
+        <h1>From empty repo to <span class="accent">F-Droid candidate</span><br>in three days.</h1>
+        <p class="lead">
+          A vibe-coded indoor cycling app for Wahoo Kickr Core. Kotlin Multiplatform Mobile,
+          Jetpack Compose, BLE FTMS, ERG-mode workouts driven from JSON. This page is a
+          honest record of what got built, in what order, and how many hours it took.
+        </p>
+        <div class="hero-meta">
+          <span><b>27</b> commits</span>
+          <span><b>~25.4 h</b> active work</span>
+          <span><b>3</b> calendar days</span>
+          <span><b>3</b> surfaces — Android, web editor, marketing site</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- TIMELINE -->
+    <section id="timeline" class="timeline-section">
+      <div class="container">
+        <p class="eyebrow">What happened, when</p>
+        <h2>Three-day project timeline</h2>
+        <p class="lead">
+          Horizontal axis is cumulative <b>active hours</b> (capped at 2-hour gaps between commits — no sleep is counted).
+          Major commits are large dots; bug-fix only commits are dimmed. Scroll right to see all of day three.
+        </p>
+
+        <div class="legend">
+          <span class="legend-item"><span class="legend-dot" style="background:var(--brand-500)"></span>Feature / major refactor</span>
+          <span class="legend-item"><span class="legend-dot" style="background:var(--fg-4)"></span>Bug fixing / polish</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#7BA8FF"></span>Day 1</span>
+          <span class="legend-item"><span class="legend-dot" style="background:#5DD3A4"></span>Day 2</span>
+          <span class="legend-item"><span class="legend-dot" style="background:var(--brand-300)"></span>Day 3</span>
+        </div>
+
+        <div class="timeline-frame">
+          <div class="timeline" id="tl"></div>
+        </div>
+
+        <!-- TOTALS -->
+        <div class="totals">
+          <div class="stat">
+            <div class="stat-label">Day 1 · Foundations</div>
+            <div class="stat-value"><b>~9.7</b> h</div>
+            <div class="stat-sub">Scaffold → BLE → first ride</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Day 2 · Polish</div>
+            <div class="stat-value"><b>~9.9</b> h</div>
+            <div class="stat-sub">HRM, progression, onboarding, tests</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Day 3 · Surfaces</div>
+            <div class="stat-value"><b>~5.8</b> h</div>
+            <div class="stat-sub">Website, editor, share, FIT export</div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Total</div>
+            <div class="stat-value"><b>~25.4</b> h</div>
+            <div class="stat-sub">Active coding hours, 27 commits</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ANDROID APP -->
+    <section id="android" class="features-section">
+      <div class="container">
+        <p class="eyebrow">Surface 1 · Android</p>
+        <h2 class="surface-title display">The Android app</h2>
+        <div class="surface-meta">
+          <span>Kotlin Multiplatform · Jetpack Compose · Material 3</span>
+          <span>API 26+</span>
+          <span>F-Droid clean — <b>no Google services</b></span>
+        </div>
+
+        <!-- Hero feature -->
+        <div class="hero-feature">
+          <div class="shot">
+            <img src="screenshots/ride-hud.png" alt="Live ride HUD: 60W target with cadence, HR, ERG-locked indicator, current zone segment.">
+          </div>
+          <div>
+            <h3 class="display" style="font-size:32px;letter-spacing:1.5px">The headline screen — live ride HUD</h3>
+            <p class="lead" style="font-size:15px;margin-bottom:24px">
+              Arms-length legibility on a sweaty phone. Zone-aware target watts, cadence, HR,
+              ERG-mode lock indicator, and the next interval on deck. Designed to be readable from the saddle, not from the desk.
+            </p>
+            <div class="feature-list">
+              <div class="item">
+                <h4>ERG mode</h4>
+                <p>Targets the trainer with FTMS opcode 0x05; auto-requests control on connect.</p>
+              </div>
+              <div class="item">
+                <h4>Wall-clock timing</h4>
+                <p>Elapsed time anchored to <code>now - phaseStart</code> so a hiccupy dispatcher can't drift the ride.</p>
+              </div>
+              <div class="item">
+                <h4>HR fallback chain</h4>
+                <p>Dedicated BLE HRM preferred; falls back to trainer-reported HR if the strap drops.</p>
+              </div>
+              <div class="item">
+                <h4>±difficulty stepper</h4>
+                <p>Multiplicative bias on target watts. Optional Zwift Click v1 hits the same code path.</p>
+              </div>
+              <div class="item">
+                <h4>Skip / Pause</h4>
+                <p>Phase anchor resets on every transition so segment progress stays honest.</p>
+              </div>
+              <div class="item">
+                <h4>Foreground service</h4>
+                <p>connectedDevice FGS + 4-hour wakelock so BLE keeps flowing when the screen sleeps.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- App grid -->
+        <div class="app-grid">
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/rides.png" alt="Rides tab — workout list with zone bars, TSS, IF."></div>
+            <div class="body">
+              <span class="tag">Rides tab</span>
+              <h4>Workout library</h4>
+              <p>Filter chips derived from the loaded workouts (no hardcoded categories). Each card shows the zone profile, duration, TSS and IF. A connection-state strip at the top doubles as the "Pair a trainer" nudge until any device is paired.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/rides.png" alt="Rides tab — Start Here pinned card for first ride."></div>
+            <div class="body">
+              <span class="tag">First-run</span>
+              <h4>"Start here" pinned card</h4>
+              <p>An ember-bordered "<code>START HERE · YOUR FIRST RIDE</code>" card pinned to the top of the Rides tab on a fresh install — points at a 15-minute mixed-zone starter workout. Disappears after the first completed ride; the workout is filtered out of the regular list while pinned to avoid duplication.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/workout-detail.png" alt="Workout detail — step list with zone bars."></div>
+            <div class="body">
+              <span class="tag">Workout detail</span>
+              <h4>Step preview</h4>
+              <p>Truncated to 6 steps with a "tap to expand" pill. Bottom CTA is state-aware: "Pair a trainer to ride" if no trainer is connected.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/trainer-pairing.png" alt="Trainer pairing — BLE scan with Use Mock Trainer button."></div>
+            <div class="body">
+              <span class="tag">Pairing</span>
+              <h4>BLE scanner</h4>
+              <p>Live "Scanning · N found" state with an Open-Settings escape hatch. Includes a Use Mock Trainer button for users without hardware.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/library.png" alt="Library — Import file, Scan QR, By URL tiles."></div>
+            <div class="body">
+              <span class="tag">Workout library</span>
+              <h4>Import & subscribe</h4>
+              <p>Four import paths into one pipeline: file picker, share-target intent, content:// open, and <code>indoorbike://import</code> deep links — including QR.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/library.png" alt="Library — Subscribed repositories and Browse community sections."></div>
+            <div class="body">
+              <span class="tag">Community libraries</span>
+              <h4>Subscribed repositories</h4>
+              <p>Subscribe to a hosted JSON manifest URL and pull a whole pack of workouts in one go — with Refresh and Unsubscribe per repo. The site also serves a registry index that surfaces curated community packs in a "Browse community" section, so users can subscribe with one tap.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/history.png" alt="History tab — sessions grouped by week."></div>
+            <div class="body">
+              <span class="tag">History tab</span>
+              <h4>Week-grouped rides</h4>
+              <p>Totals card at the top (rides / time / kJ). Tapping a session opens its post-ride overview with the chart and KPIs.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/progress.png" alt="Progress tab — streak hero, rider level meter."></div>
+            <div class="body">
+              <span class="tag">Progress tab</span>
+              <h4>Streak & rider level</h4>
+              <p>Streaks, 14-day mini-grid, rider-level meter (XP = watt-minutes / kg) and badge grid. All computed locally — no backend.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/ride-overview.png" alt="Post-ride overview — KPIs and power-adherence chart."></div>
+            <div class="body">
+              <span class="tag">Post-ride</span>
+              <h4>Ride overview</h4>
+              <p>NP, IF, TSS and kJ across the top, then a <b>power-adherence chart</b> overlaying your actual power line on the planned zone bars so you can see where you held the target and where you didn't. Time-in-zone breakdown and tag inference all computed in the shared module.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/ride-overview-bottom.png" alt="Post-ride overview bottom — share card with toughest interval, intervals.icu upload."></div>
+            <div class="body">
+              <span class="tag">Post-ride · Share</span>
+              <h4>1080×1080 share card</h4>
+              <p>A square share image rendered from a Compose <code>GraphicsLayer</code>: header, three KPI tiles, the power chart, and a <b>"toughest interval"</b> callout (longest Z4+ segment, falls back to peak-power for unstructured rides). Save to <code>Pictures/Indoor&nbsp;Bike</code> via MediaStore, or hand to the system share sheet via FileProvider — all without third-party deps.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/settings-top.png" alt="Settings — Profile section."></div>
+            <div class="body">
+              <span class="tag">Settings · Profile</span>
+              <h4>FTP & weight</h4>
+              <p>IME-Done / focus-loss commit, validated against MIN/MAX bounds. Persisted to DataStore.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/settings-mid.png" alt="Settings — Devices section."></div>
+            <div class="body">
+              <span class="tag">Settings · Devices</span>
+              <h4>Trainer · HRM · Controller</h4>
+              <p>Single grouped card with state-aware Pair / Disconnect / Forget actions in a bottom sheet, keeping the destructive option out of the always-visible scroll.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/settings-bottom.png" alt="Settings — Cloud sync & About."></div>
+            <div class="body">
+              <span class="tag">Settings · Cloud</span>
+              <h4>Intervals.icu opt-in</h4>
+              <p>Athlete ID + API key (with show/hide eye), auto-upload toggle disabled until both fields are filled. F-Droid posture stated explicitly in the copy.</p>
+            </div>
+          </article>
+
+          <article class="shot-card">
+            <div class="frame"><img src="screenshots/ride-hud-pre-mock.png" alt="Ride HUD pre-ride — countdown ready state."></div>
+            <div class="body">
+              <span class="tag">Pre-ride</span>
+              <h4>Countdown ready</h4>
+              <p>The HUD pre-warms with the upcoming target before the timer starts so you're not staring at zeros mid-stand-up.</p>
+            </div>
+          </article>
+
+        </div>
+
+        <h3 class="display" style="font-size:28px;letter-spacing:1.5px;margin:64px 0 16px">Plus — under the hood</h3>
+        <div class="editor-cols">
+          <div class="feat-pill">
+            <span class="num">KMM</span>
+            <h4>Shared core</h4>
+            <p>Workouts, BLE wire formats, FIT writer, progression math — all in commonMain. Android-first, iOS deferred.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">BLE</span>
+            <h4>Three peripherals</h4>
+            <p>Trainer (FTMS / Cycling Power), HRM (with name-heuristic for Garmin HRM-Pro), and Zwift Click v1 controller. All independent, all auto-reconnect.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">FIT</span>
+            <h4>Hand-rolled writer</h4>
+            <p>14-byte header, nibble-table CRC-16, definition + data messages, lap-per-segment. Round-tripped against a synthetic 30-min ride in tests.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">QR</span>
+            <h4>Camera-X scanner</h4>
+            <p>ZXing decode of <code>https://indoorbike.app/share/#w=…</code> or <code>indoorbike://import</code>. URL-safe base64 JSON decoded locally — no fetch required.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⌥</span>
+            <h4>Repositories &amp; registry</h4>
+            <p>Three-source library: bundled JSON, user-imported files, and subscribed community manifests. A versioned registry index at <code>indoorbike.app/registry.json</code> drives the Browse-community list — auto-discovered when published, no app update needed.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">DB</span>
+            <h4>SQLDelight + DataStore</h4>
+            <p>Sessions + 1Hz telemetry in SQLite (cascade delete on session). FTP, paired devices, intervals creds in DataStore Preferences.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">UX</span>
+            <h4>Soft onboarding</h4>
+            <p>Two-step bottom sheet: profile (FTP + weight) and permissions rationale. Non-gating — dismissal still marks complete.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">∆</span>
+            <h4>Mock trainer</h4>
+            <p>Debug-only ride mode with realistic power/cadence emulation so the app's testable without hardware. Gated behind <code>BuildConfig.DEBUG</code>.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⏻</span>
+            <h4>Crash-recovery</h4>
+            <p>Active session snapshotted to <code>filesDir</code> every 5s; atomic tmp+rename. Cleared on stop/complete. The "ride in progress" banner picks up where you left off.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">∥</span>
+            <h4>Side-by-side install</h4>
+            <p>Debug and release builds get separate <code>applicationId</code>s, separate DataStore + DB, and a <b>grayscale</b> debug launcher icon. Develop and ride on the same device without stomping on your real history.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">∑</span>
+            <h4>Workout summary math</h4>
+            <p>NP, IF, TSS, kJ and tag inference all live in shared (<code>commonMain</code>) so they're testable, deterministic, and reused by Android, the post-ride overview, and the share card. No platform-specific drift.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">◷</span>
+            <h4>Time in zone</h4>
+            <p>Each ride's seconds-spent in Z1–Z7 derived from 1Hz telemetry — surfaced in the post-ride overview and aggregated across the Progress tab.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">↔</span>
+            <h4>Dedicated pairing screens</h4>
+            <p>Trainer, HRM, and Zwift Click each get their own scan flow with the same UX shape: live "Scanning · N found", filter heuristics tuned per device class, and a permission-denied escape hatch to system Settings.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WORKOUT EDITOR -->
+    <section id="editor" class="features-section">
+      <div class="container">
+        <p class="eyebrow">Surface 2 · Web</p>
+        <h2 class="surface-title display">Browser workout editor</h2>
+        <div class="surface-meta">
+          <span>Vanilla HTML / CSS / JS</span>
+          <span>No backend, no account</span>
+          <span>Sends to phone via QR or deep link</span>
+        </div>
+
+        <div class="wide-shot">
+          <img src="screenshots/editor.png" alt="Workout editor — drag-tap palette of zones above an interactive timeline of clips, with stats strip above and keyboard hints below.">
+        </div>
+
+        <div class="editor-cols">
+          <div class="feat-pill">
+            <span class="num">7</span>
+            <h4>Zone palette</h4>
+            <p>Drag or tap to add Z1 Recovery through Z7 Neuro tiles. Plus a "Free" tile for unstructured intervals.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⌘</span>
+            <h4>Direct manipulation</h4>
+            <p>Click to select, Ctrl/⌘ + Click to multi-toggle, Shift+Click to range-select, Alt-drag to duplicate, Del to delete, arrows to nudge power and duration.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">≣</span>
+            <h4>Set builder</h4>
+            <p>"+ Interval set…" lets you build N × on/off blocks (10×30/30, 4×8 threshold) without dragging individual clips.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">Σ</span>
+            <h4>Live stats</h4>
+            <p>Duration, TSS, IF, average %FTP, peak %FTP and kJ all recompute as you edit. The same FTP-aware math the app uses.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">↓</span>
+            <h4>JSON download</h4>
+            <p>Same on-disk schema the app reads. Drop the file into the workouts directory or share-target it into the app.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">QR</span>
+            <h4>Send to phone</h4>
+            <p>Embeds the full workout as URL-safe base64 in <code>indoorbike.app/share/#w=…</code>. Phone scans the QR and the workout decodes locally — no server fetch.</p>
+          </div>
+        </div>
+
+        <div class="zones">
+          <span class="zone-pill" style="background:rgba(107,138,168,0.18);color:#9DB1C6"><span class="sw" style="background:var(--z1)"></span>Z1 Recovery · 50%</span>
+          <span class="zone-pill" style="background:rgba(46,123,255,0.18);color:#7BA8FF"><span class="sw" style="background:var(--z2)"></span>Z2 Endurance · 65%</span>
+          <span class="zone-pill" style="background:rgba(31,179,115,0.18);color:#5DD3A4"><span class="sw" style="background:var(--z3)"></span>Z3 Tempo · 80%</span>
+          <span class="zone-pill" style="background:rgba(240,196,25,0.20);color:#F4D258"><span class="sw" style="background:var(--z4)"></span>Z4 Threshold · 100%</span>
+          <span class="zone-pill" style="background:rgba(255,138,31,0.20);color:#FFAE5C"><span class="sw" style="background:var(--z5)"></span>Z5 VO2 · 115%</span>
+          <span class="zone-pill" style="background:rgba(235,59,59,0.20);color:#F47272"><span class="sw" style="background:var(--z6)"></span>Z6 Anaerobic · 130%</span>
+          <span class="zone-pill" style="background:rgba(197,59,255,0.20);color:#D777FF"><span class="sw" style="background:var(--z7)"></span>Z7 Neuro · 150%+</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- WEBSITE -->
+    <section id="site" class="features-section">
+      <div class="container">
+        <p class="eyebrow">Surface 3 · Marketing</p>
+        <h2 class="surface-title display">indoorbike.app</h2>
+        <div class="surface-meta">
+          <span>Static site · Vanilla CSS</span>
+          <span>OG tags, theme-color, F-Droid messaging</span>
+          <span>Hosts the registry endpoint and the share/ decoder</span>
+        </div>
+
+        <div class="wide-shot">
+          <img src="screenshots/website-hero.png" alt="Marketing site hero — Train by power. Ride by feel. Bebas Neue display headline beside a phone mockup of the workout detail screen.">
+        </div>
+
+        <div class="editor-cols">
+          <div class="feat-pill">
+            <span class="num">①</span>
+            <h4>Hero</h4>
+            <p>"Train by power. Ride by feel." Bebas Neue display, phone mockup of the workout detail screen, F-Droid CTA marked <i>soon</i>.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">②</span>
+            <h4>Feature grid</h4>
+            <p>BLE smart trainer, ERG mode, power zones, JSON workouts, Zwift Click ready, local-first storage. Six cards with custom-drawn SVG icons.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">③</span>
+            <h4>Workout demo cards</h4>
+            <p>Sweet Spot 3×12 and 30/30s × 8 rendered as live mini zone-bars with TSS / IF / peak %FTP — the same visual language as the app.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">④</span>
+            <h4>How it works</h4>
+            <p>Four steps: Install → Pair → Pick → Ride. No accounts, no welcome carousels, no subscription paywall.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⑤</span>
+            <h4>Privacy panel</h4>
+            <p>F-Droid native: local-first storage, no Google services, open source, opt-in sync, open file formats. Five checks, one promise.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⑥</span>
+            <h4>FAQ</h4>
+            <p>Trainer support, account requirement, distribution, custom workouts, iOS, HRMs. Six expandable details.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⑦</span>
+            <h4>Editor link</h4>
+            <p><code>/editor/</code> hosts the browser workout editor. Linked from nav, hero CTA group, and the workouts section.</p>
+          </div>
+          <div class="feat-pill">
+            <span class="num">⑧</span>
+            <h4>Share decoder</h4>
+            <p><code>/share/#w=…</code> — a tiny page that decodes a workout from the URL fragment and offers "Open in app" via the deep link.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Indoor Bike · build journal · generated 2026-05-06</span>
+      <span>Vibe-coded with Claude · KMM · Compose · BLE FTMS</span>
+    </div>
+  </footer>
+
+  <script>
+    // Timeline data — cumulative active hours for each commit.
+    // Hours computed by capping inter-commit gaps at 2h (anything longer counts as a break).
+    const events = [
+      // Day 1
+      { h: 0.0,   day: 1, when: "May 3 · 13:54", title: "Project initialised",       sub: "KMM scaffold, Android module, namespaces", kind: "major" },
+      { h: 0.37,  day: 1, when: "May 3 · 14:16", title: "JSON workout schema",       sub: "Sample workout library, shared parser",  kind: "feature" },
+      { h: 1.37,  day: 1, when: "May 3 · 15:16", title: "Cadence design system",     sub: "Tokens, type, color, primitives",        kind: "major" },
+      { h: 1.45,  day: 1, when: "May 3 · 15:21", title: "icons",                     sub: "",                                        kind: "minor" },
+      { h: 3.45,  day: 1, when: "May 3 · 18:20", title: "BLE trainer connection",    sub: "FTMS + Cycling Power, ERG control point", kind: "major" },
+      { h: 4.30,  day: 1, when: "May 3 · 19:11", title: "Navigation 3 tabs",         sub: "Per-tab back stacks, bottom TabBar",      kind: "feature" },
+      { h: 4.58,  day: 1, when: "May 3 · 19:28", title: "UI tweaks",                 sub: "",                                        kind: "minor" },
+      { h: 6.58,  day: 1, when: "May 3 · 21:37", title: "Ride history & sessions",   sub: "SQLDelight schema, telemetry table",     kind: "feature" },
+      { h: 7.60,  day: 1, when: "May 3 · 22:38", title: "Major UI refactor",         sub: "Compose primitives, screens overhaul",   kind: "major" },
+      { h: 8.23,  day: 1, when: "May 3 · 23:15", title: "Code review & cleanup",     sub: "Dependency audit, naming conventions",   kind: "feature" },
+      { h: 8.61,  day: 1, when: "May 3 · 23:38", title: "Bundled fonts",             sub: "Bebas Neue + Inter + JetBrains Mono",   kind: "feature" },
+
+      // Day 2
+      { h: 10.61, day: 2, when: "May 4 · 02:20", title: "Better hero screen",        sub: "",                                        kind: "minor" },
+      { h: 12.61, day: 2, when: "May 4 · 08:06", title: "Continue-ride banner",      sub: "Process-death recovery, snapshot file",  kind: "feature" },
+      { h: 13.76, day: 2, when: "May 4 · 09:15", title: "ride retention",            sub: "",                                        kind: "minor" },
+      { h: 13.98, day: 2, when: "May 4 · 09:28", title: "visuals + animation",      sub: "",                                        kind: "minor" },
+      { h: 14.96, day: 2, when: "May 4 · 10:27", title: "Heart-rate monitor",        sub: "Independent BLE peripheral, HR fallback", kind: "feature" },
+      { h: 15.53, day: 2, when: "May 4 · 11:01", title: "Rider level / progression", sub: "Streaks, XP, badges, time-in-zone",      kind: "major" },
+      { h: 15.68, day: 2, when: "May 4 · 11:10", title: "Garmin HRM fix",            sub: "",                                        kind: "minor" },
+      { h: 16.30, day: 2, when: "May 4 · 11:47", title: "First-run onboarding",      sub: "Profile + permissions bottom sheet",     kind: "feature" },
+      { h: 18.30, day: 2, when: "May 4 · 13:52", title: "Test infrastructure",       sub: "Shared unit tests + smoke test script",  kind: "major" },
+      { h: 18.50, day: 2, when: "May 4 · 14:04", title: "fixed tests",               sub: "",                                        kind: "minor" },
+
+      // Day 3
+      { h: 20.50, day: 3, when: "May 5 · 17:23", title: "Marketing site live",       sub: "indoorbike.app — hero, features, FAQ",   kind: "major" },
+      { h: 22.50, day: 3, when: "May 5 · 20:17", title: "Share + workout library",   sub: "Render PNG, import pipeline, registry",  kind: "major" },
+      { h: 23.35, day: 3, when: "May 5 · 21:08", title: "Browser workout editor",    sub: "Drag/tap palette, timeline, QR send",    kind: "major" },
+      { h: 25.03, day: 3, when: "May 5 · 22:49", title: "FIT export + intervals.icu",sub: "Hand-rolled FIT writer, multipart POST", kind: "major" },
+      { h: 25.41, day: 3, when: "May 5 · 23:12", title: "ride-in-progress fix",      sub: "",                                        kind: "minor" },
+    ];
+
+    const tl = document.getElementById('tl');
+    const W = 5200, padL = 120, padR = 120, span = W - padL - padR;
+    const TOTAL_H = 26.0;
+    const xFor = h => padL + (h / TOTAL_H) * span;
+
+    // Vertical layout constants
+    const SPINE_Y = 360;
+    const TIER_H = 90;        // vertical space per tier
+    const LABEL_W = 180;      // matches CSS .label width
+    const LABEL_GAP = 12;     // min horizontal gap between labels in same tier
+    const NODE_TO_CARD = 30;  // gap between spine and the closest tier's card
+
+    // Day bands
+    const day1End = 8.61, day2Start = 10.61, day2End = 18.50, day3Start = 20.50, day3End = 25.41;
+    const bands = [
+      { cls:'day-1', start: 0,          end: day1End + 0.5,  label: 'DAY 1', sub: '2026-05-03 · Foundations' },
+      { cls:'day-2', start: day2Start - 0.4, end: day2End + 0.5,  label: 'DAY 2', sub: '2026-05-04 · Polish'      },
+      { cls:'day-3', start: day3Start - 0.4, end: day3End + 0.5,  label: 'DAY 3', sub: '2026-05-05 · Surfaces'    },
+    ];
+    bands.forEach(b => {
+      const el = document.createElement('div');
+      el.className = `day-band ${b.cls}`;
+      el.style.left = xFor(b.start) + 'px';
+      el.style.width = (xFor(b.end) - xFor(b.start)) + 'px';
+      el.innerHTML = `<div class="day-sub">${b.sub}</div><div class="day-label">${b.label}</div>`;
+      tl.appendChild(el);
+    });
+
+    // Spine
+    const spine = document.createElement('div');
+    spine.className = 'spine';
+    tl.appendChild(spine);
+
+    // Axis ticks every 2 hours
+    const axis = document.createElement('div');
+    axis.className = 'axis';
+    tl.appendChild(axis);
+    for (let h = 0; h <= 26; h += 2) {
+      const tick = document.createElement('div');
+      tick.className = 'tick';
+      tick.style.left = (xFor(h) - padL) + 'px';
+      axis.appendChild(tick);
+
+      const lab = document.createElement('div');
+      lab.className = 'tick-label';
+      lab.style.left = (xFor(h) - padL) + 'px';
+      lab.textContent = h + ' h';
+      axis.appendChild(lab);
+    }
+
+    const axisTitle = document.createElement('div');
+    axisTitle.className = 'axis-title';
+    axisTitle.textContent = '← Cumulative active coding hours →';
+    tl.appendChild(axisTitle);
+
+    // Greedy layout: alternate above/below, fall back to deeper tiers on collision.
+    // Each event ends up with { side: 'above'|'below', tier: 0..N }.
+    const tiersAbove = [[], [], []];
+    const tiersBelow = [[], [], []];
+    let preferAbove = true;
+
+    events.forEach(e => {
+      e.x = xFor(e.h);
+      const sides = preferAbove
+        ? [['above', tiersAbove], ['below', tiersBelow]]
+        : [['below', tiersBelow], ['above', tiersAbove]];
+
+      let placed = false;
+      for (const [sideName, tiers] of sides) {
+        for (let t = 0; t < tiers.length; t++) {
+          const collides = tiers[t].some(prev => Math.abs(prev - e.x) < LABEL_W + LABEL_GAP);
+          if (!collides) {
+            tiers[t].push(e.x);
+            e.side = sideName;
+            e.tier = t;
+            placed = true;
+            break;
+          }
+        }
+        if (placed) break;
+      }
+      if (!placed) {
+        // last resort: push into deepest preferred tier
+        e.side = sides[0][0];
+        e.tier = sides[0][1].length - 1;
+        sides[0][1][e.tier].push(e.x);
+      }
+      preferAbove = !preferAbove;
+    });
+
+    events.forEach(e => {
+      const node = document.createElement('div');
+      node.className = `node ${e.kind === 'minor' ? 'minor' : (e.kind === 'major' ? 'major' : '')}`;
+      node.style.left = e.x + 'px';
+      tl.appendChild(node);
+
+      const label = document.createElement('div');
+      label.className = `label ${e.kind === 'minor' ? 'minor' : ''}`;
+      label.style.left = e.x + 'px';
+
+      // connector reaches from spine to the chosen tier's card edge
+      const connectorLen = NODE_TO_CARD + e.tier * TIER_H;
+      // card is ~76px tall; we anchor the *card edge nearest the spine* at SPINE_Y ± NODE_TO_CARD ± tier offset
+      const cardOffsetFromSpine = NODE_TO_CARD + e.tier * TIER_H;
+      const CARD_H_EST = 78;
+      let labelTop;
+      if (e.side === 'above') {
+        // card sits above the spine; bottom of card at SPINE_Y - cardOffsetFromSpine
+        labelTop = SPINE_Y - cardOffsetFromSpine - CARD_H_EST;
+      } else {
+        labelTop = SPINE_Y + cardOffsetFromSpine;
+      }
+      label.style.top = labelTop + 'px';
+
+      const card = `<div class="label-card">
+        <div class="when">${e.when}</div>
+        <div class="what">${e.title}</div>
+        ${e.sub ? `<div class="sub">${e.sub}</div>` : ''}
+      </div>`;
+      const conn = `<div class="connector" style="height:${connectorLen}px"></div>`;
+      label.innerHTML = e.side === 'above' ? card + conn : conn + card;
+      tl.appendChild(label);
+    });
+  </script>
+
+</body>
+</html>

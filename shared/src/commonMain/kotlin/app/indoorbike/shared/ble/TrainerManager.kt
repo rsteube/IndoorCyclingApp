@@ -100,6 +100,15 @@ class TrainerManager {
     // Cadence math from CPS uses crank revolution timestamps to derive RPM.
     private var lastCrankRevs: Int? = null
     private var lastCrankEventTime: Int? = null
+    /**
+     * Wall-clock time of the most recent CPM notification that actually
+     * advanced the crank counter. Used to keep cadence stable across single-
+     * sample dropouts (the trainer's BLE stack briefly skips events when it's
+     * busy processing an FTMS Set-Target write at segment changes — without
+     * this, we'd see 0-RPM spikes in saved telemetry charts at every
+     * interval boundary, even though the rider never stopped pedaling).
+     */
+    private var lastCrankActivityEpochMs: Long = 0
 
     // Public API ─────────────────────────────────────────────────────────────
 
@@ -481,8 +490,23 @@ class TrainerManager {
                     val seconds = dTime.toDouble() / 1024.0
                     val rpm = (dRevs * 60.0 / seconds).toInt().coerceIn(0, 240)
                     cadence = rpm
+                    lastCrankActivityEpochMs = nowMs()
                 } else if (dRevs == 0) {
-                    cadence = 0
+                    // No new crank event since the previous notification. This
+                    // happens routinely when the trainer's notification rate
+                    // outpaces the rider's pedal cadence (e.g. a 250ms notify
+                    // interval at 80 rpm = a crank every 750ms, so 2 of every
+                    // 3 notifies will see dRevs == 0). Treating it as 0 RPM
+                    // produces sub-second drop-outs in charts. Only commit a
+                    // 0 reading if it's been quiet long enough that the rider
+                    // has clearly stopped pedaling.
+                    val now = nowMs()
+                    if (lastCrankActivityEpochMs > 0 && now - lastCrankActivityEpochMs > CADENCE_STALE_MS) {
+                        cadence = 0
+                    }
+                    // else: leave `cadence` null so the StateFlow keeps its
+                    // last value — auto-pause still triggers via the power
+                    // signal, and FIT/Intervals.icu charts stay continuous.
                 }
             }
             lastCrankRevs = crankRevs
@@ -545,6 +569,14 @@ class TrainerManager {
 
     companion object {
         private const val TAG = "TrainerManager"
+
+        /**
+         * Quiet period without a new crank revolution before we commit cadence
+         * to 0. Long enough to span normal between-rotation gaps even at very
+         * low rpm (e.g. 30 rpm = one rotation every 2 seconds), but short
+         * enough that auto-pause kicks in promptly when the rider truly stops.
+         */
+        private const val CADENCE_STALE_MS = 3_000L
 
         // Service UUIDs (16-bit assigned numbers, expanded to 128-bit base).
         const val CYCLING_POWER_SERVICE = "00001818-0000-1000-8000-00805f9b34fb"

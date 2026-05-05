@@ -93,7 +93,10 @@
       "Bash(adb -s 82bc875c shell \"ls /sdcard/Pictures/Indoor*/\")",
       "PowerShell(adb -s 82bc875c pull \"/sdcard/Pictures/Indoor Bike/indoorbike-app-test-1.png\" c:/Users/juhan/vibes/cycling_app/share_card_saved.png 2>&1)",
       "PowerShell(.\\\\gradlew.bat :mobile_clients:android:installRelease 2>&1)",
-      "PowerShell(.\\\\gradlew.bat :shared:allTests 2>&1)"
+      "PowerShell(.\\\\gradlew.bat :shared:allTests 2>&1)",
+      "Bash(adb pull *)",
+      "PowerShell(adb shell uiautomator dump /sdcard/d.xml | Out-Null; adb shell cat /sdcard/d.xml | Out-String -Stream | Select-String -Pattern 'text=\"[^\"]+\"' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 20)",
+      "PowerShell(Get-Process python -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq \"\" } | Stop-Process -Force -ErrorAction SilentlyContinue; Write-Output \"done\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\juhan\\AppData\\Local\\Temp",
