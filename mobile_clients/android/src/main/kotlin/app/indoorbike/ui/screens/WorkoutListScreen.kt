@@ -85,7 +85,6 @@ import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.HrmHeartIndicator
-import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.TrainerStatusStrip
@@ -180,11 +179,11 @@ fun WorkoutListScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     HrmHeartIndicator(state = hrmState)
                     Spacer(Modifier.width(Spacing.s2))
-                    IconBtn(
-                        icon = Icons.AutoMirrored.Outlined.LibraryBooks,
-                        contentDescription = "Workout library and repositories",
-                        onClick = onOpenLibrary
-                    )
+                    // Labelled pill instead of an icon-only button. New users
+                    // were missing the bare books glyph and not realising more
+                    // workouts could be added; the visible "Library" word
+                    // doubles its discoverability without growing the bar.
+                    LibraryPill(onClick = onOpenLibrary)
                 }
             }
         )
@@ -287,6 +286,12 @@ fun WorkoutListScreen(
                         source = sourceById[summary.workout.id],
                         onClick = { onPick(summary.workout) }
                     )
+                }
+                // Trailing "add more" card. Catches users who scrolled the
+                // whole list looking for what they wanted; complements the
+                // top-bar Library pill, which catches the top-bar reflex.
+                item(key = "add-more-workouts") {
+                    AddMoreWorkoutsCard(onClick = onOpenLibrary)
                 }
             }
         }
@@ -418,6 +423,90 @@ private fun TrainerNudge(
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
             Text(text = subtitle, style = CadenceType.tick, color = CadenceColors.Fg3)
+        }
+        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
+    }
+}
+
+/**
+ * Labelled "Library" entry-point in the top bar. Same hit-area shape as the
+ * other AppBar controls but with a visible word so the affordance reads as a
+ * destination rather than a generic glyph.
+ */
+@Composable
+private fun LibraryPill(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .height(40.dp)
+            .clip(shape)
+            .background(CadenceColors.Bg2)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.LibraryBooks,
+            contentDescription = null,
+            tint = CadenceColors.Brand500,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = "Library",
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Fg1,
+            fontSize = 13.sp
+        )
+    }
+}
+
+/**
+ * "Want more workouts?" card slotted at the end of the workout list. Picks
+ * up users who used the scroll-to-end reflex; visually distinct from a
+ * regular WorkoutCard (dashed border + brand-tinted call-to-action label) so
+ * it doesn't read like another workout to ride.
+ */
+@Composable
+private fun AddMoreWorkoutsCard(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1.copy(alpha = 0.5f))
+            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.4f), shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.LibraryBooks,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Want more workouts?",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Text(
+                text = "Browse the community library, scan a QR, or import a file.",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
         }
         Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
     }
