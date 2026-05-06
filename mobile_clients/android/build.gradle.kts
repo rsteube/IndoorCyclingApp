@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.androidApplication)
     alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.kotlinCompose)
     alias(libs.plugins.kotlinSerialization)
+}
+
+// Release signing: load credentials from a gitignored keystore.properties at
+// repo root. If the file is missing (e.g. CI without secrets, or a contributor
+// cloning the repo), release builds fall back to the debug keystore so the
+// project still builds — those APKs are not redistributable.
+val keystorePropsFile = rootProject.file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
 android {
@@ -22,6 +33,17 @@ android {
         buildConfigField("String", "REGISTRY_URL", "\"https://indoorbike.app/registry.json\"")
     }
 
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            create("release") {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         debug {
             // Side-by-side install: the debug build has its own application id
@@ -34,10 +56,7 @@ android {
         }
         release {
             isMinifyEnabled = false
-            // Personal-use release builds: sign with the debug keystore so the
-            // APK actually installs. Replace with a proper keystore when
-            // shipping to F-Droid (or anywhere outside your own devices).
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
