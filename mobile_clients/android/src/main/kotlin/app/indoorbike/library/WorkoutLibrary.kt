@@ -31,27 +31,26 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Single source of truth for "all workouts the app knows about". Merges three
- * sources, in order:
- *   1. Bundled — JSON files in assets/ (the original library).
- *   2. Imported — JSON files saved to filesDir/user_workouts/ via [WorkoutImporter].
- *   3. Subscribed — workouts from repositories cached by [RepositoryManager].
+ * Single source of truth for "all workouts the app knows about". Merges two
+ * sources, in priority order:
+ *   1. Imported — JSON files saved to filesDir/user_workouts/ via
+ *      [WorkoutImporter]. Includes both file-pick / QR / share-sheet imports
+ *      and workouts the rider explicitly added from a community repo.
+ *   2. Bundled — JSON files in assets/ (the starter pack that ships with the
+ *      APK).
  *
- * Duplicate workout ids are de-duped, **first wins**, with this priority:
- * Imported > Subscribed > Bundled. The reasoning: a user who explicitly imports
- * a workout that happens to share an id with a bundled or subscribed copy is
- * making a clear "use my version" statement.
+ * Duplicate workout ids are de-duped, **first wins**, with the import path
+ * winning over a bundled copy of the same id.
  *
- * The list is exposed as a [StateFlow] so the rest of the app can observe it
- * reactively. The current asset-loading split between MainActivity and the
- * shared `WorkoutRepository` is preserved — bundled workouts still come from
- * `parseWorkouts(jsonStrings)` so the existing parser logic and dedup semantics
- * remain centralised.
+ * The previous third source (Subscribed-repository live mirror) was removed
+ * when subscriptions were dropped in favour of the explicit-add model. Repos
+ * are now browsed on demand via [RepositoryManager.fetchRepoWorkouts]; the
+ * rider picks individual workouts and they land here as Imported with the
+ * source-repo recorded in the per-workout meta sidecar.
  */
 class WorkoutLibrary(
     private val context: Context,
     private val importer: WorkoutImporter,
-    private val repositoryManager: RepositoryManager,
 ) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -70,28 +69,12 @@ class WorkoutLibrary(
     private var bundled: List<Workout> = emptyList()
 
     /**
-     * Serialises [rebuild] calls. Two paths can trigger a rebuild concurrently:
-     * the import refresh from the UI and the `subscribed` flow listener fired
-     * by `RepositoryManager`. Without this lock, two overlapping rebuilds race
-     * to write `_entries.value` and the order of completion is non-deterministic
-     * — so the latest data may briefly lose to an older rebuild that finished
-     * after starting first.
+     * Serialises [rebuild] calls. Concurrent rebuild triggers (manual import
+     * + repo "Add" + delete from another screen) can otherwise race to write
+     * `_entries.value` non-deterministically; the lock keeps the latest
+     * rebuild authoritative.
      */
     private val rebuildMutex = Mutex()
-
-    init {
-        // Rebuild whenever EITHER the subscribed-repo list changes (subscribe /
-        // unsubscribe) OR the on-disk bundle cache changes (a refresh just
-        // wrote new bundle files for an already-subscribed repo). Combining
-        // both avoids missing the second case — the subscription list itself
-        // is unchanged when only bundle contents update.
-        scope.launch {
-            kotlinx.coroutines.flow.combine(
-                repositoryManager.subscribed,
-                repositoryManager.cacheTick
-            ) { _, _ -> Unit }.collect { rebuild() }
-        }
-    }
 
     /** Kicks off the initial load: bundled assets + on-disk imports. */
     fun start() {
@@ -126,20 +109,27 @@ class WorkoutLibrary(
 
     private suspend fun rebuild() = rebuildMutex.withLock {
         val imports = withIO { importer.loadUserWorkouts() }
-        val repoEntries = withIO {
-            repositoryManager.subscribed.value.flatMap { sub ->
-                repositoryManager.loadWorkoutsForSubscription(sub.id).map { workout ->
-                    WorkoutEntry(workout, WorkoutSource.Repository(sub.id, sub.name))
-                }
+        // Hydrate per-import provenance from the sidecar meta files. Absent
+        // sidecar = plain file-import; the resulting Imported() with null repo
+        // fields renders as "IMPORTED" attribution.
+        val importedEntries = withIO {
+            imports.map { workout ->
+                val meta = importer.loadImportMeta(workout.id)
+                WorkoutEntry(
+                    workout = workout,
+                    source = WorkoutSource.Imported(
+                        sourceRepoId = meta?.sourceRepoId,
+                        sourceRepoName = meta?.sourceRepoName,
+                    ),
+                )
             }
         }
         val bundledEntries = bundled.map { WorkoutEntry(it, WorkoutSource.Bundled) }
-        val importedEntries = imports.map { WorkoutEntry(it, WorkoutSource.Imported) }
 
-        // Imported > Subscribed > Bundled. First wins on duplicate ids.
+        // Imported > Bundled. First wins on duplicate ids.
         val seen = mutableSetOf<String>()
         val out = mutableListOf<WorkoutEntry>()
-        for (entry in importedEntries + repoEntries + bundledEntries) {
+        for (entry in importedEntries + bundledEntries) {
             if (seen.add(entry.workout.id)) out.add(entry)
         }
         _entries.value = out

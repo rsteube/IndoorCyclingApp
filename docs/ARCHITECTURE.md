@@ -1,19 +1,23 @@
-# Technical Specification for LLMs
+# Architecture
 
-**Current version: 1.0** (`versionCode = 1`, `versionName = "1.0"` in [mobile_clients/android/build.gradle.kts](mobile_clients/android/build.gradle.kts)).
+A working reference for how Indoor Bike fits together, kept in step with the code. If you're trying to find where to make a change or why something is shaped the way it is, start here. For build / install / test instructions see [CONTRIBUTING.md](../CONTRIBUTING.md); for the project pitch see [README.md](../README.md).
 
-## Project Overview
-This project is an indoor cycling app that connects to a Wahoo Kickr Core over BLE to perform structured workouts in ERG mode. The app is built using Kotlin Multiplatform Mobile (KMM).
-- **Core logic**: The `shared` module, written in KMM, will handle parsing structured workouts, defining models, and handling Bluetooth Low Energy (BLE) interactions (using Kable or a similar cross-platform BLE library).
-- **Android App**: The `mobile_clients/android` module is purely native, built with Jetpack Compose.
-- **iOS App**: To be added later (`mobile_clients/ios`), using SwiftUI.
+**Current version: 1.0** (`versionCode = 1`, `versionName = "1.0"` in [mobile_clients/android/build.gradle.kts](../mobile_clients/android/build.gradle.kts)).
+
+## Overview
+
+Indoor Bike connects to a smart trainer (Wahoo Kickr Core as the first-class target, any FTMS-compatible trainer in principle) over BLE to perform structured workouts in ERG mode. It's built with Kotlin Multiplatform Mobile so a future iOS port can reuse the core logic.
+
+- **Core logic** — the `shared` module, written in KMM, handles workout parsing, BLE interactions (via [juul/kable](https://github.com/JuulLabs/kable)), session timing, FIT export, and progression math.
+- **Android client** — the `mobile_clients/android` module is purely native, built with Jetpack Compose.
+- **iOS client** — planned (`mobile_clients/ios`, SwiftUI), not yet started.
 
 ## Build variants & install (v1.0)
 
 Two install slots so debug + release coexist on a single device:
 
 - **Release**: `applicationId = app.indoorbike`, label "Indoor Bike", brand-orange launcher icon. Build with `:mobile_clients:android:assembleRelease` (or `installRelease` for debuggable variants).
-- **Debug**: `applicationId = app.indoorbike.debug`, `versionName = 1.0-debug`, label "Indoor Bike Debug", **grayscale** launcher icon (resource overlay in [src/debug/res/](mobile_clients/android/src/debug/res/) — debug-specific `ic_launcher_foreground.xml` swaps brand colors for grays; `colors.xml` overrides `ic_launcher_background`; `strings.xml` overrides the app name). Build with `:mobile_clients:android:installDebug`.
+- **Debug**: `applicationId = app.indoorbike.debug`, `versionName = 1.0-debug`, label "Indoor Bike Debug", **grayscale** launcher icon (resource overlay in [src/debug/res/](../mobile_clients/android/src/debug/res/) — debug-specific `ic_launcher_foreground.xml` swaps brand colors for grays; `colors.xml` overrides `ic_launcher_background`; `strings.xml` overrides the app name). Build with `:mobile_clients:android:installDebug`.
 
 Each install has its own DataStore + SQLDelight DB, so they don't share settings or history. Both fully usable, ride to ride.
 
@@ -35,7 +39,7 @@ Implemented in `shared/.../ble/TrainerManager.kt` using **juul/kable** (KMM-frie
 - **Heart Rate Service** (`0x180D`) → Heart Rate Measurement (`0x2A37`) is subscribed if the peripheral exposes it.
 - The UI consumes a domain `TrainerCandidate(id, name, rssi)` rather than `com.juul.kable.Advertisement`, so swapping BLE libraries doesn't ripple into the UI layer.
 - `peripheral.state` listener and per-characteristic `observe` jobs are explicitly tracked and cancelled across reconnects (no leaks).
-- Zwift Click v1 controller integration lives in [`shared/.../ble/ControllerManager.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/ble/ControllerManager.kt) — see "Rider Controller" section below. The in-app `±difficulty` stepper in `RideScreen` is the always-available fallback and remains the only path when no controller is paired.
+- Zwift Click v1 controller integration lives in [`shared/.../ble/ControllerManager.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/ble/ControllerManager.kt) — see "Rider Controller" section below. The in-app `±difficulty` stepper in `RideScreen` is the always-available fallback and remains the only path when no controller is paired.
 
 ## Development Workflow
 When making changes, always ensure that KMM logic stays in the `shared` module and that UI additions in the Android client utilize the `app.indoorbike` namespace. Use Material 3 in Jetpack Compose, maintaining a high-fidelity dark aesthetic.
@@ -43,7 +47,7 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 ## Runtime Architecture (Android)
 
 ### `IndoorBikeApp` and `AppContainer`
-- `IndoorBikeApp : Application` is declared in the manifest (`android:name=".IndoorBikeApp"`) and constructs an [`AppContainer`](mobile_clients/android/src/main/kotlin/app/indoorbike/IndoorBikeApp.kt) once.
+- `IndoorBikeApp : Application` is declared in the manifest (`android:name=".IndoorBikeApp"`) and constructs an [`AppContainer`](../mobile_clients/android/src/main/kotlin/app/indoorbike/IndoorBikeApp.kt) once.
 - The container owns the long-lived singletons: `TrainerManager`, `WorkoutSessionManager`, `HistoryRepository`, `UserSettings`, `ActiveSessionStore`. Each has a `dispose()` that cancels its `SupervisorJob + Dispatchers.Default` scope.
 - Composables read the container via `LocalAppContainer.current`. `MainActivity.setContent { CompositionLocalProvider(LocalAppContainer provides container) { … } }` installs it.
 - This replaces the previous `object`-singleton pattern. Tests instantiate the same classes directly with fakes.
@@ -54,7 +58,7 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 - **Active-session snapshot** (`ActiveSessionStore`): a small JSON file in `filesDir` written every 5 s during an active ride. Atomic write via tmp + rename. Used for process-death recovery (the snapshot is cleared on `stopWorkout()` / `completeWorkout()`).
 
 ### Foreground Service for active rides
-[`RideSessionService`](mobile_clients/android/src/main/kotlin/app/indoorbike/service/RideSessionService.kt) runs while a workout is active. It:
+[`RideSessionService`](../mobile_clients/android/src/main/kotlin/app/indoorbike/service/RideSessionService.kt) runs while a workout is active. It:
 - Posts an ongoing notification with current target watts and elapsed time (channel `ride_session`, importance LOW).
 - Holds a `PARTIAL_WAKE_LOCK` (capped at 4 hours) so BLE notifications and the wall-clock timer don't get suspended when the screen sleeps.
 - Declares `foregroundServiceType="connectedDevice"` (manifest); `FOREGROUND_SERVICE_CONNECTED_DEVICE` and `POST_NOTIFICATIONS` permissions are declared.
@@ -63,39 +67,39 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 
 ### Rider Controller (Zwift Click v1)
 
-[`ControllerManager`](shared/src/commonMain/kotlin/app/indoorbike/shared/ble/ControllerManager.kt) is a third optional BLE peripheral, parallel to `TrainerManager` and `HeartRateMonitor`. It surfaces a `SharedFlow<ControllerEvent>` of `Plus` / `Minus` press-edges; `RideScreen` collects this and calls `WorkoutSessionManager.adjustDifficulty(±5)` so the controller hits the same code path as the in-app stepper.
+[`ControllerManager`](../shared/src/commonMain/kotlin/app/indoorbike/shared/ble/ControllerManager.kt) is a third optional BLE peripheral, parallel to `TrainerManager` and `HeartRateMonitor`. It surfaces a `SharedFlow<ControllerEvent>` of `Plus` / `Minus` press-edges; `RideScreen` collects this and calls `WorkoutSessionManager.adjustDifficulty(±5)` so the controller hits the same code path as the in-app stepper.
 
 - **Service / characteristics** (Zwift custom GATT, unencrypted on Click v1):
   - Service `0x00000001-19CA-4651-86E5-FA29DCDD09D1`
   - Async (notify) `0x00000002-…` — keypad notifications arrive here.
   - Sync RX (write) `0x00000003-…` — host writes the literal bytes `"RideOn"` (`52 69 64 65 4F 6E`) to open the pipe.
   - Sync TX (indicate) `0x00000004-…` — handshake reply.
-- **Wire format**: each keypad notification starts with byte `0x37`, followed by a tiny protobuf with two varint fields. Inverse logic: 0 = pressed, 1 = released. Field 1 = Plus, field 2 = Minus. The pure parser (`parseClickKeypadStatus`) lives in the same file and is unit-tested under [shared/src/commonTest/.../ble/ClickKeypadParserTest.kt](shared/src/commonTest/kotlin/app/indoorbike/shared/ble/ClickKeypadParserTest.kt).
+- **Wire format**: each keypad notification starts with byte `0x37`, followed by a tiny protobuf with two varint fields. Inverse logic: 0 = pressed, 1 = released. Field 1 = Plus, field 2 = Minus. The pure parser (`parseClickKeypadStatus`) lives in the same file and is unit-tested under [shared/src/commonTest/.../ble/ClickKeypadParserTest.kt](../shared/src/commonTest/kotlin/app/indoorbike/shared/ble/ClickKeypadParserTest.kt).
 - **Press edge detection**: only `released → pressed` transitions emit on `events`; holding does *not* auto-repeat. Acquiring auto-repeat is left to the consumer if/when needed.
 - **Scan filter**: unfiltered scan + name-keyword post-filter (`Zwift Click` / `Click` / `BC1` / `Zwift Play` / `Zwift Ride`), same approach as the HRM. Encrypted Play / Ride controllers advertise via the same custom service so they appear in the list, but the encrypted handshake (ECDH + AES-CCM) is not yet implemented — connecting to a Play / Ride will surface a connection-error.
 - **Auto-reconnect** on app launch via `autoConnectIfPaired(pairedControllerId)`; the paired id persists in `UserSettings.pairedControllerId` (DataStore key `paired_controller_id`).
 
 ### Heart Rate Monitor (separate from trainer)
 
-[`HeartRateMonitor`](shared/src/commonMain/kotlin/app/indoorbike/shared/ble/HeartRateMonitor.kt) is an optional independent BLE peripheral, parallel to `TrainerManager`. Lives in `AppContainer`. Lets users ride with just a trainer, just an HRM, or both — `WorkoutSessionManager.effectiveHeartRate` prefers the dedicated HRM if it's emitting samples, otherwise falls back to whatever the trainer reports.
+[`HeartRateMonitor`](../shared/src/commonMain/kotlin/app/indoorbike/shared/ble/HeartRateMonitor.kt) is an optional independent BLE peripheral, parallel to `TrainerManager`. Lives in `AppContainer`. Lets users ride with just a trainer, just an HRM, or both — `WorkoutSessionManager.effectiveHeartRate` prefers the dedicated HRM if it's emitting samples, otherwise falls back to whatever the trainer reports.
 
 - **Scan filter quirk**: scans **without** a service-UUID filter and post-filters by either (a) the 0x180D Heart Rate Service appearing in the advertisement payload, or (b) the device name matching one of `HRM`, `Polar`, `TICKR`, `Coros`, `Suunto`, `Magene`, `Verity`, `Heart`. Garmin HRM-Pro / HRM-Pro Plus omit 0x180D from their advertisement (they only expose it after GATT connect), so a service-UUID filter would never match them.
 - Auto-reconnect on app launch via `autoConnectIfPaired(pairedHrmId)`.
 
 ### First-run onboarding (soft, non-gating)
 
-Implemented inside [`WorkoutListScreen.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutListScreen.kt):
+Implemented inside [`WorkoutListScreen.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutListScreen.kt):
 
 - A **welcome banner** is the top item on the Rides tab when `userSettings.hasCompletedOnboarding == false`. Tapping **Get Started** opens a Material 3 `ModalBottomSheet` driven by an internal `OnboardingStep` enum with two steps:
   - **Step 1 · Profile** — FTP + Weight inputs. The FTP row has a brand-colored "Don't know your FTP? Start at 150W" link that fills the field with the shared constant `UNKNOWN_FTP_DEFAULT` (150). **Continue** validates against `MIN_FTP..MAX_FTP` / `MIN_WEIGHT_KG..MAX_WEIGHT_KG` and persists the values immediately, then advances to step 2 — but **does not** mark onboarding complete yet (so a swipe-down mid-flow re-prompts on next launch via the welcome banner is acceptable, but a properly-finished step 1 doesn't lose the FTP/weight if the user backs out of step 2).
   - **Step 2 · Permissions** — pre-flight rationale for `BLUETOOTH_CONNECT/SCAN` (or `ACCESS_FINE_LOCATION` on API < 31) and `POST_NOTIFICATIONS` on API ≥ 33. Each permission is shown as an icon row explaining what it's used for ("Find and pair your smart trainer …", "Show the active-ride strip so Android keeps the app alive while you ride."). **Allow access** launches the multi-permission system dialog via `ActivityResultContracts.RequestMultiplePermissions`; the outcome doesn't block onboarding — `RideScreen` re-prompts on first ride if the user denied or skipped, so the onboarding step is purely a UX improvement (a contextual rationale before the system prompt is the Android UX guidelines' recommended pattern).
   - Sheet dismissal at any step (swipe-down, scrim tap, system back) marks `hasCompletedOnboarding = true` so the user isn't pestered next launch.
 - After onboarding, the welcome banner is replaced by the existing **Pair a trainer** nudge (until any trainer is paired, real or mock), which is replaced in turn by `TrainerStatusStrip`.
-- A **"Start here" pinned card** (orange-bordered, eyebrow `START HERE · YOUR FIRST RIDE`) is inserted as the first list item when `hasCompletedOnboarding && historyRepository.getAllSessions().isEmpty() && starter != null`. The starter workout is identified by the constant `STARTER_WORKOUT_ID = "starter-15min"` (defined in [workouts_sample.json](mobile_clients/android/src/main/assets/workouts_sample.json) — 15 min mixed-zone intro). The card disappears after the first completed ride. While pinned, the same workout is filtered out of the regular list to avoid duplication.
+- A **"Start here" pinned card** (orange-bordered, eyebrow `START HERE · YOUR FIRST RIDE`) is inserted as the first list item when `hasCompletedOnboarding && historyRepository.getAllSessions().isEmpty() && starter != null`. The starter workout is identified by the constant `STARTER_WORKOUT_ID = "starter-15min"` (defined in [workouts_sample.json](../mobile_clients/android/src/main/assets/workouts_sample.json) — 15 min mixed-zone intro). The card disappears after the first completed ride. While pinned, the same workout is filtered out of the regular list to avoid duplication.
 
 ### Trainer-required gating
 
-[`WorkoutDetailScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutDetailScreen.kt) observes `trainerManager.connectionState` + `isMockTrainer`. The bottom CTA is state-aware:
+[`WorkoutDetailScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutDetailScreen.kt) observes `trainerManager.connectionState` + `isMockTrainer`. The bottom CTA is state-aware:
 
 - **Connected** (real or mock) → primary "Start workout" button (existing behaviour).
 - **Not connected** → primary "Pair a trainer to ride" button + small subtitle, taps route to the trainer pairing screen via `onNavigateToPairing`. Mock counts as connected.
@@ -106,7 +110,7 @@ This is the only gating on Start; users can still browse workout details without
 `WorkoutSessionManager` drives elapsed/segment progress from **wall-clock time** (`elapsed = (now - activePhaseStartEpochMs) / 1000`) rather than counting `delay(1000)` ticks, so the ride doesn't drift over a 60+ minute session if the dispatcher hiccups. The phase anchor is reset on every pause/resume/skip.
 
 ## Android UI Architecture
-The Android client implements the **Cadence design system** (see [cadence-design-system/README.md](cadence-design-system/README.md)). Code is organized under `app.indoorbike.ui.*`:
+The Android client implements the **Cadence design system** (see [cadence-design-system/README.md](../cadence-design-system/README.md)). Code is organized under `app.indoorbike.ui.*`:
 
 - `ui/theme/` — design tokens. `CadenceColors` (gravel-warm dark palette + brand ember + line/fg ramps), `CadenceType` (display/body/mono scale), `Spacing`, `Radii`, and `CadenceTheme` (M3 ColorScheme + Typography wrapper).
 - `ui/zones/PowerZones.kt` — 7-zone enum mapping FTP% → `PowerZone` with calibrated cool→hot color spectrum. Use `PowerZone.fromFtpPercent()` whenever an FTP% needs a zone color.
@@ -119,7 +123,7 @@ The Android client implements the **Cadence design system** (see [cadence-design
 - `ui/TrainerPairingScreen.kt` — BLE scan screen with live "Scanning · N found" indicator and an Open-Settings escape hatch when permissions are denied. Includes a "Use Mock Trainer" secondary button for users without hardware.
 - `ui/HrmPairingScreen.kt` — parallel to the trainer pairing screen; uses `HeartRateMonitor` and the name-heuristic-based filter (so Garmin HRM-Pro shows up).
 - `ui/ControllerPairingScreen.kt` — parallel to the HRM pairing screen; uses `ControllerManager`. Click v1 only wakes when a button is pressed, so the empty-state copy explicitly tells the user to press a button before scanning.
-- `ui/HistoryTab.kt` / `ui/ProgressTab.kt` empty states each show a primary "Pick a workout" button that calls `onNavigateToRides` — wired in [`MainActivity.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/MainActivity.kt) to `navigator.navigate(TabRides)`.
+- `ui/HistoryTab.kt` / `ui/ProgressTab.kt` empty states each show a primary "Pick a workout" button that calls `onNavigateToRides` — wired in [`MainActivity.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/MainActivity.kt) to `navigator.navigate(TabRides)`.
 - `MainActivity.kt` — loads `workouts*.json` from assets, holds a `Navigator` over `androidx.navigation3` back stacks. Each top-level tab keeps its own back stack; the bottom `TabBar` only renders when on a top-level route at depth 1.
 
 ### Shared (KMM) helpers
@@ -129,44 +133,44 @@ The Android client implements the **Cadence design system** (see [cadence-design
 
 ### Tests
 
-Two layers, both documented in [TESTING.md](TESTING.md):
+Two layers, both documented in [TESTING.md](../TESTING.md):
 
 **Shared-module unit tests** — pure logic, no Android dependencies:
 - `shared/src/commonTest/kotlin/.../progression/ProgressionTest.kt` — streak (with TZ offset), rider level, time-in-zone, RideStats (NP/IF/TSS), badges.
 - `shared/src/commonTest/kotlin/.../workout/WorkoutSummaryTest.kt` — tag inference, NP=IF×FTP, formatClock HH:MM:SS edge, formatDurationPretty.
 - Run via `.\gradlew.bat :shared:allTests` (PowerShell) or `./gradlew :shared:testDebugUnitTest`.
 
-**Smoke test** ([scripts/smoke_test.ps1](scripts/smoke_test.ps1)) — installs the debug APK, clears data, walks through onboarding → mock-trainer pair → starter ride, captures a screenshot at each step into `build/test-artifacts/<timestamp>/`, and greps logcat for `FATAL` / `AndroidRuntime: FATAL`. Uses `uiautomator dump` + `input tap` (`Tap-Text` helper) to hit buttons by label, so renaming a CTA breaks the script — keep label strings in sync. Run with `.\scripts\smoke_test.ps1` (single connected device) or `.\scripts\smoke_test.ps1 -DeviceId <serial>`.
+**Smoke test** ([scripts/smoke_test.ps1](../scripts/smoke_test.ps1)) — installs the debug APK, clears data, walks through onboarding → mock-trainer pair → starter ride, captures a screenshot at each step into `build/test-artifacts/<timestamp>/`, and greps logcat for `FATAL` / `AndroidRuntime: FATAL`. Uses `uiautomator dump` + `input tap` (`Tap-Text` helper) to hit buttons by label, so renaming a CTA breaks the script — keep label strings in sync. Run with `.\scripts\smoke_test.ps1` (single connected device) or `.\scripts\smoke_test.ps1 -DeviceId <serial>`.
 
-**Manual test plan** — see [TESTING.md](TESTING.md) for the full checklist organised by feature area (onboarding, pairing, ride, history, progress, side-by-side install, etc.). Use this for anything the smoke test can't assert (BLE, label correctness, layout).
+**Manual test plan** — see [TESTING.md](../TESTING.md) for the full checklist organised by feature area (onboarding, pairing, ride, history, progress, side-by-side install, etc.). Use this for anything the smoke test can't assert (BLE, label correctness, layout).
 
 ### Ride share image
 
-A 1080×1080 PNG generated on-demand from a completed ride and surfaced via a Share button on the AppBar of [`WorkoutOverviewScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt). Lives under `app.indoorbike.share`:
+A 1080×1080 PNG generated on-demand from a completed ride and surfaced via a Share button on the AppBar of [`WorkoutOverviewScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt). Lives under `app.indoorbike.share`:
 
-- [`RideShareCard.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/share/RideShareCard.kt) — the Composable. Header (date eyebrow + workout name in Bebas Neue caps), three KPI tiles (Duration / Avg Power in ember / TSS), a power-chart panel mirroring the on-screen "Power Adherence" chart (planned-zone bars + actual-power line in `Fg1`), a "TOUGHEST INTERVAL" callout (longest Z4+ segment by default, falls back to peak-power for unstructured rides), and an `INDOOR BIKE` wordmark + `indoorbike.app` footer. Pure Compose, no SVG assets — the brand mark and wordmark are drawn from primitives.
-- [`ShareImageGenerator.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/share/ShareImageGenerator.kt) — capture + persist + share helpers. `captureLayer(GraphicsLayer)` returns an Android `Bitmap` from `GraphicsLayer.toImageBitmap()`. `saveToGallery()` writes to `MediaStore.Images` with `RELATIVE_PATH = Pictures/Indoor Bike` on Q+, falling back to `Environment.DIRECTORY_PICTURES + /Indoor Bike` + the legacy `MediaStore.Images.Media.DATA` column on 26..28. `stageForShare()` writes to `cacheDir/shared_images/` and returns a `content://` URI via `FileProvider`. `launchShareChooser()` builds an `ACTION_SEND` intent with `image/png`, `EXTRA_STREAM`, `ClipData`, and `FLAG_GRANT_READ_URI_PERMISSION`, wrapped in `Intent.createChooser`.
-- [`ShareSheet.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/share/ShareSheet.kt) — Material 3 `ModalBottomSheet` with a thumbnail preview and Save / Share buttons. The card is rendered once inside a `CompositionLocalProvider(LocalDensity provides Density(1f, 1f))` so dp/sp/px are 1:1 in the captured bitmap (1080dp × 1080dp = 1080px × 1080px regardless of device density). The visible thumbnail is the same composable visually scaled via `Modifier.graphicsLayer(scaleX, scaleY)` — the GraphicsLayer always records the unscaled drawing.
+- [`RideShareCard.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/share/RideShareCard.kt) — the Composable. Header (date eyebrow + workout name in Bebas Neue caps), three KPI tiles (Duration / Avg Power in ember / TSS), a power-chart panel mirroring the on-screen "Power Adherence" chart (planned-zone bars + actual-power line in `Fg1`), a "TOUGHEST INTERVAL" callout (longest Z4+ segment by default, falls back to peak-power for unstructured rides), and an `INDOOR BIKE` wordmark + `indoorbike.app` footer. Pure Compose, no SVG assets — the brand mark and wordmark are drawn from primitives.
+- [`ShareImageGenerator.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/share/ShareImageGenerator.kt) — capture + persist + share helpers. `captureLayer(GraphicsLayer)` returns an Android `Bitmap` from `GraphicsLayer.toImageBitmap()`. `saveToGallery()` writes to `MediaStore.Images` with `RELATIVE_PATH = Pictures/Indoor Bike` on Q+, falling back to `Environment.DIRECTORY_PICTURES + /Indoor Bike` + the legacy `MediaStore.Images.Media.DATA` column on 26..28. `stageForShare()` writes to `cacheDir/shared_images/` and returns a `content://` URI via `FileProvider`. `launchShareChooser()` builds an `ACTION_SEND` intent with `image/png`, `EXTRA_STREAM`, `ClipData`, and `FLAG_GRANT_READ_URI_PERMISSION`, wrapped in `Intent.createChooser`.
+- [`ShareSheet.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/share/ShareSheet.kt) — Material 3 `ModalBottomSheet` with a thumbnail preview and Save / Share buttons. The card is rendered once inside a `CompositionLocalProvider(LocalDensity provides Density(1f, 1f))` so dp/sp/px are 1:1 in the captured bitmap (1080dp × 1080dp = 1080px × 1080px regardless of device density). The visible thumbnail is the same composable visually scaled via `Modifier.graphicsLayer(scaleX, scaleY)` — the GraphicsLayer always records the unscaled drawing.
 
 **Permissions / manifest:**
-- `WRITE_EXTERNAL_STORAGE` is declared with `android:maxSdkVersion="28"` ([AndroidManifest.xml](mobile_clients/android/src/main/AndroidManifest.xml)). Q+ uses scoped storage and skips the runtime prompt; pre-Q the share sheet requests it via `ActivityResultContracts.RequestPermission` before the first save.
+- `WRITE_EXTERNAL_STORAGE` is declared with `android:maxSdkVersion="28"` ([AndroidManifest.xml](../mobile_clients/android/src/main/AndroidManifest.xml)). Q+ uses scoped storage and skips the runtime prompt; pre-Q the share sheet requests it via `ActivityResultContracts.RequestPermission` before the first save.
 - `androidx.core.content.FileProvider` is registered with authority `${applicationId}.fileprovider` and `xml/file_paths.xml` exposing `cache-path/shared_images`. The cache directory is auto-cleaned by Android when storage is low, so staged share files are ephemeral by design.
 
 **F-Droid hygiene:** no third-party deps. Bitmap rendering uses `androidx.compose.ui:ui` (Compose 1.7+ `GraphicsLayer.toImageBitmap`), persistence uses `MediaStore` + AndroidX `FileProvider`. No analytics, no Firebase Dynamic Links, no network share endpoints — the user picks the destination via the system chooser.
 
 ### Workout library — sources, import, repositories
 
-The Rides list aggregates workouts from three sources, all merged through [`WorkoutLibrary`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLibrary.kt) (`AppContainer.workoutLibrary`):
+The Rides list aggregates workouts from three sources, all merged through [`WorkoutLibrary`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLibrary.kt) (`AppContainer.workoutLibrary`):
 
 1. **Bundled** — JSON files in `assets/workouts*.json`. Loaded once at startup via the same shared `WorkoutRepository.parseWorkouts()` parser as before.
-2. **Imported** — JSON files persisted to `filesDir/user_workouts/<sanitised-id>.json` by [`WorkoutImporter`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt). Atomic write via `tmp` + rename. Filename uses the workout's own id so re-importing is idempotent.
-3. **Subscribed repositories** — bandwidth-aware bundle sync managed by [`RepositoryManager`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt). On-disk layout per subscribed repo: `filesDir/repos/<sanitised-id>/{manifest.json, versions.json, bundles/<bundle-id>.json}`. The lightweight manifest is fetched on subscribe / refresh; per-bundle content is downloaded only when its `version` increases vs the local `versions.json`.
+2. **Imported** — JSON files persisted to `filesDir/user_workouts/<sanitised-id>.json` by [`WorkoutImporter`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt). Atomic write via `tmp` + rename. Filename uses the workout's own id so re-importing is idempotent.
+3. **Subscribed repositories** — bandwidth-aware bundle sync managed by [`RepositoryManager`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt). On-disk layout per subscribed repo: `filesDir/repos/<sanitised-id>/{manifest.json, versions.json, bundles/<bundle-id>.json}`. The lightweight manifest is fetched on subscribe / refresh; per-bundle content is downloaded only when its `version` increases vs the local `versions.json`.
 
 Duplicate workout ids are de-duped first-wins with priority **Imported > Subscribed > Bundled** — an explicit user import wins over a bundled or subscribed copy with the same id.
 
 **Source attribution** — `WorkoutLibrary.entries` exposes a `StateFlow<List<WorkoutEntry>>` where each entry carries a `WorkoutSource` (`Bundled` / `Imported` / `Repository(id, name)`). The Rides list tag-eyebrow row appends "· IMPORTED" or "· STARTER PACK" in ember accent for non-bundled workouts; bundled stay clean. The library `combine`s `RepositoryManager.subscribed` with `RepositoryManager.cacheTick` so a bundle re-download triggers a rebuild even when the subscription set itself is unchanged.
 
-**On-disk schemas** (defined in [`shared/.../repo/Manifests.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/repo/Manifests.kt)):
+**On-disk schemas** (defined in [`shared/.../repo/Manifests.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/repo/Manifests.kt)):
 
 - `RepositoryManifest` (schemaVersion **2**, current) — `id`, `name`, `description?`, `author?`, `homepage?`, `updatedEpoch?`, **`bundles: List<WorkoutBundleEntry>`**. The manifest itself contains no segments; that's the whole point of v2.
 - `WorkoutBundleEntry` — `id`, `name?`, `schemaVersion` (bundle file format, currently 1 = bare JSON array of `Workout` objects), `version` (content version — bumped on any change to any workout in the bundle), `url` (absolute or relative to the manifest URL).
@@ -177,9 +181,9 @@ Duplicate workout ids are de-duped first-wins with priority **Imported > Subscri
 
 `ManifestParser.classify(text)` heuristically identifies whether arbitrary JSON is a single workout, list of workouts (= a bundle), repository manifest (top-level `bundles` key), or registry index — used by the universal import pipeline so the user doesn't pick a mode up front.
 
-**Community registry URL** — hardcoded `BuildConfig.REGISTRY_URL = "https://indoorbike.app/registry.json"` ([app/build.gradle.kts](mobile_clients/android/build.gradle.kts)). Absence is graceful: `RepositoryManager.refreshRegistry()` returns `RegistryState.Failed(error, cachedIndex)` and the Library's "Browse community" section shows an empty hint pointing at the Scan QR / Add by URL escape hatches. When the URL goes live, the next refresh picks it up automatically — no app update needed.
+**Community registry URL** — hardcoded `BuildConfig.REGISTRY_URL = "https://indoorbike.app/registry.json"` ([app/build.gradle.kts](../mobile_clients/android/build.gradle.kts)). Absence is graceful: `RepositoryManager.refreshRegistry()` returns `RegistryState.Failed(error, cachedIndex)` and the Library's "Browse community" section shows an empty hint pointing at the Scan QR / Add by URL escape hatches. When the URL goes live, the next refresh picks it up automatically — no app update needed.
 
-**Networking** — [`HttpFetcher`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) is a thin `HttpURLConnection` wrapper. F-Droid clean (no OkHttp / Ktor dep), HTTPS-only (rejects `http://`), 12s connect/read timeouts, 2 MB body cap so a malicious URL can't OOM the device.
+**Networking** — [`HttpFetcher`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) is a thin `HttpURLConnection` wrapper. F-Droid clean (no OkHttp / Ktor dep), HTTPS-only (rejects `http://`), 12s connect/read timeouts, 2 MB body cap so a malicious URL can't OOM the device.
 
 ### Import entry points (4 paths, 1 pipeline)
 
@@ -194,14 +198,14 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 
 ### Library screen + QR scanner
 
-[`LibraryScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/LibraryScreen.kt) is a single-page surface reachable from a `LibraryBooks` icon in the Rides tab AppBar. Sections:
+[`LibraryScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/LibraryScreen.kt) is a single-page surface reachable from a `LibraryBooks` icon in the Rides tab AppBar. Sections:
 
 - **Action row** — three tiles: Import file (opens file picker), Scan QR (→ `RouteQrScanner`), By URL (modal sheet with HTTPS URL input).
 - **Subscribed repositories** — list with Refresh + Unsubscribe per row; "$N workouts · $shorthost" subtitle.
 - **Browse community** — registry-driven cards with Subscribe / SUBSCRIBED state. Loading + empty + unreachable states are distinct.
 - **Imported workouts** — flat list of user files with delete.
 
-[`QrScannerScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` — Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, decodes-or-fetches the URL, and routes the result through the same `WorkoutImporter` pipeline.
+[`QrScannerScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` — Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, decodes-or-fetches the URL, and routes the result through the same `WorkoutImporter` pipeline.
 
 **URL forms accepted by the QR scanner *and* the `indoorbike://import` deep-link:**
 
@@ -214,7 +218,7 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 | `indoorbike://import?dataz=<base64-url-safe-gzip-utf8-json>` | Local decode — gzipped deep-link form for chats / NFC etc. |
 | `indoorbike://import?data=<base64-url-safe-utf8-json>` | Local decode — legacy uncompressed deep-link form, still accepted. |
 
-The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLinkParser.kt). When it returns non-null, the network fetch is skipped entirely — important because the website's `share/` URL serves HTML to a browser, not JSON, so a naive GET wouldn't work. Decoding uses `android.util.Base64.decode(s, URL_SAFE | NO_PADDING | NO_WRAP)` to match the JS encoder in [`website/editor/editor.js`](website/editor/editor.js); gzipped forms are then inflated via `java.util.zip.GZIPInputStream`. Compression cuts a typical 1 KB workout URL roughly in half — enough to drop the QR several versions and make modules chunky enough for phone cameras to scan reliably.
+The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLinkParser.kt). When it returns non-null, the network fetch is skipped entirely — important because the website's `share/` URL serves HTML to a browser, not JSON, so a naive GET wouldn't work. Decoding uses `android.util.Base64.decode(s, URL_SAFE | NO_PADDING | NO_WRAP)` to match the JS encoder in [`website/editor/editor.js`](website/editor/editor.js); gzipped forms are then inflated via `java.util.zip.GZIPInputStream`. Compression cuts a typical 1 KB workout URL roughly in half — enough to drop the QR several versions and make modules chunky enough for phone cameras to scan reliably.
 
 **Permissions** — `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 
@@ -222,20 +226,20 @@ The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](mobile_clients/androi
 
 End-to-end activity sync to [intervals.icu](https://intervals.icu). Strict opt-in posture — no network call happens unless the user explicitly configures credentials and either taps Upload or turns auto-upload on.
 
-**FIT writer — hand-rolled in shared, no third-party dep.** Lives in [`shared/src/commonMain/kotlin/app/indoorbike/shared/fit/`](shared/src/commonMain/kotlin/app/indoorbike/shared/fit/):
+**FIT writer — hand-rolled in shared, no third-party dep.** Lives in [`shared/src/commonMain/kotlin/app/indoorbike/shared/fit/`](../shared/src/commonMain/kotlin/app/indoorbike/shared/fit/):
 
-- [`FitWriter.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/fit/FitWriter.kt) — low-level: 14-byte header (with header CRC), little-endian integer helpers, definition-message builder, data-message header byte, the FIT-spec nibble-table CRC-16, and `finalizeAndCrc()` that patches data-size + header-CRC + appends file-CRC. `FitBaseType`, `FitMessage` (global message numbers), `FIT_EPOCH_OFFSET_SECONDS = 631065600` (UTC 1989-12-31).
-- [`RideFitBuilder.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/fit/RideFitBuilder.kt) — high-level `build(session, telemetry, workout, ftp): ByteArray`. Emits file_id (manufacturer = 255 *development*), file_creator, timer-start event, one record per 1Hz telemetry sample (timestamp + power + HR + cadence), one lap per workout segment (interleaved with the records covering that segment), timer-stop event, session message (sport=cycling, sub_sport=indoor_cycling, plus avg/max power/HR/cadence, NP, IF, TSS×10, kJ, FTP), and an activity wrapper. Falls back to a single whole-ride lap when there's no structured workout.
-- [`FitWriterTest.kt`](shared/src/commonTest/kotlin/app/indoorbike/shared/fit/FitWriterTest.kt) — verifies header magic, header-CRC, file-CRC, data-size patching, and round-trips a 30-min synthetic ride. Run via `.\gradlew.bat :shared:allTests`.
+- [`FitWriter.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/fit/FitWriter.kt) — low-level: 14-byte header (with header CRC), little-endian integer helpers, definition-message builder, data-message header byte, the FIT-spec nibble-table CRC-16, and `finalizeAndCrc()` that patches data-size + header-CRC + appends file-CRC. `FitBaseType`, `FitMessage` (global message numbers), `FIT_EPOCH_OFFSET_SECONDS = 631065600` (UTC 1989-12-31).
+- [`RideFitBuilder.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/fit/RideFitBuilder.kt) — high-level `build(session, telemetry, workout, ftp): ByteArray`. Emits file_id (manufacturer = 255 *development*), file_creator, timer-start event, one record per 1Hz telemetry sample (timestamp + power + HR + cadence), one lap per workout segment (interleaved with the records covering that segment), timer-stop event, session message (sport=cycling, sub_sport=indoor_cycling, plus avg/max power/HR/cadence, NP, IF, TSS×10, kJ, FTP), and an activity wrapper. Falls back to a single whole-ride lap when there's no structured workout.
+- [`FitWriterTest.kt`](../shared/src/commonTest/kotlin/app/indoorbike/shared/fit/FitWriterTest.kt) — verifies header magic, header-CRC, file-CRC, data-size patching, and round-trips a 30-min synthetic ride. Run via `.\gradlew.bat :shared:allTests`.
 
 We claim manufacturer `255` (the FIT spec's *development* slot) — the honest answer for a non-commercial app, accepted by all major analysis platforms. CRC algorithm is the spec's nibble-table implementation; matches Garmin's SDK byte-for-byte.
 
 **Intervals.icu uploader — Android.**
 
-- [`HttpFetcher.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) gained `postMultipartFile(url, fileFieldName, fileName, fileBytes, fileMimeType, extraFormFields, headers): PostResult` — a vanilla `HttpURLConnection` multipart POST. HTTPS-only, generous timeouts for uploads, body capped at 4096 chars in the result.
-- [`IntervalsIcuUploader.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/sync/IntervalsIcuUploader.kt) — composes the upload: builds FIT bytes via `RideFitBuilder`, normalises athlete id (always `i…` prefix, never doubled), HTTP-Basic auth with literal username `"API_KEY"` + the user's API key as password (per Intervals.icu's documented scheme), POST to `https://intervals.icu/api/v1/athlete/{id}/activities`. Returns `Outcome.Success(activityId?)` / `NotConfigured` / `Failure(message)`. Cheap regex sniff for `"id":…` in the success body — no JSON parser pulled in just for that.
+- [`HttpFetcher.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) gained `postMultipartFile(url, fileFieldName, fileName, fileBytes, fileMimeType, extraFormFields, headers): PostResult` — a vanilla `HttpURLConnection` multipart POST. HTTPS-only, generous timeouts for uploads, body capped at 4096 chars in the result.
+- [`IntervalsIcuUploader.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/sync/IntervalsIcuUploader.kt) — composes the upload: builds FIT bytes via `RideFitBuilder`, normalises athlete id (always `i…` prefix, never doubled), HTTP-Basic auth with literal username `"API_KEY"` + the user's API key as password (per Intervals.icu's documented scheme), POST to `https://intervals.icu/api/v1/athlete/{id}/activities`. Returns `Outcome.Success(activityId?)` / `NotConfigured` / `Failure(message)`. Cheap regex sniff for `"id":…` in the success body — no JSON parser pulled in just for that.
 
-**Settings + persistence.** Three new fields on the [`UserSettings`](shared/src/commonMain/kotlin/app/indoorbike/shared/settings/UserSettings.kt) interface:
+**Settings + persistence.** Three new fields on the [`UserSettings`](../shared/src/commonMain/kotlin/app/indoorbike/shared/settings/UserSettings.kt) interface:
 
 | field | type | persisted in |
 | --- | --- | --- |
@@ -245,9 +249,9 @@ We claim manufacturer `255` (the FIT spec's *development* slot) — the honest a
 
 The API key sits in plaintext DataStore for now. When device-credential hardening lands we'll move it to AndroidX `security-crypto` without touching the `UserSettings` interface (the property type is already `String?`).
 
-**Settings UI.** New `CLOUD SYNC` section between `DEVICES` and `ABOUT` in [`SettingsTab.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/SettingsTab.kt) hosting an `IntervalsIcuCard`: athlete-id input, API-key input (`PasswordVisualTransformation` with a show/hide eye toggle), and an auto-upload `Switch` that's disabled until both credential fields are filled. Copy explicitly states the F-Droid posture ("only contacts intervals.icu when an upload is triggered").
+**Settings UI.** New `CLOUD SYNC` section between `DEVICES` and `ABOUT` in [`SettingsTab.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/SettingsTab.kt) hosting an `IntervalsIcuCard`: athlete-id input, API-key input (`PasswordVisualTransformation` with a show/hide eye toggle), and an auto-upload `Switch` that's disabled until both credential fields are filled. Copy explicitly states the F-Droid posture ("only contacts intervals.icu when an upload is triggered").
 
-**Upload triggers.** [`WorkoutOverviewScreen`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt):
+**Upload triggers.** [`WorkoutOverviewScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt):
 
 - **Manual** — `IntervalsUploadCard` at the bottom of the scroll content, visible only when credentials are configured. "Upload" button posts a Toast with the result.
 - **Auto** — a `LaunchedEffect(activeSession.id, fromRide, autoUpload, intervalsConfigured)` fires once when the screen arrives from a finished ride. A `uploadAttemptedForSession` flag prevents config-change recompositions from re-firing the upload.
@@ -260,7 +264,7 @@ The API key sits in plaintext DataStore for now. When device-credential hardenin
     - `bebas_neue_regular.ttf` (60 KB, static) — display headlines (`displayXl/L/M`, `h1`, `h2`).
     - `inter_variable.ttf` (856 KB, variable wght axis 100–900) — body text (`h3`, `body`, `bodyStrong`, `small`, `micro`, `eyebrow`).
     - `jetbrains_mono_variable.ttf` (183 KB, variable wght axis 100–800) — monospace ticks (`tick`, `mono`).
-  Variable fonts are wired via `Font(R.font.…, weight = FontWeight.X, variationSettings = FontVariation.Settings(FontVariation.weight(N)))` in [`ui/theme/Type.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/ui/theme/Type.kt). Requires `@OptIn(ExperimentalTextApi::class)` on Compose 1.7.5; the API graduates to stable in newer Compose versions.
+  Variable fonts are wired via `Font(R.font.…, weight = FontWeight.X, variationSettings = FontVariation.Settings(FontVariation.weight(N)))` in [`ui/theme/Type.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/theme/Type.kt). Requires `@OptIn(ExperimentalTextApi::class)` on Compose 1.7.5; the API graduates to stable in newer Compose versions.
 - **Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0) as a visual stand-in.
 - **Mock trainer toggle**: in-ride mock toggle is gated behind `BuildConfig.DEBUG` so release builds don't expose dev affordances.
 - **FIT export**: not yet implemented. Sessions persist to SQLite via SqlDelight (`HistoryDatabase`); a future change should add a FIT writer for sharing.

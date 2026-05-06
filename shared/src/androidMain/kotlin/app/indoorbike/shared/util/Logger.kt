@@ -16,14 +16,24 @@
 package app.indoorbike.shared.util
 
 import android.util.Log as AndroidLog
+import app.indoorbike.shared.BuildConfig
 
+// Silenced in release builds. The app does not ship a remote logger, so
+// release-build users get clean logcat output by default; install the debug
+// variant to read diagnostics over `adb logcat`.
 actual object Log {
-    actual fun d(tag: String, message: String) { AndroidLog.d(tag, message) }
-    actual fun i(tag: String, message: String) { AndroidLog.i(tag, message) }
+    actual fun d(tag: String, message: String) {
+        if (BuildConfig.DEBUG) AndroidLog.d(tag, message)
+    }
+    actual fun i(tag: String, message: String) {
+        if (BuildConfig.DEBUG) AndroidLog.i(tag, message)
+    }
     actual fun w(tag: String, message: String, throwable: Throwable?) {
+        if (!BuildConfig.DEBUG) return
         if (throwable == null) AndroidLog.w(tag, message) else AndroidLog.w(tag, message, throwable)
     }
     actual fun e(tag: String, message: String, throwable: Throwable?) {
+        if (!BuildConfig.DEBUG) return
         if (throwable == null) AndroidLog.e(tag, message) else AndroidLog.e(tag, message, throwable)
     }
 }

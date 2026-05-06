@@ -78,8 +78,10 @@ import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.ui.ControllerPairingScreen
 import app.indoorbike.ui.screens.LibraryScreen
 import app.indoorbike.ui.screens.QrScannerScreen
+import app.indoorbike.ui.screens.RemoteRepoBrowserScreen
 import app.indoorbike.navigation.RouteLibrary
 import app.indoorbike.navigation.RouteQrScanner
+import app.indoorbike.navigation.RouteRemoteRepo
 import app.indoorbike.ui.HistoryTab
 import app.indoorbike.ui.HrmPairingScreen
 import app.indoorbike.ui.ProgressTab
@@ -261,17 +263,15 @@ class MainActivity : ComponentActivity() {
                 ).show()
             }
             is app.indoorbike.library.ImportResult.Manifest -> {
-                val outcome = container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = null)
-                when (outcome) {
-                    is app.indoorbike.library.SubscribeResult.Ok -> Toast.makeText(
-                        this,
-                        "Subscribed to \"${result.manifest.name}\" (${result.manifest.bundles.size} bundle${if (result.manifest.bundles.size == 1) "" else "s"})",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    is app.indoorbike.library.SubscribeResult.Failure -> Toast.makeText(
-                        this, outcome.message, Toast.LENGTH_LONG
-                    ).show()
-                }
+                // Repos aren't auto-added under the explicit-add model. Point
+                // the user at More workouts → Browse so they can pick what
+                // they want from the repo's content.
+                Toast.makeText(
+                    this,
+                    "\"${result.manifest.name}\" is a community repository. " +
+                        "Open More workouts and browse it to add individual workouts.",
+                    Toast.LENGTH_LONG
+                ).show()
             }
             is app.indoorbike.library.ImportResult.Failure -> Toast.makeText(
                 this, result.message, Toast.LENGTH_LONG
@@ -332,7 +332,16 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
         entry<RouteLibrary> { _ ->
             LibraryScreen(
                 onBack = { navigator.goBack() },
-                onScanQr = { navigator.navigate(RouteQrScanner) }
+                onScanQr = { navigator.navigate(RouteQrScanner) },
+                onOpenRepo = { manifestUrl ->
+                    navigator.navigate(RouteRemoteRepo(manifestUrl))
+                }
+            )
+        }
+        entry<RouteRemoteRepo> { key: RouteRemoteRepo ->
+            RemoteRepoBrowserScreen(
+                manifestUrl = key.manifestUrl,
+                onBack = { navigator.goBack() }
             )
         }
         entry<RouteQrScanner> { _ ->

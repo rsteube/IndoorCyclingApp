@@ -53,3 +53,12 @@ data object RouteLibrary : NavKey
 
 @Serializable
 data object RouteQrScanner : NavKey
+
+/**
+ * Remote-repo browser: fetches a single repository's manifest+bundles on the
+ * fly and lets the rider pick individual workouts to copy into their local
+ * library. The route key is the manifest URL — keeps the destination
+ * stateless and shareable via deep link if/when we add link routing.
+ */
+@Serializable
+data class RouteRemoteRepo(val manifestUrl: String) : NavKey

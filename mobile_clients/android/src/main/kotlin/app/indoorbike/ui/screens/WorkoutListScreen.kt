@@ -181,7 +181,7 @@ fun WorkoutListScreen(
                     Spacer(Modifier.width(Spacing.s2))
                     // Labelled pill instead of an icon-only button. New users
                     // were missing the bare books glyph and not realising more
-                    // workouts could be added; the visible "Library" word
+                    // workouts could be added; the visible "More" label
                     // doubles its discoverability without growing the bar.
                     LibraryPill(onClick = onOpenLibrary)
                 }
@@ -454,7 +454,7 @@ private fun LibraryPill(onClick: () -> Unit) {
             modifier = Modifier.size(16.dp)
         )
         Text(
-            text = "Library",
+            text = "More",
             style = CadenceType.bodyStrong,
             color = CadenceColors.Fg1,
             fontSize = 13.sp
@@ -875,19 +875,30 @@ private fun WorkoutCard(
     ) {
         Column {
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = summary.tag.uppercase(),
                     style = CadenceType.eyebrow,
-                    color = CadenceColors.Fg3
+                    color = CadenceColors.Fg3,
+                    maxLines = 1,
+                    softWrap = false
                 )
                 if (source != null && source !is WorkoutSource.Bundled) {
+                    // Long repo names ("JUHANI'S INDOOR WORKOUTS") used to
+                    // wrap to three stacked lines next to the tag. weight +
+                    // ellipsis means the attribution gets whatever width is
+                    // left after the tag and truncates cleanly when it doesn't
+                    // fit, instead of stealing vertical space.
                     Text(
                         text = "· ${source.attribution}",
                         style = CadenceType.eyebrow,
-                        color = CadenceColors.Brand500
+                        color = CadenceColors.Brand500,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                 }
             }

@@ -159,7 +159,7 @@
         <h2 class="section-title">Familiar formats. Honest names.</h2>
         <p class="section-lead">
           Sweet Spot, Threshold, VO2. The same intervals you already know from
-          TrainerRoad and Zwift, structured against your FTP and ridden in the
+          other training apps, structured against your FTP and ridden in the
           same colour-coded zones.
         </p>
 
@@ -209,13 +209,36 @@
           </article>
         </div>
 
-        <div class="hero-cta" style="justify-content:center;margin-top:var(--s-6);flex-wrap:wrap">
-          <a class="btn btn-primary" href="editor/index.html">
-            Try the workout editor <span class="arrow">→</span>
-          </a>
-          <span style="color:var(--fg-3);font-size:13px;align-self:center">
-            Build your own intervals in the browser. No account.
-          </span>
+        <div class="library-paths">
+          <article class="library-path">
+            <p class="eyebrow">Build your own</p>
+            <h3>Visual workout editor</h3>
+            <p>
+              Lay out intervals as coloured blocks in your browser, tweak the
+              durations and percentages until the shape feels right, and send
+              the result to your phone. No account, no upload — the workout
+              file is yours to keep, ride, or hand around.
+            </p>
+            <a class="btn btn-primary" href="editor/index.html">
+              Open the editor <span class="arrow">→</span>
+            </a>
+          </article>
+
+          <article class="library-path">
+            <p class="eyebrow">Browse community</p>
+            <h3>Workouts shared by other riders</h3>
+            <p>
+              Coaches and other riders publish packs of structured workouts
+              that anyone can browse. Open a pack, scroll through the rides
+              it contains, and tap to add the ones you want. Each workout
+              becomes a local copy on your phone the moment you add it —
+              yours to ride or edit, and not affected if the original pack
+              changes later.
+            </p>
+            <a class="btn btn-secondary" href="community/index.html">
+              Browse community <span class="arrow">→</span>
+            </a>
+          </article>
         </div>
 
         <div class="zone-legend" aria-label="Power zones">
@@ -357,8 +380,11 @@
   <footer class="site-footer">
     <div class="container">
       <div>
-        <span>© 2026 Juhani Lehtimäki · indoorbike.app</span><br>
-        <span style="color:var(--fg-3);font-size:13px">Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" style="color:var(--fg-3);text-decoration:underline;">GPLv3</a>.</span>
+        <span>© <span id="copyright-year">2026</span> Juhani Lehtimäki · indoorbike.app</span><br>
+        <span style="color:var(--fg-3);font-size:13px">
+          Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener" style="color:var(--fg-3);text-decoration:underline;">GPLv3</a>
+          · <a href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp" target="_blank" rel="noopener" style="color:var(--fg-3);text-decoration:underline;">Source on Codeberg</a>
+        </span>
       </div>
       <div class="footer-links">
         <a href="#features">Features</a>
@@ -368,6 +394,10 @@
       </div>
     </div>
   </footer>
+
+  <script>
+    document.getElementById('copyright-year').textContent = new Date().getFullYear();
+  </script>
 
 </body>
 </html>

@@ -26,6 +26,7 @@ import java.io.File
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
@@ -98,7 +99,7 @@ class WorkoutImporter(private val context: Context) {
     /** All user-imported workouts on disk, sorted by name. */
     fun loadUserWorkouts(): List<Workout> {
         val dir = userWorkoutsDir
-        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".json") }
+        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".json") && !f.name.endsWith(".meta.json") }
             ?: return emptyList()
         return files.mapNotNull { file ->
             try {
@@ -111,14 +112,61 @@ class WorkoutImporter(private val context: Context) {
     }
 
     /**
-     * Deletes the on-disk JSON for an imported workout. Suspending + IO-confined
-     * to match [renameUserWorkout]; callers that need to know whether a delete
-     * actually happened can read the return value (false = file already gone or
-     * filesystem refused to delete).
+     * Reads the import-meta sidecar for a workout, or null when the workout
+     * was imported as a bare file (no provenance tracked). The sidecar lives
+     * alongside the workout JSON as `<id>.meta.json` and isn't part of the
+     * shareable workout payload — share-to-phone and QR flows export only the
+     * workout itself, never the local provenance.
+     */
+    fun loadImportMeta(workoutId: String): ImportMeta? {
+        val file = File(userWorkoutsDir, sanitise(workoutId) + ".meta.json")
+        if (!file.exists()) return null
+        return try {
+            json.decodeFromString(ImportMeta.serializer(), file.readText(Charsets.UTF_8))
+        } catch (t: Throwable) {
+            Log.w(TAG, "Corrupt meta for $workoutId: ${t.message}")
+            null
+        }
+    }
+
+    /**
+     * Adds a workout that came from a community repository to the user's local
+     * library. Identical to a file-import save, plus a small sidecar file
+     * recording the source repo (id + display name) so the rides list can
+     * attribute it. The local copy is the source of truth from this point on
+     * — the explicit-add model means we never auto-update it from upstream.
+     */
+    suspend fun saveWorkoutFromRepo(
+        workout: Workout,
+        repoId: String,
+        repoName: String,
+    ): Workout = withContext(Dispatchers.IO) {
+        saveUserWorkout(workout)
+        val meta = ImportMeta(
+            sourceRepoId = repoId,
+            sourceRepoName = repoName,
+            addedEpoch = System.currentTimeMillis(),
+        )
+        writeMeta(workout.id, meta)
+        workout
+    }
+
+    /**
+     * Deletes the on-disk JSON for an imported workout (and its sidecar meta,
+     * if any). Suspending + IO-confined to match [renameUserWorkout]; callers
+     * that need to know whether a delete actually happened can read the
+     * return value (false = file already gone or filesystem refused to
+     * delete).
      */
     suspend fun deleteUserWorkout(workoutId: String): Boolean = withContext(Dispatchers.IO) {
-        val file = File(userWorkoutsDir, sanitise(workoutId) + ".json")
-        file.exists() && file.delete()
+        val sanitised = sanitise(workoutId)
+        val file = File(userWorkoutsDir, "$sanitised.json")
+        val meta = File(userWorkoutsDir, "$sanitised.meta.json")
+        val ok = file.exists() && file.delete()
+        // Meta is best-effort; orphaning a sidecar is ugly but never breaks
+        // anything since loadImportMeta is null-tolerant.
+        if (meta.exists()) meta.delete()
+        ok
     }
 
     /**
@@ -175,6 +223,22 @@ class WorkoutImporter(private val context: Context) {
         }
     }
 
+    private fun writeMeta(workoutId: String, meta: ImportMeta) {
+        val file = File(userWorkoutsDir, sanitise(workoutId) + ".meta.json")
+        val text = json.encodeToString(ImportMeta.serializer(), meta)
+        // Same atomic-write pattern as saveUserWorkout — if a partial write
+        // dies, the destination keeps its previous contents (or stays absent).
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        try {
+            tmp.writeText(text, Charsets.UTF_8)
+            if (!tmp.renameTo(file)) {
+                file.writeText(text, Charsets.UTF_8)
+            }
+        } finally {
+            if (tmp.exists()) tmp.delete()
+        }
+    }
+
     private fun sanitise(id: String): String =
         id.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifEmpty { "workout" }
 
@@ -182,6 +246,19 @@ class WorkoutImporter(private val context: Context) {
         private const val TAG = "WorkoutImporter"
     }
 }
+
+/**
+ * Sidecar metadata for an imported workout. Tracks the upstream source so
+ * the rides list can attribute "From Cycling-coach pack" without reading
+ * the workout file itself. Lives at `<id>.meta.json`; absent for plain
+ * file-imports.
+ */
+@Serializable
+data class ImportMeta(
+    val sourceRepoId: String? = null,
+    val sourceRepoName: String? = null,
+    val addedEpoch: Long = 0,
+)
 
 sealed class ImportResult {
     /** One or more workouts were validated and added to the user library. */

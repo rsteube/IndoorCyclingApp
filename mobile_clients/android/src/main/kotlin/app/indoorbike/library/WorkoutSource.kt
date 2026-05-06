@@ -19,19 +19,31 @@ import app.indoorbike.shared.Workout
 
 /**
  * Where a [Workout] in the in-app library originated. Used for the small
- * attribution shown on the workout card and to know which storage to delete
- * from when a user removes a workout.
+ * attribution shown on the workout card and to know how a workout was added.
+ *
+ * Two kinds:
+ *  - [Bundled]: ships with the APK in `assets/workouts*.json`.
+ *  - [Imported]: a local copy under `filesDir/user_workouts/`. Imports come
+ *    from file pick, share-sheet, QR, or the community-repo browser. When the
+ *    rider added a workout from a known community repo, [sourceRepoId] and
+ *    [sourceRepoName] carry that provenance for attribution display. The local
+ *    copy is *static* — it isn't re-fetched if the upstream repo changes.
+ *
+ * The previous `Repository` source (live mirror of a subscribed repo) was
+ * removed when subscriptions were dropped in favour of the explicit-add model.
  */
 sealed class WorkoutSource {
     data object Bundled : WorkoutSource()
-    data object Imported : WorkoutSource()
-    data class Repository(val id: String, val name: String) : WorkoutSource()
+
+    data class Imported(
+        val sourceRepoId: String? = null,
+        val sourceRepoName: String? = null,
+    ) : WorkoutSource()
 
     val attribution: String
         get() = when (this) {
             is Bundled -> "BUNDLED"
-            is Imported -> "IMPORTED"
-            is Repository -> name.uppercase()
+            is Imported -> sourceRepoName?.uppercase() ?: "IMPORTED"
         }
 }
 

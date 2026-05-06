@@ -56,6 +56,11 @@ android {
     defaultConfig {
         minSdk = 26
     }
+    buildFeatures {
+        // BuildConfig.DEBUG is consulted by the Android-side `Log` actual to
+        // silence diagnostics in release builds.
+        buildConfig = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

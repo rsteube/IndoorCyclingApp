@@ -122,7 +122,6 @@ class AppContainer(
             val workoutLibrary = WorkoutLibrary(
                 context = application,
                 importer = workoutImporter,
-                repositoryManager = repositoryManager,
             )
             val intervalsIcuUploader = IntervalsIcuUploader(
                 historyRepository = historyRepository,

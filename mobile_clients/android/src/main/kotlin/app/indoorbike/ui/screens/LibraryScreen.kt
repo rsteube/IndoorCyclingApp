@@ -41,7 +41,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.Link
@@ -72,8 +71,8 @@ import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.ImportResult
 import app.indoorbike.library.RegistryState
-import app.indoorbike.library.SubscribeResult
-import app.indoorbike.library.SubscribedRepository
+import app.indoorbike.shared.repo.ImportKind
+import app.indoorbike.shared.repo.ManifestParser
 import app.indoorbike.shared.repo.RegistryEntry
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
@@ -85,30 +84,37 @@ import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
 /**
- * One-stop screen for managing where workouts come from.
+ * "More workouts" screen — the entry point for adding workouts to the rider's
+ * library, regardless of where they come from.
  *
  *   ┌─────────────────────────────────┐
- *   │  Action row                     │  Import file · Scan QR · Add by URL
+ *   │  Action row                     │  Import file · Scan QR · By URL
  *   ├─────────────────────────────────┤
- *   │  Subscribed repositories        │  list with refresh / unsubscribe
- *   │  Browse community               │  list driven by the registry
- *   │  Imported workouts              │  user files
+ *   │  Browse community               │  registry-driven repo cards;
+ *   │                                 │  tapping a card opens the
+ *   │                                 │  remote-repo browser to pick
+ *   │                                 │  individual workouts to add.
+ *   ├─────────────────────────────────┤
+ *   │  Your imported workouts         │  delete-only management of the
+ *   │                                 │  workouts the user has added.
  *   └─────────────────────────────────┘
  *
- * Browse degrades gracefully when the registry URL isn't live yet — empty
- * state with a hint to use the Add by URL / QR actions.
+ * Subscriptions were removed in favour of an explicit-add model: the rider
+ * picks workouts from a repo and each one becomes a static local copy. The
+ * "Browse community" section therefore just navigates; nothing is persisted
+ * by tapping a repo card.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     onBack: () -> Unit,
     onScanQr: () -> Unit,
+    onOpenRepo: (manifestUrl: String) -> Unit,
 ) {
     val container = LocalAppContainer.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val subscribed by container.repositoryManager.subscribed.collectAsState()
     val registry by container.repositoryManager.registry.collectAsState()
     val entries by container.workoutLibrary.entries.collectAsState()
     val importedWorkouts = remember(entries) {
@@ -142,8 +148,8 @@ fun LibraryScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         AppBar(
-            title = "Library",
-            eyebrow = "WORKOUT SOURCES",
+            title = "More workouts",
+            eyebrow = "ADD TO YOUR LIBRARY",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -159,7 +165,6 @@ fun LibraryScreen(
                         scope.launch {
                             refreshingRegistry = true
                             container.repositoryManager.refreshRegistry()
-                            container.repositoryManager.refreshAll()
                             refreshingRegistry = false
                         }
                     }
@@ -184,38 +189,6 @@ fun LibraryScreen(
                 )
             }
 
-            // ── Subscribed repositories ──────────────────────────────────────
-            item {
-                SectionHeader(
-                    title = "Subscribed repositories",
-                    subtitle = if (subscribed.isEmpty()) "None yet — browse below or add a URL above."
-                    else "${subscribed.size} repository${if (subscribed.size == 1) "" else "s"}"
-                )
-            }
-            items(subscribed, key = { "sub-${it.id}" }) { sub ->
-                SubscribedRepositoryCard(
-                    sub = sub,
-                    onRefresh = {
-                        val url = sub.manifestUrl ?: return@SubscribedRepositoryCard
-                        scope.launch {
-                            val result = container.repositoryManager.subscribeByUrl(url)
-                            Toast.makeText(
-                                context,
-                                if (result is SubscribeResult.Ok) "Refreshed \"${sub.name}\""
-                                else "Couldn't refresh \"${sub.name}\"",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    },
-                    onUnsubscribe = {
-                        scope.launch {
-                            container.repositoryManager.unsubscribe(sub.id)
-                            Toast.makeText(context, "Removed \"${sub.name}\"", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                )
-            }
-
             // ── Browse community registry ────────────────────────────────────
             item {
                 Spacer(Modifier.height(Spacing.s2))
@@ -227,29 +200,18 @@ fun LibraryScreen(
             registryItems(
                 state = registry,
                 refreshing = refreshingRegistry,
-                isSubscribed = { id -> container.repositoryManager.isSubscribed(id) },
-                onSubscribe = { entry ->
-                    scope.launch {
-                        val result = container.repositoryManager.subscribeByUrl(entry.manifestUrl)
-                        Toast.makeText(
-                            context,
-                            when (result) {
-                                is SubscribeResult.Ok -> "Subscribed to \"${entry.name}\""
-                                is SubscribeResult.Failure -> result.message
-                            },
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+                onBrowse = { entry -> onOpenRepo(entry.manifestUrl) }
             )
 
-            // ── Imported workouts ────────────────────────────────────────────
+            // ── Imported workouts (manage) ───────────────────────────────────
             item {
                 Spacer(Modifier.height(Spacing.s2))
                 SectionHeader(
-                    title = "Imported workouts",
-                    subtitle = if (importedWorkouts.isEmpty()) "Single files you brought in by share, file pick, or QR."
-                    else "${importedWorkouts.size} workout${if (importedWorkouts.size == 1) "" else "s"}"
+                    title = "Your imported workouts",
+                    subtitle = if (importedWorkouts.isEmpty())
+                        "Workouts you've added show up here."
+                    else
+                        "${importedWorkouts.size} workout${if (importedWorkouts.size == 1) "" else "s"}"
                 )
             }
             items(importedWorkouts, key = { "imp-${it.id}" }) { workout ->
@@ -279,21 +241,23 @@ fun LibraryScreen(
             onSubmit = { url ->
                 showAddUrlSheet = false
                 scope.launch {
-                    // Try as repo first, fall back to single workout via
-                    // importer's auto-classification.
+                    // Peek at the URL's payload to decide what to do. A
+                    // manifest hand-off goes to the remote-repo browser
+                    // (rider picks individual workouts there); a single
+                    // workout / list runs through the regular importer.
                     val text = try {
                         app.indoorbike.library.HttpFetcher.getString(url)
                     } catch (t: Throwable) {
                         Toast.makeText(context, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG).show()
                         return@launch
                     }
-                    val result = container.workoutImporter.importJsonText(text)
-                    when (result) {
-                        is ImportResult.Manifest ->
-                            container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = url)
-                        else -> Unit
+                    when (ManifestParser.classify(text)) {
+                        ImportKind.RepositoryManifest -> onOpenRepo(url)
+                        else -> {
+                            val result = container.workoutImporter.importJsonText(text)
+                            handleImportResult(context, container, result)
+                        }
                     }
-                    handleImportResult(context, container, result)
                 }
             }
         )
@@ -373,47 +337,6 @@ private fun SectionHeader(title: String, subtitle: String?) {
 }
 
 @Composable
-private fun SubscribedRepositoryCard(
-    sub: SubscribedRepository,
-    onRefresh: () -> Unit,
-    onUnsubscribe: () -> Unit
-) {
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s2)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = sub.name, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                if (!sub.description.isNullOrBlank()) {
-                    Text(text = sub.description, style = CadenceType.small, color = CadenceColors.Fg3)
-                }
-                Text(
-                    text = "${sub.workoutCount} workouts" +
-                        if (sub.manifestUrl != null) " · ${shortHost(sub.manifestUrl)}" else "",
-                    style = CadenceType.tick,
-                    color = CadenceColors.Fg3
-                )
-            }
-            if (sub.manifestUrl != null) {
-                IconBtn(icon = Icons.Outlined.Refresh, contentDescription = "Refresh", onClick = onRefresh)
-            }
-            IconBtn(
-                icon = Icons.Outlined.DeleteOutline,
-                contentDescription = "Unsubscribe",
-                onClick = onUnsubscribe
-            )
-        }
-    }
-}
-
-@Composable
 private fun ImportedWorkoutRow(name: String, onDelete: () -> Unit) {
     val shape = RoundedCornerShape(Radii.md)
     Row(
@@ -442,8 +365,7 @@ private fun ImportedWorkoutRow(name: String, onDelete: () -> Unit) {
 private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
     state: RegistryState,
     refreshing: Boolean,
-    isSubscribed: (String) -> Boolean,
-    onSubscribe: (RegistryEntry) -> Unit
+    onBrowse: (RegistryEntry) -> Unit
 ) {
     when (state) {
         RegistryState.Initial -> if (refreshing) item { LoadingRow() } else item { RegistryEmpty() }
@@ -453,11 +375,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
                 item { RegistryEmpty() }
             } else {
                 items(repos, key = { "reg-${it.id}" }) { entry ->
-                    RegistryEntryCard(
-                        entry = entry,
-                        subscribed = isSubscribed(entry.id),
-                        onSubscribe = { onSubscribe(entry) }
-                    )
+                    RegistryEntryCard(entry = entry, onBrowse = { onBrowse(entry) })
                 }
             }
         }
@@ -465,11 +383,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
             item { RegistryUnreachable(state.error) }
             state.cachedIndex?.repositories?.let { repos ->
                 items(repos, key = { "reg-cached-${it.id}" }) { entry ->
-                    RegistryEntryCard(
-                        entry = entry,
-                        subscribed = isSubscribed(entry.id),
-                        onSubscribe = { onSubscribe(entry) }
-                    )
+                    RegistryEntryCard(entry = entry, onBrowse = { onBrowse(entry) })
                 }
             }
         }
@@ -479,8 +393,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
 @Composable
 private fun RegistryEntryCard(
     entry: RegistryEntry,
-    subscribed: Boolean,
-    onSubscribe: () -> Unit
+    onBrowse: () -> Unit
 ) {
     val shape = RoundedCornerShape(Radii.md)
     Column(
@@ -489,6 +402,7 @@ private fun RegistryEntryCard(
             .clip(shape)
             .background(CadenceColors.Bg1)
             .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = onBrowse)
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2)
     ) {
@@ -509,26 +423,20 @@ private fun RegistryEntryCard(
                 style = CadenceType.tick,
                 color = CadenceColors.Fg3
             )
-            if (subscribed) {
-                Text(text = "SUBSCRIBED", style = CadenceType.eyebrow, color = CadenceColors.Success)
-            } else {
-                Row(
-                    modifier = Modifier
-                        .clip(CircleShape)
-                        .background(CadenceColors.Brand500.copy(alpha = 0.18f))
-                        .clickable(onClick = onSubscribe)
-                        .padding(horizontal = Spacing.s4, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Outlined.CloudDownload,
-                        contentDescription = null,
-                        tint = CadenceColors.Brand500,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(Modifier.size(6.dp))
-                    Text(text = "Subscribe", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
-                }
+            // Browse pill — visually a button so the card doesn't look
+            // dead. Whole card is clickable too (target the chunk near a
+            // user's thumb), with this acting as the explicit affordance.
+            Row(
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(CadenceColors.Brand500.copy(alpha = 0.18f))
+                    .clickable(onClick = onBrowse)
+                    .padding(horizontal = Spacing.s4, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "Browse", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
+                Spacer(Modifier.size(6.dp))
+                Text(text = "›", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
             }
         }
     }
@@ -616,7 +524,7 @@ private fun AddByUrlSheet(
             Text(text = "Paste a repository or workout URL", style = CadenceType.h2, color = CadenceColors.Fg1)
             Spacer(Modifier.height(Spacing.s2))
             Text(
-                text = "Must be HTTPS. The app figures out whether it's a repository manifest or a single workout.",
+                text = "Must be HTTPS. Workouts import directly. Repository URLs open the browser so you can pick which workouts to add.",
                 style = CadenceType.body,
                 color = CadenceColors.Fg3
             )
@@ -666,7 +574,7 @@ private fun registrySubtitle(state: RegistryState, refreshing: Boolean): String?
     refreshing -> "Fetching…"
     state is RegistryState.Loaded -> "${state.index.repositories.size} available" +
         if (state.fromCache) " · cached" else ""
-    state is RegistryState.Failed -> state.cachedIndex?.let { "Showing cached copy — ${it.repositories.size} available" }
+    state is RegistryState.Failed -> state.cachedIndex?.let { "Showing cached copy. ${it.repositories.size} available." }
         ?: "Registry unavailable"
     else -> null
 }
@@ -691,15 +599,14 @@ private suspend fun handleImportResult(
             ).show()
         }
         is ImportResult.Manifest -> {
-            // Caller may have already subscribed via subscribeFromManifest; if
-            // not, do it now (covers the file-picker path).
-            if (!container.repositoryManager.isSubscribed(result.manifest.id)) {
-                container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = null)
-            }
+            // Reachable from the file picker (somebody picked a manifest.json
+            // on their device). We don't auto-add repos under the explicit-add
+            // model; nudge the user to use the Browse flow instead.
             Toast.makeText(
                 context,
-                "Subscribed to \"${result.manifest.name}\" (${result.manifest.bundles.size} bundle${if (result.manifest.bundles.size == 1) "" else "s"})",
-                Toast.LENGTH_SHORT
+                "\"${result.manifest.name}\" is a community repository. " +
+                    "Tap a Browse card above to pick which workouts to add.",
+                Toast.LENGTH_LONG
             ).show()
         }
         is ImportResult.Failure -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()

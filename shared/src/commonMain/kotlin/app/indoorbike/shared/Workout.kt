@@ -40,9 +40,17 @@ data class Workout(
     val schemaVersion: Int = 1,
     val id: String,
     val name: String,
-    val description: String?,
+    // Defaulted to null so workouts whose JSON omits the field parse cleanly.
+    // Some community bundles ship without descriptions; the website's JS
+    // tolerated the missing field but kotlinx.serialization treats nullable
+    // fields without a default as required in the input.
+    val description: String? = null,
     val screenshot: String? = null,
     val url: String? = null,
+    // Optional free-form labels (e.g. "Threshold", "VO2 Max"). Documented in
+    // the contributor schema; defaulted to empty so older or hand-rolled
+    // bundles without the field still parse.
+    val tags: List<String> = emptyList(),
     val segments: List<PowerZone>
 )
 

@@ -61,7 +61,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.HttpFetcher
 import app.indoorbike.library.ImportResult
-import app.indoorbike.library.SubscribeResult
 import app.indoorbike.library.WorkoutLinkParser
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
@@ -356,15 +355,14 @@ private suspend fun handleScannedUrl(
             if (n == 1) result.workouts.first().id else null
         }
         is ImportResult.Manifest -> {
-            val outcome = container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = sourceUrl)
-            when (outcome) {
-                is SubscribeResult.Ok -> Toast.makeText(
-                    context,
-                    "Subscribed to \"${result.manifest.name}\" (${result.manifest.bundles.size} bundle${if (result.manifest.bundles.size == 1) "" else "s"})",
-                    Toast.LENGTH_SHORT
-                ).show()
-                is SubscribeResult.Failure -> Toast.makeText(context, outcome.message, Toast.LENGTH_LONG).show()
-            }
+            // Repos aren't auto-added under the explicit-add model. Point the
+            // user at More workouts → Browse so they can pick what they want.
+            Toast.makeText(
+                context,
+                "\"${result.manifest.name}\" is a community repository. " +
+                    "Open More workouts and browse it to add individual workouts.",
+                Toast.LENGTH_LONG
+            ).show()
             null
         }
         is ImportResult.Failure -> {
