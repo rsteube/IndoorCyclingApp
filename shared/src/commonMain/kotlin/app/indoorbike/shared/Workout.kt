@@ -29,9 +29,15 @@ data class PowerZone(
 
 /**
  * Represents a structured workout based on power.
+ *
+ * [schemaVersion] is the on-disk format version of this workout file. Older
+ * apps that encounter a workout whose `schemaVersion` exceeds
+ * [WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED] should skip it gracefully. The field
+ * defaults to 1 so files predating its introduction parse cleanly.
  */
 @Serializable
 data class Workout(
+    val schemaVersion: Int = 1,
     val id: String,
     val name: String,
     val description: String?,
@@ -39,3 +45,8 @@ data class Workout(
     val url: String? = null,
     val segments: List<PowerZone>
 )
+
+/** Format version emitted for workouts the app writes today. */
+const val WORKOUT_SCHEMA_VERSION_CURRENT = 1
+/** Highest format version this build can parse — entries above are skipped. */
+const val WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED = 1

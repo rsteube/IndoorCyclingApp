@@ -698,7 +698,7 @@ private suspend fun handleImportResult(
             }
             Toast.makeText(
                 context,
-                "Subscribed to \"${result.manifest.name}\" (${result.manifest.workouts.size} workouts)",
+                "Subscribed to \"${result.manifest.name}\" (${result.manifest.bundles.size} bundle${if (result.manifest.bundles.size == 1) "" else "s"})",
                 Toast.LENGTH_SHORT
             ).show()
         }

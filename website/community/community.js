@@ -132,13 +132,60 @@
     return registryPromise;
   }
 
+  // Highest schema versions this build of the page understands. The Android
+  // app keeps its own constants — we deliberately mirror them here so the
+  // website fails gracefully on a future-format manifest instead of trying
+  // to render an unknown shape.
+  const MAX_MANIFEST_SCHEMA = 2;
+  const MAX_BUNDLE_SCHEMA = 1;
+  const MAX_WORKOUT_SCHEMA = 1;
+
+  /**
+   * Load a repo: fetch the small manifest, then fetch each referenced bundle
+   * (in parallel) and merge their workouts. Bundles whose `schemaVersion`
+   * exceeds [MAX_BUNDLE_SCHEMA] are skipped without download. The returned
+   * object exposes `.workouts` for the rest of the page so existing render
+   * code keeps working unchanged.
+   */
   async function loadManifest(repoId, manifestUrl) {
     if (manifestCache.has(repoId)) return manifestCache.get(repoId);
     const res = await fetch(manifestUrl, { cache: 'default' });
     if (!res.ok) throw new Error(`Manifest HTTP ${res.status}`);
     const manifest = await res.json();
-    manifestCache.set(repoId, manifest);
-    return manifest;
+    if ((manifest.schemaVersion ?? 1) > MAX_MANIFEST_SCHEMA) {
+      throw new Error(
+        `Manifest format v${manifest.schemaVersion} is newer than this site understands.`
+      );
+    }
+    const bundles = Array.isArray(manifest.bundles) ? manifest.bundles : [];
+    const supported = bundles.filter((b) => (b.schemaVersion ?? 1) <= MAX_BUNDLE_SCHEMA);
+    // Parallel fetch — bundles are independent. A single failure logs and
+    // resolves to []; the rest of the repo still renders.
+    const bundleResults = await Promise.all(supported.map((b) =>
+      fetchBundle(resolveBundleUrl(b.url, manifestUrl)).catch((err) => {
+        console.warn(`Bundle "${b.id}" failed: ${err.message || err}`);
+        return [];
+      })
+    ));
+    const workouts = bundleResults.flat()
+      .filter((w) => (w.schemaVersion ?? 1) <= MAX_WORKOUT_SCHEMA);
+    const resolved = Object.assign({}, manifest, { workouts });
+    manifestCache.set(repoId, resolved);
+    return resolved;
+  }
+
+  async function fetchBundle(url) {
+    const res = await fetch(url, { cache: 'default' });
+    if (!res.ok) throw new Error(`Bundle HTTP ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('Bundle must be a JSON array of workouts');
+    return data;
+  }
+
+  function resolveBundleUrl(bundleUrl, manifestUrl) {
+    if (/^https?:\/\//i.test(bundleUrl)) return bundleUrl;
+    const baseEnd = manifestUrl.lastIndexOf('/');
+    return manifestUrl.substring(0, baseEnd + 1) + bundleUrl;
   }
 
   // ── Routing ────────────────────────────────────────────────────────────

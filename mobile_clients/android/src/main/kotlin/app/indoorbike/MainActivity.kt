@@ -265,7 +265,7 @@ class MainActivity : ComponentActivity() {
                 when (outcome) {
                     is app.indoorbike.library.SubscribeResult.Ok -> Toast.makeText(
                         this,
-                        "Subscribed to \"${result.manifest.name}\" (${result.manifest.workouts.size} workouts)",
+                        "Subscribed to \"${result.manifest.name}\" (${result.manifest.bundles.size} bundle${if (result.manifest.bundles.size == 1) "" else "s"})",
                         Toast.LENGTH_SHORT
                     ).show()
                     is app.indoorbike.library.SubscribeResult.Failure -> Toast.makeText(

@@ -80,10 +80,16 @@ class WorkoutLibrary(
     private val rebuildMutex = Mutex()
 
     init {
-        // React to subscribed-repo changes. The aggregate gets rebuilt every
-        // time the user subscribes, unsubscribes, or refreshes a repo.
+        // Rebuild whenever EITHER the subscribed-repo list changes (subscribe /
+        // unsubscribe) OR the on-disk bundle cache changes (a refresh just
+        // wrote new bundle files for an already-subscribed repo). Combining
+        // both avoids missing the second case — the subscription list itself
+        // is unchanged when only bundle contents update.
         scope.launch {
-            repositoryManager.subscribed.collect { rebuild() }
+            kotlinx.coroutines.flow.combine(
+                repositoryManager.subscribed,
+                repositoryManager.cacheTick
+            ) { _, _ -> Unit }.collect { rebuild() }
         }
     }
 

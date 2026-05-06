@@ -160,18 +160,22 @@ The Rides list aggregates workouts from three sources, all merged through [`Work
 
 1. **Bundled** — JSON files in `assets/workouts*.json`. Loaded once at startup via the same shared `WorkoutRepository.parseWorkouts()` parser as before.
 2. **Imported** — JSON files persisted to `filesDir/user_workouts/<sanitised-id>.json` by [`WorkoutImporter`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt). Atomic write via `tmp` + rename. Filename uses the workout's own id so re-importing is idempotent.
-3. **Subscribed repositories** — workouts cached at `filesDir/repos/<sanitised-id>/manifest.json` by [`RepositoryManager`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt). The manifest embeds workouts inline (single HTTP fetch).
+3. **Subscribed repositories** — bandwidth-aware bundle sync managed by [`RepositoryManager`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt). On-disk layout per subscribed repo: `filesDir/repos/<sanitised-id>/{manifest.json, versions.json, bundles/<bundle-id>.json}`. The lightweight manifest is fetched on subscribe / refresh; per-bundle content is downloaded only when its `version` increases vs the local `versions.json`.
 
 Duplicate workout ids are de-duped first-wins with priority **Imported > Subscribed > Bundled** — an explicit user import wins over a bundled or subscribed copy with the same id.
 
-**Source attribution** — `WorkoutLibrary.entries` exposes a `StateFlow<List<WorkoutEntry>>` where each entry carries a `WorkoutSource` (`Bundled` / `Imported` / `Repository(id, name)`). The Rides list tag-eyebrow row appends "· IMPORTED" or "· STARTER PACK" in ember accent for non-bundled workouts; bundled stay clean.
+**Source attribution** — `WorkoutLibrary.entries` exposes a `StateFlow<List<WorkoutEntry>>` where each entry carries a `WorkoutSource` (`Bundled` / `Imported` / `Repository(id, name)`). The Rides list tag-eyebrow row appends "· IMPORTED" or "· STARTER PACK" in ember accent for non-bundled workouts; bundled stay clean. The library `combine`s `RepositoryManager.subscribed` with `RepositoryManager.cacheTick` so a bundle re-download triggers a rebuild even when the subscription set itself is unchanged.
 
-**On-disk schemas** (both versioned `schemaVersion: 1`, defined in [`shared/.../repo/Manifests.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/repo/Manifests.kt)):
+**On-disk schemas** (defined in [`shared/.../repo/Manifests.kt`](shared/src/commonMain/kotlin/app/indoorbike/shared/repo/Manifests.kt)):
 
-- `RepositoryManifest` — `id`, `name`, `description?`, `author?`, `homepage?`, `updatedEpoch?`, `workouts: List<Workout>` (full workouts, not refs).
+- `RepositoryManifest` (schemaVersion **2**, current) — `id`, `name`, `description?`, `author?`, `homepage?`, `updatedEpoch?`, **`bundles: List<WorkoutBundleEntry>`**. The manifest itself contains no segments; that's the whole point of v2.
+- `WorkoutBundleEntry` — `id`, `name?`, `schemaVersion` (bundle file format, currently 1 = bare JSON array of `Workout` objects), `version` (content version — bumped on any change to any workout in the bundle), `url` (absolute or relative to the manifest URL).
+- `Workout` (schemaVersion **1**) — `schemaVersion: Int = 1`, `id`, `name`, `description?`, `screenshot?`, `url?`, `segments: List<PowerZone>`. Workouts whose `schemaVersion` exceeds `WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED` are silently skipped at parse time so future formats can land in an existing bundle without breaking older clients.
 - `RegistryIndex` — `repositories: List<RegistryEntry>` where each entry has `id`, `name`, `description?`, `author?`, `manifestUrl`, `tags`.
 
-`ManifestParser.classify(text)` heuristically identifies whether arbitrary JSON is a single workout, list of workouts, repository manifest, or registry index — used by the universal import pipeline so the user doesn't pick a mode up front.
+**Schema version v1 (legacy, no longer accepted)**: workouts were embedded inline in the manifest. `parseRepositoryManifest` throws on any `schemaVersion > REPO_MANIFEST_SCHEMA_VERSION_MAX_SUPPORTED` — pre-launch break, no migration path, repos must move to v2.
+
+`ManifestParser.classify(text)` heuristically identifies whether arbitrary JSON is a single workout, list of workouts (= a bundle), repository manifest (top-level `bundles` key), or registry index — used by the universal import pipeline so the user doesn't pick a mode up front.
 
 **Community registry URL** — hardcoded `BuildConfig.REGISTRY_URL = "https://indoorbike.app/registry.json"` ([app/build.gradle.kts](mobile_clients/android/build.gradle.kts)). Absence is graceful: `RepositoryManager.refreshRegistry()` returns `RegistryState.Failed(error, cachedIndex)` and the Library's "Browse community" section shows an empty hint pointing at the Scan QR / Add by URL escape hatches. When the URL goes live, the next refresh picks it up automatically — no app update needed.
 

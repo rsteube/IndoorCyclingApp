@@ -360,7 +360,7 @@ private suspend fun handleScannedUrl(
             when (outcome) {
                 is SubscribeResult.Ok -> Toast.makeText(
                     context,
-                    "Subscribed to \"${result.manifest.name}\" (${result.manifest.workouts.size} workouts)",
+                    "Subscribed to \"${result.manifest.name}\" (${result.manifest.bundles.size} bundle${if (result.manifest.bundles.size == 1) "" else "s"})",
                     Toast.LENGTH_SHORT
                 ).show()
                 is SubscribeResult.Failure -> Toast.makeText(context, outcome.message, Toast.LENGTH_LONG).show()
