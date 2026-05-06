@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contribute a community repository — Indoor Bike</title>
+  <meta name="description" content="How to publish your own workout repository for the Indoor Bike community — manifest format, hosting, and submission process.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="community.css">
+  <link rel="stylesheet" href="contribute.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="../" aria-label="Indoor Bike home">
+        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../#features">Features</a>
+        <a href="../#how">How it works</a>
+        <a href="../#privacy">Privacy</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="index.html">Community</a>
+        <a href="../#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-primary" aria-disabled="true" href="../#download">
+        Download <span class="btn-tag">soon</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="community-main contribute-main">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="index.html">Community</a>
+      <span class="sep">›</span>
+      <span>Contribute</span>
+    </nav>
+
+    <p class="eyebrow">Contribute</p>
+    <h1 class="page-title">Publish a workout pack.</h1>
+    <p class="page-lead">
+      Anyone can run a community repository — a coach with a structured plan, a
+      training group sharing their winter intervals, or a single rider who's
+      built a pack worth handing out. The process is two static JSON files
+      and a pull request.
+    </p>
+
+    <!-- ── At-a-glance ───────────────────────────────────────────────── -->
+    <section class="contribute-section">
+      <h2>The shape of the deal</h2>
+      <ol class="numbered-list">
+        <li>
+          <strong>You write a <code>manifest.json</code></strong> describing your
+          repository (name, author, homepage) with all your workouts embedded
+          inline.
+        </li>
+        <li>
+          <strong>You host it</strong> over HTTPS — anywhere that serves a JSON
+          file with permissive CORS. GitHub Pages, Codeberg Pages, your own
+          web folder.
+        </li>
+        <li>
+          <strong>You open a pull request</strong> against this app's
+          <a href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp" target="_blank" rel="noopener">Codeberg repository</a>
+          adding a single entry to <code>website/registry.json</code> that
+          points at your manifest URL.
+        </li>
+        <li>
+          On merge, your repository shows up in the community browser and is
+          subscribable from inside the app.
+        </li>
+      </ol>
+    </section>
+
+    <!-- ── The manifest format ──────────────────────────────────────── -->
+    <section class="contribute-section">
+      <h2>1. Write your manifest</h2>
+      <p>
+        A repository manifest is one JSON file that bundles your repo's metadata
+        with all of its workouts inline — one HTTP request, no follow-up fetches.
+      </p>
+
+      <h3>Top-level fields</h3>
+      <div class="schema-table">
+        <div class="schema-row schema-head">
+          <span>Field</span><span>Type</span><span>Required</span><span>Notes</span>
+        </div>
+        <div class="schema-row">
+          <span><code>schemaVersion</code></span><span>integer</span><span>yes</span>
+          <span>Always <code>1</code> for now.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>id</code></span><span>string</span><span>yes</span>
+          <span>Stable, unique identifier (kebab-case). Used as a folder name and as the dedup key, so don't change it after publishing.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>name</code></span><span>string</span><span>yes</span>
+          <span>What's shown on the card. Up to about 40 characters reads well.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>description</code></span><span>string</span><span>no</span>
+          <span>One or two sentences. Plain text — no markdown.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>author</code></span><span>string</span><span>no</span>
+          <span>Your name, your collective, or your handle.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>homepage</code></span><span>string (URL)</span><span>no</span>
+          <span>Optional link from the repo card to your site.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>updatedEpoch</code></span><span>integer (ms)</span><span>no</span>
+          <span>Unix epoch in milliseconds. Lets the app show "updated 3 days ago".</span>
+        </div>
+        <div class="schema-row">
+          <span><code>workouts</code></span><span>array</span><span>yes</span>
+          <span>The workouts themselves — see below.</span>
+        </div>
+      </div>
+
+      <h3>Each workout</h3>
+      <div class="schema-table">
+        <div class="schema-row schema-head">
+          <span>Field</span><span>Type</span><span>Required</span><span>Notes</span>
+        </div>
+        <div class="schema-row">
+          <span><code>id</code></span><span>string</span><span>yes</span>
+          <span>Unique within your repo. Prefix it with your repo id to avoid collisions with the bundled or other-repo workouts (e.g. <code>"alpine-tempo-3x10"</code> rather than just <code>"tempo-3x10"</code>).</span>
+        </div>
+        <div class="schema-row">
+          <span><code>name</code></span><span>string</span><span>yes</span>
+          <span>Display name. Keep it short — it shows on small cards.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>description</code></span><span>string</span><span>no</span>
+          <span>Why someone would ride this. One paragraph max.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>tags</code></span><span>array&lt;string&gt;</span><span>no</span>
+          <span>Free-form labels: "Threshold", "VO2 Max", "Recovery", etc.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>segments</code></span><span>array</span><span>yes</span>
+          <span>Sequential intervals. Each has <code>lengthInSeconds</code> (1–14400), <code>powerPercentFTP</code> (0–300), and <code>intervalType: "CONSTANT"</code>.</span>
+        </div>
+      </div>
+
+      <h3>Example manifest</h3>
+      <p class="muted">
+        A complete, valid manifest you can copy and edit. Five segments, two minutes, ridable.
+      </p>
+      <pre class="code-block"><code>{
+  "schemaVersion": 1,
+  "id": "alpine-coach",
+  "name": "Alpine Coach",
+  "description": "Threshold and VO2 work tuned for stage racers.",
+  "author": "Alpine Coach Collective",
+  "homepage": "https://alpinecoach.example",
+  "updatedEpoch": 1746547200000,
+  "workouts": [
+    {
+      "id": "alpine-warmup-2min",
+      "name": "Quick Warmup",
+      "description": "Two-minute pre-effort opener.",
+      "tags": ["Warm-up"],
+      "segments": [
+        { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
+        { "lengthInSeconds": 60, "powerPercentFTP": 75, "intervalType": "CONSTANT" }
+      ]
+    }
+  ]
+}</code></pre>
+      <p>
+        For a longer reference, see the
+        <a href="indoorbike-starter.json" target="_blank">starter pack manifest</a>
+        — six workouts spanning warm-up through VO2.
+      </p>
+    </section>
+
+    <!-- ── Hosting ───────────────────────────────────────────────────── -->
+    <section class="contribute-section">
+      <h2>2. Host it</h2>
+      <p>
+        The app fetches your manifest over plain HTTPS. Anywhere that serves
+        static JSON works — what matters is two things:
+      </p>
+      <ul class="bullet-list">
+        <li>
+          <strong>HTTPS only.</strong> The app rejects <code>http://</code>
+          on import (defense against tampering on hostile networks).
+        </li>
+        <li>
+          <strong>CORS.</strong> Your host must send
+          <code>Access-Control-Allow-Origin: *</code> (or include
+          <code>indoorbike.app</code>) so the community browser's
+          <code>fetch()</code> can read your manifest. Without this, your
+          repo will work in the Android app but won't preview on the website.
+          GitHub Pages, Codeberg Pages, and Cloudflare Pages all set this
+          header by default for static files.
+        </li>
+      </ul>
+      <p class="muted">
+        Test your URL by opening it directly in a browser. If you see your
+        JSON, you're good. If you see "blocked by CORS" in the devtools
+        console, fix your host's headers.
+      </p>
+    </section>
+
+    <!-- ── Submission ────────────────────────────────────────────────── -->
+    <section class="contribute-section">
+      <h2>3. Submit to the registry</h2>
+      <p>
+        Listing your repo in the community browser is a one-line addition to
+        <code>website/registry.json</code>. Open a pull request on the
+        <a href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp" target="_blank" rel="noopener">app's Codeberg repository</a>:
+      </p>
+      <ol class="numbered-list">
+        <li>Fork the repository.</li>
+        <li>
+          Edit <code>website/registry.json</code> — append a new entry to the
+          <code>repositories</code> array. The fields:
+          <pre class="code-block code-inline-block"><code>{
+  "id": "alpine-coach",
+  "name": "Alpine Coach",
+  "description": "Threshold and VO2 work tuned for stage racers.",
+  "author": "Alpine Coach Collective",
+  "manifestUrl": "https://alpinecoach.example/manifest.json",
+  "tags": ["Threshold", "VO2 Max"],
+  "homepage": "https://alpinecoach.example"
+}</code></pre>
+          The <code>id</code> here must match the <code>id</code> in your
+          manifest. <code>tags</code> here are repo-level (shown on the card);
+          they're independent from per-workout tags.
+        </li>
+        <li>
+          Open a pull request with a short note about who you are and what the
+          pack covers.
+        </li>
+      </ol>
+      <p>
+        On merge, your repo appears in the community list within minutes (just
+        a static-site rebuild). No backend, no account, no review queue beyond
+        a quick sanity check that the manifest URL is reachable and the JSON
+        parses.
+      </p>
+    </section>
+
+    <!-- ── Maintaining ───────────────────────────────────────────────── -->
+    <section class="contribute-section">
+      <h2>Updating after publication</h2>
+      <ul class="bullet-list">
+        <li>
+          <strong>Adding or editing workouts:</strong> just update your hosted
+          manifest. The app re-fetches on demand and via the Refresh button in
+          Library → Subscribed repositories.
+        </li>
+        <li>
+          <strong>Renaming or rebranding:</strong> change the manifest's
+          <code>name</code>, <code>description</code>, etc. — but
+          <em>don't change the <code>id</code></em>. The id is the identity;
+          changing it makes the app think it's a different repo.
+        </li>
+        <li>
+          <strong>Removing a workout:</strong> just drop it from the
+          <code>workouts</code> array. Existing subscribers won't see it next
+          refresh. Past rides of that workout stay in their history.
+        </li>
+        <li>
+          <strong>Bumping <code>updatedEpoch</code>:</strong> optional, but
+          worth setting on each release so users see "updated 2 days ago"
+          rather than a stale timestamp.
+        </li>
+      </ul>
+    </section>
+
+    <!-- ── Style notes ───────────────────────────────────────────────── -->
+    <section class="contribute-section">
+      <h2>Style guidelines (suggestions, not gates)</h2>
+      <ul class="bullet-list">
+        <li>
+          <strong>Prefix workout ids with your repo id.</strong> Two repos
+          shipping <code>"tempo-3x10"</code> would clash inside the app, and
+          the dedup rule (Imported &gt; Subscribed &gt; Bundled, first-wins)
+          may not pick the one your user wanted.
+        </li>
+        <li>
+          <strong>Keep <code>powerPercentFTP</code> realistic.</strong> The
+          app accepts 0–300, but anything above ~150 is sprint territory and
+          most trainers will struggle to actually deliver it in ERG.
+        </li>
+        <li>
+          <strong>Open with a warm-up, close with a cool-down.</strong> Saves
+          your riders from cold-start TSS spikes.
+        </li>
+        <li>
+          <strong>Plain-text descriptions.</strong> Markdown isn't rendered
+          anywhere; line breaks are.
+        </li>
+      </ul>
+    </section>
+
+    <p class="cta-row">
+      <a class="btn btn-primary" href="index.html">← Back to community</a>
+      <a class="btn btn-secondary" href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp" target="_blank" rel="noopener">Open on Codeberg ↗</a>
+    </p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Indoor Bike · indoorbike.app</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="index.html">Community</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

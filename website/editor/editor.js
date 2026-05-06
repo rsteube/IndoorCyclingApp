@@ -861,6 +861,42 @@
   function b64urlEncode(str) {
     return b64urlEncodeBytes(new TextEncoder().encode(str));
   }
+  function b64urlDecodeBytes(str) {
+    const padded = str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4);
+    const bin = atob(padded);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes;
+  }
+
+  /**
+   * Decode an inbound `#wz=…` (gzipped) or `#w=…` (plain) hash payload.
+   * Used when the user arrives via "Open in editor" from the community
+   * browser — same wire format the share page and Android app accept, so
+   * one URL works everywhere a workout might land.
+   * Returns the parsed workout, or null if no usable payload is present.
+   */
+  function readWorkoutFromHash() {
+    const raw = (location.hash || '').replace(/^#/, '');
+    if (!raw) return null;
+    const wz = raw.match(/(?:^|&)wz=([^&]+)/);
+    if (wz && typeof pako !== 'undefined' && pako.ungzip) {
+      try {
+        const json = pako.ungzip(b64urlDecodeBytes(decodeURIComponent(wz[1])), { to: 'string' });
+        const obj = JSON.parse(json);
+        if (obj && Array.isArray(obj.segments)) return obj;
+      } catch (_) { /* fall through to plain form */ }
+    }
+    const w = raw.match(/(?:^|&)w=([^&]+)/);
+    if (w) {
+      try {
+        const json = new TextDecoder().decode(b64urlDecodeBytes(decodeURIComponent(w[1])));
+        const obj = JSON.parse(json);
+        if (obj && Array.isArray(obj.segments)) return obj;
+      } catch (_) { /* ignore */ }
+    }
+    return null;
+  }
   /**
    * Build the share URL. We gzip-then-base64url the JSON whenever pako is
    * loaded — typical workout JSON has so many repeated keys that this cuts
@@ -1079,6 +1115,36 @@
   // ── Init ────────────────────────────────────────────────────────────────
   function init() {
     hydrate();
+
+    // If the URL has a workout in the hash (the "Open in editor" handoff
+    // from the community browser), use it instead of localStorage. When the
+    // user already has unsaved work, ask before clobbering — same posture as
+    // resetAll. The hash is cleared either way so a refresh doesn't re-prompt.
+    const hashWorkout = (typeof readWorkoutFromHash === 'function') ? readWorkoutFromHash() : null;
+    if (hashWorkout) {
+      const hasExistingWork = state.segments.length > 0 || state.name || state.description;
+      const incomingName = hashWorkout.name || 'this workout';
+      const proceed = !hasExistingWork ||
+        confirm(`Replace your current workout with "${incomingName}"?`);
+      // Always clear the hash so a refresh / share doesn't keep re-prompting,
+      // even if the user said no.
+      try { history.replaceState(null, '', location.pathname); } catch (_) {}
+      if (proceed) {
+        state.name = hashWorkout.name || '';
+        state.description = hashWorkout.description || '';
+        state.tags = Array.isArray(hashWorkout.tags) ? hashWorkout.tags : [];
+        state.segments = hashWorkout.segments
+          .filter(s => s && Number.isFinite(s.lengthInSeconds) && Number.isFinite(s.powerPercentFTP))
+          .map(s => ({
+            id: nextId(),
+            lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10), 0, 60 * 60 * 4),
+            powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10), 0, 300),
+          }));
+        state.selectedIds = new Set();
+        persist();
+      }
+    }
+
     if (state.segments.length === 0 && !state.name && !state.description) {
       state.name = 'My workout';
       state.segments = [

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Community workouts — Indoor Bike</title>
+  <meta name="description" content="Browse the community-curated workout repositories for the Indoor Bike app. Open any workout in the editor, download as JSON, or send to your phone.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="community.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="../" aria-label="Indoor Bike home">
+        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../#features">Features</a>
+        <a href="../#how">How it works</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="index.html" aria-current="page">Community</a>
+      </nav>
+      <a class="btn btn-primary" aria-disabled="true" href="../#download">
+        Download <span class="btn-tag">soon</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="community-main">
+    <!-- Crumbs (rendered by JS based on hash route). -->
+    <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+
+    <!-- The three views are rendered into these slots; only one is visible
+         at a time, picked by the hash route. -->
+    <section id="view-registry" class="view" hidden>
+      <div class="page-head">
+        <div>
+          <p class="eyebrow">Community workouts</p>
+          <h1 class="page-title">Browse repositories.</h1>
+        </div>
+        <a class="head-action" href="contribute.html">
+          Publish your own <span class="arrow">→</span>
+        </a>
+      </div>
+      <p class="page-lead">
+        Curated workout collections from coaches and the wider Indoor Bike
+        community. Pick a repo to flip through its rides, then send any
+        workout to your phone or open it in the editor to make it yours.
+      </p>
+      <div class="state" id="registry-state"><!-- loading / loaded / error --></div>
+    </section>
+
+    <section id="view-repo" class="view" hidden>
+      <p class="eyebrow" id="repo-eyebrow">Repository</p>
+      <h1 class="page-title" id="repo-title">…</h1>
+      <p class="page-lead" id="repo-description"></p>
+      <p class="repo-meta" id="repo-meta"></p>
+      <div class="state" id="repo-state"></div>
+    </section>
+
+    <section id="view-workout" class="view" hidden>
+      <p class="eyebrow" id="workout-eyebrow">Workout</p>
+      <h1 class="page-title" id="workout-title">…</h1>
+      <p class="page-lead" id="workout-description"></p>
+      <div class="state" id="workout-state"></div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Indoor Bike · indoorbike.app</span>
+      <div class="footer-links">
+        <a href="../">Home</a>
+        <a href="../editor/index.html">Editor</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- pako_deflate is what the editor uses to build #wz= URLs. We need it
+       here too so "Open in editor" / "Send to phone" links can reuse the
+       same compact compressed encoding. -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako_deflate.min.js"></script>
+  <script src="community.js"></script>
+</body>
+</html>

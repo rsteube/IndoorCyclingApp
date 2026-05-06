@@ -186,7 +186,10 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako_deflate.min.js"></script>
+  <!-- Full pako (deflate + inflate) so the editor can both build #wz= URLs
+       for QR / share-to-phone and decode them when arriving from the
+       community browser via "Open in editor". -->
+  <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
   <script src="editor.js"></script>
 </body>
 </html>
