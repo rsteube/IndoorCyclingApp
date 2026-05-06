@@ -10,6 +10,15 @@
       "manifestUrl": "https://indoorbike.app/community/indoorbike-starter.json",
       "tags": ["Starter", "Threshold", "VO2 Max", "Endurance"],
       "homepage": "https://indoorbike.app"
+    },
+    {
+      "id": "juhani-indoor-workouts",
+      "name": "Juhani's Indoor Workouts",
+      "description": "A curated set of indoor cycling workouts covering recovery, endurance, tempo, threshold, VO2 max, anaerobic, and sprint sessions.",
+      "author": "Juhani Lehtimäki",
+      "manifestUrl": "https://raw.codeberg.page/juhanilehtimaki/community_indoor_cycling_workouts/manifest.json",
+      "tags": ["Recovery", "Endurance", "Tempo", "Threshold", "VO2 Max", "Anaerobic", "Sprint"],
+      "homepage": "https://codeberg.org/juhanilehtimaki/community_indoor_cycling_workouts"
     }
   ]
 }
