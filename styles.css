@@ -428,6 +428,53 @@ section { padding: var(--s-10) 0; }
   letter-spacing: 0.02em;
 }
 
+/* ---------- Library paths (Workout library section, two-card row) ---------- */
+.library-paths {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-5);
+  margin-top: var(--s-7);
+}
+@media (max-width: 720px) {
+  .library-paths { grid-template-columns: 1fr; }
+}
+.library-path {
+  background: var(--bg-1);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md);
+  padding: var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              transform var(--dur-fast) var(--ease-out);
+}
+.library-path:hover {
+  border-color: var(--line-3);
+  transform: translateY(-2px);
+}
+.library-path .eyebrow { margin: 0; }
+.library-path h3 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 24px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0;
+  color: var(--fg-1);
+}
+.library-path p {
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 14px;
+  line-height: 1.6;
+  flex-grow: 1;
+}
+.library-path .btn {
+  align-self: flex-start;
+  margin-top: var(--s-2);
+}
+
 /* ---------- Zone legend ---------- */
 .zone-legend {
   display: flex;
