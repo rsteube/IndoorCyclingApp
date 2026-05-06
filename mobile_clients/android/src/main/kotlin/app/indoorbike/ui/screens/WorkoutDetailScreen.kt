@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Juhani Lehtimäki
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package app.indoorbike.ui.screens
 
 import androidx.compose.foundation.background
@@ -27,6 +42,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -78,6 +95,8 @@ fun WorkoutDetailScreen(
 ) {
     val container = LocalAppContainer.current
     val ftp by container.userSettings.ftp.collectAsState()
+    val favouriteIds by container.userSettings.favouriteWorkoutIds.collectAsState()
+    val isFavourite = workout.id in favouriteIds
     val trainerState by container.trainerManager.connectionState.collectAsState()
     val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
     val isTrainerReady = trainerState == TrainerConnectionState.Connected || isMockTrainer
@@ -101,36 +120,46 @@ fun WorkoutDetailScreen(
             leading = {
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
             },
-            trailing = if (isImported) {
-                {
-                    Box {
-                        IconBtn(
-                            icon = Icons.Outlined.MoreVert,
-                            contentDescription = "Workout actions",
-                            onClick = { menuExpanded = true }
-                        )
-                        DropdownMenu(
-                            expanded = menuExpanded,
-                            onDismissRequest = { menuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Rename", color = CadenceColors.Fg1) },
-                                onClick = {
-                                    menuExpanded = false
-                                    showRenameDialog = true
-                                }
+            trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBtn(
+                        icon = if (isFavourite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
+                        tint = if (isFavourite) CadenceColors.Danger else CadenceColors.Fg2,
+                        onClick = {
+                            container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
+                        }
+                    )
+                    if (isImported) {
+                        Box {
+                            IconBtn(
+                                icon = Icons.Outlined.MoreVert,
+                                contentDescription = "Workout actions",
+                                onClick = { menuExpanded = true }
                             )
-                            DropdownMenuItem(
-                                text = { Text("Delete", color = CadenceColors.Danger) },
-                                onClick = {
-                                    menuExpanded = false
-                                    showDeleteDialog = true
-                                }
-                            )
+                            DropdownMenu(
+                                expanded = menuExpanded,
+                                onDismissRequest = { menuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Rename", color = CadenceColors.Fg1) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showRenameDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Delete", color = CadenceColors.Danger) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        showDeleteDialog = true
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-            } else null
+            }
         )
 
         LazyColumn(

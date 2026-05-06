@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Juhani Lehtimäki
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package app.indoorbike.ui.screens
 
 import android.Manifest
@@ -84,6 +99,11 @@ import app.indoorbike.ui.theme.Spacing
 
 private const val STARTER_WORKOUT_ID = "starter-15min"
 
+private const val FILTER_ALL = "All"
+// Heart prefix doubles as the visual cue so the chip strip doesn't need a
+// separate icon slot. Persisted nowhere — it's just a UI label.
+private const val FILTER_FAVOURITES = "♥ Favourites"
+
 @Composable
 fun WorkoutListScreen(
     entries: List<WorkoutEntry>,
@@ -96,16 +116,34 @@ fun WorkoutListScreen(
     val container = LocalAppContainer.current
     var selectedFilter by remember { mutableStateOf("All") }
     val ftp by container.userSettings.ftp.collectAsState()
+    val favouriteIds by container.userSettings.favouriteWorkoutIds.collectAsState()
     val workouts = remember(entries) { entries.map { it.workout } }
     val sourceById = remember(entries) { entries.associate { it.workout.id to it.source } }
     val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }
-    val availableTags = remember(summaries) {
-        // Derive filter chips from the actual workouts present, not a hardcoded list.
-        listOf("All") + summaries.map { it.tag }.distinct().sorted()
+    // "Favourites" lives between "All" and the tag chips. Hidden until the
+    // rider has actually starred something so the chip strip doesn't carry a
+    // permanently-empty filter for first-time users.
+    val availableTags = remember(summaries, favouriteIds) {
+        val tagChips = summaries.map { it.tag }.distinct().sorted()
+        buildList {
+            add(FILTER_ALL)
+            if (favouriteIds.isNotEmpty()) add(FILTER_FAVOURITES)
+            addAll(tagChips)
+        }
     }
-    val visible = remember(summaries, selectedFilter) {
-        if (selectedFilter == "All") summaries
-        else summaries.filter { it.tag.equals(selectedFilter, ignoreCase = true) }
+    val visible = remember(summaries, selectedFilter, favouriteIds) {
+        when (selectedFilter) {
+            FILTER_ALL -> summaries
+            FILTER_FAVOURITES -> summaries.filter { it.workout.id in favouriteIds }
+            else -> summaries.filter { it.tag.equals(selectedFilter, ignoreCase = true) }
+        }
+    }
+    // If the user starred everything and then unstars while the Favourites
+    // filter is active, the chip vanishes and `selectedFilter` is stranded.
+    // Snap back to "All" so the empty chip strip doesn't show no rows for an
+    // option that no longer exists.
+    if (selectedFilter == FILTER_FAVOURITES && favouriteIds.isEmpty()) {
+        selectedFilter = FILTER_ALL
     }
 
     val hrmState by container.heartRateMonitor.connectionState.collectAsState()

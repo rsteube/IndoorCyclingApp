@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Juhani Lehtimäki
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package app.indoorbike.settings
 
 import android.content.Context
@@ -7,6 +22,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import app.indoorbike.shared.settings.DEFAULT_FTP
 import app.indoorbike.shared.settings.DEFAULT_MAX_HR
@@ -82,6 +98,9 @@ class AndroidUserSettings(
     private val _intervalsAutoUpload = MutableStateFlow(initialPrefs[KEY_INTERVALS_AUTO] ?: false)
     override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
 
+    private val _favouriteWorkoutIds = MutableStateFlow<Set<String>>(initialPrefs[KEY_FAVOURITES] ?: emptySet())
+    override val favouriteWorkoutIds: StateFlow<Set<String>> = _favouriteWorkoutIds.asStateFlow()
+
     init {
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
@@ -131,6 +150,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_INTERVALS_AUTO] ?: false }.collect { value ->
                 if (value != _intervalsAutoUpload.value) _intervalsAutoUpload.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FAVOURITES] ?: emptySet() }.collect { value ->
+                if (value != _favouriteWorkoutIds.value) _favouriteWorkoutIds.value = value
             }
         }
     }
@@ -212,6 +236,17 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_INTERVALS_AUTO] = value } }
     }
 
+    override fun setWorkoutFavourite(workoutId: String, favourite: Boolean) {
+        val current = _favouriteWorkoutIds.value
+        // No-op fast path: avoids both an unnecessary StateFlow emission and a
+        // disk write for the common "already in this state" tap (e.g. the
+        // favourite icon being toggled by recompositions).
+        if (favourite == workoutId in current) return
+        val updated = if (favourite) current + workoutId else current - workoutId
+        _favouriteWorkoutIds.value = updated
+        scope.launch { store.edit { it[KEY_FAVOURITES] = updated } }
+    }
+
     fun dispose() {
         scope.cancel()
     }
@@ -231,5 +266,6 @@ class AndroidUserSettings(
         private val KEY_INTERVALS_ATHLETE = stringPreferencesKey("intervals_athlete_id")
         private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
         private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
+        private val KEY_FAVOURITES = stringSetPreferencesKey("favourite_workout_ids")
     }
 }

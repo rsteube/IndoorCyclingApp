@@ -1,3 +1,18 @@
+/*
+ * Copyright (C) 2026 Juhani Lehtimäki
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
 package app.indoorbike.shared.settings
 
 import kotlinx.coroutines.flow.StateFlow
@@ -58,6 +73,15 @@ interface UserSettings {
     /** When true, finished rides upload to Intervals.icu automatically. */
     val intervalsAutoUpload: StateFlow<Boolean>
     fun setIntervalsAutoUpload(value: Boolean)
+
+    // ── Favourite workouts ────────────────────────────────────────────────
+    // The set of workout ids the rider has starred. Persisted as a flat set
+    // of strings on disk so source of the workout (bundled / imported /
+    // subscribed) doesn't matter — favouriting a workout you imported and
+    // later removed leaves a stale id, which the UI just filters out.
+
+    val favouriteWorkoutIds: StateFlow<Set<String>>
+    fun setWorkoutFavourite(workoutId: String, favourite: Boolean)
 }
 
 /** FTP fallback used when a new rider taps "I don't know my FTP" in onboarding. */
