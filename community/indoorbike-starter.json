@@ -1,101 +1,18 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "indoorbike-starter",
   "name": "Indoor Bike Starter Pack",
   "description": "Classic structured workouts spanning the four headline zones: endurance, sweet spot, threshold, and VO2 max. The same set the app ships with, mirrored here so you can preview, edit, or send any of them to your phone before you install.",
   "author": "Indoor Bike",
   "homepage": "https://indoorbike.app",
   "updatedEpoch": 1746547200000,
-  "workouts": [
+  "bundles": [
     {
-      "id": "starter-15min",
-      "name": "First Spin",
-      "description": "A welcoming 15-minute introduction. Easy warmup, then short tastes of tempo, threshold, and sweet-spot zones with plenty of recovery in between — so you can feel what each zone is like without committing to a hard ride.",
-      "tags": ["Warm-up", "Endurance", "Threshold"],
-      "segments": [
-        { "lengthInSeconds": 180, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 120, "powerPercentFTP": 60, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 90,  "powerPercentFTP": 80, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60,  "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 90,  "powerPercentFTP": 95, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60,  "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 90,  "powerPercentFTP": 88, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60,  "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 150, "powerPercentFTP": 45, "intervalType": "CONSTANT" }
-      ]
-    },
-    {
-      "id": "sample-1001",
-      "name": "Endurance Base Builder",
-      "description": "A steady ride to build aerobic capacity without building up too much fatigue.",
-      "tags": ["Endurance"],
-      "segments": [
-        { "lengthInSeconds": 300, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 1200, "powerPercentFTP": 65, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 50, "intervalType": "CONSTANT" }
-      ]
-    },
-    {
-      "id": "sample-1002",
-      "name": "Threshold Intervals 3x5",
-      "description": "Three sets of 5-minute efforts right at FTP to push your threshold power higher.",
-      "tags": ["Threshold"],
-      "segments": [
-        { "lengthInSeconds": 300, "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 100, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 180, "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 100, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 180, "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 100, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 50, "intervalType": "CONSTANT" }
-      ]
-    },
-    {
-      "id": "sample-1003",
-      "name": "VO2 Max Bursts",
-      "description": "Short, intense one-minute bursts well above FTP to increase your maximum oxygen uptake.",
-      "tags": ["VO2 Max"],
-      "segments": [
-        { "lengthInSeconds": 300, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 120, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 120, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 120, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 120, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 120, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 45, "intervalType": "CONSTANT" }
-      ]
-    },
-    {
-      "id": "sample-1004",
-      "name": "Sweet Spot Surges",
-      "description": "Two 10-minute blocks in the sweet spot zone (88% FTP) to increase muscular endurance.",
-      "tags": ["Sweet Spot"],
-      "segments": [
-        { "lengthInSeconds": 420, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 600, "powerPercentFTP": 88, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 600, "powerPercentFTP": 88, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 45, "intervalType": "CONSTANT" }
-      ]
-    },
-    {
-      "id": "sample-1005",
-      "name": "Over-Under Cruisers",
-      "description": "A workout designed to teach your body to clear lactate by oscillating just above and below FTP.",
-      "tags": ["Threshold"],
-      "segments": [
-        { "lengthInSeconds": 300, "powerPercentFTP": 55, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 120, "powerPercentFTP": 105, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 120, "powerPercentFTP": 95, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 120, "powerPercentFTP": 105, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 120, "powerPercentFTP": 95, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 120, "powerPercentFTP": 105, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 300, "powerPercentFTP": 50, "intervalType": "CONSTANT" }
-      ]
+      "id": "main",
+      "name": "Indoor Bike Starter Pack — main bundle",
+      "schemaVersion": 1,
+      "version": 1,
+      "url": "indoorbike-starter/main.json"
     }
   ]
 }

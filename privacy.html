@@ -87,7 +87,7 @@
       <p>
         Indoor Bike stores everything on your device. We don't run a server,
         we don't have analytics, we don't have accounts. The only time data
-        leaves your phone is when you explicitly ask it to — uploading a ride
+        leaves your phone is when you explicitly ask it to: uploading a ride
         to a third-party service you've configured, or sharing a workout file.
       </p>
     </div>
@@ -105,10 +105,10 @@
     <h3>What's stored on your device</h3>
     <ul>
       <li><strong>Profile values:</strong> your FTP, weight, and max heart rate, used to compute targets and zones.</li>
-      <li><strong>Paired-device identifiers:</strong> the Bluetooth MAC of your trainer, heart-rate monitor, and controller — so the app can reconnect on next launch without re-pairing.</li>
+      <li><strong>Paired-device identifiers:</strong> the Bluetooth MAC of your trainer, heart-rate monitor, and controller, so the app can reconnect on next launch without re-pairing.</li>
       <li><strong>Workouts:</strong> bundled JSON shipped with the app, plus any workouts you import (file pick, share-sheet, QR, or by URL). Imported workouts live as plain JSON in the app's private storage.</li>
       <li><strong>Subscribed repositories:</strong> the manifest URL and last-fetched copy of any community repository you've subscribed to.</li>
-      <li><strong>Ride history:</strong> the result of each ride — duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log — in a local SQLite database.</li>
+      <li><strong>Ride history:</strong> the result of each ride (duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log) in a local SQLite database.</li>
       <li><strong>Optional integration credentials:</strong> if you set them, your Intervals.icu athlete ID and API key, stored in the same on-device key/value store as your profile values.</li>
     </ul>
     <p>
@@ -122,8 +122,8 @@
       The app speaks the standard Bluetooth Low Energy FTMS (Fitness Machine
       Service) profile to your trainer, the standard Heart Rate Service to
       a heart-rate monitor, and a vendor service to a Zwift Click controller
-      where applicable. Communication is point-to-point with your devices —
-      it doesn't go to a server.
+      where applicable. Communication is point-to-point with your devices.
+      It doesn't go to a server.
     </p>
 
     <h3>Permissions the app requests</h3>
@@ -164,7 +164,7 @@
       <li>Stores the athlete ID and API key you provide on your device.</li>
       <li>
         Uploads ride files to <code>intervals.icu</code>'s API when you
-        manually tap Upload, or — if you turn on auto-upload — once per ride
+        manually tap Upload, or (if you turn on auto-upload) once per ride
         on completion. Each upload is a single POST containing the ride's
         FIT file (power, cadence, heart-rate trace).
       </li>
@@ -198,7 +198,7 @@
     </p>
     <p>
       The community browser (<code>/community/</code>) fetches static JSON
-      files — <code>/registry.json</code> on first load, then each
+      files: <code>/registry.json</code> on first load, then each
       repository's manifest when you click into it. These are normal HTTPS
       GETs to the same site or to whichever host the repository's manifest
       lives on. No data about your visit is sent to those hosts beyond what
@@ -220,7 +220,7 @@
       <em>never</em> send the hash fragment to the server, so the receiving
       page can decode the workout entirely client-side. The editor's "Send
       to phone" feature uses the browser's standard share API; the file is
-      handed to whichever app you select — no copy goes through us.
+      handed to whichever app you select. No copy goes through us.
     </p>
 
     <h3>The /share/ page</h3>
@@ -228,7 +228,7 @@
       Visiting a share link with a workout in the URL means your browser
       decodes the workout from the hash fragment and renders it. As above,
       the hash fragment never leaves your browser. The "Send to Indoor Bike"
-      button uses the browser's share API — the file is offered to your
+      button uses the browser's share API; the file is offered to your
       installed apps and never returns to us.
     </p>
 
@@ -242,12 +242,12 @@
     </p>
     <ul>
       <li>
-        <strong>Google Fonts</strong> (<code>fonts.googleapis.com</code>) —
-        for the Bebas Neue, Inter, and JetBrains Mono typefaces.
+        <strong>Google Fonts</strong> (<code>fonts.googleapis.com</code>):
+        the Bebas Neue, Inter, and JetBrains Mono typefaces.
       </li>
       <li>
-        <strong>jsDelivr</strong> (<code>cdn.jsdelivr.net</code>) — serves
-        two small libraries: <code>qrcode-generator</code> (used by the
+        <strong>jsDelivr</strong> (<code>cdn.jsdelivr.net</code>): two
+        small libraries. <code>qrcode-generator</code> (used by the
         editor to draw QR codes) and <code>pako</code> (used by the editor,
         community, and share pages to gzip / un-gzip workout payloads in
         URLs).
@@ -270,7 +270,7 @@
     <h2>Children</h2>
     <p>
       The app and site are not directed at children under 13. We don't
-      knowingly collect data from anyone, of any age — see above.
+      knowingly collect data from anyone, of any age. See above.
     </p>
 
     <h2>Changes to this policy</h2>

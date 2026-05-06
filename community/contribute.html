@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Contribute a community repository — Indoor Bike</title>
-  <meta name="description" content="How to publish your own workout repository for the Indoor Bike community — manifest format, hosting, and submission process.">
+  <meta name="description" content="How to publish your own workout repository for the Indoor Bike community: manifest format, hosting, and submission process.">
   <meta name="theme-color" content="#0F0C09">
   <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
   <link rel="stylesheet" href="../styles.css">
@@ -42,7 +42,7 @@
     <p class="eyebrow">Contribute</p>
     <h1 class="page-title">Publish a workout pack.</h1>
     <p class="page-lead">
-      Anyone can run a community repository — a coach with a structured plan, a
+      Anyone can run a community repository: a coach with a structured plan, a
       training group sharing their winter intervals, or a single rider who's
       built a pack worth handing out. The process is two static JSON files
       and a pull request.
@@ -58,7 +58,7 @@
           inline.
         </li>
         <li>
-          <strong>You host it</strong> over HTTPS — anywhere that serves a JSON
+          <strong>You host it</strong> over HTTPS, anywhere that serves a JSON
           file with permissive CORS. GitHub Pages, Codeberg Pages, your own
           web folder.
         </li>
@@ -77,20 +77,32 @@
 
     <!-- ── The manifest format ──────────────────────────────────────── -->
     <section class="contribute-section">
-      <h2>1. Write your manifest</h2>
+      <h2>1. Write your manifest (and bundles)</h2>
       <p>
-        A repository manifest is one JSON file that bundles your repo's metadata
-        with all of its workouts inline — one HTTP request, no follow-up fetches.
+        A repository is two kinds of file:
       </p>
+      <ul class="bullet-list">
+        <li>
+          <strong>One small <code>manifest.json</code></strong> with repo
+          metadata plus a list of pointers to your bundle files. The app
+          downloads this on every refresh, so keeping it small (just
+          metadata, no segments) keeps everyone's bandwidth low.
+        </li>
+        <li>
+          <strong>One or more bundle files</strong>, each a JSON array of
+          workout objects. The app downloads a bundle only when its content
+          version changes, so unrelated workouts stay cached when you edit one.
+        </li>
+      </ul>
 
-      <h3>Top-level fields</h3>
+      <h3>Manifest top-level fields</h3>
       <div class="schema-table">
         <div class="schema-row schema-head">
           <span>Field</span><span>Type</span><span>Required</span><span>Notes</span>
         </div>
         <div class="schema-row">
           <span><code>schemaVersion</code></span><span>integer</span><span>yes</span>
-          <span>Always <code>1</code> for now.</span>
+          <span>Manifest format version. Currently <code>2</code>. The app rejects manifests with versions higher than it understands and shows a "please upgrade" hint.</span>
         </div>
         <div class="schema-row">
           <span><code>id</code></span><span>string</span><span>yes</span>
@@ -102,7 +114,7 @@
         </div>
         <div class="schema-row">
           <span><code>description</code></span><span>string</span><span>no</span>
-          <span>One or two sentences. Plain text — no markdown.</span>
+          <span>One or two sentences. Plain text, no markdown.</span>
         </div>
         <div class="schema-row">
           <span><code>author</code></span><span>string</span><span>no</span>
@@ -117,23 +129,55 @@
           <span>Unix epoch in milliseconds. Lets the app show "updated 3 days ago".</span>
         </div>
         <div class="schema-row">
-          <span><code>workouts</code></span><span>array</span><span>yes</span>
-          <span>The workouts themselves — see below.</span>
+          <span><code>bundles</code></span><span>array</span><span>yes</span>
+          <span>Pointers to your bundle files. See the next table. Every published workout lives in some bundle; the manifest itself never contains segments.</span>
         </div>
       </div>
 
-      <h3>Each workout</h3>
+      <h3>Each bundle entry</h3>
       <div class="schema-table">
         <div class="schema-row schema-head">
           <span>Field</span><span>Type</span><span>Required</span><span>Notes</span>
         </div>
         <div class="schema-row">
           <span><code>id</code></span><span>string</span><span>yes</span>
-          <span>Unique within your repo. Prefix it with your repo id to avoid collisions with the bundled or other-repo workouts (e.g. <code>"alpine-tempo-3x10"</code> rather than just <code>"tempo-3x10"</code>).</span>
+          <span>Stable bundle id (kebab-case). Used as the cache key on the app side, so don't rename after publication.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>name</code></span><span>string</span><span>no</span>
+          <span>Maintainer-facing label. Bundles aren't shown to end users; this only helps you and other contributors.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>schemaVersion</code></span><span>integer</span><span>yes</span>
+          <span>Format version of the bundle file. Currently <code>1</code> = bare JSON array of workout objects. Bumped if/when the bundle wrapper changes.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>version</code></span><span>integer</span><span>yes</span>
+          <span><strong>Bump this every time you change any workout in the bundle</strong>, even by one second. The app re-downloads only when this number increases. Forgetting to bump it is the #1 cause of "my edit didn't show up".</span>
+        </div>
+        <div class="schema-row">
+          <span><code>url</code></span><span>string</span><span>yes</span>
+          <span>Absolute (<code>https://…</code>) or relative to the manifest's URL. Relative is the portable form: survives a host change.</span>
+        </div>
+      </div>
+
+      <h3>Each workout (inside a bundle file)</h3>
+      <p>A bundle file is a JSON array; each element is a workout object:</p>
+      <div class="schema-table">
+        <div class="schema-row schema-head">
+          <span>Field</span><span>Type</span><span>Required</span><span>Notes</span>
+        </div>
+        <div class="schema-row">
+          <span><code>schemaVersion</code></span><span>integer</span><span>no</span>
+          <span>Workout format version. Defaults to <code>1</code>. Workouts with versions higher than the app understands are skipped, so future formats can land in an existing bundle without breaking older clients.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>id</code></span><span>string</span><span>yes</span>
+          <span>Unique within your repo. Prefix with your repo id to avoid collisions with bundled or other-repo workouts (e.g. <code>"alpine-tempo-3x10"</code> rather than just <code>"tempo-3x10"</code>).</span>
         </div>
         <div class="schema-row">
           <span><code>name</code></span><span>string</span><span>yes</span>
-          <span>Display name. Keep it short — it shows on small cards.</span>
+          <span>Display name. Keep it short; it shows on small cards.</span>
         </div>
         <div class="schema-row">
           <span><code>description</code></span><span>string</span><span>no</span>
@@ -149,35 +193,54 @@
         </div>
       </div>
 
-      <h3>Example manifest</h3>
-      <p class="muted">
-        A complete, valid manifest you can copy and edit. Five segments, two minutes, ridable.
-      </p>
+      <h3>Example: minimum viable repo</h3>
+      <p class="muted">Two files. Copy, edit, host.</p>
+      <p><code>manifest.json</code></p>
       <pre class="code-block"><code>{
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "alpine-coach",
   "name": "Alpine Coach",
   "description": "Threshold and VO2 work tuned for stage racers.",
   "author": "Alpine Coach Collective",
   "homepage": "https://alpinecoach.example",
   "updatedEpoch": 1746547200000,
-  "workouts": [
+  "bundles": [
     {
-      "id": "alpine-warmup-2min",
-      "name": "Quick Warmup",
-      "description": "Two-minute pre-effort opener.",
-      "tags": ["Warm-up"],
-      "segments": [
-        { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
-        { "lengthInSeconds": 60, "powerPercentFTP": 75, "intervalType": "CONSTANT" }
-      ]
+      "id": "main",
+      "schemaVersion": 1,
+      "version": 1,
+      "url": "main.json"
     }
   ]
 }</code></pre>
+      <p><code>main.json</code> (sibling of the manifest):</p>
+      <pre class="code-block"><code>[
+  {
+    "schemaVersion": 1,
+    "id": "alpine-warmup-2min",
+    "name": "Quick Warmup",
+    "description": "Two-minute pre-effort opener.",
+    "tags": ["Warm-up"],
+    "segments": [
+      { "lengthInSeconds": 60, "powerPercentFTP": 50, "intervalType": "CONSTANT" },
+      { "lengthInSeconds": 60, "powerPercentFTP": 75, "intervalType": "CONSTANT" }
+    ]
+  }
+]</code></pre>
       <p>
         For a longer reference, see the
         <a href="indoorbike-starter.json" target="_blank">starter pack manifest</a>
-        — six workouts spanning warm-up through VO2.
+        and its
+        <a href="indoorbike-starter/main.json" target="_blank">main bundle</a>:
+        six workouts spanning warm-up through VO2.
+      </p>
+
+      <h3>Splitting workouts across multiple bundles</h3>
+      <p>
+        For small repos, one bundle is fine. Split when you have logical groups
+        that change at different rates: e.g. <code>weekly-plan</code> bumped
+        every Monday and <code>warmups</code> updated rarely. Riders only
+        re-download the bundle whose <code>version</code> moved.
       </p>
     </section>
 
@@ -186,7 +249,7 @@
       <h2>2. Host it</h2>
       <p>
         The app fetches your manifest over plain HTTPS. Anywhere that serves
-        static JSON works — what matters is two things:
+        static JSON works. Two things matter:
       </p>
       <ul class="bullet-list">
         <li>
@@ -221,7 +284,7 @@
       <ol class="numbered-list">
         <li>Fork the repository.</li>
         <li>
-          Edit <code>website/registry.json</code> — append a new entry to the
+          Edit <code>website/registry.json</code> and append a new entry to the
           <code>repositories</code> array. The fields:
           <pre class="code-block code-inline-block"><code>{
   "id": "alpine-coach",
@@ -254,20 +317,27 @@
       <h2>Updating after publication</h2>
       <ul class="bullet-list">
         <li>
-          <strong>Adding or editing workouts:</strong> just update your hosted
-          manifest. The app re-fetches on demand and via the Refresh button in
-          Library → Subscribed repositories.
+          <strong>Editing a workout:</strong> change the bundle file, then
+          bump that bundle's <code>version</code> in the manifest. The app
+          will see the bumped number on next refresh and re-download just that
+          bundle. Other bundles stay cached.
         </li>
         <li>
-          <strong>Renaming or rebranding:</strong> change the manifest's
-          <code>name</code>, <code>description</code>, etc. — but
+          <strong>Adding a workout:</strong> drop it into an existing bundle
+          file, bump that bundle's <code>version</code>. Or create a new
+          bundle file and add a fresh entry to the <code>bundles</code> array.
+        </li>
+        <li>
+          <strong>Removing a workout:</strong> remove it from the bundle file
+          and bump that bundle's <code>version</code>. Existing subscribers
+          stop seeing it after the next refresh. Past rides of that workout
+          stay in their ride history.
+        </li>
+        <li>
+          <strong>Renaming or rebranding the repo:</strong> change the
+          manifest's <code>name</code>, <code>description</code>, etc., but
           <em>don't change the <code>id</code></em>. The id is the identity;
           changing it makes the app think it's a different repo.
-        </li>
-        <li>
-          <strong>Removing a workout:</strong> just drop it from the
-          <code>workouts</code> array. Existing subscribers won't see it next
-          refresh. Past rides of that workout stay in their history.
         </li>
         <li>
           <strong>Bumping <code>updatedEpoch</code>:</strong> optional, but
