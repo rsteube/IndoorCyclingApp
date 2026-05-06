@@ -198,26 +198,41 @@ fun WorkoutListScreen(
         val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
         val connectedTrainerName by container.trainerManager.connectedTrainerName.collectAsState()
 
+        // Three states the strip needs to communicate:
+        //   1. No trainer paired (and not running mock) — invite the user to pair.
+        //   2. Trainer paired but currently offline — invite the user to power
+        //      it on (rather than showing a "Unknown Trainer · Not Connected"
+        //      strip with a fake device name).
+        //   3. Trainer connected (or mock running) — show the device strip
+        //      with its real name and status.
+        val isTrainerLive = connectionState == app.indoorbike.shared.ble.TrainerConnectionState.Connected ||
+            isMockTrainer
         when {
             !hasCompletedOnboarding -> WelcomeBanner(
                 onGetStarted = { showOnboardingSheet = true },
                 modifier = Modifier.padding(horizontal = Spacing.s5)
             )
-            pairedTrainerId == null && !isMockTrainer -> AddTrainerNudge(
+            !isTrainerLive -> TrainerNudge(
+                title = if (pairedTrainerId == null) "Pair a trainer" else "Connect your trainer",
+                subtitle = if (pairedTrainerId == null) {
+                    if (app.indoorbike.BuildConfig.DEBUG)
+                        "Open Settings · Devices, or try the mock trainer"
+                    else
+                        "Open Settings · Devices to pair over Bluetooth"
+                } else when (connectionState) {
+                    app.indoorbike.shared.ble.TrainerConnectionState.Connecting -> "Connecting…"
+                    app.indoorbike.shared.ble.TrainerConnectionState.Scanning -> "Scanning for your trainer…"
+                    else -> "Power on your trainer to reconnect"
+                },
                 onTap = { onTabSelected("settings") },
                 modifier = Modifier.padding(horizontal = Spacing.s5)
             )
             else -> TrainerStatusStrip(
-                deviceName = connectedTrainerName ?: "Unknown Trainer",
-                statusLine = when (connectionState) {
-                    app.indoorbike.shared.ble.TrainerConnectionState.Connected -> "Connected"
-                    app.indoorbike.shared.ble.TrainerConnectionState.Connecting -> "Connecting..."
-                    app.indoorbike.shared.ble.TrainerConnectionState.Scanning -> "Scanning..."
-                    else -> "Not Connected"
-                },
+                deviceName = connectedTrainerName ?: "Smart trainer",
+                statusLine = "Connected",
                 icon = Icons.Outlined.Bluetooth,
                 modifier = Modifier.padding(horizontal = Spacing.s5),
-                connected = connectionState == app.indoorbike.shared.ble.TrainerConnectionState.Connected
+                connected = true
             )
         }
         Spacer(Modifier.height(Spacing.s4))
@@ -369,7 +384,12 @@ private fun WelcomeBanner(onGetStarted: () -> Unit, modifier: Modifier = Modifie
 }
 
 @Composable
-private fun AddTrainerNudge(onTap: () -> Unit, modifier: Modifier = Modifier) {
+private fun TrainerNudge(
+    title: String,
+    subtitle: String,
+    onTap: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -396,15 +416,8 @@ private fun AddTrainerNudge(onTap: () -> Unit, modifier: Modifier = Modifier) {
             )
         }
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "Pair a trainer", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            Text(
-                text = if (app.indoorbike.BuildConfig.DEBUG)
-                    "Open Settings · Devices, or try the mock trainer"
-                else
-                    "Open Settings · Devices to pair over Bluetooth",
-                style = CadenceType.tick,
-                color = CadenceColors.Fg3
-            )
+            Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(text = subtitle, style = CadenceType.tick, color = CadenceColors.Fg3)
         }
         Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
     }
