@@ -100,9 +100,11 @@ import app.indoorbike.ui.theme.Spacing
 private const val STARTER_WORKOUT_ID = "starter-15min"
 
 private const val FILTER_ALL = "All"
-// Heart prefix doubles as the visual cue so the chip strip doesn't need a
-// separate icon slot. Persisted nowhere — it's just a UI label.
-private const val FILTER_FAVOURITES = "♥ Favourites"
+// Star prefix doubles as the visual cue so the chip strip doesn't need a
+// separate icon slot. Star (rather than heart) avoids reading as a heart-rate
+// affordance, which is what the heart glyph means everywhere else in the app.
+// Persisted nowhere; it's just a UI label.
+private const val FILTER_FAVOURITES = "★ Favourites"
 
 @Composable
 fun WorkoutListScreen(

@@ -42,8 +42,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -123,9 +123,12 @@ fun WorkoutDetailScreen(
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconBtn(
-                        icon = if (isFavourite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                        icon = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
                         contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
-                        tint = if (isFavourite) CadenceColors.Danger else CadenceColors.Fg2,
+                        // Brand-tinted gold so the filled star reads as a clear
+                        // "starred" affordance without colliding with the
+                        // ember red the HRM heart uses elsewhere.
+                        tint = if (isFavourite) CadenceColors.Brand500 else CadenceColors.Fg2,
                         onClick = {
                             container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
                         }
