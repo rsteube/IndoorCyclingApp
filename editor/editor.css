@@ -616,6 +616,7 @@
   margin-bottom: var(--s-4);
 }
 .qr-stage img, .qr-stage canvas { max-width: 100%; image-rendering: pixelated; }
+.qr-stage svg { display: block; width: 100%; height: auto; max-width: 480px; shape-rendering: crispEdges; }
 .link-row { display: flex; gap: 8px; align-items: stretch; }
 .link-row input {
   flex: 1; min-width: 0;

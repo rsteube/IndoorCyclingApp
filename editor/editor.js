@@ -853,14 +853,31 @@
     } catch (_) { toast('Copy failed — clipboard access blocked.', true); }
   }
 
-  function b64urlEncode(str) {
-    const bytes = new TextEncoder().encode(str);
+  function b64urlEncodeBytes(bytes) {
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
     return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
+  function b64urlEncode(str) {
+    return b64urlEncodeBytes(new TextEncoder().encode(str));
+  }
+  /**
+   * Build the share URL. We gzip-then-base64url the JSON whenever pako is
+   * loaded — typical workout JSON has so many repeated keys that this cuts
+   * URL length in half, which drops the QR a few versions and makes modules
+   * chunky enough for phone cameras to lock onto. The decoder side
+   * (share.js, WorkoutLinkParser.kt) accepts both `#w=` (plain) and `#wz=`
+   * (gzipped) so older links keep working.
+   */
   function buildShareUrl(w) {
-    return `https://indoorbike.app/share/#w=${b64urlEncode(JSON.stringify(w))}`;
+    const json = JSON.stringify(w);
+    if (typeof pako !== 'undefined' && pako.gzip) {
+      try {
+        const gz = pako.gzip(json);
+        return `https://indoorbike.app/share/#wz=${b64urlEncodeBytes(gz)}`;
+      } catch (_) { /* fall through to plain */ }
+    }
+    return `https://indoorbike.app/share/#w=${b64urlEncode(json)}`;
   }
   function showQrModal() {
     const w = buildWorkoutObject();
@@ -871,7 +888,10 @@
     try {
       const qr = qrcode(0, 'L');
       qr.addData(url); qr.make();
-      stage.innerHTML = qr.createImgTag(6, 8);
+      // SVG renders crisply at any modal size. createImgTag produces a fixed
+      // bitmap that browsers re-scale to fit, which fragments QR modules into
+      // uneven pixel widths and breaks camera scanners.
+      stage.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
     } catch (_) {
       stage.innerHTML = '<p style="padding:24px;color:#444;text-align:center;font-family:Inter;">Workout too large for a QR code.<br>Use <b>Download</b> or <b>Share to phone</b> instead.</p>';
     }
