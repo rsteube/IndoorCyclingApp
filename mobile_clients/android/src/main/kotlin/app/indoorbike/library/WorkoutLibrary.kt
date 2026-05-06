@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Single source of truth for "all workouts the app knows about". Merges three
@@ -52,6 +54,16 @@ class WorkoutLibrary(
 
     private var bundled: List<Workout> = emptyList()
 
+    /**
+     * Serialises [rebuild] calls. Two paths can trigger a rebuild concurrently:
+     * the import refresh from the UI and the `subscribed` flow listener fired
+     * by `RepositoryManager`. Without this lock, two overlapping rebuilds race
+     * to write `_entries.value` and the order of completion is non-deterministic
+     * — so the latest data may briefly lose to an older rebuild that finished
+     * after starting first.
+     */
+    private val rebuildMutex = Mutex()
+
     init {
         // React to subscribed-repo changes. The aggregate gets rebuilt every
         // time the user subscribes, unsubscribes, or refreshes a repo.
@@ -91,7 +103,7 @@ class WorkoutLibrary(
         scope.cancel()
     }
 
-    private suspend fun rebuild() {
+    private suspend fun rebuild() = rebuildMutex.withLock {
         val imports = withIO { importer.loadUserWorkouts() }
         val repoEntries = withIO {
             repositoryManager.subscribed.value.flatMap { sub ->

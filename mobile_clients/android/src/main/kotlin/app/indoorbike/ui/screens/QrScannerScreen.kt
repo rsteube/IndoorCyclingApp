@@ -160,41 +160,53 @@ private fun CameraPreviewWithDecoder(onScanned: (String) -> Unit) {
     val executor = remember { Executors.newSingleThreadExecutor() }
     val previewView = remember { PreviewView(context) }
     val reader = remember { MultiFormatReader() }
+    // Hold the latest onScanned through a State ref so the analyzer set up
+    // once below doesn't capture a stale lambda when callers recompose.
+    val onScannedRef = androidx.compose.runtime.rememberUpdatedState(onScanned)
 
     DisposableEffect(Unit) {
-        onDispose { executor.shutdown() }
+        // Bind CameraX exactly once per screen entry. Previously this lived in
+        // AndroidView.update which fires on every recomposition, calling
+        // unbindAll() + bindToLifecycle() and accumulating Future listeners.
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            val cameraProvider = cameraProviderFuture.get()
+            val preview = Preview.Builder().build().apply {
+                surfaceProvider = previewView.surfaceProvider
+            }
+            val analyzer = ImageAnalysis.Builder()
+                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                .build()
+            analyzer.setAnalyzer(executor) { proxy ->
+                decodeAndForward(proxy, reader) { url -> onScannedRef.value(url) }
+            }
+            try {
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    analyzer
+                )
+            } catch (_: Throwable) {
+                // Camera bind can fail if the screen is being torn down.
+                // Swallow — the user just sees a black preview and can retry.
+            }
+        }, ContextCompat.getMainExecutor(context))
+
+        onDispose {
+            // Release camera before shutting down the analyzer thread so any
+            // in-flight frame is delivered first.
+            try {
+                cameraProviderFuture.get().unbindAll()
+            } catch (_: Throwable) {}
+            executor.shutdown()
+        }
     }
 
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { previewView },
-        update = { view ->
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().apply {
-                    surfaceProvider = view.surfaceProvider
-                }
-                val analyzer = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                analyzer.setAnalyzer(executor) { proxy ->
-                    decodeAndForward(proxy, reader, onScanned)
-                }
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
-                        preview,
-                        analyzer
-                    )
-                } catch (_: Throwable) {
-                    // Camera bind can fail if the screen is being torn down.
-                    // Swallow — the user just sees a black preview and can retry.
-                }
-            }, ContextCompat.getMainExecutor(context))
-        }
     )
 }
 

@@ -110,7 +110,7 @@ fun WorkoutListScreen(
 
     val hrmState by container.heartRateMonitor.connectionState.collectAsState()
     val hasCompletedOnboarding by container.userSettings.hasCompletedOnboarding.collectAsState()
-    val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
+    val sessions by container.sessions.collectAsState()
     val starter = remember(summaries) { summaries.firstOrNull { it.workout.id == STARTER_WORKOUT_ID } }
     val showStarterCard = hasCompletedOnboarding && sessions.isEmpty() && starter != null
 

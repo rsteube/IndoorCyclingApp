@@ -8,9 +8,11 @@ import app.indoorbike.shared.repo.RegistryIndex
 import app.indoorbike.shared.repo.RepositoryManifest
 import app.indoorbike.shared.util.Log
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -79,18 +81,22 @@ class RepositoryManager(
      * Persist a manifest the user already has in hand (e.g. from a deep-link or
      * local file) — no HTTP call. Used when the import flow hands us a manifest
      * directly. We still record the source URL so future refreshes work.
+     *
+     * Suspending + IO-confined: the disk write would otherwise sit on whatever
+     * thread the click handler runs on (typically Main).
      */
-    fun subscribeFromManifest(manifest: RepositoryManifest, sourceUrl: String?): SubscribeResult {
-        return try {
-            persistSubscription(manifest, sourceUrl)
-            SubscribeResult.Ok(manifest)
-        } catch (t: Throwable) {
-            Log.w(TAG, "Persist failed: ${t.message}")
-            SubscribeResult.Failure(t.message ?: "Couldn't save repository")
+    suspend fun subscribeFromManifest(manifest: RepositoryManifest, sourceUrl: String?): SubscribeResult =
+        withContext(Dispatchers.IO) {
+            try {
+                persistSubscription(manifest, sourceUrl)
+                SubscribeResult.Ok(manifest)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Persist failed: ${t.message}")
+                SubscribeResult.Failure(t.message ?: "Couldn't save repository")
+            }
         }
-    }
 
-    fun unsubscribe(id: String) {
+    suspend fun unsubscribe(id: String) = withContext(Dispatchers.IO) {
         val sanitised = sanitise(id)
         File(reposDir, sanitised).deleteRecursively()
         val updated = _subscribed.value.filterNot { it.id == id }

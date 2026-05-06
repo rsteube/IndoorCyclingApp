@@ -193,8 +193,10 @@ fun LibraryScreen(
                         }
                     },
                     onUnsubscribe = {
-                        container.repositoryManager.unsubscribe(sub.id)
-                        Toast.makeText(context, "Removed \"${sub.name}\"", Toast.LENGTH_SHORT).show()
+                        scope.launch {
+                            container.repositoryManager.unsubscribe(sub.id)
+                            Toast.makeText(context, "Removed \"${sub.name}\"", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 )
             }
@@ -239,8 +241,17 @@ fun LibraryScreen(
                 ImportedWorkoutRow(
                     name = workout.name,
                     onDelete = {
-                        container.workoutImporter.deleteUserWorkout(workout.id)
-                        container.workoutLibrary.refreshImports()
+                        scope.launch {
+                            val ok = container.workoutImporter.deleteUserWorkout(workout.id)
+                            container.workoutLibrary.refreshImportsAwait()
+                            if (!ok) {
+                                Toast.makeText(
+                                    context,
+                                    "Couldn't delete \"${workout.name}\"",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
                     }
                 )
             }

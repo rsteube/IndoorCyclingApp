@@ -37,7 +37,7 @@ import kotlin.math.roundToInt
 @Composable
 fun ProgressTab(onNavigateToRides: () -> Unit = {}) {
     val container = LocalAppContainer.current
-    val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
+    val sessions by container.sessions.collectAsState()
     val weightKg by container.userSettings.weightKg.collectAsState()
     val now = remember { getCurrentEpochMillis() }
     val tzOffset = remember { TimeZone.getDefault().getOffset(now).toLong() }

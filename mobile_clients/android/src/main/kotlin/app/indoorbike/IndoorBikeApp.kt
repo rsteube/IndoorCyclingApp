@@ -5,11 +5,17 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import app.indoorbike.library.RepositoryManager
 import app.indoorbike.library.WorkoutImporter
 import app.indoorbike.library.WorkoutLibrary
+import app.indoorbike.service.RideSessionService
 import app.indoorbike.session.AndroidActiveSessionStore
+import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.sync.IntervalsIcuUploader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import app.indoorbike.settings.AndroidUserSettings
 import app.indoorbike.shared.WorkoutRepository
@@ -18,6 +24,7 @@ import app.indoorbike.shared.ble.HeartRateMonitor
 import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.db.DatabaseDriverFactory
 import app.indoorbike.shared.db.HistoryRepository
+import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.settings.UserSettings
@@ -45,12 +52,32 @@ class AppContainer(
     val workoutLibrary: WorkoutLibrary,
     val intervalsIcuUploader: IntervalsIcuUploader,
 ) {
+    private val containerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Single shared subscription to the history table. Three separate screens
+     * (rides, history, progress) used to each open their own SQLDelight Query
+     * collector, which meant N full table reads per insert at steady state.
+     * Hoisting to one StateFlow with `SharingStarted.WhileSubscribed` collapses
+     * that to one shared listener.
+     */
+    val sessions: StateFlow<List<WorkoutSession>> =
+        historyRepository.getAllSessions().stateIn(
+            scope = containerScope,
+            // 5 s grace so a quick screen swap doesn't tear down + rebuild the
+            // upstream Query.AsFlow(). Replays the last value when a new
+            // collector arrives, so screens hydrate without flashing empty.
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = emptyList()
+        )
+
     fun dispose() {
         trainerManager.dispose()
         heartRateMonitor.dispose()
         controllerManager.dispose()
         sessionManager.dispose()
         workoutLibrary.dispose()
+        containerScope.cancel()
         if (userSettings is AndroidUserSettings) userSettings.dispose()
     }
 
@@ -127,6 +154,27 @@ class IndoorBikeApp : Application() {
         }
         initScope.launch {
             container.controllerManager.autoConnectIfPaired(container.userSettings.pairedControllerId.value)
+        }
+
+        // Drive the foreground service from the session state instead of the
+        // ride screen's composition. Previously a config change (rotation,
+        // etc.) tore down RideScreen → ran its `onDispose { stop }` → killed
+        // the FGS mid-ride. Now the service mirrors whether a workout is in
+        // flight, regardless of which UI happens to be on screen.
+        initScope.launch {
+            // StateFlow is already conflated, so a bare collect is enough —
+            // distinctUntilChanged on StateFlow is a no-op and the compiler
+            // flags it.
+            container.sessionManager.state.collect { state ->
+                when (state) {
+                    WorkoutState.Standby,
+                    WorkoutState.Countdown,
+                    WorkoutState.Active,
+                    WorkoutState.Paused -> RideSessionService.start(this@IndoorBikeApp)
+                    WorkoutState.Idle,
+                    WorkoutState.Completed -> RideSessionService.stop(this@IndoorBikeApp)
+                }
+            }
         }
     }
 

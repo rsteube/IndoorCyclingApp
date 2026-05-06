@@ -85,13 +85,23 @@ import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.widget.Toast
 
 class MainActivity : ComponentActivity() {
 
+    // Activity-scoped — cancelled in onDestroy. Previously a member with no
+    // teardown, which leaked the Activity reference on rotation while imports
+    // were in flight (the coroutine outlived the dead Activity, posted Toasts
+    // against it, and the next onCreate created a fresh leaking scope).
     private val intentScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    override fun onDestroy() {
+        intentScope.cancel()
+        super.onDestroy()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -223,7 +233,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun onImportResolved(result: app.indoorbike.library.ImportResult) {
+    private suspend fun onImportResolved(result: app.indoorbike.library.ImportResult) {
         val container = (application as IndoorBikeApp).container
         when (result) {
             is app.indoorbike.library.ImportResult.Workouts -> {

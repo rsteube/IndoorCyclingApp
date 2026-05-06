@@ -95,9 +95,15 @@ class WorkoutImporter(private val context: Context) {
         }.sortedBy { it.name.lowercase() }
     }
 
-    fun deleteUserWorkout(workoutId: String): Boolean {
+    /**
+     * Deletes the on-disk JSON for an imported workout. Suspending + IO-confined
+     * to match [renameUserWorkout]; callers that need to know whether a delete
+     * actually happened can read the return value (false = file already gone or
+     * filesystem refused to delete).
+     */
+    suspend fun deleteUserWorkout(workoutId: String): Boolean = withContext(Dispatchers.IO) {
         val file = File(userWorkoutsDir, sanitise(workoutId) + ".json")
-        return file.exists() && file.delete()
+        file.exists() && file.delete()
     }
 
     /**
@@ -125,14 +131,32 @@ class WorkoutImporter(private val context: Context) {
 
     private fun saveUserWorkout(workout: Workout) {
         val file = File(userWorkoutsDir, sanitise(workout.id) + ".json")
-        // Atomic write: write to a tmp sibling, then rename.
+        val text = json.encodeToString(Workout.serializer(), workout)
+        // Atomic write: write to a tmp sibling, then rename onto the target.
+        // The rename is atomic on the same filesystem, so a crash/kill between
+        // steps either leaves the original file intact or replaces it whole.
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(json.encodeToString(Workout.serializer(), workout), Charsets.UTF_8)
-        if (!tmp.renameTo(file)) {
-            // Fall back to copy + delete — some FUSE-mounted external dirs
-            // refuse rename across nodes.
-            file.writeText(tmp.readText(Charsets.UTF_8), Charsets.UTF_8)
-            tmp.delete()
+        try {
+            tmp.writeText(text, Charsets.UTF_8)
+            if (tmp.renameTo(file)) return
+            // Some FUSE-mounted external dirs refuse cross-node rename. Fall
+            // back to "write a fresh tmp then rename" so the destination is
+            // never half-written: if writeText throws partway, `file` keeps its
+            // previous contents.
+            val tmp2 = File(file.parentFile, file.name + ".tmp2")
+            try {
+                tmp2.writeText(text, Charsets.UTF_8)
+                if (!tmp2.renameTo(file)) {
+                    // Last-resort: throw rather than silently leaving a corrupt
+                    // file. The caller's importJsonText catch will surface this
+                    // as ImportResult.Failure.
+                    throw java.io.IOException("Atomic save failed: couldn't rename ${tmp2.name} → ${file.name}")
+                }
+            } finally {
+                if (tmp2.exists()) tmp2.delete()
+            }
+        } finally {
+            if (tmp.exists()) tmp.delete()
         }
     }
 

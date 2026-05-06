@@ -69,7 +69,6 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.zones.PowerZone
-import kotlinx.coroutines.launch
 
 @Composable
 fun LockScreenOrientationAndFullScreen(orientation: Int) {
@@ -147,36 +146,38 @@ fun RideScreen(
         app.indoorbike.ui.zones.HeartRateZone.fromHr(currentHr, maxHr)
     }
 
-    val scope = rememberCoroutineScope()
     var continueRequested by remember { mutableStateOf(false) }
+    // Idempotency guard for the post-completion save+navigate path. The
+    // LaunchedEffect that watches `state` + `continueRequested` would otherwise
+    // re-run if its keys re-emit, racing the in-flight insert and producing a
+    // duplicate session row.
+    var saved by remember { mutableStateOf(false) }
 
-    // Foreground service: started on first composition (the ride is active),
-    // stopped on completion or back-out.
+    // Permission flow only — FGS lifecycle is driven by `sessionManager.state`
+    // observed in `IndoorBikeApp`, so a config change that tears down this
+    // screen no longer kills the ride. We still need to *ask* for permissions
+    // here because the FGS won't start without them, and the user can reach
+    // this screen on first launch without ever visiting the pairing flow.
     val notificationLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* no-op: service runs even without notification visibility */ }
 
-    // Android 14+ refuses to start a connectedDevice FGS unless at least one
-    // BLUETOOTH_* runtime permission is granted. Brand-new riders can reach
-    // Start without ever opening the pairing flow that would normally collect
-    // it, so request it here too. If the user denies, the ride still runs
-    // while the activity is foregrounded — we just skip the FGS.
     val bluetoothLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
+        // Permission just landed — nudge the FGS to retry now that it would
+        // succeed. The state observer in IndoorBikeApp won't re-emit because
+        // state is unchanged, so a manual one-shot is needed here.
         if (results.values.any { it }) RideSessionService.start(context)
     }
 
-    DisposableEffect(Unit) {
+    LaunchedEffect(Unit) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
-        if (hasAnyBluetoothPermission(context)) {
-            RideSessionService.start(context)
-        } else {
+        if (!hasAnyBluetoothPermission(context)) {
             bluetoothLauncher.launch(bluetoothRuntimePerms())
         }
-        onDispose { RideSessionService.stop(context) }
     }
 
     // Bridge: external controller (Zwift Click v1, …) → ±difficulty steps,
@@ -194,33 +195,37 @@ fun RideScreen(
     }
 
     LaunchedEffect(state, continueRequested) {
-        if (state == WorkoutState.Completed && workout != null && continueRequested) {
-            val telemetry = sessionManager.telemetrySnapshot()
-            val startEpoch = sessionManager.sessionStartTimeEpoch
-            // Persist actual time spent riding, not the planned timeline:
-            // skipping a segment fast-forwards `elapsed` so it would inflate the
-            // saved duration. `actualRideSeconds` only counts wall-clock time
-            // spent in the Active state.
-            val actualRide = sessionManager.actualRideSeconds.value
-
-            val avgPower = if (telemetry.isNotEmpty()) telemetry.map { it.power }.average().toLong() else 0L
-            val avgCadence = if (telemetry.isNotEmpty()) telemetry.map { it.cadence }.average().toLong() else 0L
-            val avgHr = if (telemetry.isNotEmpty()) telemetry.map { it.heartRate }.average().toLong() else 0L
-
-            scope.launch {
-                val newSessionId = historyRepository.insertWorkoutSession(
-                    workoutId = workout!!.id,
-                    workoutName = workout!!.name,
-                    startTimeEpoch = startEpoch,
-                    durationSeconds = actualRide.toLong(),
-                    avgPower = avgPower,
-                    avgCadence = avgCadence,
-                    avgHeartRate = avgHr,
-                    telemetry = telemetry
-                )
-                onNavigateToOverview(newSessionId)
-            }
+        if (state != WorkoutState.Completed || workout == null || !continueRequested || saved) {
+            return@LaunchedEffect
         }
+        // Mark before the suspend point so a re-keyed effect can't squeeze a
+        // second insert through. The button is also disabled on
+        // `continueRequested`, but the LaunchedEffect's keys are independent
+        // of that gate.
+        saved = true
+        val telemetry = sessionManager.telemetrySnapshot()
+        val startEpoch = sessionManager.sessionStartTimeEpoch
+        // Persist actual time spent riding, not the planned timeline:
+        // skipping a segment fast-forwards `elapsed` so it would inflate the
+        // saved duration. `actualRideSeconds` only counts wall-clock time
+        // spent in the Active state.
+        val actualRide = sessionManager.actualRideSeconds.value
+
+        val avgPower = if (telemetry.isNotEmpty()) telemetry.map { it.power }.average().toLong() else 0L
+        val avgCadence = if (telemetry.isNotEmpty()) telemetry.map { it.cadence }.average().toLong() else 0L
+        val avgHr = if (telemetry.isNotEmpty()) telemetry.map { it.heartRate }.average().toLong() else 0L
+
+        val newSessionId = historyRepository.insertWorkoutSession(
+            workoutId = workout!!.id,
+            workoutName = workout!!.name,
+            startTimeEpoch = startEpoch,
+            durationSeconds = actualRide.toLong(),
+            avgPower = avgPower,
+            avgCadence = avgCadence,
+            avgHeartRate = avgHr,
+            telemetry = telemetry
+        )
+        onNavigateToOverview(newSessionId)
     }
 
     if (workout == null) {

@@ -33,7 +33,12 @@ object HttpFetcher {
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS
             requestMethod = "GET"
-            instanceFollowRedirects = true
+            // Off by design: a 302 from a trusted-looking host to attacker-
+            // controlled HTTPS would otherwise let a malicious deep-link
+            // (`indoorbike://import?url=trusted.example`) silently land on
+            // a different origin. Servers that genuinely move endpoints can
+            // surface a 4xx or 410 instead and the user can paste the new URL.
+            instanceFollowRedirects = false
             setRequestProperty("Accept", "application/json, text/plain, */*")
             setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
         }
@@ -91,7 +96,12 @@ object HttpFetcher {
             connectTimeout = TIMEOUT_MS
             readTimeout = TIMEOUT_MS * 4   // uploads can take longer than fetches
             requestMethod = "POST"
-            instanceFollowRedirects = true
+            // Off by design: a 302 from a trusted-looking host to attacker-
+            // controlled HTTPS would otherwise let a malicious deep-link
+            // (`indoorbike://import?url=trusted.example`) silently land on
+            // a different origin. Servers that genuinely move endpoints can
+            // surface a 4xx or 410 instead and the user can paste the new URL.
+            instanceFollowRedirects = false
             doOutput = true
             useCaches = false
             setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")

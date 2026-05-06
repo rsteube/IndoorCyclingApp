@@ -43,7 +43,7 @@ fun HistoryTab(
     onNavigateToRides: () -> Unit = {},
 ) {
     val container = LocalAppContainer.current
-    val sessions by container.historyRepository.getAllSessions().collectAsState(initial = emptyList())
+    val sessions by container.sessions.collectAsState()
     Column(
         modifier = Modifier
             .fillMaxSize()

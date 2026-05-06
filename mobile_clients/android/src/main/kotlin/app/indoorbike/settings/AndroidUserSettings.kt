@@ -42,34 +42,44 @@ class AndroidUserSettings(
 
     private val store = appContext.userPrefs
 
-    private val _ftp = MutableStateFlow(loadFtpBlocking())
+    /**
+     * Single bulk read of the DataStore on construction so the rest of the
+     * StateFlows can be seeded from one disk hit instead of eleven. Construction
+     * runs on Main (via `AppContainer.create` in `IndoorBikeApp.onCreate`), so
+     * minimising this is a real cold-start win — DataStore's cached-after-first
+     * Flow means subsequent collectors read from memory, but that first read is
+     * the one we pay for.
+     */
+    private val initialPrefs: Preferences = runBlocking { store.data.first() }
+
+    private val _ftp = MutableStateFlow(initialPrefs[KEY_FTP] ?: DEFAULT_FTP)
     override val ftp: StateFlow<Int> = _ftp.asStateFlow()
 
-    private val _weightKg = MutableStateFlow(loadWeightBlocking())
+    private val _weightKg = MutableStateFlow(initialPrefs[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG)
     override val weightKg: StateFlow<Float> = _weightKg.asStateFlow()
 
-    private val _maxHr = MutableStateFlow(loadMaxHrBlocking())
+    private val _maxHr = MutableStateFlow(initialPrefs[KEY_MAX_HR] ?: DEFAULT_MAX_HR)
     override val maxHr: StateFlow<Int> = _maxHr.asStateFlow()
 
-    private val _pairedTrainerId = MutableStateFlow<String?>(loadStringBlocking(KEY_TRAINER))
+    private val _pairedTrainerId = MutableStateFlow<String?>(initialPrefs[KEY_TRAINER])
     override val pairedTrainerId: StateFlow<String?> = _pairedTrainerId.asStateFlow()
 
-    private val _pairedHrmId = MutableStateFlow<String?>(loadStringBlocking(KEY_HRM))
+    private val _pairedHrmId = MutableStateFlow<String?>(initialPrefs[KEY_HRM])
     override val pairedHrmId: StateFlow<String?> = _pairedHrmId.asStateFlow()
 
-    private val _pairedControllerId = MutableStateFlow<String?>(loadStringBlocking(KEY_CONTROLLER))
+    private val _pairedControllerId = MutableStateFlow<String?>(initialPrefs[KEY_CONTROLLER])
     override val pairedControllerId: StateFlow<String?> = _pairedControllerId.asStateFlow()
 
-    private val _hasCompletedOnboarding = MutableStateFlow(loadBooleanBlocking(KEY_ONBOARDED))
+    private val _hasCompletedOnboarding = MutableStateFlow(initialPrefs[KEY_ONBOARDED] ?: false)
     override val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
 
-    private val _intervalsAthleteId = MutableStateFlow<String?>(loadStringBlocking(KEY_INTERVALS_ATHLETE))
+    private val _intervalsAthleteId = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ATHLETE])
     override val intervalsAthleteId: StateFlow<String?> = _intervalsAthleteId.asStateFlow()
 
-    private val _intervalsApiKey = MutableStateFlow<String?>(loadStringBlocking(KEY_INTERVALS_API_KEY))
+    private val _intervalsApiKey = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_API_KEY])
     override val intervalsApiKey: StateFlow<String?> = _intervalsApiKey.asStateFlow()
 
-    private val _intervalsAutoUpload = MutableStateFlow(loadBooleanBlocking(KEY_INTERVALS_AUTO))
+    private val _intervalsAutoUpload = MutableStateFlow(initialPrefs[KEY_INTERVALS_AUTO] ?: false)
     override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
 
     init {
@@ -205,24 +215,6 @@ class AndroidUserSettings(
     fun dispose() {
         scope.cancel()
     }
-
-    private fun loadFtpBlocking(): Int = runBlocking {
-        store.data.first()[KEY_FTP] ?: DEFAULT_FTP
-    }
-
-    private fun loadWeightBlocking(): Float = runBlocking {
-        store.data.first()[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG
-    }
-
-    private fun loadMaxHrBlocking(): Int = runBlocking {
-        store.data.first()[KEY_MAX_HR] ?: DEFAULT_MAX_HR
-    }
-
-    private fun loadStringBlocking(key: androidx.datastore.preferences.core.Preferences.Key<String>): String? =
-        runBlocking { store.data.first()[key] }
-
-    private fun loadBooleanBlocking(key: androidx.datastore.preferences.core.Preferences.Key<Boolean>): Boolean =
-        runBlocking { store.data.first()[key] ?: false }
 
     companion object {
         private val KEY_FTP = intPreferencesKey("user_ftp")

@@ -187,6 +187,20 @@ class RideSessionService : Service() {
                 e
             )
             stopSelf()
+        } catch (e: IllegalStateException) {
+            // Android 12+ throws ForegroundServiceStartNotAllowedException
+            // (an IllegalStateException) when the service is started from
+            // background without a qualifying reason. We can hit this on a
+            // session-state restart that races a recent process backgrounding,
+            // and on Android 12/13 the connectedDevice type doesn't bypass the
+            // restriction. Bail rather than crash — same fallback as the
+            // SecurityException case.
+            Log.w(
+                "RideService",
+                "Foreground start refused (likely background-start restriction). Ride will only persist while the app is foregrounded.",
+                e
+            )
+            stopSelf()
         }
     }
 

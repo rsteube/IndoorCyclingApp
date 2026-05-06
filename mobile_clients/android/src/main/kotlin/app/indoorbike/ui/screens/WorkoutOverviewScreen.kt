@@ -48,7 +48,9 @@ import app.indoorbike.ui.zones.PowerZone as ZonePalette
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun WorkoutOverviewScreen(
@@ -78,13 +80,19 @@ fun WorkoutOverviewScreen(
     var uploadAttemptedForSession by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(sessionId) {
-        scope.launch {
+        // SQLDelight's Android driver does its query work synchronously on the
+        // calling thread; a long ride's telemetry table read can be thousands
+        // of rows. Hop to IO so a frame stutter on the overview's first frame
+        // doesn't bite — Composable state writes still reach the UI safely.
+        val (s, tele) = withContext(Dispatchers.IO) {
             val s = historyRepository.getSessionById(sessionId)
-            if (s != null) {
-                session = s
-                telemetry = historyRepository.getTelemetryForSession(sessionId)
-                targetWorkout = workoutList.find { it.id == s.workoutId }
-            }
+            val tele = if (s != null) historyRepository.getTelemetryForSession(sessionId) else emptyList()
+            s to tele
+        }
+        if (s != null) {
+            session = s
+            telemetry = tele
+            targetWorkout = workoutList.find { it.id == s.workoutId }
         }
     }
 
@@ -301,7 +309,9 @@ fun WorkoutOverviewScreen(
             onConfirm = {
                 confirmDelete = false
                 scope.launch {
-                    historyRepository.deleteSession(sessionId)
+                    withContext(Dispatchers.IO) {
+                        historyRepository.deleteSession(sessionId)
+                    }
                     onBack()
                 }
             }
@@ -441,17 +451,28 @@ fun ChartOverlay(
             }
         }
 
+        // Pre-compute the y-fraction per telemetry point. Caching this avoids
+        // recomputing 1800–14400 (point.power / ftp / maxChartPct) divisions
+        // on every Canvas redraw. The Path itself depends on canvas size so it
+        // still has to be assembled per draw, but the per-point math is cheap
+        // once the y-fractions are an `IntArray`-equivalent.
+        val yFractions = remember(telemetry, ftp, maxChartPct) {
+            if (telemetry.isEmpty() || ftp <= 0) FloatArray(0)
+            else FloatArray(telemetry.size) { i ->
+                val pct = (telemetry[i].power.toFloat() / ftp * 100f).coerceAtLeast(0f)
+                1f - (pct / maxChartPct).coerceIn(0f, 1f)
+            }
+        }
         androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
             val width = size.width
             val height = size.height
-            val points = telemetry.size
-            if (points <= 1 || ftp <= 0) return@Canvas
+            val points = yFractions.size
+            if (points <= 1) return@Canvas
             val path = Path()
-            telemetry.forEachIndexed { index, point ->
-                val x = (index.toFloat() / (points - 1)) * width
-                val pct = (point.power.toFloat() / ftp * 100f).coerceAtLeast(0f)
-                val y = (height - (pct / maxChartPct) * height).coerceIn(0f, height)
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            for (i in 0 until points) {
+                val x = (i.toFloat() / (points - 1)) * width
+                val y = yFractions[i] * height
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
             drawPath(
                 path = path,
