@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Privacy policy — Indoor Bike</title>
+  <meta name="description" content="What Indoor Bike stores, where it stays, and the short list of cases where any data ever leaves your device.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    .privacy-main { max-width: 760px; margin: 0 auto; padding: var(--s-7) var(--s-5) var(--s-10); }
+    .privacy-main h1 {
+      font-family: var(--font-display); font-weight: 400;
+      font-size: clamp(40px, 7vw, 64px); line-height: 1;
+      letter-spacing: 0.02em; text-transform: uppercase;
+      margin: var(--s-2) 0 var(--s-3); color: var(--fg-1);
+    }
+    .privacy-main h2 {
+      font-family: var(--font-display); font-weight: 400;
+      font-size: 26px; letter-spacing: 0.02em;
+      text-transform: uppercase; margin: var(--s-7) 0 var(--s-3);
+      color: var(--fg-1);
+    }
+    .privacy-main h3 {
+      font-family: var(--font-mono); font-size: 12px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--fg-3); margin: var(--s-5) 0 var(--s-2);
+    }
+    .privacy-main p, .privacy-main li {
+      color: var(--fg-2); font-size: 15px; line-height: 1.7;
+      max-width: 70ch;
+    }
+    .privacy-main p { margin: 0 0 var(--s-3); }
+    .privacy-main ul { padding-left: 22px; margin: 0 0 var(--s-4); }
+    .privacy-main li { margin-bottom: 6px; }
+    .privacy-main li strong { color: var(--fg-1); }
+    .privacy-main a { color: var(--brand-400); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
+    .privacy-main a:hover { color: var(--brand-300); }
+    .privacy-main code {
+      font-family: var(--font-mono); font-size: 0.92em;
+      background: var(--bg-2); border: 1px solid var(--line-1);
+      padding: 1px 6px; border-radius: 4px; color: var(--brand-300);
+    }
+    .privacy-meta {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--fg-3); margin: 0 0 var(--s-4);
+    }
+    .tldr {
+      background: var(--bg-1);
+      border: 1px solid var(--line-2);
+      border-left: 3px solid var(--brand-500);
+      border-radius: var(--r-md);
+      padding: var(--s-4) var(--s-5);
+      margin: var(--s-5) 0 var(--s-7);
+    }
+    .tldr p { margin: 0; color: var(--fg-1); }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="index.html" aria-label="Indoor Bike home">
+        <img src="assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="index.html#features">Features</a>
+        <a href="index.html#how">How it works</a>
+        <a href="index.html#privacy">Privacy</a>
+        <a href="editor/index.html">Editor</a>
+        <a href="community/index.html">Community</a>
+        <a href="index.html#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-primary" aria-disabled="true" href="index.html#download">
+        Download <span class="btn-tag">soon</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="privacy-main">
+    <p class="privacy-meta">Last updated: 6 May 2026</p>
+    <h1>Privacy policy</h1>
+
+    <div class="tldr">
+      <p>
+        Indoor Bike stores everything on your device. We don't run a server,
+        we don't have analytics, we don't have accounts. The only time data
+        leaves your phone is when you explicitly ask it to — uploading a ride
+        to a third-party service you've configured, or sharing a workout file.
+      </p>
+    </div>
+
+    <p>
+      This page describes, in plain language, exactly what the Indoor Bike
+      Android app and the indoorbike.app website do with data. It applies to
+      the version of the app and site published at the date above. If
+      anything changes materially, we'll update the date and call out the
+      change in the project's release notes.
+    </p>
+
+    <h2>The Android app</h2>
+
+    <h3>What's stored on your device</h3>
+    <ul>
+      <li><strong>Profile values:</strong> your FTP, weight, and max heart rate, used to compute targets and zones.</li>
+      <li><strong>Paired-device identifiers:</strong> the Bluetooth MAC of your trainer, heart-rate monitor, and controller — so the app can reconnect on next launch without re-pairing.</li>
+      <li><strong>Workouts:</strong> bundled JSON shipped with the app, plus any workouts you import (file pick, share-sheet, QR, or by URL). Imported workouts live as plain JSON in the app's private storage.</li>
+      <li><strong>Subscribed repositories:</strong> the manifest URL and last-fetched copy of any community repository you've subscribed to.</li>
+      <li><strong>Ride history:</strong> the result of each ride — duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log — in a local SQLite database.</li>
+      <li><strong>Optional integration credentials:</strong> if you set them, your Intervals.icu athlete ID and API key, stored in the same on-device key/value store as your profile values.</li>
+    </ul>
+    <p>
+      All of the above lives in the app's private storage on your phone. No
+      account, no cloud sync, no server-side copy. Uninstalling the app
+      removes everything.
+    </p>
+
+    <h3>What goes over Bluetooth</h3>
+    <p>
+      The app speaks the standard Bluetooth Low Energy FTMS (Fitness Machine
+      Service) profile to your trainer, the standard Heart Rate Service to
+      a heart-rate monitor, and a vendor service to a Zwift Click controller
+      where applicable. Communication is point-to-point with your devices —
+      it doesn't go to a server.
+    </p>
+
+    <h3>Permissions the app requests</h3>
+    <ul>
+      <li>
+        <strong>Bluetooth (scan + connect):</strong> required to discover and
+        talk to your trainer, HRM, and controller.
+      </li>
+      <li>
+        <strong>Camera:</strong> only used while the in-app QR scanner is
+        open, to read workout-import codes. Frames are processed locally and
+        never stored.
+      </li>
+      <li>
+        <strong>Notifications (Android 13+):</strong> requested on first ride
+        so the foreground "ride in progress" notification can show.
+      </li>
+      <li>
+        <strong>Location (Android 11 and earlier):</strong> the OS requires
+        this to allow Bluetooth scans on older Android versions. We don't
+        use location in any other way and don't store coordinates.
+      </li>
+    </ul>
+    <p>
+      The app is built without Google Play Services, Firebase, Crashlytics,
+      or any analytics SDK. The only external network connections it can
+      make are the ones you explicitly initiate (workout / repository
+      imports, and the optional integration described next).
+    </p>
+
+    <h3>Optional Intervals.icu sync</h3>
+    <p>
+      <a href="https://intervals.icu" target="_blank" rel="noopener">Intervals.icu</a>
+      is a third-party training analytics service. The integration is off by
+      default. If you enable it in <em>Settings → Cloud sync</em>, the app:
+    </p>
+    <ul>
+      <li>Stores the athlete ID and API key you provide on your device.</li>
+      <li>
+        Uploads ride files to <code>intervals.icu</code>'s API when you
+        manually tap Upload, or — if you turn on auto-upload — once per ride
+        on completion. Each upload is a single POST containing the ride's
+        FIT file (power, cadence, heart-rate trace).
+      </li>
+      <li>
+        Does <em>not</em> share workouts, settings, or any other app data
+        with intervals.icu.
+      </li>
+    </ul>
+    <p>
+      Once a ride is uploaded, the data is governed by Intervals.icu's own
+      privacy policy. Disabling the integration in Settings clears the
+      credentials and stops further uploads; rides already uploaded stay
+      with intervals.icu unless you delete them there.
+    </p>
+
+    <h2>The website</h2>
+
+    <p>
+      indoorbike.app is a static site. There is no backend, no database, no
+      account system, and no analytics. The site does not set first-party
+      cookies. The bullets below describe each page's data behaviour.
+    </p>
+
+    <h3>Browsing the homepage and community pages</h3>
+    <p>
+      Loading any page transmits only the standard HTTP request headers your
+      browser sends to any website (IP address, User-Agent). The static-site
+      host's server logs may retain these for an operator-defined period to
+      detect abuse; we don't ingest, aggregate, or analyse those logs for
+      product purposes.
+    </p>
+    <p>
+      The community browser (<code>/community/</code>) fetches static JSON
+      files — <code>/registry.json</code> on first load, then each
+      repository's manifest when you click into it. These are normal HTTPS
+      GETs to the same site or to whichever host the repository's manifest
+      lives on. No data about your visit is sent to those hosts beyond what
+      the request itself carries.
+    </p>
+
+    <h3>The workout editor</h3>
+    <p>
+      The editor is fully client-side. The workout you build is saved to your
+      browser's <code>localStorage</code> under a key the editor owns
+      (<code>indoorbike.editor.workout.v1</code>) and your FTP setting under
+      <code>indoorbike.editor.ftp.v1</code>. Both stay on your device; the
+      editor does not transmit them anywhere. Clearing site data in your
+      browser removes them.
+    </p>
+    <p>
+      When you generate a share link or QR code, the workout is encoded into
+      the URL itself as a hash fragment (<code>#wz=…</code>). Browsers
+      <em>never</em> send the hash fragment to the server, so the receiving
+      page can decode the workout entirely client-side. The editor's "Send
+      to phone" feature uses the browser's standard share API; the file is
+      handed to whichever app you select — no copy goes through us.
+    </p>
+
+    <h3>The /share/ page</h3>
+    <p>
+      Visiting a share link with a workout in the URL means your browser
+      decodes the workout from the hash fragment and renders it. As above,
+      the hash fragment never leaves your browser. The "Send to Indoor Bike"
+      button uses the browser's share API — the file is offered to your
+      installed apps and never returns to us.
+    </p>
+
+    <h2>Third-party assets we load</h2>
+    <p>
+      The website pulls in a small number of static assets from public CDNs.
+      Loading them causes your browser to make a request directly to those
+      hosts; their privacy and logging policies apply to those connections.
+      We don't add tracking parameters or send any custom data with the
+      requests.
+    </p>
+    <ul>
+      <li>
+        <strong>Google Fonts</strong> (<code>fonts.googleapis.com</code>) —
+        for the Bebas Neue, Inter, and JetBrains Mono typefaces.
+      </li>
+      <li>
+        <strong>jsDelivr</strong> (<code>cdn.jsdelivr.net</code>) — serves
+        two small libraries: <code>qrcode-generator</code> (used by the
+        editor to draw QR codes) and <code>pako</code> (used by the editor,
+        community, and share pages to gzip / un-gzip workout payloads in
+        URLs).
+      </li>
+    </ul>
+    <p>
+      We may self-host these in a future release to remove the dependency
+      altogether.
+    </p>
+
+    <h2>Cookies, tracking, advertising</h2>
+    <p>
+      None. The site does not set first-party cookies. There is no
+      advertising, no fingerprinting, no analytics, no A/B-test framework.
+      The hosting provider may set technical cookies for protocol-level
+      reasons (e.g. CDN routing); these are operational and not used for
+      any product purpose by us.
+    </p>
+
+    <h2>Children</h2>
+    <p>
+      The app and site are not directed at children under 13. We don't
+      knowingly collect data from anyone, of any age — see above.
+    </p>
+
+    <h2>Changes to this policy</h2>
+    <p>
+      Material changes will be reflected by updating the "Last updated" date
+      at the top and called out in the app's and website's release notes.
+      Past versions of this policy are visible in the project's git history
+      on Codeberg.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      For privacy questions or data-related requests, the fastest route is
+      to open an issue on the project's
+      <a href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp" target="_blank" rel="noopener">Codeberg repository</a>.
+      Sensitive matters can be flagged in a private issue.
+    </p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Indoor Bike · indoorbike.app</span>
+      <div class="footer-links">
+        <a href="index.html">Home</a>
+        <a href="community/index.html">Community</a>
+        <a href="privacy.html">Privacy</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
