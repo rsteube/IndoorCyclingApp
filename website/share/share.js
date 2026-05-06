@@ -30,26 +30,42 @@
     return `${m}:${String(ss).padStart(2, '0')}`;
   }
 
-  function b64urlDecode(str) {
+  function b64urlDecodeBytes(str) {
     const padded = str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4);
     const bin = atob(padded);
     const bytes = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    return new TextDecoder().decode(bytes);
+    return bytes;
+  }
+  function b64urlDecode(str) {
+    return new TextDecoder().decode(b64urlDecodeBytes(str));
   }
 
+  /**
+   * Two payload forms are accepted:
+   *   `#wz=…` — gzip + base64url (current QR / link form, much shorter URL)
+   *   `#w=…`  — plain base64url JSON (legacy, still supported)
+   */
   function readWorkoutFromHash() {
     const hash = location.hash || '';
-    const m = hash.match(/[#&]w=([^&]+)/);
-    if (!m) return null;
-    try {
-      const json = b64urlDecode(decodeURIComponent(m[1]));
-      const obj = JSON.parse(json);
-      if (!obj || !Array.isArray(obj.segments)) return null;
-      return obj;
-    } catch (e) {
-      return null;
+    const gz = hash.match(/[#&]wz=([^&]+)/);
+    if (gz && typeof pako !== 'undefined' && pako.ungzip) {
+      try {
+        const bytes = b64urlDecodeBytes(decodeURIComponent(gz[1]));
+        const json = pako.ungzip(bytes, { to: 'string' });
+        const obj = JSON.parse(json);
+        if (obj && Array.isArray(obj.segments)) return obj;
+      } catch (e) { /* fall through to plain form */ }
     }
+    const plain = hash.match(/[#&]w=([^&]+)/);
+    if (plain) {
+      try {
+        const json = b64urlDecode(decodeURIComponent(plain[1]));
+        const obj = JSON.parse(json);
+        if (obj && Array.isArray(obj.segments)) return obj;
+      } catch (e) { /* fall through */ }
+    }
+    return null;
   }
 
   function el(tag, props = {}, ...kids) {

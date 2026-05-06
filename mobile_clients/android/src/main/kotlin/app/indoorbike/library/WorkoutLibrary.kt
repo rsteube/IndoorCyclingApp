@@ -77,6 +77,16 @@ class WorkoutLibrary(
         scope.launch { rebuild() }
     }
 
+    /**
+     * Suspending variant — completes only once the new [entries] value has
+     * been emitted. Use this when the caller needs to navigate to a freshly
+     * imported workout immediately after refresh; firing-and-forgetting via
+     * [refreshImports] would race the navigation.
+     */
+    suspend fun refreshImportsAwait() {
+        rebuild()
+    }
+
     fun dispose() {
         scope.cancel()
     }

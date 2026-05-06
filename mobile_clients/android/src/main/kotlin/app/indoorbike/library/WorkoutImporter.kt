@@ -100,6 +100,29 @@ class WorkoutImporter(private val context: Context) {
         return file.exists() && file.delete()
     }
 
+    /**
+     * Rewrites the on-disk JSON for an imported workout with a new name. The
+     * id (and therefore the filename) is intentionally preserved so existing
+     * ride history, deep links, and the library's dedup keep pointing at the
+     * same entry. Returns the updated workout, or null if the file is missing
+     * / unreadable / the new name is blank.
+     */
+    suspend fun renameUserWorkout(workoutId: String, newName: String): Workout? = withContext(Dispatchers.IO) {
+        val trimmed = newName.trim()
+        if (trimmed.isEmpty()) return@withContext null
+        val file = File(userWorkoutsDir, sanitise(workoutId) + ".json")
+        if (!file.exists()) return@withContext null
+        val current = try {
+            json.decodeFromString<Workout>(file.readText(Charsets.UTF_8))
+        } catch (t: Throwable) {
+            Log.w(TAG, "Rename failed to decode ${file.name}: ${t.message}")
+            return@withContext null
+        }
+        val updated = current.copy(name = trimmed)
+        saveUserWorkout(updated)
+        updated
+    }
+
     private fun saveUserWorkout(workout: Workout) {
         val file = File(userWorkoutsDir, sanitise(workout.id) + ".json")
         // Atomic write: write to a tmp sibling, then rename.

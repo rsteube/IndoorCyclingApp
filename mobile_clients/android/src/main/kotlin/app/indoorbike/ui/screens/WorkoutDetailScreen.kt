@@ -21,9 +21,15 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
+import androidx.compose.material.icons.outlined.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,6 +41,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -44,6 +52,7 @@ import app.indoorbike.shared.Workout
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.components.ZoneBadge
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -63,6 +72,9 @@ fun WorkoutDetailScreen(
     onBack: () -> Unit,
     onStart: () -> Unit,
     onNavigateToPairing: () -> Unit,
+    isImported: Boolean = false,
+    onRename: (String) -> Unit = {},
+    onDelete: () -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val ftp by container.userSettings.ftp.collectAsState()
@@ -77,13 +89,48 @@ fun WorkoutDetailScreen(
         summary.workout.segments
     else summary.workout.segments.take(stepCutoff)
 
-    Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    Column(modifier = Modifier.fillMaxSize()) {
         AppBar(
             title = workout.name,
             eyebrow = summary.tag,
             leading = {
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
-            }
+            },
+            trailing = if (isImported) {
+                {
+                    Box {
+                        IconBtn(
+                            icon = Icons.Outlined.MoreVert,
+                            contentDescription = "Workout actions",
+                            onClick = { menuExpanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Rename", color = CadenceColors.Fg1) },
+                                onClick = {
+                                    menuExpanded = false
+                                    showRenameDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Delete", color = CadenceColors.Danger) },
+                                onClick = {
+                                    menuExpanded = false
+                                    showDeleteDialog = true
+                                }
+                            )
+                        }
+                    }
+                }
+            } else null
         )
 
         LazyColumn(
@@ -128,6 +175,141 @@ fun WorkoutDetailScreen(
             onStart = onStart,
             onPairTrainer = onNavigateToPairing,
         )
+    }
+
+        if (showRenameDialog) {
+            RenameWorkoutDialog(
+                currentName = workout.name,
+                onCancel = { showRenameDialog = false },
+                onConfirm = { newName ->
+                    showRenameDialog = false
+                    onRename(newName)
+                }
+            )
+        }
+        if (showDeleteDialog) {
+            DeleteWorkoutDialog(
+                workoutName = workout.name,
+                onCancel = { showDeleteDialog = false },
+                onConfirm = {
+                    showDeleteDialog = false
+                    onDelete()
+                }
+            )
+        }
+    }
+}
+
+@Composable
+private fun RenameWorkoutDialog(
+    currentName: String,
+    onCancel: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var input by remember { mutableStateOf(currentName) }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable(onClick = onCancel),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(RoundedCornerShape(Radii.lg))
+                .background(CadenceColors.Bg1)
+                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
+                .clickable(enabled = false, onClick = {})
+                .padding(Spacing.s5),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s4)
+        ) {
+            Text("Rename workout", style = CadenceType.h3, color = CadenceColors.Fg1)
+            BasicTextField(
+                value = input,
+                onValueChange = { input = it },
+                singleLine = true,
+                textStyle = CadenceType.bodyStrong.copy(color = CadenceColors.Fg1),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    val trimmed = input.trim()
+                    if (trimmed.isNotEmpty() && trimmed != currentName) onConfirm(trimmed)
+                }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(CadenceColors.Bg2)
+                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+                    .padding(horizontal = 14.dp, vertical = 14.dp)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+                SecondaryBtn(text = "Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
+                val trimmed = input.trim()
+                val canSave = trimmed.isNotEmpty() && trimmed != currentName
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(if (canSave) CadenceColors.Brand500 else CadenceColors.Bg2)
+                        .clickable(enabled = canSave, onClick = { onConfirm(trimmed) })
+                        .padding(horizontal = 20.dp, vertical = 13.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        "Save",
+                        style = CadenceType.bodyStrong,
+                        color = if (canSave) CadenceColors.OnBrand else CadenceColors.Fg3
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteWorkoutDialog(
+    workoutName: String,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable(onClick = onCancel),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(RoundedCornerShape(Radii.lg))
+                .background(CadenceColors.Bg1)
+                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
+                .clickable(enabled = false, onClick = {})
+                .padding(Spacing.s5),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s4)
+        ) {
+            Text("Delete \"$workoutName\"?", style = CadenceType.h3, color = CadenceColors.Fg1)
+            Text(
+                "The workout file will be removed from your device. Past rides of this workout stay in your history.",
+                style = CadenceType.body,
+                color = CadenceColors.Fg2
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+                SecondaryBtn(text = "Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CadenceColors.Danger)
+                        .clickable(onClick = onConfirm)
+                        .padding(horizontal = 20.dp, vertical = 13.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Delete", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                }
+            }
+        }
     }
 }
 

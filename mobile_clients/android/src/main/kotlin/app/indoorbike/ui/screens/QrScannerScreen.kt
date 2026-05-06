@@ -80,7 +80,10 @@ import kotlinx.coroutines.launch
  * `indoorbike://import?url=…` deep-link form (delegates to the same flow).
  */
 @Composable
-fun QrScannerScreen(onBack: () -> Unit) {
+fun QrScannerScreen(
+    onBack: () -> Unit,
+    onNavigateToWorkout: (String) -> Unit = {},
+) {
     val context = LocalContext.current
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
@@ -123,9 +126,9 @@ fun QrScannerScreen(onBack: () -> Unit) {
                         lastDetected = url
                         busy = true
                         scope.launch {
-                            handleScannedUrl(context, container, url)
+                            val openedId = handleScannedUrl(context, container, url)
                             busy = false
-                            onBack()
+                            if (openedId != null) onNavigateToWorkout(openedId) else onBack()
                         }
                     }
                 )
@@ -265,11 +268,18 @@ private fun NoPermission(onRequest: () -> Unit) {
     }
 }
 
+/**
+ * Returns the id of a freshly imported single workout when the caller should
+ * navigate straight into its detail page, or null for everything else
+ * (manifests, multi-workout payloads, fetch failures, parse errors). The
+ * library is awaited before returning so the caller's navigation finds the
+ * new entry already present.
+ */
 private suspend fun handleScannedUrl(
     context: android.content.Context,
     container: app.indoorbike.AppContainer,
     raw: String
-) {
+): String? {
     // 1) Try to decode an embedded workout straight from the URL — the
     //    indoorbike.app/share#w=… and indoorbike://import?data=… forms.
     //    No HTTP, no backend.
@@ -291,26 +301,32 @@ private suspend fun handleScannedUrl(
 
         if (url.isNullOrBlank() || !url.startsWith("https://", ignoreCase = true)) {
             Toast.makeText(context, "QR didn't contain a workout or an HTTPS URL", Toast.LENGTH_LONG).show()
-            return
+            return null
         }
         sourceUrl = url
         try {
             HttpFetcher.getString(url)
         } catch (t: Throwable) {
             Toast.makeText(context, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG).show()
-            return
+            return null
         }
     }
 
-    when (val result = container.workoutImporter.importJsonText(text)) {
+    return when (val result = container.workoutImporter.importJsonText(text)) {
         is ImportResult.Workouts -> {
-            container.workoutLibrary.refreshImports()
+            // Await the rebuild so the caller's navigation finds the new entry
+            // — the alternative (fire-and-forget refreshImports) races the
+            // detail-screen lookup and bounces straight back.
+            container.workoutLibrary.refreshImportsAwait()
             val n = result.workouts.size
             Toast.makeText(
                 context,
                 if (n == 1) "Imported \"${result.workouts.first().name}\"" else "Imported $n workouts",
                 Toast.LENGTH_SHORT
             ).show()
+            // Single-workout imports route straight into the detail page so
+            // the user can hit Start without hunting for the new card.
+            if (n == 1) result.workouts.first().id else null
         }
         is ImportResult.Manifest -> {
             val outcome = container.repositoryManager.subscribeFromManifest(result.manifest, sourceUrl = sourceUrl)
@@ -322,7 +338,11 @@ private suspend fun handleScannedUrl(
                 ).show()
                 is SubscribeResult.Failure -> Toast.makeText(context, outcome.message, Toast.LENGTH_LONG).show()
             }
+            null
         }
-        is ImportResult.Failure -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+        is ImportResult.Failure -> {
+            Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+            null
+        }
     }
 }

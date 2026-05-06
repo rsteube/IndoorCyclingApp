@@ -37,6 +37,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +57,7 @@ import app.indoorbike.navigation.TabSettings
 import app.indoorbike.navigation.Navigator
 import app.indoorbike.navigation.rememberNavigationState
 import app.indoorbike.library.WorkoutEntry
+import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.ui.ControllerPairingScreen
@@ -309,11 +311,20 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
             )
         }
         entry<RouteQrScanner> { _ ->
-            QrScannerScreen(onBack = { navigator.goBack() })
+            QrScannerScreen(
+                onBack = { navigator.goBack() },
+                onNavigateToWorkout = { workoutId ->
+                    // Replace, not push: pressing Back from the detail page
+                    // should land on Library, not bring the camera back.
+                    navigator.replace(RouteWorkoutDetail(workoutId))
+                }
+            )
         }
         entry<RouteWorkoutDetail> { key: RouteWorkoutDetail ->
-            val workout = workouts.find { it.id == key.workoutId }
-            if (workout != null) {
+            val entry = entries.find { it.workout.id == key.workoutId }
+            val workout = entry?.workout
+            if (entry != null && workout != null) {
+                val scope = rememberCoroutineScope()
                 WorkoutDetailScreen(
                     workout = workout,
                     onBack = { navigator.goBack() },
@@ -324,7 +335,21 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                         )
                         navigator.navigate(RouteRideScreen(workout.id))
                     },
-                    onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) }
+                    onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) },
+                    isImported = entry.source is WorkoutSource.Imported,
+                    onRename = { newName ->
+                        scope.launch {
+                            container.workoutImporter.renameUserWorkout(workout.id, newName)
+                            container.workoutLibrary.refreshImportsAwait()
+                        }
+                    },
+                    onDelete = {
+                        scope.launch {
+                            container.workoutImporter.deleteUserWorkout(workout.id)
+                            container.workoutLibrary.refreshImportsAwait()
+                            navigator.goBack()
+                        }
+                    }
                 )
             } else {
                 LaunchedEffect(Unit) { navigator.goBack() }

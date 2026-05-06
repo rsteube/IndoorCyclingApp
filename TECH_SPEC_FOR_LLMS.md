@@ -205,10 +205,12 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 | --- | --- |
 | `https://example.com/whatever.json` | HTTP GET, parse JSON |
 | `indoorbike://import?url=<https-url>` | HTTP GET that URL, parse JSON |
-| `https://indoorbike.app/share/#w=<base64-url-safe-utf8-json>` | Local decode — no HTTP. Matches the website editor's "Show QR & link" output. |
-| `indoorbike://import?data=<base64-url-safe-utf8-json>` | Local decode — no HTTP. Tighter form for chats / NFC etc. |
+| `https://indoorbike.app/share/#wz=<base64-url-safe-gzip-utf8-json>` | Local decode — gzip-then-base64url. Current QR / link form from the website editor. |
+| `https://indoorbike.app/share/#w=<base64-url-safe-utf8-json>` | Local decode — legacy uncompressed form, still accepted. |
+| `indoorbike://import?dataz=<base64-url-safe-gzip-utf8-json>` | Local decode — gzipped deep-link form for chats / NFC etc. |
+| `indoorbike://import?data=<base64-url-safe-utf8-json>` | Local decode — legacy uncompressed deep-link form, still accepted. |
 
-The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLinkParser.kt). When it returns non-null, the network fetch is skipped entirely — important because the website's `share/` URL serves HTML to a browser, not JSON, so a naive GET wouldn't work. Decoding uses `android.util.Base64.decode(s, URL_SAFE | NO_PADDING | NO_WRAP)` to match the JS encoder in [`website/editor/editor.js`](website/editor/editor.js).
+The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLinkParser.kt). When it returns non-null, the network fetch is skipped entirely — important because the website's `share/` URL serves HTML to a browser, not JSON, so a naive GET wouldn't work. Decoding uses `android.util.Base64.decode(s, URL_SAFE | NO_PADDING | NO_WRAP)` to match the JS encoder in [`website/editor/editor.js`](website/editor/editor.js); gzipped forms are then inflated via `java.util.zip.GZIPInputStream`. Compression cuts a typical 1 KB workout URL roughly in half — enough to drop the QR several versions and make modules chunky enough for phone cameras to scan reliably.
 
 **Permissions** — `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 
