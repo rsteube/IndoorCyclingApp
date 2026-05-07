@@ -106,8 +106,8 @@
     <ul>
       <li><strong>Profile values:</strong> your FTP, weight, and max heart rate, used to compute targets and zones.</li>
       <li><strong>Paired-device identifiers:</strong> the Bluetooth MAC of your trainer, heart-rate monitor, and controller, so the app can reconnect on next launch without re-pairing.</li>
-      <li><strong>Workouts:</strong> bundled JSON shipped with the app, plus any workouts you import (file pick, share-sheet, QR, or by URL). Imported workouts live as plain JSON in the app's private storage.</li>
-      <li><strong>Subscribed repositories:</strong> the manifest URL and last-fetched copy of any community repository you've subscribed to.</li>
+      <li><strong>Workouts:</strong> bundled JSON shipped with the app, plus any workouts you import (file pick, share-sheet, QR, by URL, or picked from a community repo in the in-app browser). Imported workouts live as plain JSON in the app's private storage; ones added from a known community repo also carry a small sidecar file recording the source repo's name for attribution.</li>
+      <li><strong>Cached community registry:</strong> a read-only JSON list of community-repo names + URLs (whatever <code>indoorbike.app/registry.json</code> returned the last time you opened More Workouts), kept on-device so the list still shows when you're offline.</li>
       <li><strong>Ride history:</strong> the result of each ride (duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log) in a local SQLite database.</li>
       <li><strong>Optional integration credentials:</strong> if you set them, your Intervals.icu athlete ID and API key, stored in the same on-device key/value store as your profile values.</li>
     </ul>
