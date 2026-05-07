@@ -1181,46 +1181,56 @@ private fun BackupSyncCard() {
 
             SyncStatusLine(status)
 
+            // "Sync now" is the action a rider reaches for 99% of the time;
+            // give it the full row. "Stop syncing" is rare + destructive (well,
+            // soft-destructive — local data stays) and lives below as a small
+            // text link, mirroring the "Change" affordance in FolderRow above.
+            PrimaryBtn(
+                text = if (status is SyncStatus.Syncing) "Syncing…" else "Sync now",
+                leadingIcon = null,
+                enabled = status !is SyncStatus.Syncing,
+                onClick = { scope.launch { engine.syncNow() } },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Spacer(Modifier.height(Spacing.s2))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                PrimaryBtn(
-                    text = if (status is SyncStatus.Syncing) "Syncing…" else "Sync now",
-                    leadingIcon = null,
-                    enabled = status !is SyncStatus.Syncing,
-                    onClick = { scope.launch { engine.syncNow() } },
+                Text(
+                    text = "Disconnects this device from the folder. Local rides, settings, " +
+                        "and library stay put — slices in the folder aren't deleted.",
+                    style = CadenceType.tick,
+                    color = CadenceColors.Fg4,
                     modifier = Modifier.weight(1f)
                 )
-                SecondaryBtn(
+                Spacer(Modifier.width(Spacing.s3))
+                Text(
                     text = "Stop syncing",
-                    leadingIcon = null,
-                    onClick = {
-                        // Release the SAF grant before clearing the URI — keeps
-                        // the system permission table tidy when riders bounce
-                        // between providers.
-                        syncFolderUri?.let { raw ->
-                            try {
-                                val uri = Uri.parse(raw)
-                                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                                context.contentResolver.releasePersistableUriPermission(uri, flags)
-                            } catch (_: Throwable) {
-                                // Best effort — a stale grant is harmless.
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Danger,
+                    modifier = Modifier
+                        .clickable {
+                            // Release the SAF grant before clearing the URI —
+                            // keeps the system permission table tidy when
+                            // riders bounce between providers.
+                            syncFolderUri?.let { raw ->
+                                try {
+                                    val uri = Uri.parse(raw)
+                                    val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                    context.contentResolver.releasePersistableUriPermission(uri, flags)
+                                } catch (_: Throwable) {
+                                    // Best effort — a stale grant is harmless.
+                                }
                             }
+                            settings.setSyncFolderUri(null)
                         }
-                        settings.setSyncFolderUri(null)
-                    },
-                    modifier = Modifier.weight(1f)
+                        .padding(top = 6.dp, bottom = 6.dp)
                 )
             }
-
-            Text(
-                text = "Stopping just disconnects this device from the folder. Your local rides, " +
-                    "settings, and library stay put, and the slices in the folder aren't deleted.",
-                style = CadenceType.tick,
-                color = CadenceColors.Fg4
-            )
         }
     }
 }
