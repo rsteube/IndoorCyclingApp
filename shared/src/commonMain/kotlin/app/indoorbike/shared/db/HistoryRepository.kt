@@ -26,6 +26,17 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
     private val database = HistoryDatabase(databaseDriverFactory.createDriver())
     private val dbQuery = database.historyQueries
 
+    /**
+     * Persists a finished ride along with its 1Hz telemetry.
+     *
+     * [externalId] is the globally-unique stable id used by the backup-sync
+     * layer to dedupe sessions across devices. Callers compose it as
+     * `"$deviceId:${UUID}"` so it stays unique without any cross-device
+     * coordination. Stored at insert time — never derived from the
+     * autoincrement [id] (the autoincrement isn't known until after insert,
+     * and we want to keep `externalId` independent of in-DB row ids in case
+     * sessions ever migrate across DBs).
+     */
     suspend fun insertWorkoutSession(
         workoutId: String,
         workoutName: String,
@@ -34,6 +45,7 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
         avgPower: Long,
         avgCadence: Long,
         avgHeartRate: Long,
+        externalId: String,
         telemetry: List<TelemetryPoint>
     ): Long {
         return withContext(Dispatchers.IO) {
@@ -45,11 +57,12 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                     durationSeconds = durationSeconds,
                     avgPower = avgPower,
                     avgCadence = avgCadence,
-                    avgHeartRate = avgHeartRate
+                    avgHeartRate = avgHeartRate,
+                    externalId = externalId
                 )
-                
+
                 val sessionId = dbQuery.lastInsertRowId().executeAsOne()
-                
+
                 for (point in telemetry) {
                     dbQuery.insertTelemetry(
                         sessionId = sessionId,
@@ -59,7 +72,7 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                         heartRate = point.heartRate
                     )
                 }
-                
+
                 sessionId
             }
         }
@@ -80,6 +93,45 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
     suspend fun getSessionById(sessionId: Long): WorkoutSession? {
         return withContext(Dispatchers.IO) {
             dbQuery.selectSessionById(sessionId).executeAsOneOrNull()
+        }
+    }
+
+    /**
+     * Looks up a session by its globally-unique [externalId]. Used by the
+     * sync reconciler to ask "do I already have this session locally?"
+     * before applying a remote slice's row.
+     */
+    suspend fun getSessionByExternalId(externalId: String): WorkoutSession? {
+        return withContext(Dispatchers.IO) {
+            dbQuery.selectSessionByExternalId(externalId).executeAsOneOrNull()
+        }
+    }
+
+    /**
+     * One-shot post-upgrade migration helper: fills in [WorkoutSession.externalId]
+     * for every row that still has the empty-string default (left over from
+     * the v1 → v2 schema migration). [generate] is invoked once per row and
+     * must return a fresh, globally-unique id — typically
+     * `"$deviceId:${UUID.randomUUID()}"`.
+     *
+     * Idempotent: re-running on a fully-backfilled DB is a no-op (the
+     * `selectSessionsNeedingExternalIdBackfill` query returns zero rows).
+     * Wrapped in a single transaction so a partial backfill rolls back
+     * cleanly if interrupted.
+     *
+     * @return number of rows backfilled (zero on a fresh install or after
+     * the first successful run).
+     */
+    suspend fun backfillExternalIds(generate: () -> String): Int {
+        return withContext(Dispatchers.IO) {
+            val needing = dbQuery.selectSessionsNeedingExternalIdBackfill().executeAsList()
+            if (needing.isEmpty()) return@withContext 0
+            database.transaction {
+                for (row in needing) {
+                    dbQuery.updateSessionExternalId(externalId = generate(), id = row.id)
+                }
+            }
+            needing.size
         }
     }
 

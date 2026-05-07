@@ -16,6 +16,7 @@
 package app.indoorbike.settings
 
 import android.content.Context
+import android.os.Build
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -24,6 +25,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import java.util.UUID
 import app.indoorbike.shared.settings.DEFAULT_FTP
 import app.indoorbike.shared.settings.DEFAULT_MAX_HR
 import app.indoorbike.shared.settings.DEFAULT_WEIGHT_KG
@@ -101,6 +103,29 @@ class AndroidUserSettings(
     private val _favouriteWorkoutIds = MutableStateFlow<Set<String>>(initialPrefs[KEY_FAVOURITES] ?: emptySet())
     override val favouriteWorkoutIds: StateFlow<Set<String>> = _favouriteWorkoutIds.asStateFlow()
 
+    /**
+     * Resolved at construction. If absent in DataStore (first launch, or a
+     * fresh install after uninstall), generate a UUID and persist it
+     * synchronously so the value is stable for the life of the install.
+     * The runBlocking write is one-time-per-install — negligible cold-start
+     * cost vs. the alternative of plumbing async-init through every consumer.
+     */
+    override val deviceId: String = run {
+        val existing = initialPrefs[KEY_DEVICE_ID]
+        if (existing != null) existing
+        else {
+            val generated = UUID.randomUUID().toString()
+            runBlocking { store.edit { it[KEY_DEVICE_ID] = generated } }
+            generated
+        }
+    }
+
+    private val _deviceLabel = MutableStateFlow(initialPrefs[KEY_DEVICE_LABEL] ?: defaultDeviceLabel())
+    override val deviceLabel: StateFlow<String> = _deviceLabel.asStateFlow()
+
+    private val _syncFolderUri = MutableStateFlow<String?>(initialPrefs[KEY_SYNC_FOLDER_URI])
+    override val syncFolderUri: StateFlow<String?> = _syncFolderUri.asStateFlow()
+
     init {
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
@@ -155,6 +180,19 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_FAVOURITES] ?: emptySet() }.collect { value ->
                 if (value != _favouriteWorkoutIds.value) _favouriteWorkoutIds.value = value
+            }
+        }
+        scope.launch {
+            // deviceId is intentionally NOT collected — once written it never
+            // changes for the lifetime of the install, so a per-key flow
+            // collector would be pure overhead. See [deviceId] for why.
+            store.data.map { it[KEY_DEVICE_LABEL] ?: defaultDeviceLabel() }.collect { value ->
+                if (value != _deviceLabel.value) _deviceLabel.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_SYNC_FOLDER_URI] }.collect { value ->
+                if (value != _syncFolderUri.value) _syncFolderUri.value = value
             }
         }
     }
@@ -236,6 +274,25 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_INTERVALS_AUTO] = value } }
     }
 
+    override fun setSyncFolderUri(uri: String?) {
+        val cleaned = uri?.trim()?.takeIf { it.isNotEmpty() }
+        if (cleaned == _syncFolderUri.value) return
+        _syncFolderUri.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_SYNC_FOLDER_URI)
+                else it[KEY_SYNC_FOLDER_URI] = cleaned
+            }
+        }
+    }
+
+    override fun setDeviceLabel(label: String) {
+        val cleaned = label.trim().take(MAX_DEVICE_LABEL_LEN).ifEmpty { return }
+        if (cleaned == _deviceLabel.value) return
+        _deviceLabel.value = cleaned
+        scope.launch { store.edit { it[KEY_DEVICE_LABEL] = cleaned } }
+    }
+
     override fun setWorkoutFavourite(workoutId: String, favourite: Boolean) {
         val current = _favouriteWorkoutIds.value
         // No-op fast path: avoids both an unnecessary StateFlow emission and a
@@ -267,5 +324,23 @@ class AndroidUserSettings(
         private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
         private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
         private val KEY_FAVOURITES = stringSetPreferencesKey("favourite_workout_ids")
+        private val KEY_DEVICE_ID = stringPreferencesKey("device_id")
+        private val KEY_DEVICE_LABEL = stringPreferencesKey("device_label")
+        private val KEY_SYNC_FOLDER_URI = stringPreferencesKey("sync_folder_uri")
+
+        /**
+         * Cap the label so it can't poison the backup file (a multi-MB string
+         * smuggled into a sync slice would balloon every device's read).
+         */
+        private const val MAX_DEVICE_LABEL_LEN = 64
+
+        /**
+         * Free-form, rider-editable. `Build.MODEL` ("Pixel 8", "SM-G998B") is
+         * a reasonable starting point — matches what users see in their
+         * phone's Settings → About — and is overwritten on first explicit
+         * edit. Falls back to "Phone" if the device exposes a blank model.
+         */
+        private fun defaultDeviceLabel(): String =
+            Build.MODEL?.trim()?.takeIf { it.isNotEmpty() } ?: "Phone"
     }
 }

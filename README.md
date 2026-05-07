@@ -35,9 +35,9 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full build / test / variant workf
 
 ## Community workouts
 
-The Browse community section in the app fetches a registry of workout repositories from `BuildConfig.REGISTRY_URL` (default `https://indoorbike.app/registry.json`). Subscribed repositories sync incrementally — only changed bundles are re-downloaded — and the registry is graceful about being unreachable: if it can't be fetched, Browse just shows an empty state and users can still subscribe to a specific repo by URL or QR code.
+The More Workouts screen lets riders import single workouts from a file, scan a QR from the [browser editor](https://indoorbike.app/editor/), paste an HTTPS URL, or browse community repositories. The community list comes from a registry at `BuildConfig.REGISTRY_URL` (default `https://indoorbike.app/registry.json`); when a rider opens a repo, the app fetches it on demand and they pick individual workouts to keep — each one becomes a static local copy. The registry is graceful about being unreachable: Browse just shows an empty state and the QR / paste-URL / file-import paths still work.
 
-To self-host a registry or repository, override `REGISTRY_URL` at build time, or simply add a repo by URL from inside the app. The on-disk schema is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#workout-library--sources-import-repositories).
+To self-host a registry or repository, override `REGISTRY_URL` at build time, or simply paste a manifest URL from inside the app. The on-disk schema is documented in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#workout-library--sources-import-repositories).
 
 ## Privacy
 

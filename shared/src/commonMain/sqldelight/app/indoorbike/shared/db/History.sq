@@ -6,8 +6,22 @@ CREATE TABLE WorkoutSession (
     durationSeconds INTEGER NOT NULL,
     avgPower INTEGER NOT NULL,
     avgCadence INTEGER NOT NULL,
-    avgHeartRate INTEGER NOT NULL
+    avgHeartRate INTEGER NOT NULL,
+    -- Globally-unique stable id, used by the backup-sync layer to dedupe
+    -- sessions across devices. Never reused, never edited. Empty string
+    -- represents "needs backfill" — only present transiently during the
+    -- migration from v1 → v2 of this schema, until the post-upgrade
+    -- backfill query in HistoryRepository fills the column. New inserts
+    -- supply a non-empty value.
+    externalId TEXT NOT NULL DEFAULT ''
 );
+
+-- Non-unique because the v1 → v2 migration leaves multiple rows with the
+-- empty-string default until the Kotlin-side backfill runs; a UNIQUE
+-- constraint would reject the migration. Application-level discipline
+-- (each insert supplies "$deviceId:${UUID}") guarantees uniqueness in
+-- practice.
+CREATE INDEX ix_workout_session_external_id ON WorkoutSession(externalId);
 
 CREATE TABLE WorkoutTelemetry (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,8 +34,8 @@ CREATE TABLE WorkoutTelemetry (
 );
 
 insertSession:
-INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate)
-VALUES (?, ?, ?, ?, ?, ?, ?);
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();
@@ -38,6 +52,15 @@ SELECT * FROM WorkoutTelemetry WHERE sessionId = ? ORDER BY timestampEpoch ASC;
 
 selectSessionById:
 SELECT * FROM WorkoutSession WHERE id = ?;
+
+selectSessionByExternalId:
+SELECT * FROM WorkoutSession WHERE externalId = ?;
+
+selectSessionsNeedingExternalIdBackfill:
+SELECT * FROM WorkoutSession WHERE externalId = '';
+
+updateSessionExternalId:
+UPDATE WorkoutSession SET externalId = ? WHERE id = ?;
 
 deleteTelemetryForSession:
 DELETE FROM WorkoutTelemetry WHERE sessionId = ?;

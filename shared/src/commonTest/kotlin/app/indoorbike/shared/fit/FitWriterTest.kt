@@ -124,6 +124,7 @@ class FitWriterTest {
             id = 1, workoutId = "test", workoutName = "Test",
             startTimeEpoch = startEpoch, durationSeconds = 1800,
             avgPower = 140L, avgCadence = 90L, avgHeartRate = 150L,
+            externalId = "test:1",
         )
 
         val bytes = RideFitBuilder.build(session, telemetry, workout, ftp = 200)
@@ -148,6 +149,7 @@ class FitWriterTest {
             startTimeEpoch = 1_700_000_000_000L,
             durationSeconds = 60,
             avgPower = 150L, avgCadence = 85L, avgHeartRate = 140L,
+            externalId = "test:42",
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(

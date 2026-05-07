@@ -64,6 +64,27 @@ class RepositoryManager(
     init {
         // Hydrate from disk on construction so the UI has data on first frame.
         _registry.value = loadRegistryFromDisk()
+        pruneLegacyReposDir()
+    }
+
+    /**
+     * One-time cleanup of the on-disk repo mirror that pre-explicit-add builds
+     * maintained at `filesDir/repos/<id>/`. The directory is no longer written
+     * (the explicit-add model keeps fetched repos in memory only), but devices
+     * that ever ran an older build can carry orphaned bundles. Best-effort —
+     * a failure here is silent because there's nothing the user can do about
+     * it and the orphans don't affect correctness, only disk usage.
+     */
+    private fun pruneLegacyReposDir() {
+        val legacy = File(baseDir, "repos")
+        if (!legacy.exists()) return
+        try {
+            if (legacy.deleteRecursively()) {
+                Log.i(TAG, "Pruned legacy filesDir/repos/")
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "Couldn't prune legacy repos dir: ${t.message}")
+        }
     }
 
     // ── Registry ─────────────────────────────────────────────────────────────

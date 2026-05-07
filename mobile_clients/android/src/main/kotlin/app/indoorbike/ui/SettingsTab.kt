@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material.icons.outlined.Visibility
@@ -53,11 +54,18 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
+import androidx.documentfile.provider.DocumentFile
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
+import app.indoorbike.sync.SyncStatus
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
@@ -117,6 +125,11 @@ fun SettingsTab(
 
             SectionHeader("CLOUD SYNC")
             IntervalsIcuCard()
+
+            Spacer(modifier = Modifier.height(Spacing.s6))
+
+            SectionHeader("BACKUP & SYNC")
+            BackupSyncCard()
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
@@ -1053,5 +1066,287 @@ private fun IntervalsTextField(
                 trailing()
             }
         }
+    }
+}
+
+// ─── Backup & Sync ───────────────────────────────────────────────────────────
+
+/**
+ * Folder-backed backup that doubles as cross-device sync. The rider picks
+ * any SAF-accessible folder (Drive, Dropbox, Nextcloud, Syncthing, …) and
+ * each device writes one small JSON slice into it; every device pointed at
+ * the same folder shares rides, library, and settings.
+ *
+ * F-Droid posture: nothing here triggers a network call from the app
+ * itself — the rider's chosen storage provider does any uploading on the
+ * SAF side. No accounts, no servers, no telemetry.
+ */
+@Composable
+private fun BackupSyncCard() {
+    val container = LocalAppContainer.current
+    val settings = container.userSettings
+    val engine = container.syncEngine
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val syncFolderUri by settings.syncFolderUri.collectAsState()
+    val deviceLabel by settings.deviceLabel.collectAsState()
+    val status by engine.status.collectAsState()
+    val configured = !syncFolderUri.isNullOrBlank()
+
+    val pickFolderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        // Keep the grant alive across reboots — without this the URI works
+        // for the current process only and breaks on next launch.
+        try {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (_: SecurityException) {
+            // A few exotic SAF providers don't support persistable permissions.
+            // Save the URI anyway so syncs work for this session; the rider
+            // will be re-prompted on next launch.
+        }
+        settings.setSyncFolderUri(uri.toString())
+        // Auto-fire a first sync so the rider sees something happen rather
+        // than tapping Sync now after picking the folder.
+        scope.launch { engine.syncNow() }
+    }
+
+    val shape = RoundedCornerShape(Radii.md)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .padding(Spacing.s5),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Folder,
+                    contentDescription = null,
+                    tint = CadenceColors.Brand500,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(Spacing.s3))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Backup & sync", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Text(
+                    text = if (configured) "Configured" else "Not configured",
+                    style = CadenceType.tick,
+                    color = if (configured) CadenceColors.Success else CadenceColors.Fg3
+                )
+            }
+        }
+
+        Text(
+            text = "Pick any folder on your device or in cloud storage — Drive, Dropbox, " +
+                "Nextcloud, Syncthing, OneDrive, anything that exposes itself as a folder. " +
+                "Each device writes one small JSON file there; other devices pointed at the " +
+                "same folder share your rides, library, and settings. No accounts, no servers " +
+                "— just a file in a folder you already trust.",
+            style = CadenceType.small,
+            color = CadenceColors.Fg3
+        )
+
+        if (!configured) {
+            PrimaryBtn(
+                text = "Choose sync folder",
+                leadingIcon = null,
+                onClick = { pickFolderLauncher.launch(null) },
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else {
+            FolderRow(
+                uri = syncFolderUri!!,
+                onChange = { pickFolderLauncher.launch(null) }
+            )
+
+            DeviceLabelField(
+                value = deviceLabel,
+                onValueChange = { settings.setDeviceLabel(it) }
+            )
+
+            SyncStatusLine(status)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+            ) {
+                PrimaryBtn(
+                    text = if (status is SyncStatus.Syncing) "Syncing…" else "Sync now",
+                    leadingIcon = null,
+                    enabled = status !is SyncStatus.Syncing,
+                    onClick = { scope.launch { engine.syncNow() } },
+                    modifier = Modifier.weight(1f)
+                )
+                SecondaryBtn(
+                    text = "Stop syncing",
+                    leadingIcon = null,
+                    onClick = {
+                        // Release the SAF grant before clearing the URI — keeps
+                        // the system permission table tidy when riders bounce
+                        // between providers.
+                        syncFolderUri?.let { raw ->
+                            try {
+                                val uri = Uri.parse(raw)
+                                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                context.contentResolver.releasePersistableUriPermission(uri, flags)
+                            } catch (_: Throwable) {
+                                // Best effort — a stale grant is harmless.
+                            }
+                        }
+                        settings.setSyncFolderUri(null)
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Text(
+                text = "Stopping just disconnects this device from the folder. Your local rides, " +
+                    "settings, and library stay put, and the slices in the folder aren't deleted.",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg4
+            )
+        }
+    }
+}
+
+@Composable
+private fun FolderRow(uri: String, onChange: () -> Unit) {
+    val context = LocalContext.current
+    // SAF tree URIs are opaque blobs; the user-friendly name comes from the
+    // DocumentFile root. `remember(uri)` so a folder swap re-resolves.
+    val folderName = remember(uri) {
+        try {
+            DocumentFile.fromTreeUri(context, Uri.parse(uri))?.name?.takeIf { it.isNotBlank() }
+                ?: "Sync folder"
+        } catch (_: Throwable) {
+            "Sync folder"
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "FOLDER", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Text(
+                text = folderName,
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+            )
+        }
+        Text(
+            text = "Change",
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Brand500,
+            modifier = Modifier
+                .clickable(onClick = onChange)
+                .padding(start = Spacing.s3, top = 6.dp, bottom = 6.dp)
+        )
+    }
+}
+
+@Composable
+private fun DeviceLabelField(value: String, onValueChange: (String) -> Unit) {
+    // Local edit buffer so each keystroke doesn't write through to DataStore +
+    // re-flow back. Commit on focus loss / IME-Done — same pattern as the FTP
+    // and weight rows.
+    var draft by remember(value) { mutableStateOf(value) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text = "DEVICE NAME", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(Radii.sm))
+                .background(CadenceColors.Bg2)
+                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.sm))
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            androidx.compose.foundation.text.BasicTextField(
+                value = draft,
+                onValueChange = { draft = it },
+                singleLine = true,
+                textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Brand500),
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = KeyboardType.Text,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onDone = {
+                        if (draft.isNotBlank() && draft != value) onValueChange(draft)
+                    }
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .onFocusChanged { focus ->
+                        if (!focus.isFocused && draft.isNotBlank() && draft != value) {
+                            onValueChange(draft)
+                        }
+                    }
+            )
+        }
+        Text(
+            text = "Used in the backup file so other devices can tell yours apart.",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg4
+        )
+    }
+}
+
+@Composable
+private fun SyncStatusLine(status: SyncStatus) {
+    val (text, color) = when (status) {
+        SyncStatus.Idle -> "Not synced yet · tap Sync now" to CadenceColors.Fg3
+        SyncStatus.Syncing -> "Syncing…" to CadenceColors.Brand500
+        is SyncStatus.Success -> {
+            val ago = formatRelativeTime(status.syncedAtEpoch)
+            val devices = "${status.devicesSeen} device" + if (status.devicesSeen == 1) "" else "s"
+            "Synced $ago · $devices seen" to CadenceColors.Success
+        }
+        is SyncStatus.Failed -> "Couldn't sync: ${status.message}" to CadenceColors.Danger
+        SyncStatus.NotConfigured -> "Not configured" to CadenceColors.Fg3
+    }
+    Text(
+        text = text,
+        style = CadenceType.small,
+        color = color,
+        textAlign = TextAlign.Start
+    )
+}
+
+/**
+ * Cheap relative-time renderer for the sync status line. Computed once per
+ * recomposition — the line refreshes whenever the user reopens Settings or
+ * triggers another sync, which is good enough; we don't need a ticking
+ * "1 min ago → 2 min ago" effect for what's essentially a debug breadcrumb.
+ */
+private fun formatRelativeTime(epochMs: Long): String {
+    val diffSec = (System.currentTimeMillis() - epochMs) / 1000
+    return when {
+        diffSec < 5 -> "just now"
+        diffSec < 60 -> "${diffSec}s ago"
+        diffSec < 3600 -> "${diffSec / 60} min ago"
+        diffSec < 86400 -> "${diffSec / 3600}h ago"
+        else -> "${diffSec / 86400}d ago"
     }
 }

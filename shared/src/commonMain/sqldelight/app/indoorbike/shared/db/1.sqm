@@ -1,0 +1,6 @@
+-- Migrates HistoryDatabase v1 → v2: adds the externalId column to
+-- WorkoutSession plus its lookup index. The Kotlin-side backfill in
+-- HistoryRepository.backfillExternalIds runs immediately after upgrade
+-- and replaces the empty-string defaults with `$deviceId:${UUID}`.
+ALTER TABLE WorkoutSession ADD COLUMN externalId TEXT NOT NULL DEFAULT '';
+CREATE INDEX ix_workout_session_external_id ON WorkoutSession(externalId);

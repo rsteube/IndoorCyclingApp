@@ -238,6 +238,11 @@ fun RideScreen(
             avgPower = avgPower,
             avgCadence = avgCadence,
             avgHeartRate = avgHr,
+            // Globally-unique stable id for the backup-sync layer. The
+            // device-id namespace + a fresh UUID per session means two
+            // phones can never collide on a session id without any
+            // cross-device coordination.
+            externalId = "${container.userSettings.deviceId}:${java.util.UUID.randomUUID()}",
             telemetry = telemetry
         )
         onNavigateToOverview(newSessionId)

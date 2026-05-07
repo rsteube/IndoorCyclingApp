@@ -76,12 +76,38 @@ interface UserSettings {
 
     // ── Favourite workouts ────────────────────────────────────────────────
     // The set of workout ids the rider has starred. Persisted as a flat set
-    // of strings on disk so source of the workout (bundled / imported /
-    // subscribed) doesn't matter — favouriting a workout you imported and
-    // later removed leaves a stale id, which the UI just filters out.
+    // of strings on disk so source of the workout (bundled / imported)
+    // doesn't matter — favouriting a workout you imported and later removed
+    // leaves a stale id, which the UI just filters out.
 
     val favouriteWorkoutIds: StateFlow<Set<String>>
     fun setWorkoutFavourite(workoutId: String, favourite: Boolean)
+
+    // ── Device identity ───────────────────────────────────────────────────
+    // Stable per-install identifier, generated once on first launch and never
+    // changed. Used to namespace this device's slice in the backup folder and
+    // to derive `BackupSession.externalId` so two phones can't collide on
+    // session ids. Opaque to the rider.
+    //
+    // [deviceLabel] is the rider-facing name shown in the Backup UI ("Pixel
+    // 8"), defaulted by the platform impl and editable from Settings.
+
+    val deviceId: String
+
+    val deviceLabel: StateFlow<String>
+    fun setDeviceLabel(label: String)
+
+    // ── Backup-sync folder ────────────────────────────────────────────────
+    // The platform-specific identifier for the rider's chosen sync folder.
+    // On Android it's the URI string of a SAF tree URI persisted via
+    // `takePersistableUriPermission`; on iOS it'll be a security-scoped
+    // bookmark blob (base64-encoded). `null` = sync not configured.
+    //
+    // The sync engine treats null as "never sync"; setting it to a URI is
+    // what enables the feature.
+
+    val syncFolderUri: StateFlow<String?>
+    fun setSyncFolderUri(uri: String?)
 }
 
 /** FTP fallback used when a new rider taps "I don't know my FTP" in onboarding. */

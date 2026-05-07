@@ -24,6 +24,8 @@ import app.indoorbike.service.RideSessionService
 import app.indoorbike.session.AndroidActiveSessionStore
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.sync.IntervalsIcuUploader
+import app.indoorbike.sync.SafSyncStorage
+import app.indoorbike.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -66,6 +68,7 @@ class AppContainer(
     val repositoryManager: RepositoryManager,
     val workoutLibrary: WorkoutLibrary,
     val intervalsIcuUploader: IntervalsIcuUploader,
+    val syncEngine: SyncEngine,
 ) {
     private val containerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -127,6 +130,22 @@ class AppContainer(
                 historyRepository = historyRepository,
                 userSettings = userSettings,
             )
+            val syncEngine = SyncEngine(
+                userSettings = userSettings,
+                historyRepository = historyRepository,
+                workoutImporter = workoutImporter,
+                workoutLibrary = workoutLibrary,
+                // Re-evaluated on each syncNow() so a freshly-picked folder is
+                // honored without rebuilding the engine.
+                storageProvider = {
+                    userSettings.syncFolderUri.value?.let { raw ->
+                        SafSyncStorage(
+                            context = application,
+                            treeUri = android.net.Uri.parse(raw),
+                        )
+                    }
+                },
+            )
             return AppContainer(
                 trainerManager = trainerManager,
                 heartRateMonitor = heartRateMonitor,
@@ -139,6 +158,7 @@ class AppContainer(
                 repositoryManager = repositoryManager,
                 workoutLibrary = workoutLibrary,
                 intervalsIcuUploader = intervalsIcuUploader,
+                syncEngine = syncEngine,
             )
         }
     }
@@ -158,6 +178,22 @@ class IndoorBikeApp : Application() {
         // Surface any unfinished ride snapshot to the UI (banner) by populating
         // the session manager's persistedSnapshot StateFlow from disk.
         initScope.launch { container.sessionManager.loadPersistedSnapshot() }
+        // One-shot backfill for the v1 → v2 history schema: any session that
+        // predates the externalId column gets a fresh `$deviceId:${UUID}`.
+        // Idempotent — fast no-op on fresh installs and after the first run.
+        initScope.launch {
+            val deviceId = container.userSettings.deviceId
+            val n = container.historyRepository.backfillExternalIds {
+                "$deviceId:${java.util.UUID.randomUUID()}"
+            }
+            if (n > 0) Log.i("IndoorBikeApp", "Backfilled externalId for $n session(s)")
+            // Best-effort auto-sync after backfill so any rides we just gave
+            // external ids to participate in this round-trip. NotConfigured
+            // (no folder picked) is a silent no-op; failures surface in the
+            // Backup & Sync card via SyncEngine.status. The mutex inside the
+            // engine serialises against any user-triggered "Sync now" tap.
+            container.syncEngine.syncNow()
+        }
         // Silently re-connect to previously paired BLE devices so users don't
         // have to dig into settings every launch.
         initScope.launch {

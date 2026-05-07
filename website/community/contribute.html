@@ -69,8 +69,9 @@
           points at your manifest URL.
         </li>
         <li>
-          On merge, your repository shows up in the community browser and is
-          subscribable from inside the app.
+          On merge, your repository shows up in the community browser and
+          riders can browse it from inside the app and pick individual workouts
+          to add to their library.
         </li>
       </ol>
     </section>
@@ -85,8 +86,9 @@
         <li>
           <strong>One small <code>manifest.json</code></strong> with repo
           metadata plus a list of pointers to your bundle files. The app
-          downloads this on every refresh, so keeping it small (just
-          metadata, no segments) keeps everyone's bandwidth low.
+          downloads this on demand whenever a rider opens your repo in the
+          browser, so keeping it small (just metadata, no segments) keeps
+          everyone's bandwidth low.
         </li>
         <li>
           <strong>One or more bundle files</strong>, each a JSON array of
@@ -317,27 +319,35 @@
       <h2>Updating after publication</h2>
       <ul class="bullet-list">
         <li>
-          <strong>Editing a workout:</strong> change the bundle file, then
-          bump that bundle's <code>version</code> in the manifest. The app
-          will see the bumped number on next refresh and re-download just that
-          bundle. Other bundles stay cached.
+          <strong>Editing a workout:</strong> change the bundle file. Riders
+          who open your repo after that point will see the new version.
+          Workouts they had already added are static local copies and don't
+          auto-update — that's by design (no surprise changes mid-training
+          block).
         </li>
         <li>
           <strong>Adding a workout:</strong> drop it into an existing bundle
-          file, bump that bundle's <code>version</code>. Or create a new
-          bundle file and add a fresh entry to the <code>bundles</code> array.
+          file, or create a new bundle file and add a fresh entry to the
+          <code>bundles</code> array.
         </li>
         <li>
-          <strong>Removing a workout:</strong> remove it from the bundle file
-          and bump that bundle's <code>version</code>. Existing subscribers
-          stop seeing it after the next refresh. Past rides of that workout
-          stay in their ride history.
+          <strong>Removing a workout:</strong> remove it from the bundle file.
+          Future browses of your repo won't see it. Riders who already added
+          it keep their local copy, and past rides of it stay in their ride
+          history.
         </li>
         <li>
           <strong>Renaming or rebranding the repo:</strong> change the
           manifest's <code>name</code>, <code>description</code>, etc., but
           <em>don't change the <code>id</code></em>. The id is the identity;
           changing it makes the app think it's a different repo.
+        </li>
+        <li>
+          <strong>Bumping <code>version</code> on a bundle:</strong> optional
+          today — the app refetches every bundle whenever a rider opens your
+          repo. Bump it anyway whenever a bundle's contents change; the field
+          is reserved for future caching support and contributors who consume
+          your manifest programmatically may rely on it.
         </li>
         <li>
           <strong>Bumping <code>updatedEpoch</code>:</strong> optional, but
@@ -352,10 +362,10 @@
       <h2>Style guidelines (suggestions, not gates)</h2>
       <ul class="bullet-list">
         <li>
-          <strong>Prefix workout ids with your repo id.</strong> Two repos
-          shipping <code>"tempo-3x10"</code> would clash inside the app, and
-          the dedup rule (Imported &gt; Subscribed &gt; Bundled, first-wins)
-          may not pick the one your user wanted.
+          <strong>Prefix workout ids with your repo id.</strong> Two workouts
+          with the same id (one in your repo, another already in the rider's
+          library) would clash inside the app, and the dedup rule (Imported
+          &gt; Bundled, first-wins) may not pick the one your user wanted.
         </li>
         <li>
           <strong>Keep <code>powerPercentFTP</code> realistic.</strong> The

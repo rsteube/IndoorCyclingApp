@@ -87,7 +87,8 @@ import kotlinx.coroutines.launch
  *   button generates    │       camera frame    →    │       (workout vs.
  *   a URL like          │       luminance source     │        manifest)
  *   indoorbike://...   ─┘    →  ZXing decode      ───┘
- *                                                          subscribe / save
+ *                                                          save (workout) /
+ *                                                          point at Browse
  *                                                          → toast → back
  *
  * The scanner accepts any HTTPS URL (passes through HttpFetcher) **and** the

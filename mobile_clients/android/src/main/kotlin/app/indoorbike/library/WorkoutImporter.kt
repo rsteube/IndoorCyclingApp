@@ -130,26 +130,48 @@ class WorkoutImporter(private val context: Context) {
     }
 
     /**
-     * Adds a workout that came from a community repository to the user's local
-     * library. Identical to a file-import save, plus a small sidecar file
-     * recording the source repo (id + display name) so the rides list can
-     * attribute it. The local copy is the source of truth from this point on
-     * — the explicit-add model means we never auto-update it from upstream.
+     * Unified persist entry point used by everything that needs to drop a
+     * fully-formed [Workout] into the user's local library — community-repo
+     * adds, share-target imports, and the backup-sync layer applying remote
+     * slices. Writes the workout JSON plus, if any provenance is supplied, a
+     * sidecar `<id>.meta.json` that the rides list reads to render
+     * attribution.
+     *
+     * The local copy is the source of truth from this point on — the
+     * explicit-add model means we never auto-update it from upstream once
+     * saved.
+     *
+     * [addedEpoch] should be the wall-clock when the workout first entered
+     * the rider's library. The sync layer passes the epoch from the remote
+     * slice so cross-device LWW (highest importedEpoch wins on duplicate
+     * ids) stays stable across syncs.
      */
+    suspend fun saveWorkout(
+        workout: Workout,
+        sourceRepoId: String? = null,
+        sourceRepoName: String? = null,
+        addedEpoch: Long = System.currentTimeMillis(),
+    ): Workout = withContext(Dispatchers.IO) {
+        saveUserWorkout(workout)
+        if (sourceRepoId != null && sourceRepoName != null) {
+            writeMeta(
+                workout.id,
+                ImportMeta(
+                    sourceRepoId = sourceRepoId,
+                    sourceRepoName = sourceRepoName,
+                    addedEpoch = addedEpoch,
+                ),
+            )
+        }
+        workout
+    }
+
+    /** Compatibility shim — preserves the existing call site in the repo browser. */
     suspend fun saveWorkoutFromRepo(
         workout: Workout,
         repoId: String,
         repoName: String,
-    ): Workout = withContext(Dispatchers.IO) {
-        saveUserWorkout(workout)
-        val meta = ImportMeta(
-            sourceRepoId = repoId,
-            sourceRepoName = repoName,
-            addedEpoch = System.currentTimeMillis(),
-        )
-        writeMeta(workout.id, meta)
-        workout
-    }
+    ): Workout = saveWorkout(workout, repoId, repoName)
 
     /**
      * Deletes the on-disk JSON for an imported workout (and its sidecar meta,
@@ -264,7 +286,12 @@ sealed class ImportResult {
     /** One or more workouts were validated and added to the user library. */
     data class Workouts(val workouts: List<Workout>) : ImportResult()
 
-    /** A repository manifest was parsed; caller decides whether to subscribe. */
+    /**
+     * A repository manifest was parsed. Repos aren't auto-mirrored under the
+     * explicit-add model — callers route the user to the remote-repo browser
+     * (where they pick individual workouts to add), or surface a Toast pointing
+     * at it.
+     */
     data class Manifest(val manifest: RepositoryManifest) : ImportResult()
 
     data class Failure(val message: String) : ImportResult()

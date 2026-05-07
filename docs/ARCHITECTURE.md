@@ -160,15 +160,16 @@ A 1080×1080 PNG generated on-demand from a completed ride and surfaced via a Sh
 
 ### Workout library — sources, import, repositories
 
-The Rides list aggregates workouts from three sources, all merged through [`WorkoutLibrary`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLibrary.kt) (`AppContainer.workoutLibrary`):
+The Rides list aggregates workouts from two local sources, both merged through [`WorkoutLibrary`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLibrary.kt) (`AppContainer.workoutLibrary`):
 
 1. **Bundled** — JSON files in `assets/workouts*.json`. Loaded once at startup via the same shared `WorkoutRepository.parseWorkouts()` parser as before.
-2. **Imported** — JSON files persisted to `filesDir/user_workouts/<sanitised-id>.json` by [`WorkoutImporter`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt). Atomic write via `tmp` + rename. Filename uses the workout's own id so re-importing is idempotent.
-3. **Subscribed repositories** — bandwidth-aware bundle sync managed by [`RepositoryManager`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt). On-disk layout per subscribed repo: `filesDir/repos/<sanitised-id>/{manifest.json, versions.json, bundles/<bundle-id>.json}`. The lightweight manifest is fetched on subscribe / refresh; per-bundle content is downloaded only when its `version` increases vs the local `versions.json`.
+2. **Imported** — JSON files persisted to `filesDir/user_workouts/<sanitised-id>.json` by [`WorkoutImporter`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt). Atomic write via `tmp` + rename. Filename uses the workout's own id so re-importing is idempotent. Sources include the file picker, share-target, QR scan, deep-link, **and** the in-app community-repo browser — when a rider taps Add on a workout in a remote repo, [`WorkoutImporter.saveWorkoutFromRepo`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutImporter.kt) writes the JSON plus a `<id>.meta.json` sidecar carrying the source repo's id + display name for attribution. The local copy is the source of truth from then on; it isn't auto-updated when the upstream repo changes.
 
-Duplicate workout ids are de-duped first-wins with priority **Imported > Subscribed > Bundled** — an explicit user import wins over a bundled or subscribed copy with the same id.
+Duplicate workout ids are de-duped first-wins with priority **Imported > Bundled** — an explicit user import wins over a bundled copy with the same id.
 
-**Source attribution** — `WorkoutLibrary.entries` exposes a `StateFlow<List<WorkoutEntry>>` where each entry carries a `WorkoutSource` (`Bundled` / `Imported` / `Repository(id, name)`). The Rides list tag-eyebrow row appends "· IMPORTED" or "· STARTER PACK" in ember accent for non-bundled workouts; bundled stay clean. The library `combine`s `RepositoryManager.subscribed` with `RepositoryManager.cacheTick` so a bundle re-download triggers a rebuild even when the subscription set itself is unchanged.
+**Source attribution** — `WorkoutLibrary.entries` exposes a `StateFlow<List<WorkoutEntry>>` where each entry carries a `WorkoutSource` (`Bundled` / `Imported(sourceRepoId, sourceRepoName)`). The Rides list tag-eyebrow row appends "· IMPORTED" or the repo's display name in ember accent for imported workouts; bundled stay clean.
+
+[`RepositoryManager`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/RepositoryManager.kt) keeps a small registry cache at `filesDir/registry/cache.json` (the community list shown on the More Workouts screen) and provides an on-demand `fetchRepoWorkouts(manifestUrl)` that downloads a manifest plus its bundles in memory for the remote-repo browser. **Nothing else is persisted** — earlier versions kept per-repo bundles under `filesDir/repos/<id>/...` for incremental sync, but that on-disk mirror was removed when the explicit-add model replaced subscriptions.
 
 **On-disk schemas** (defined in [`shared/.../repo/Manifests.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/repo/Manifests.kt)):
 
@@ -194,16 +195,15 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 3. **File open** — manifest intent-filter on `ACTION_VIEW` with `content://` or `file://` schemes + `application/json` MIME. Tapping a downloaded `.json` from a file manager opens it in Indoor Bike.
 4. **Deep link** — `indoorbike://import?url=<encoded-https-url>` intent-filter. The web editor (or any chat message) can use this to "Send to phone": app fetches the URL, classifies, and routes through the same import pipeline.
 
-`MainActivity.handleImportIntent()` reads `intent.data` / `EXTRA_STREAM`, clears it after consumption (so config-change recreations don't re-trigger), and surfaces results as Toasts. Manifest results auto-subscribe via `RepositoryManager.subscribeFromManifest()` — the user doesn't get a separate confirmation prompt because they already chose the file.
+`MainActivity.handleImportIntent()` reads `intent.data` / `EXTRA_STREAM`, clears it after consumption (so config-change recreations don't re-trigger), and surfaces results as Toasts. Manifest results aren't auto-added under the explicit-add model — the toast points the rider at More Workouts → Browse so they can pick individual workouts. Single-workout / list payloads import directly.
 
 ### Library screen + QR scanner
 
 [`LibraryScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/LibraryScreen.kt) is a single-page surface reachable from a `LibraryBooks` icon in the Rides tab AppBar. Sections:
 
-- **Action row** — three tiles: Import file (opens file picker), Scan QR (→ `RouteQrScanner`), By URL (modal sheet with HTTPS URL input).
-- **Subscribed repositories** — list with Refresh + Unsubscribe per row; "$N workouts · $shorthost" subtitle.
-- **Browse community** — registry-driven cards with Subscribe / SUBSCRIBED state. Loading + empty + unreachable states are distinct.
-- **Imported workouts** — flat list of user files with delete.
+- **Action row** — three tiles: Import file (file picker), Scan QR (→ `RouteQrScanner`), By URL (modal sheet with HTTPS URL input — manifest URLs route to the remote-repo browser, single workouts / lists run through the importer).
+- **Browse community** — registry-driven cards. Tapping a card navigates to the remote-repo browser (`onOpenRepo(manifestUrl)`) where the rider picks individual workouts to add. Loading / empty / unreachable states are distinct.
+- **Imported workouts** — flat list of user files with delete; workouts added from a known repo carry the sidecar attribution noted above.
 
 [`QrScannerScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` — Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, decodes-or-fetches the URL, and routes the result through the same `WorkoutImporter` pipeline.
 

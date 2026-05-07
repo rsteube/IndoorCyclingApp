@@ -41,6 +41,7 @@ private fun session(
     avgPower = avgPower,
     avgCadence = avgCadence,
     avgHeartRate = avgHr,
+    externalId = "test:$id",
 )
 
 class StreakTest {

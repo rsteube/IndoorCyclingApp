@@ -23,15 +23,18 @@ import kotlinx.serialization.json.Json
  * On-disk format for a workout repository's manifest. Hosted over HTTPS at any
  * URL — GitHub raw, Codeberg Pages, gh-pages, plain web folder, anywhere.
  *
- * Schema v2 (current): the manifest holds *only* metadata + a list of bundle
- * entries (`{id, version, url, ...}`). Each bundle is a separate file
- * containing one-or-many workouts. The app downloads the small manifest on
- * subscribe / refresh, compares each bundle's `version` against the local
- * cache, and re-fetches only the bundles whose content changed.
+ * Schema v2 (current): the manifest holds metadata plus a list of bundle
+ * entries (`{id, version, url, ...}`). Each bundle is a separate JSON file
+ * containing one-or-many workouts. The app fetches a manifest on demand when
+ * the rider opens the repo in the in-app browser, downloads each supported
+ * bundle once, and keeps the parsed workouts in memory while the rider picks
+ * which to add — each chosen workout becomes a static local copy. Earlier
+ * versions of the app maintained a per-repo on-disk mirror; that has been
+ * removed in favour of this explicit-add model.
  *
  * Schema v1 (legacy, no longer accepted): workouts were embedded inline in
  * the manifest. Repos using v1 must migrate to v2 — the app rejects unknown
- * schema versions and surfaces a clear error in the subscribe flow.
+ * schema versions and surfaces a clear error to the rider.
  */
 @Serializable
 data class RepositoryManifest(
@@ -60,8 +63,9 @@ data class RepositoryManifest(
  *    array of `Workout` objects. Bundles whose schemaVersion exceeds
  *    [BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED] are skipped without downloading.
  *  - [version]: content version. Bump whenever ANY workout inside the bundle
- *    changes. The app caches per `(bundleId, version)` and skips re-download
- *    when these match.
+ *    changes. Currently informational only — the in-app browser refetches the
+ *    bundle every time the rider opens the repo. The slot is preserved so
+ *    future caching support can land without a wire-format change.
  *  - [url]: absolute (`https://…`) or relative to the manifest URL's
  *    directory. Relative is the portable form — survives a host change.
  */
@@ -122,7 +126,7 @@ object ManifestParser {
             throw IllegalStateException(
                 "Repository \"${manifest.name}\" uses manifest format v${manifest.schemaVersion}, " +
                     "this build understands up to v$REPO_MANIFEST_SCHEMA_VERSION_MAX_SUPPORTED. " +
-                    "Update the app to subscribe."
+                    "Update the app to open this repository."
             )
         }
         return manifest
