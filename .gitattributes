@@ -1,0 +1,17 @@
+# Pin LF for every text file in the repo.
+#
+# The reproducible-build verification F-Droid runs against our v1.0 APK
+# failed once because `assets/workouts_sample.json` shipped with CRLF
+# bytes from a Windows-built APK while F-Droid's Linux build produced
+# the same JSON with LF — gradle bundles assets verbatim from the
+# working tree, and Windows checkouts with `core.autocrlf=true` get
+# CRLF in the working tree even though the index is LF.
+#
+# This pins LF unconditionally so any contributor's working tree
+# matches what gets checked in, regardless of OS or autocrlf config.
+# Anything bundled into the APK (assets/*) or read at build time is
+# safe.
+#
+# After landing this file, run `git add --renormalize .` once to
+# refresh existing working trees.
+* text=auto eol=lf
