@@ -57,6 +57,17 @@ interface UserSettings {
     val hasCompletedOnboarding: StateFlow<Boolean>
     fun setHasCompletedOnboarding(value: Boolean)
 
+    /**
+     * True once the rider has explicitly tapped ✕ on the "Start here · Your
+     * first ride" pinned card. Independent of whether they've actually ridden
+     * yet — a rider who'd rather build their own opener can dismiss the card
+     * and never see it again. Becomes implicitly true once any session is
+     * recorded (the card is also gated on an empty history), so this flag
+     * only matters for the brief window between onboarding and first ride.
+     */
+    val hasDismissedStarterCard: StateFlow<Boolean>
+    fun setHasDismissedStarterCard(value: Boolean)
+
     // ── Intervals.icu cloud sync ──────────────────────────────────────────
     // Off-by-default opt-in cloud sync for completed rides. When the athlete
     // id and API key are both non-blank we treat the integration as

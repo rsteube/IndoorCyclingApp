@@ -216,6 +216,9 @@ class SyncEngine(
         merged.hasCompletedOnboarding?.let {
             if (userSettings.hasCompletedOnboarding.value != it) userSettings.setHasCompletedOnboarding(it)
         }
+        merged.hasDismissedStarterCard?.let {
+            if (userSettings.hasDismissedStarterCard.value != it) userSettings.setHasDismissedStarterCard(it)
+        }
         merged.intervalsAthleteId?.let {
             if (userSettings.intervalsAthleteId.value != it) userSettings.setIntervalsAthleteId(it)
         }
@@ -293,6 +296,7 @@ class SyncEngine(
         weightKg = userSettings.weightKg.value,
         maxHr = userSettings.maxHr.value,
         hasCompletedOnboarding = userSettings.hasCompletedOnboarding.value,
+        hasDismissedStarterCard = userSettings.hasDismissedStarterCard.value,
         intervalsAthleteId = userSettings.intervalsAthleteId.value,
         // intervalsApiKey deliberately NOT included — credentials never leave
         // the device.

@@ -84,6 +84,7 @@ data class BackupSettings(
     val weightKg: Float? = null,
     val maxHr: Int? = null,
     val hasCompletedOnboarding: Boolean? = null,
+    val hasDismissedStarterCard: Boolean? = null,
     val intervalsAthleteId: String? = null,
     val intervalsAutoUpload: Boolean? = null,
     /** `null` = absent; empty list = explicitly cleared. */

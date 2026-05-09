@@ -16,6 +16,7 @@
 package app.indoorbike.ui.screens
 
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -111,7 +112,13 @@ fun RemoteRepoBrowserScreen(
     var fetchState by remember(manifestUrl) {
         mutableStateOf<FetchState>(FetchState.Loading)
     }
-    var selectedFilter by remember { mutableStateOf("All") }
+    var selectedTag by remember { mutableStateOf("All") }
+    var selectedDuration by remember { mutableStateOf(DurationBand.AnyDuration) }
+
+    // Detail overlay: when set, the screen flips from list to a full-screen
+    // WorkoutDetailScreen rendering for that workout. Stays inside this nav
+    // entry so back press goes list → detail → close, not detail → Library.
+    var detailWorkout by remember(manifestUrl) { mutableStateOf<Workout?>(null) }
 
     LaunchedEffect(manifestUrl) {
         fetchState = FetchState.Loading
@@ -122,6 +129,41 @@ fun RemoteRepoBrowserScreen(
             )
             is RepoFetchResult.Failure -> FetchState.Failed(result.message)
         }
+    }
+
+    val handleAdd: (Workout, RepositoryManifest) -> Unit = { workout, manifest ->
+        scope.launch {
+            container.workoutImporter.saveWorkoutFromRepo(
+                workout = workout,
+                repoId = manifest.id,
+                repoName = manifest.name,
+            )
+            container.workoutLibrary.refreshImportsAwait()
+            Toast.makeText(
+                context,
+                "Added \"${workout.name}\" to your library",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    // Detail overlay short-circuits the list view. The BackHandler intercepts
+    // system back so the rider goes list → detail → list, then list → Library.
+    val loadedManifest = (fetchState as? FetchState.Loaded)?.manifest
+    if (detailWorkout != null && loadedManifest != null) {
+        BackHandler { detailWorkout = null }
+        WorkoutDetailScreen(
+            workout = detailWorkout!!,
+            onBack = { detailWorkout = null },
+            mode = WorkoutDetailMode.RemoteAdd(
+                isAlreadyAdded = detailWorkout!!.id in addedIds,
+                // Stay on the detail screen after Add — the CTA flips to the
+                // green "Added" pill so the rider sees the action took. They
+                // tap back when they're done browsing the workout.
+                onAdd = { handleAdd(detailWorkout!!, loadedManifest) },
+            ),
+        )
+        return
     }
 
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
@@ -159,24 +201,13 @@ fun RemoteRepoBrowserScreen(
             is FetchState.Loaded -> LoadedState(
                 manifest = state.manifest,
                 summaries = state.summaries,
-                selectedFilter = selectedFilter,
-                onFilterChange = { selectedFilter = it },
+                selectedTag = selectedTag,
+                onTagChange = { selectedTag = it },
+                selectedDuration = selectedDuration,
+                onDurationChange = { selectedDuration = it },
                 addedIds = addedIds,
-                onAdd = { workout ->
-                    scope.launch {
-                        container.workoutImporter.saveWorkoutFromRepo(
-                            workout = workout,
-                            repoId = state.manifest.id,
-                            repoName = state.manifest.name,
-                        )
-                        container.workoutLibrary.refreshImportsAwait()
-                        Toast.makeText(
-                            context,
-                            "Added \"${workout.name}\" to your library",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
+                onCardClick = { workout -> detailWorkout = workout },
+                onAdd = { workout -> handleAdd(workout, state.manifest) }
             )
         }
     }
@@ -191,6 +222,23 @@ private sealed class FetchState {
         val summaries: List<WorkoutSummary>,
     ) : FetchState()
     data class Failed(val message: String) : FetchState()
+}
+
+/**
+ * Coarse duration bands for filtering. Boundaries chosen for indoor cycling:
+ *  - Quick = sub-30 (recovery, short tempo, openers)
+ *  - 30–60 = the modal "weekday after work" range
+ *  - 60–90 = sweet-spot / threshold sessions
+ *  - Long = anything 90+ (sub-threshold endurance blocks, sweetspot stacks)
+ *
+ * AnyDuration is the default no-filter sentinel.
+ */
+private enum class DurationBand(val label: String, val matches: (Int) -> Boolean) {
+    AnyDuration("Any", { true }),
+    Quick("Quick", { it < 30 * 60 }),
+    Mid("30–60", { it in (30 * 60) until (60 * 60) }),
+    LongRange("60–90", { it in (60 * 60) until (90 * 60) }),
+    Epic("Long", { it >= 90 * 60 }),
 }
 
 @Composable
@@ -227,38 +275,71 @@ private fun ErrorState(message: String, onRetry: () -> Unit) {
 private fun LoadedState(
     manifest: RepositoryManifest,
     summaries: List<WorkoutSummary>,
-    selectedFilter: String,
-    onFilterChange: (String) -> Unit,
+    selectedTag: String,
+    onTagChange: (String) -> Unit,
+    selectedDuration: DurationBand,
+    onDurationChange: (DurationBand) -> Unit,
     addedIds: Set<String>,
+    onCardClick: (Workout) -> Unit,
     onAdd: (Workout) -> Unit,
 ) {
     val availableTags = remember(summaries) {
         listOf("All") + summaries.map { it.tag }.distinct().sorted()
     }
-    val visible = remember(summaries, selectedFilter) {
-        if (selectedFilter == "All") summaries
-        else summaries.filter { it.tag.equals(selectedFilter, ignoreCase = true) }
+    val visible = remember(summaries, selectedTag, selectedDuration) {
+        summaries
+            .filter { selectedTag == "All" || it.tag.equals(selectedTag, ignoreCase = true) }
+            .filter { selectedDuration.matches(it.totalSeconds) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // Compact, expand-on-tap description. Default to 2 lines so the long
+        // "covers recovery, endurance, tempo, threshold, …" blurbs don't push
+        // the workout list off-screen on small phones; tapping the line
+        // reveals the full text for riders who want more context.
         if (!manifest.description.isNullOrBlank()) {
+            var descExpanded by remember(manifest.id) { mutableStateOf(false) }
             Text(
                 text = manifest.description!!,
-                style = CadenceType.body,
-                color = CadenceColors.Fg2,
-                modifier = Modifier.padding(horizontal = Spacing.s5, vertical = Spacing.s3)
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+                maxLines = if (descExpanded) Int.MAX_VALUE else 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { descExpanded = !descExpanded }
+                    .padding(horizontal = Spacing.s5, vertical = Spacing.s2)
             )
         }
 
+        // Two filter rows: duration bands + tags. Both are AND'd, both single-
+        // select. Duration leads because it's the cheaper decision (rider
+        // typically knows how much time they have before they know which
+        // training stress they want).
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = Spacing.s5, vertical = Spacing.s2),
+                .padding(horizontal = Spacing.s5, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            DurationBand.entries.forEach { band ->
+                FilterChip(
+                    label = band.label,
+                    selected = band == selectedDuration,
+                    onClick = { onDurationChange(band) }
+                )
+            }
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = Spacing.s5, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             availableTags.forEach { f ->
-                FilterChip(label = f, selected = f == selectedFilter, onClick = { onFilterChange(f) })
+                FilterChip(label = f, selected = f == selectedTag, onClick = { onTagChange(f) })
             }
         }
 
@@ -276,6 +357,21 @@ private fun LoadedState(
             return
         }
 
+        if (visible.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize().padding(Spacing.s5),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "No workouts match these filters. Try widening the duration or tag.",
+                    style = CadenceType.body,
+                    color = CadenceColors.Fg3,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+            return
+        }
+
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -288,6 +384,7 @@ private fun LoadedState(
                 RemoteWorkoutCard(
                     summary = summary,
                     isAdded = summary.workout.id in addedIds,
+                    onClick = { onCardClick(summary.workout) },
                     onAdd = { onAdd(summary.workout) }
                 )
             }
@@ -299,6 +396,7 @@ private fun LoadedState(
 private fun RemoteWorkoutCard(
     summary: WorkoutSummary,
     isAdded: Boolean,
+    onClick: () -> Unit,
     onAdd: () -> Unit,
 ) {
     val shape = RoundedCornerShape(14.dp)
@@ -308,6 +406,7 @@ private fun RemoteWorkoutCard(
             .clip(shape)
             .background(CadenceColors.Bg1)
             .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = onClick)
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2)
     ) {

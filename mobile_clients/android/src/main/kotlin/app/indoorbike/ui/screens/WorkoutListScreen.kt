@@ -46,6 +46,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Notifications
@@ -85,6 +86,7 @@ import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.HrmHeartIndicator
+import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.TrainerStatusStrip
@@ -151,7 +153,11 @@ fun WorkoutListScreen(
     val hasCompletedOnboarding by container.userSettings.hasCompletedOnboarding.collectAsState()
     val sessions by container.sessions.collectAsState()
     val starter = remember(summaries) { summaries.firstOrNull { it.workout.id == STARTER_WORKOUT_ID } }
-    val showStarterCard = hasCompletedOnboarding && sessions.isEmpty() && starter != null
+    val hasDismissedStarterCard by container.userSettings.hasDismissedStarterCard.collectAsState()
+    val showStarterCard = hasCompletedOnboarding &&
+        !hasDismissedStarterCard &&
+        sessions.isEmpty() &&
+        starter != null
 
     var showOnboardingSheet by remember { mutableStateOf(false) }
 
@@ -277,7 +283,13 @@ fun WorkoutListScreen(
                 if (showStarterCard) {
                     val pin = starter!!
                     item(key = "starter-pinned") {
-                        StarterCard(summary = pin, onClick = { onPick(pin.workout) })
+                        StarterCard(
+                            summary = pin,
+                            onClick = { onPick(pin.workout) },
+                            onDismiss = {
+                                container.userSettings.setHasDismissedStarterCard(true)
+                            }
+                        )
                     }
                 }
                 items(regularList, key = { it.workout.id }) { summary ->
@@ -513,7 +525,11 @@ private fun AddMoreWorkoutsCard(onClick: () -> Unit) {
 }
 
 @Composable
-private fun StarterCard(summary: WorkoutSummary, onClick: () -> Unit) {
+private fun StarterCard(
+    summary: WorkoutSummary,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit,
+) {
     val shape = RoundedCornerShape(14.dp)
     Column(
         modifier = Modifier
@@ -525,11 +541,24 @@ private fun StarterCard(summary: WorkoutSummary, onClick: () -> Unit) {
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
-        Text(
-            text = "START HERE · YOUR FIRST RIDE",
-            style = CadenceType.eyebrow,
-            color = CadenceColors.Brand500
-        )
+        // Eyebrow + dismiss in the same row so the ✕ has a sensible anchor
+        // without adding height. Subtle Fg3 tint so accidental taps are
+        // unlikely; the row's own clickable is consumed by the IconBtn so
+        // tapping the ✕ doesn't also count as "open the workout".
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "START HERE · YOUR FIRST RIDE",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Brand500,
+                modifier = Modifier.weight(1f)
+            )
+            IconBtn(
+                icon = Icons.Outlined.Close,
+                contentDescription = "Dismiss starter",
+                tint = CadenceColors.Fg3,
+                onClick = onDismiss
+            )
+        }
         Text(
             text = summary.workout.name,
             style = CadenceType.h2,

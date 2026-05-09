@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
@@ -43,10 +44,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -83,12 +87,35 @@ import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
 import kotlin.math.roundToInt
 
+/**
+ * Picks which bottom CTA the workout-detail screen shows. The screen is
+ * shared between two callers:
+ *  - **[Local]**: a workout already in the rider's library (bundled, imported,
+ *    or freshly arrived via sync). CTA = Start workout / Pair trainer.
+ *  - **[RemoteAdd]**: a workout being previewed inside the remote-repo
+ *    browser before the rider has chosen to keep it. CTA = Add to my library
+ *    (or "Added" pill if it already lives locally — same idempotent
+ *    semantics as the inline Add button on the browser cards).
+ *
+ * Star + rename/delete affordances are hidden in [RemoteAdd] mode because
+ * the workout isn't in the rider's library yet, so favouriting / renaming
+ * have no on-disk surface to write to.
+ */
+sealed class WorkoutDetailMode {
+    data object Local : WorkoutDetailMode()
+    data class RemoteAdd(
+        val isAlreadyAdded: Boolean,
+        val onAdd: () -> Unit,
+    ) : WorkoutDetailMode()
+}
+
 @Composable
 fun WorkoutDetailScreen(
     workout: Workout,
     onBack: () -> Unit,
-    onStart: () -> Unit,
-    onNavigateToPairing: () -> Unit,
+    onStart: () -> Unit = {},
+    onNavigateToPairing: () -> Unit = {},
+    mode: WorkoutDetailMode = WorkoutDetailMode.Local,
     isImported: Boolean = false,
     onRename: (String) -> Unit = {},
     onDelete: () -> Unit = {},
@@ -101,6 +128,7 @@ fun WorkoutDetailScreen(
     val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
     val isTrainerReady = trainerState == TrainerConnectionState.Connected || isMockTrainer
     val summary = remember(workout, ftp) { workout.toSummary(ftp) }
+    val isRemoteAdd = mode is WorkoutDetailMode.RemoteAdd
     var stepsExpanded by remember(workout.id) { mutableStateOf(false) }
     val stepCutoff = 6
     val totalSteps = summary.workout.segments.size
@@ -122,18 +150,23 @@ fun WorkoutDetailScreen(
             },
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconBtn(
-                        icon = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                        contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
-                        // Brand-tinted gold so the filled star reads as a clear
-                        // "starred" affordance without colliding with the
-                        // ember red the HRM heart uses elsewhere.
-                        tint = if (isFavourite) CadenceColors.Brand500 else CadenceColors.Fg2,
-                        onClick = {
-                            container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
-                        }
-                    )
-                    if (isImported) {
+                    // Hide the favourite + edit affordances in remote-add mode:
+                    // the workout isn't local yet, so toggling a favourite or
+                    // renaming has nothing to write against.
+                    if (!isRemoteAdd) {
+                        IconBtn(
+                            icon = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                            contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
+                            // Brand-tinted gold so the filled star reads as a clear
+                            // "starred" affordance without colliding with the
+                            // ember red the HRM heart uses elsewhere.
+                            tint = if (isFavourite) CadenceColors.Brand500 else CadenceColors.Fg2,
+                            onClick = {
+                                container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
+                            }
+                        )
+                    }
+                    if (!isRemoteAdd && isImported) {
                         Box {
                             IconBtn(
                                 icon = Icons.Outlined.MoreVert,
@@ -202,11 +235,17 @@ fun WorkoutDetailScreen(
             item { Spacer(Modifier.height(Spacing.s4)) }
         }
 
-        StartCta(
-            isTrainerReady = isTrainerReady,
-            onStart = onStart,
-            onPairTrainer = onNavigateToPairing,
-        )
+        when (mode) {
+            is WorkoutDetailMode.Local -> StartCta(
+                isTrainerReady = isTrainerReady,
+                onStart = onStart,
+                onPairTrainer = onNavigateToPairing,
+            )
+            is WorkoutDetailMode.RemoteAdd -> AddToLibraryCta(
+                isAlreadyAdded = mode.isAlreadyAdded,
+                onAdd = mode.onAdd,
+            )
+        }
     }
 
         if (showRenameDialog) {
@@ -478,6 +517,61 @@ private fun StepRow(segment: PowerZone, ftp: Int) {
             modifier = Modifier.weight(1f),
             textAlign = TextAlign.End
         )
+    }
+}
+
+/**
+ * Bottom CTA used when the rider is previewing a workout from a remote
+ * community repo. Mirrors the "Add" pill from the browser card list so the
+ * affordance is consistent across the two surfaces. Idempotent: re-tapping
+ * after a successful add is ignored — duplicate adds would clobber any
+ * local edits the rider has made (e.g. rename) on the now-imported copy.
+ */
+@Composable
+private fun AddToLibraryCta(
+    isAlreadyAdded: Boolean,
+    onAdd: () -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CadenceColors.Bg0)
+            .border(1.dp, CadenceColors.Line1)
+            .windowInsetsPadding(WindowInsets.navigationBars)
+            .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
+    ) {
+        if (isAlreadyAdded) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(CadenceColors.Success.copy(alpha = 0.18f))
+                    .padding(vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Check,
+                    contentDescription = null,
+                    tint = CadenceColors.Success,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(Spacing.s2))
+                Text(
+                    text = "Added to your library",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Success
+                )
+            }
+        } else {
+            PrimaryBtn(
+                text = "Add to my library",
+                leadingIcon = Icons.Outlined.CloudDownload,
+                onClick = onAdd,
+                modifier = Modifier.fillMaxWidth(),
+                glow = true
+            )
+        }
     }
 }
 

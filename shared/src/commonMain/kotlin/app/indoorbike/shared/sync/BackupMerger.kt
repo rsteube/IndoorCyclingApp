@@ -97,6 +97,7 @@ object BackupMerger {
         var weightKg: Float? = null
         var maxHr: Int? = null
         var hasCompletedOnboarding: Boolean? = null
+        var hasDismissedStarterCard: Boolean? = null
         var intervalsAthleteId: String? = null
         var intervalsAutoUpload: Boolean? = null
         var favouriteWorkoutIds: List<String>? = null
@@ -106,6 +107,7 @@ object BackupMerger {
             if (weightKg == null) weightKg = s.weightKg
             if (maxHr == null) maxHr = s.maxHr
             if (hasCompletedOnboarding == null) hasCompletedOnboarding = s.hasCompletedOnboarding
+            if (hasDismissedStarterCard == null) hasDismissedStarterCard = s.hasDismissedStarterCard
             if (intervalsAthleteId == null) intervalsAthleteId = s.intervalsAthleteId
             if (intervalsAutoUpload == null) intervalsAutoUpload = s.intervalsAutoUpload
             if (favouriteWorkoutIds == null) favouriteWorkoutIds = s.favouriteWorkoutIds
@@ -116,6 +118,7 @@ object BackupMerger {
             weightKg = weightKg,
             maxHr = maxHr,
             hasCompletedOnboarding = hasCompletedOnboarding,
+            hasDismissedStarterCard = hasDismissedStarterCard,
             intervalsAthleteId = intervalsAthleteId,
             intervalsAutoUpload = intervalsAutoUpload,
             favouriteWorkoutIds = favouriteWorkoutIds,

@@ -91,6 +91,9 @@ class AndroidUserSettings(
     private val _hasCompletedOnboarding = MutableStateFlow(initialPrefs[KEY_ONBOARDED] ?: false)
     override val hasCompletedOnboarding: StateFlow<Boolean> = _hasCompletedOnboarding.asStateFlow()
 
+    private val _hasDismissedStarterCard = MutableStateFlow(initialPrefs[KEY_DISMISSED_STARTER] ?: false)
+    override val hasDismissedStarterCard: StateFlow<Boolean> = _hasDismissedStarterCard.asStateFlow()
+
     private val _intervalsAthleteId = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ATHLETE])
     override val intervalsAthleteId: StateFlow<String?> = _intervalsAthleteId.asStateFlow()
 
@@ -160,6 +163,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_ONBOARDED] ?: false }.collect { value ->
                 if (value != _hasCompletedOnboarding.value) _hasCompletedOnboarding.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_DISMISSED_STARTER] ?: false }.collect { value ->
+                if (value != _hasDismissedStarterCard.value) _hasDismissedStarterCard.value = value
             }
         }
         scope.launch {
@@ -247,6 +255,12 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_ONBOARDED] = value } }
     }
 
+    override fun setHasDismissedStarterCard(value: Boolean) {
+        if (value == _hasDismissedStarterCard.value) return
+        _hasDismissedStarterCard.value = value
+        scope.launch { store.edit { it[KEY_DISMISSED_STARTER] = value } }
+    }
+
     override fun setIntervalsAthleteId(id: String?) {
         val cleaned = id?.trim()?.takeIf { it.isNotEmpty() }
         _intervalsAthleteId.value = cleaned
@@ -316,6 +330,7 @@ class AndroidUserSettings(
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")
         private val KEY_CONTROLLER = stringPreferencesKey("paired_controller_id")
         private val KEY_ONBOARDED = booleanPreferencesKey("has_completed_onboarding")
+        private val KEY_DISMISSED_STARTER = booleanPreferencesKey("has_dismissed_starter_card")
         // Intervals.icu sync — opt-in. The API key sits in DataStore (plaintext)
         // for now; if/when device-credentials hardening lands we'll move it to
         // EncryptedSharedPreferences (or AndroidX security-crypto) without
