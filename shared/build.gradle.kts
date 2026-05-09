@@ -6,7 +6,9 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(17)
+    // No `jvmToolchain(...)` — see settings.gradle.kts for why F-Droid
+    // builds reject it. Bytecode target is set via JvmTarget.JVM_17 below
+    // (Kotlin) and sourceCompatibility / targetCompatibility (Java).
 
     androidTarget {
         compilations.all {

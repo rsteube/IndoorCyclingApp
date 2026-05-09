@@ -92,7 +92,9 @@ android {
 }
 
 kotlin {
-    jvmToolchain(17)
+    // No `jvmToolchain(...)` — see settings.gradle.kts. Bytecode target is
+    // set via JvmTarget.JVM_17 here (Kotlin) and sourceCompatibility /
+    // targetCompatibility above (Java).
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         freeCompilerArgs.addAll("-Xexpect-actual-classes")
