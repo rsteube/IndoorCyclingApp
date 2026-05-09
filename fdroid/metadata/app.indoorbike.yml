@@ -1,15 +1,15 @@
 AntiFeatures:
   NonFreeNet:
-    en-US: "The app supports an optional integration with Intervals.icu, a non-free
+    en-US: 'The app supports an optional integration with Intervals.icu, a non-free
       cycling-analytics SaaS. The integration is off by default and the app makes
       zero contact with intervals.icu until the rider explicitly enters their athlete
-      ID + API key in Settings → Cloud Sync and either taps Upload on a finished
-      ride or enables auto-upload. The Intervals.icu API key is also excluded from
-      Android Auto Backup so it never leaves the device implicitly. No other non-free
-      network services are contacted. The community workout-repository registry is
-      hosted on Codeberg (free software: Forgejo) at the same source-code repository
-      as the app, and is fetched lazily only when the rider opens \"More Workouts
-      → Browse community\"."
+      ID + API key in Settings → Cloud Sync and either taps Upload on a finished ride
+      or enables auto-upload. The Intervals.icu API key is also excluded from Android
+      Auto Backup so it never leaves the device implicitly. No other non-free network
+      services are contacted. The community workout-repository registry is hosted
+      on Codeberg (free software: Forgejo) at the same source-code repository as the
+      app, and is fetched lazily only when the rider opens "More Workouts → Browse
+      community".'
 Categories:
   - Sports & Health
 License: GPL-3.0-only
