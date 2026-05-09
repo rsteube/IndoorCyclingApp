@@ -36,7 +36,7 @@ Description: |-
       code from the browser editor, or by URL.
     * Local progression: streaks, rider levels, badges, week-grouped ride
       history, and time-in-zone, all computed on-device from saved rides.
-    * Optional folder-based backup &amp; cross-device sync. Pick any folder
+    * Optional folder-based backup & cross-device sync. Pick any folder
       your phone can reach (Drive, Dropbox, Nextcloud, Syncthing, OneDrive,
       …) and the app writes a small JSON slice there. Other devices pointed
       at the same folder share rides, library, and settings. No accounts, no
