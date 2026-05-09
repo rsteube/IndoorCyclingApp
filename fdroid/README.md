@@ -8,35 +8,84 @@ update when the app changes.
 
 ## Files — copy this whole tree into fdroiddata
 
+```
+fdroid/
+├── .gitattributes                                 ← pins LF endings (see below)
+├── README.md                                      ← this file
+└── metadata/
+    ├── app.indoorbike.yml                         ← the recipe
+    └── app.indoorbike/
+        └── en-US/
+            ├── summary.txt                        ← the Summary, per-locale
+            └── description.txt                    ← the Description, per-locale
+```
+
 - `metadata/app.indoorbike.yml` — the [Build Metadata Reference][meta-ref]
-  YAML. Categories, anti-features, build entries, source URL, etc.
-- `metadata/app.indoorbike/en-US/short_description.txt` — the Summary, in
-  per-locale form. F-Droid's `make-summary-translatable.py` tooling
-  auto-migrates `Summary:` from the YAML into this layout and fails the
-  MR pipeline if the move produces uncommitted changes — we pre-do the
-  migration so the YAML never carries `Summary:` or `Description:`.
-- `metadata/app.indoorbike/en-US/full_description.txt` — the Description,
-  same rationale.
+  YAML. Categories, anti-features, build entries, source URL, etc. **Format
+  is canonical**: AntiFeatures alphabetically-sorted to the top, no comments,
+  any rich-text descriptions stored as folded `"..."` scalars (single
+  paragraph). `fdroid rewritemeta` enforces this in CI; if you add comments
+  or change the field order, the rewritemeta lint pipeline fails.
+- `metadata/app.indoorbike/en-US/summary.txt` — the Summary in per-locale
+  form. **Filename matters**: F-Droid's `check-localized-metadata.py`
+  rejects the Fastlane name `short_description.txt`. F-Droid's tooling
+  also auto-moves any `Summary:` left in the YAML into this file and
+  fails on `git diff --exit-code`, so we keep the YAML clean of it.
+- `metadata/app.indoorbike/en-US/description.txt` — the Description, same
+  filename rationale (`full_description.txt` is rejected).
 
-The directory tree mirrors fdroiddata's expected layout exactly. To
-submit / update, copy `metadata/app.indoorbike.yml` and `metadata/app.indoorbike/`
-verbatim into your fdroiddata fork.
+To submit / update, copy `metadata/app.indoorbike.yml` and the
+`metadata/app.indoorbike/` directory verbatim into your fdroiddata fork.
 
-The user-facing store listing (title, short / long description,
-screenshots) is **not** here — it lives at the standard Fastlane path
-inside the Android module:
+### LF line endings
+
+`fdroid/.gitattributes` pins LF for everything in this directory. Without
+it, Windows clones with `core.autocrlf=true` end up with CRLF in the
+working tree, which leaks into the fdroiddata fork when copying and
+breaks `fdroid rewritemeta` (the diff shows `^M` markers everywhere).
+
+If you ever see CRLF complaints from the F-Droid pipeline, sanity-check
+with:
+```
+file fdroid/metadata/app.indoorbike.yml
+# should say "ASCII text" (or "Unicode text, UTF-8 text") — never "with CRLF line terminators"
+```
+
+### What NOT to add to fdroiddata's `metadata/app.indoorbike/` directory
+
+- `.gitkeep` files — `fdroid lint` flags them as "Unused file at …" and
+  fails the lint job. The directory needs at least one real file (e.g.
+  `en-US/summary.txt`) to exist; with that present, drop the `.gitkeep`
+  if you accidentally create one.
+- Comments or extra fields in the YAML that `fdroid rewritemeta` would
+  rewrite away.
+
+### Two parallel metadata trees
+
+The same human-facing copy lives in **two** locations on purpose:
+
+- **fdroiddata convention** — `metadata/app.indoorbike/en-US/{summary,description}.txt`
+  in the fdroiddata fork. Used by F-Droid's lint + listing pipeline. Mirrored
+  here under `fdroid/metadata/`.
+- **Fastlane convention** — `mobile_clients/android/fastlane/metadata/android/en-US/{title,short_description,full_description}.txt`
+  inside this repo. F-Droid's buildserver auto-discovers the Fastlane tree
+  during the build and uses the screenshots / title from there. Renames
+  differ from fdroiddata's:
 
 ```
 mobile_clients/android/fastlane/metadata/android/en-US/
 ├── title.txt
-├── short_description.txt
-├── full_description.txt
+├── short_description.txt        ← becomes summary.txt in fdroiddata
+├── full_description.txt         ← becomes description.txt in fdroiddata
 └── images/
     └── phoneScreenshots/
         ├── 1_rides.png
         ├── 2_ride-hud.png
         └── 3_ride-overview.png
 ```
+
+When the description copy changes, **update both trees** to keep them
+aligned (text content is the same; only the filename differs).
 
 F-Droid auto-discovers Fastlane structure during the build — nothing else
 to wire up. Refresh the screenshots from `docs/screenshots/` whenever the
