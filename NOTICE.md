@@ -7,7 +7,7 @@ Indoor Bike is licensed under the GNU General Public License v3.0 (see [LICENSE]
 | Component | Purpose | License | Source |
 | --- | --- | --- | --- |
 | Kotlin / kotlinx-coroutines / kotlinx-serialization | Core language and runtime | Apache 2.0 | https://github.com/JetBrains/kotlin · https://github.com/Kotlin/kotlinx.coroutines · https://github.com/Kotlin/kotlinx.serialization |
-| Jetpack Compose & AndroidX (core, activity, lifecycle, datastore, navigation3) | UI toolkit and Android extensions | Apache 2.0 | https://developer.android.com/jetpack |
+| Jetpack Compose & AndroidX (core, activity, lifecycle, datastore, documentfile, navigation3) | UI toolkit and Android extensions | Apache 2.0 | https://developer.android.com/jetpack |
 | Compose Material 3 & material-icons-extended | Material 3 components and icon set | Apache 2.0 | https://developer.android.com/jetpack/androidx/releases/compose-material3 |
 | Juul Kable | Multiplatform Bluetooth Low Energy | Apache 2.0 | https://github.com/JuulLabs/kable |
 | SQLDelight | Type-safe SQL database access | Apache 2.0 | https://github.com/cashapp/sqldelight |

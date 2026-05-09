@@ -39,6 +39,17 @@ import app.indoorbike.shared.util.Log
  * Strict opt-in posture: the only place that actually fires this is when the
  * user taps Upload (or after a ride completes when auto-upload is on). The
  * uploader itself never reads settings except to compose the request.
+ *
+ * **F-Droid posture (NonFreeNet anti-feature).** Intervals.icu is a non-free
+ * SaaS, so the F-Droid metadata declares this integration under the
+ * `NonFreeNet` anti-feature. The flag is *for the integration's existence*,
+ * not for its day-to-day behaviour: with default settings the app makes
+ * zero contact with Intervals.icu. The athlete id and API key are blank on
+ * a fresh install; the upload code path is unreachable until the rider
+ * fills both in, and even then only fires on a manual Upload tap or when
+ * auto-upload is explicitly toggled on. The API key is also excluded from
+ * Android Auto Backup (see `res/xml/data_extraction_rules.xml`) so it
+ * doesn't leak via that channel either.
  */
 class IntervalsIcuUploader(
     private val historyRepository: HistoryRepository,

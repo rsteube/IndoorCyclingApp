@@ -1,12 +1,12 @@
 *.iml
 .gradle
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+# IntelliJ / Android Studio project state — entirely IDE-local. New AS
+# versions keep adding files (appInsightsSettings.xml, studiobot.xml, …)
+# that are noise in diffs and confusing for F-Droid reviewers (the
+# Crashlytics-tab placeholder in appInsightsSettings.xml in particular
+# looked like a tracker integration when it isn't). Blanket exclude.
+/.idea/
 .DS_Store
 /build
 /captures

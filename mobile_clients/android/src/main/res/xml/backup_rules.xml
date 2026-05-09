@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Auto Backup rules for API <31. Mirror of `data_extraction_rules.xml`.
+
+  Auto Backup is allowed for everything EXCEPT the DataStore Preferences
+  file, which is where the (currently plaintext) Intervals.icu API key
+  lives alongside the rest of UserSettings. Excluding the file at this
+  granularity is the strongest guarantee Preferences DataStore offers —
+  individual keys can't be filtered. The file-based "Backup & sync" feature
+  in Settings is the canonical cross-device backup path; Auto Backup is
+  retained as a convenience for non-credential data (FTP/weight, ride
+  history, imported workouts, registry cache).
+
+  After a fresh install + restore, the rider re-enters their Intervals.icu
+  API key (one-off) and re-picks their sync folder if they were using
+  cross-device sync.
+-->
+<full-backup-content>
+    <exclude domain="file" path="datastore/cadence_user_settings.preferences_pb" />
+</full-backup-content>

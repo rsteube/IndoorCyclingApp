@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Backup + device-transfer rules for API 31+. See `backup_rules.xml` for
+  the full rationale; this file just splits the same exclusions into the
+  two contexts API 31 introduced:
+
+   - cloud-backup    — Google Auto Backup (encrypted to the user's Google
+                       account). Credentials excluded.
+   - device-transfer — direct phone-to-phone transfer when the rider buys
+                       a new phone. Credentials excluded here too — the
+                       rider re-enters them on the new device. The bigger
+                       point is that the API key shouldn't follow an
+                       implicit channel; the only visible move is a
+                       deliberate re-entry in Settings.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="datastore/cadence_user_settings.preferences_pb" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="datastore/cadence_user_settings.preferences_pb" />
+    </device-transfer>
+</data-extraction-rules>

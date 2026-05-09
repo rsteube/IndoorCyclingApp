@@ -55,7 +55,17 @@ android {
             isDebuggable = true
         }
         release {
-            isMinifyEnabled = false
+            // R8 in shrink + optimise mode. Compose, kotlinx-serialization,
+            // SqlDelight, Kable, AndroidX, and ZXing all ship consumer
+            // ProGuard rules so the only project-specific extras live in
+            // proguard-rules.pro (currently just defensive keeps for our
+            // @Serializable models in shared/sync).
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
@@ -68,6 +78,16 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        // The `Instantiatable` check claims `MainActivity` doesn't extend
+        // `Activity`. It does — via `androidx.activity.ComponentActivity` —
+        // but Lint can't always trace that chain across module boundaries.
+        // Disable just this single false-positive check; everything else
+        // still runs (including the lintVitalRelease pass that fdroidserver
+        // exercises during the F-Droid build).
+        disable += "Instantiatable"
     }
 }
 
