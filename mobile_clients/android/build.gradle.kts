@@ -89,6 +89,18 @@ android {
         // exercises during the F-Droid build).
         disable += "Instantiatable"
     }
+
+    dependenciesInfo {
+        // AGP embeds an extra APK signing block ("Dependency metadata")
+        // with hashes of every dependency, intended for Google Play's
+        // app-review tooling. F-Droid's APK scanner rejects any extra
+        // signing block it doesn't recognise — see
+        // https://issuetracker.google.com/issues/189966237 — so disable
+        // both the APK and the AAB version. We never publish to Play
+        // anyway; F-Droid signs the distributed copy itself.
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 kotlin {
