@@ -10,32 +10,58 @@ update when the app changes.
 
 ```
 fdroid/
-├── .gitattributes                                 ← pins LF endings (see below)
-├── README.md                                      ← this file
+├── .gitattributes                  ← pins LF endings (see below)
+├── README.md                       ← this file
 └── metadata/
-    ├── app.indoorbike.yml                         ← the recipe
-    └── app.indoorbike/
-        └── en-US/
-            ├── summary.txt                        ← the Summary, per-locale
-            └── description.txt                    ← the Description, per-locale
+    └── app.indoorbike.yml          ← the recipe — that's it
 ```
 
-- `metadata/app.indoorbike.yml` — the [Build Metadata Reference][meta-ref]
-  YAML. Categories, anti-features, build entries, source URL, etc. **Format
-  is canonical**: AntiFeatures alphabetically-sorted to the top, no comments,
-  any rich-text descriptions stored as folded `"..."` scalars (single
-  paragraph). `fdroid rewritemeta` enforces this in CI; if you add comments
-  or change the field order, the rewritemeta lint pipeline fails.
-- `metadata/app.indoorbike/en-US/summary.txt` — the Summary in per-locale
-  form. **Filename matters**: F-Droid's `check-localized-metadata.py`
-  rejects the Fastlane name `short_description.txt`. F-Droid's tooling
-  also auto-moves any `Summary:` left in the YAML into this file and
-  fails on `git diff --exit-code`, so we keep the YAML clean of it.
-- `metadata/app.indoorbike/en-US/description.txt` — the Description, same
-  filename rationale (`full_description.txt` is rejected).
+That's the entire tree. **No `metadata/app.indoorbike/en-US/` directory** —
+F-Droid's buildserver auto-pulls the Summary, Description, and screenshots
+from the upstream Fastlane folder at
+[mobile_clients/android/fastlane/metadata/android/en-US/](../mobile_clients/android/fastlane/metadata/android/en-US/)
+during the build. Adding the same files to fdroiddata is a duplicate and
+the maintainer will ask you to remove them.
 
-To submit / update, copy `metadata/app.indoorbike.yml` and the
-`metadata/app.indoorbike/` directory verbatim into your fdroiddata fork.
+- `metadata/app.indoorbike.yml` — the [Build Metadata Reference][meta-ref]
+  YAML. Categories, anti-features, build entries, source URL, signing-key
+  fingerprint, binary URL pattern. **Format is canonical**: AntiFeatures
+  alphabetically-sorted to the top, no comments, string scalars as
+  single-quoted (`'...'`) folded scalars at column ≥ 85. `fdroid rewritemeta`
+  enforces this in CI; if you add comments or change the field order, the
+  rewritemeta lint pipeline fails — the diff in the failure log is the
+  canonical format you must transcribe verbatim.
+
+To submit / update, copy `metadata/app.indoorbike.yml` verbatim into your
+fdroiddata fork's `metadata/` directory.
+
+## Reproducible builds: how the Binaries / AllowedAPKSigningKeys fields work
+
+Two YAML fields enable F-Droid to verify a reproducible build against your
+own signed APK:
+
+- `Binaries:` — URL pattern that resolves to your signed APK. `%v` is
+  replaced with `versionName`, `%c` with `versionCode`. Ours points at
+  Codeberg's release-asset URL:
+  ```
+  Binaries: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases/download/v%v/android-release.apk
+  ```
+  Whenever a build runs, F-Droid expands `%v` (e.g. `v1.0`) and tries to
+  download from that URL. So uploading the signed APK as an asset on the
+  matching Codeberg release tag is what the recipe expects.
+- `AllowedAPKSigningKeys:` — SHA-256 fingerprint of your release signing
+  certificate (lowercase hex, no colons). Tells F-Droid which key to expect
+  on the downloaded APK so a Codeberg account compromise can't swap in a
+  different signed APK. Get the value with:
+  ```
+  apksigner verify --print-certs <your-signed-apk>
+  ```
+  Look for the V2 / V3 `SHA-256 digest`.
+
+If F-Droid's reproducible build matches your APK byte-for-byte, they lift
+your signing certificate into their distribution. Riders can then switch
+between your direct Codeberg download and the F-Droid one without
+uninstalling — same package signature, no data loss.
 
 ### LF line endings
 

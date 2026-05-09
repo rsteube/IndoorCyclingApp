@@ -23,6 +23,10 @@ AutoName: Indoor Bike
 RepoType: git
 Repo: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp.git
 
+Binaries: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases/download/v%v/android-release.apk
+
+AllowedAPKSigningKeys: ca92afa896d1a60466e79550bc59c90c1d366ccde5e307a611583a4085097ce9
+
 Builds:
   - versionName: '1.0'
     versionCode: 1
