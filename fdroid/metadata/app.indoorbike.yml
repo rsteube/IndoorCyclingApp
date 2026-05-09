@@ -82,14 +82,20 @@ Repo: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp.git
 Builds:
   - versionName: '1.0'
     versionCode: 1
-    # TODO: replace with the git tag (or commit hash) of the v1.0 release
-    # before submitting. F-Droid pins each build to a specific commit so
-    # successive builds are reproducible.
-    commit: v1.0
-    # The Android app module lives in a subdirectory of the multi-module
-    # repo. The gradle wrapper at the repo root is used to invoke the
-    # build; this entry just tells F-Droid where the app's build.gradle
-    # is for version-extraction purposes.
+    # MUST be the full 40-char Git commit SHA of the release commit on
+    # the public Codeberg repo. F-Droid maintainers explicitly reject
+    # branch names ("main") or tag names ("v1.0") here — they need the
+    # commit pinned for reproducibility. Replace this placeholder before
+    # opening the Merge Request:
+    #
+    #   git rev-parse v1.0
+    #
+    # then paste the 40-char hex string below.
+    commit: 0000000000000000000000000000000000000000
+    # The Android app module sits in a non-standard subdirectory because
+    # this is a multi-module Kotlin Multiplatform project. F-Droid runs
+    # gradle from this path; the gradle wrapper at the repo root is
+    # picked up via the standard Android build classpath.
     subdir: mobile_clients/android
     gradle:
       - yes
