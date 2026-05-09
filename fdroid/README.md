@@ -6,11 +6,21 @@ The actual canonical copy lives in the F-Droid `fdroiddata` GitLab repo at
 versioned alongside the code, reviewed in the same PR cycle, and easy to
 update when the app changes.
 
-## Files
+## Files — copy this whole tree into fdroiddata
 
 - `metadata/app.indoorbike.yml` — the [Build Metadata Reference][meta-ref]
-  YAML for `app.indoorbike`. Categories, anti-features, build entries,
-  source URL, etc.
+  YAML. Categories, anti-features, build entries, source URL, etc.
+- `metadata/app.indoorbike/en-US/short_description.txt` — the Summary, in
+  per-locale form. F-Droid's `make-summary-translatable.py` tooling
+  auto-migrates `Summary:` from the YAML into this layout and fails the
+  MR pipeline if the move produces uncommitted changes — we pre-do the
+  migration so the YAML never carries `Summary:` or `Description:`.
+- `metadata/app.indoorbike/en-US/full_description.txt` — the Description,
+  same rationale.
+
+The directory tree mirrors fdroiddata's expected layout exactly. To
+submit / update, copy `metadata/app.indoorbike.yml` and `metadata/app.indoorbike/`
+verbatim into your fdroiddata fork.
 
 The user-facing store listing (title, short / long description,
 screenshots) is **not** here — it lives at the standard Fastlane path
