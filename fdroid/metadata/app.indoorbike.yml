@@ -28,7 +28,7 @@ Binaries:
 Builds:
   - versionName: '1.0'
     versionCode: 1
-    commit: db8038c13b907c95672b282d6234b4602a2b04c0
+    commit: 1a8074d4126b98f8094d2ab5fa24609e008034d1
     subdir: mobile_clients/android
     gradle:
       - yes
