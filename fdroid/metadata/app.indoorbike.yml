@@ -26,7 +26,7 @@ Repo: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp.git
 Builds:
   - versionName: '1.0'
     versionCode: 1
-    commit: 8fbdd8179dbdd760f3d0f0b2900137c4e9b26f72
+    commit: db8038c13b907c95672b282d6234b4602a2b04c0
     subdir: mobile_clients/android
     gradle:
       - yes
