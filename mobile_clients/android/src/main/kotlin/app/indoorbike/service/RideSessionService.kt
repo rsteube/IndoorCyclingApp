@@ -191,30 +191,33 @@ class RideSessionService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
+            // Success — clear any previous failure flag so the banner goes
+            // away on a successful retry (e.g. rider granted the permission
+            // and started a new ride).
+            (applicationContext as? IndoorBikeApp)?.container
+                ?.sessionManager?.clearForegroundServiceFailure()
         } catch (e: SecurityException) {
             // Android 14+ requires a runtime-granted BLUETOOTH_* permission to
             // start a connectedDevice FGS. If none is granted (e.g. brand-new
-            // user starts a ride before ever pairing), bail gracefully — the
-            // ride still runs in-process while the activity is foregrounded.
-            Log.w(
-                "RideService",
-                "Foreground start denied — Bluetooth permission missing. Ride will only persist while the app is foregrounded.",
-                e
-            )
+            // user starts a ride before ever pairing), the ride is no longer
+            // protected from background-kills — surface that to the session
+            // manager so it can pause + show a banner instead of dying silently.
+            val msg = "Couldn't start ride session: Bluetooth permission required. " +
+                "Pause and grant the permission, or finish your ride before backgrounding the app."
+            Log.w("RideService", "$msg ($e)", e)
+            (applicationContext as? IndoorBikeApp)?.container
+                ?.sessionManager?.notifyForegroundServiceFailure(msg)
             stopSelf()
         } catch (e: IllegalStateException) {
             // Android 12+ throws ForegroundServiceStartNotAllowedException
             // (an IllegalStateException) when the service is started from
-            // background without a qualifying reason. We can hit this on a
-            // session-state restart that races a recent process backgrounding,
-            // and on Android 12/13 the connectedDevice type doesn't bypass the
-            // restriction. Bail rather than crash — same fallback as the
-            // SecurityException case.
-            Log.w(
-                "RideService",
-                "Foreground start refused (likely background-start restriction). Ride will only persist while the app is foregrounded.",
-                e
-            )
+            // background without a qualifying reason.
+            val msg = "Couldn't keep the ride running in the background: Android refused " +
+                "the request. Finish your ride before backgrounding the app, or grant the " +
+                "Bluetooth permission and try again."
+            Log.w("RideService", "$msg ($e)", e)
+            (applicationContext as? IndoorBikeApp)?.container
+                ?.sessionManager?.notifyForegroundServiceFailure(msg)
             stopSelf()
         }
     }

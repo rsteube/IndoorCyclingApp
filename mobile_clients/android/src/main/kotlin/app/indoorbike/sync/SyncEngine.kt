@@ -99,8 +99,12 @@ class SyncEngine(
         }
         _status.value = SyncStatus.Syncing
         val out = try {
-            val devicesSeen = performSync(storage)
-            SyncStatus.Success(syncedAtEpoch = now(), devicesSeen = devicesSeen)
+            val outcome = performSync(storage)
+            SyncStatus.Success(
+                syncedAtEpoch = now(),
+                devicesSeen = outcome.devicesSeen,
+                slicesSkipped = outcome.slicesSkipped,
+            )
         } catch (t: Throwable) {
             Log.w(TAG, "Sync failed", t)
             SyncStatus.Failed(t.message ?: "Sync failed")
@@ -109,15 +113,30 @@ class SyncEngine(
         out
     }
 
-    private suspend fun performSync(storage: SyncStorage): Int {
+    /**
+     * Internal carrier so [performSync] can report both the device count and
+     * the number of slices that failed to parse. Without surfacing skipped
+     * slices, a corrupt peer's data silently disappears from the merged
+     * state and the rider's "Sync now" status reads as an unqualified
+     * success — see [SyncStatus.Success.slicesSkipped] for the user-facing
+     * symptom.
+     */
+    private data class SyncOutcome(val devicesSeen: Int, val slicesSkipped: Int)
+
+    private suspend fun performSync(storage: SyncStorage): SyncOutcome {
         val nowMs = now()
         val deviceId = userSettings.deviceId
 
-        // 1. Pull
-        val parsed = storage.readAllSlices().mapNotNull { text ->
+        // 1. Pull. Track skipped slices so the success status can flag any
+        //    that failed to parse — silently dropping them lets one corrupt
+        //    peer's data vanish from every other peer's view with no signal.
+        val rawSlices = storage.readAllSlices()
+        var slicesSkipped = 0
+        val parsed = rawSlices.mapNotNull { text ->
             try {
                 BackupSerializer.decode(text)
             } catch (t: BackupParseException) {
+                slicesSkipped += 1
                 Log.w(TAG, "Skipping unreadable slice: ${t.message}")
                 null
             }
@@ -205,7 +224,9 @@ class SyncEngine(
         storage.writeOwnSlice(deviceId, BackupSerializer.encode(finalSelf))
 
         // distinct device count, for the status line
-        return parsed.map { it.deviceId }.toSet().size + (if (previousOwn == null) 1 else 0)
+        val devicesSeen = parsed.map { it.deviceId }.toSet().size +
+            (if (previousOwn == null) 1 else 0)
+        return SyncOutcome(devicesSeen = devicesSeen, slicesSkipped = slicesSkipped)
     }
 
     private fun applyMergedSettings(merged: BackupSettings?) {
@@ -329,7 +350,20 @@ class SyncEngine(
 sealed class SyncStatus {
     data object Idle : SyncStatus()
     data object Syncing : SyncStatus()
-    data class Success(val syncedAtEpoch: Long, val devicesSeen: Int) : SyncStatus()
+
+    /**
+     * [slicesSkipped] is non-zero when one or more device-slice files in
+     * the sync folder failed to parse (truncated download, mid-write race
+     * from a peer, schema-version mismatch). The merge still completes
+     * with what's readable, but the rider should know their view of
+     * cluster state may be incomplete — the Settings UI surfaces this as
+     * a small ⚠ next to the device count.
+     */
+    data class Success(
+        val syncedAtEpoch: Long,
+        val devicesSeen: Int,
+        val slicesSkipped: Int = 0,
+    ) : SyncStatus()
     data class Failed(val message: String) : SyncStatus()
     data object NotConfigured : SyncStatus()
 }

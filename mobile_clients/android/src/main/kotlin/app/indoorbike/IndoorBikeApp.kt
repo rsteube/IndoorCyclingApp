@@ -229,7 +229,12 @@ class IndoorBikeApp : Application() {
     }
 
     override fun onTerminate() {
-        // Rarely called by the framework on real devices, but good hygiene for emulator runs.
+        // Rarely called by the framework on real devices, but good hygiene for
+        // emulator runs (and any future test harness that calls onTerminate
+        // explicitly). Cancel both scopes — initScope runs the auto-connect
+        // / backfill / first-sync coroutines that would otherwise outlive
+        // the container.
+        initScope.cancel()
         container.dispose()
         super.onTerminate()
     }

@@ -1331,7 +1331,17 @@ private fun SyncStatusLine(status: SyncStatus) {
         is SyncStatus.Success -> {
             val ago = formatRelativeTime(status.syncedAtEpoch)
             val devices = "${status.devicesSeen} device" + if (status.devicesSeen == 1) "" else "s"
-            "Synced $ago · $devices seen" to CadenceColors.Success
+            // Surface unreadable slices when we hit them — without this, a
+            // corrupt peer's data silently disappears from the merged state
+            // and the rider sees an unqualified "Synced just now" while
+            // some devices' rides are missing.
+            if (status.slicesSkipped == 0) {
+                "Synced $ago · $devices seen" to CadenceColors.Success
+            } else {
+                val skipped = "${status.slicesSkipped} unreadable slice" +
+                    if (status.slicesSkipped == 1) "" else "s"
+                "Synced $ago · $devices seen · ⚠ $skipped" to CadenceColors.Warning
+            }
         }
         is SyncStatus.Failed -> "Couldn't sync: ${status.message}" to CadenceColors.Danger
         SyncStatus.NotConfigured -> "Not configured" to CadenceColors.Fg3

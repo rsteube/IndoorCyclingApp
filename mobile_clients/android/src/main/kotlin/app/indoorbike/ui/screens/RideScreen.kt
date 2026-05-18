@@ -51,9 +51,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -82,6 +84,7 @@ import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
+import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.zones.PowerZone
 
@@ -152,6 +155,11 @@ fun RideScreen(
     val currentCadence by trainerManager.cadence.collectAsState()
     val trainerHr by trainerManager.heartRate.collectAsState()
     val hrmHr by container.heartRateMonitor.heartRate.collectAsState()
+    // Surfaces messages set by RideSessionService when the foreground service
+    // can't start (BLE permission missing, background-start refused). The
+    // session manager auto-pauses on this signal; the banner explains why
+    // and gives the rider a path to recover.
+    val fgsFailure by sessionManager.foregroundServiceFailure.collectAsState()
     // Prefer the dedicated HRM if it's emitting; fall back to whatever the trainer has.
     val currentHr = if (hrmHr > 0) hrmHr else trainerHr
     val targetPower by trainerManager.targetPower.collectAsState()
@@ -302,6 +310,20 @@ fun RideScreen(
 
         // Layer 2: foreground content
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            fgsFailure?.let { msg ->
+                ForegroundServiceFailureBanner(
+                    message = msg,
+                    onRetry = {
+                        if (!hasAnyBluetoothPermission(context)) {
+                            bluetoothLauncher.launch(bluetoothRuntimePerms())
+                        } else {
+                            // Permission already granted — try the FGS again.
+                            RideSessionService.start(context)
+                        }
+                    },
+                    onDismiss = { sessionManager.clearForegroundServiceFailure() }
+                )
+            }
             RideHeader(
                 workoutName = workout!!.name,
                 state = state,
@@ -643,5 +665,79 @@ private fun FlankMetric(
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
+    }
+}
+
+/**
+ * Inline banner shown at the top of the ride screen when the foreground
+ * service couldn't start. The session manager has already paused the ride
+ * by the time this appears; the banner just explains *why* and offers a
+ * one-tap retry (re-prompts for BLE permission if needed). Dismiss simply
+ * clears the flag — the ride stays paused until the rider explicitly
+ * resumes from the header pause/resume button.
+ */
+@Composable
+private fun ForegroundServiceFailureBanner(
+    message: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
+            .clip(shape)
+            .background(CadenceColors.Danger.copy(alpha = 0.15f))
+            .border(1.dp, CadenceColors.Danger.copy(alpha = 0.4f), shape)
+            .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.WarningAmber,
+            contentDescription = null,
+            tint = CadenceColors.Danger,
+            modifier = Modifier.size(20.dp).padding(top = 2.dp)
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "Ride paused",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Text(
+                text = message,
+                style = CadenceType.small,
+                color = CadenceColors.Fg2
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+                Text(
+                    text = "Retry",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Brand500,
+                    modifier = Modifier
+                        .clickable(onClick = onRetry)
+                        .padding(vertical = 4.dp, horizontal = 6.dp)
+                )
+                Text(
+                    text = "Dismiss",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Fg3,
+                    modifier = Modifier
+                        .clickable(onClick = onDismiss)
+                        .padding(vertical = 4.dp, horizontal = 6.dp)
+                )
+            }
+        }
+        IconBtn(
+            icon = Icons.Outlined.Close,
+            contentDescription = "Dismiss",
+            tint = CadenceColors.Fg3,
+            onClick = onDismiss
+        )
     }
 }

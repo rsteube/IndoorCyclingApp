@@ -106,6 +106,21 @@ class WorkoutSessionManager(
     private val _elapsedInSegment = MutableStateFlow(0)
     val elapsedInSegment: StateFlow<Int> = _elapsedInSegment.asStateFlow()
 
+    /**
+     * Set when the platform-side foreground service can't start (e.g. Android
+     * 14+ refuses a `connectedDevice` FGS without a runtime BLE permission,
+     * or a background-start restriction kicks in). Non-null = an active ride
+     * is no longer protected from being killed by the OS when backgrounded.
+     *
+     * The platform layer (the FGS) calls [notifyForegroundServiceFailure];
+     * the UI observes this and surfaces a banner so the rider can react
+     * (grant permission and try again, or finish their current ride before
+     * backgrounding the app). Cleared via [clearForegroundServiceFailure]
+     * when the rider dismisses the banner or the next FGS start succeeds.
+     */
+    private val _foregroundServiceFailure = MutableStateFlow<String?>(null)
+    val foregroundServiceFailure: StateFlow<String?> = _foregroundServiceFailure.asStateFlow()
+
     private val _telemetry = mutableListOf<TelemetryPoint>()
     /**
      * Snapshot of telemetry buffered so far. Reads only from the timer coroutine's
@@ -281,6 +296,29 @@ class WorkoutSessionManager(
         _state.value = WorkoutState.Paused
         trainerManager.setTargetPower(0)
         timerJob?.cancel()
+    }
+
+    /**
+     * Called by the platform foreground service when it can't keep the ride
+     * alive in the background (BLE permission missing, background-start
+     * refused on Android 12+, etc.). Pauses the active ride immediately so
+     * the rider doesn't lose progress to a silent kill, and exposes the
+     * message via [foregroundServiceFailure] for the UI to surface.
+     *
+     * No-op for non-active states — if the service can't start while the
+     * rider is on the workout-list screen, there's nothing to pause and the
+     * snapshot doesn't need writing.
+     */
+    fun notifyForegroundServiceFailure(message: String) {
+        _foregroundServiceFailure.value = message
+        if (_state.value == WorkoutState.Active || _state.value == WorkoutState.Countdown) {
+            pauseWorkout()
+        }
+    }
+
+    /** Clears the FGS failure flag — call after the rider acks the banner or the next start succeeds. */
+    fun clearForegroundServiceFailure() {
+        _foregroundServiceFailure.value = null
     }
 
     fun resumeWorkout() {

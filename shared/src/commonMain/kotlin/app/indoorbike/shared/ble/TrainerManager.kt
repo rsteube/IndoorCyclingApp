@@ -157,12 +157,26 @@ class TrainerManager {
     }
 
     fun connectMock() {
+        // Tear down any in-flight real connection first so mock and real
+        // telemetry can never both write the same StateFlows. Without this,
+        // toggling Mock while a real trainer is connected leaves the BLE
+        // observe jobs running and racing the mock stream.
+        scope.launch {
+            try {
+                activePeripheral?.disconnect()
+            } catch (_: Exception) { /* best-effort */ }
+        }
         scanJob?.cancel()
+        stateListenerJob?.cancel()
+        telemetryJobs.forEach { it.cancel() }
+        telemetryJobs = emptyList()
+        ftmsControlPointWriter = null
+        activePeripheral = null
+
         _isMockTrainer.value = true
         _connectedTrainerName.value = "Mock Trainer"
         _pairedTrainerId.value = "mock"
         _connectionState.value = TrainerConnectionState.Connected
-        activePeripheral = null
         startMockTelemetryStream()
     }
 
@@ -300,6 +314,21 @@ class TrainerManager {
         _pairedTrainerId.value = advertisement.identifier
         _connectedTrainerName.value = advertisement.name ?: "Unknown Trainer"
 
+        // Tear down any mock-trainer state so a real connect after a mock
+        // session doesn't have two telemetry sources racing the StateFlows.
+        if (_isMockTrainer.value) {
+            stopMockTelemetryStream()
+            _isMockTrainer.value = false
+        }
+
+        // Reset cadence-derivation state on every connect so a trainer swap
+        // (Kickr → Wattbike) doesn't compare the new trainer's first crank
+        // sample against the old trainer's timestamp and report a 3-second
+        // 0-RPM dropout at the moment of reconnect.
+        lastCrankRevs = null
+        lastCrankEventTime = null
+        lastCrankActivityEpochMs = 0
+
         // Cancel any prior connection state listener and telemetry subscriptions.
         stateListenerJob?.cancel()
         telemetryJobs.forEach { it.cancel() }
@@ -343,94 +372,80 @@ class TrainerManager {
      * Subscribe to whichever telemetry characteristics the peripheral exposes.
      * Power/cadence prefer CPS (Cycling Power Measurement); FTMS Indoor Bike Data
      * is used as a fallback. Heart Rate is a separate service if available.
+     *
+     * Suspending + sequential, by design. The previous implementation launched
+     * each `findCharacteristic + observe` in its own `scope.launch { ... }` and
+     * assigned `telemetryJobs` immediately afterwards — but the assignment
+     * fired before the launches had populated the list, so concurrent
+     * cancellations (e.g. a fast trainer swap) saw an empty `telemetryJobs`
+     * and leaked the observe jobs from the previous connection. Going
+     * sequential makes the bookkeeping trivially correct: each job is added
+     * to `telemetryJobs` the moment it's launched, and there's no window
+     * where a cancellation can miss it.
      */
-    private fun startTelemetrySubscriptions(peripheral: Peripheral) {
+    private suspend fun startTelemetrySubscriptions(peripheral: Peripheral) {
+        // Cancel any existing subscriptions and reset the tracker. Bind the
+        // mutable list to `telemetryJobs` up front so an interleaved
+        // disconnection callback's `telemetryJobs.forEach { it.cancel() }`
+        // sees additions as we go, not just the post-completion snapshot.
         telemetryJobs.forEach { it.cancel() }
         val jobs = mutableListOf<Job>()
+        telemetryJobs = jobs
 
-        // Cycling Power Measurement
-        scope.launch {
+        suspend fun trySubscribe(
+            label: String,
+            service: String,
+            characteristic: String,
+            onBytes: (ByteArray) -> Unit,
+        ) {
             try {
-                val char = peripheral.findCharacteristic(CYCLING_POWER_SERVICE, CYCLING_POWER_MEASUREMENT)
-                if (char != null) {
-                    val job = peripheral.observe(char)
-                        .onEach { bytes ->
-                            parseCyclingPowerMeasurement(bytes)?.let { reading ->
-                                _power.value = reading.powerWatts
-                                reading.cadenceRpm?.let { _cadence.value = it }
-                                touchTelemetry()
-                            }
-                        }
-                        .catch { Log.w(TAG, "CPS observe failed", it) }
-                        .launchIn(scope)
-                    jobs += job
-                }
+                val char = peripheral.findCharacteristic(service, characteristic) ?: return
+                jobs += peripheral.observe(char)
+                    .onEach { onBytes(it) }
+                    .catch { Log.w(TAG, "$label observe failed", it) }
+                    .launchIn(scope)
             } catch (e: Exception) {
-                Log.w(TAG, "CPS subscribe failed", e)
+                Log.w(TAG, "$label subscribe failed", e)
             }
         }
 
-        // Indoor Bike Data (fallback for power/cadence; primary on some FTMS-only trainers)
-        scope.launch {
-            try {
-                val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, INDOOR_BIKE_DATA)
-                if (char != null) {
-                    val job = peripheral.observe(char)
-                        .onEach { bytes ->
-                            parseIndoorBikeData(bytes)?.let { reading ->
-                                if (_power.value == 0) reading.powerWatts?.let { _power.value = it }
-                                if (_cadence.value == 0) reading.cadenceRpm?.let { _cadence.value = it }
-                                touchTelemetry()
-                            }
-                        }
-                        .catch { Log.w(TAG, "Indoor Bike Data observe failed", it) }
-                        .launchIn(scope)
-                    jobs += job
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Indoor Bike Data subscribe failed", e)
+        trySubscribe("CPS", CYCLING_POWER_SERVICE, CYCLING_POWER_MEASUREMENT) { bytes ->
+            parseCyclingPowerMeasurement(bytes)?.let { reading ->
+                _power.value = reading.powerWatts
+                reading.cadenceRpm?.let { _cadence.value = it }
+                touchTelemetry()
             }
         }
-
-        // Heart Rate (separate optional service)
-        scope.launch {
-            try {
-                val char = peripheral.findCharacteristic(HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT)
-                if (char != null) {
-                    val job = peripheral.observe(char)
-                        .onEach { bytes ->
-                            parseHeartRateMeasurement(bytes)?.let { hr ->
-                                _heartRate.value = hr
-                                touchTelemetry()
-                            }
-                        }
-                        .catch { Log.w(TAG, "HR observe failed", it) }
-                        .launchIn(scope)
-                    jobs += job
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "HR subscribe failed", e)
+        trySubscribe("Indoor Bike Data", FITNESS_MACHINE_SERVICE, INDOOR_BIKE_DATA) { bytes ->
+            parseIndoorBikeData(bytes)?.let { reading ->
+                if (_power.value == 0) reading.powerWatts?.let { _power.value = it }
+                if (_cadence.value == 0) reading.cadenceRpm?.let { _cadence.value = it }
+                touchTelemetry()
+            }
+        }
+        trySubscribe("HR", HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT) { bytes ->
+            parseHeartRateMeasurement(bytes)?.let { hr ->
+                _heartRate.value = hr
+                touchTelemetry()
             }
         }
 
         // FTMS Control Point — capture a writer closure so setTargetPower works.
-        scope.launch {
-            try {
-                val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, FTMS_CONTROL_POINT)
-                if (char != null) {
-                    ftmsControlPointWriter = { payload ->
-                        peripheral.write(char, payload, WriteType.WithResponse)
-                    }
-                    // Request control: opcode 0x00.
-                    runCatching { peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse) }
-                        .onFailure { Log.w(TAG, "FTMS request control failed", it) }
+        // Not an observe, so doesn't go in `jobs`; the writer reference itself
+        // is invalidated on disconnect via `ftmsControlPointWriter = null`.
+        try {
+            val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, FTMS_CONTROL_POINT)
+            if (char != null) {
+                ftmsControlPointWriter = { payload ->
+                    peripheral.write(char, payload, WriteType.WithResponse)
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "FTMS control point setup failed", e)
+                // Request control: opcode 0x00.
+                runCatching { peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse) }
+                    .onFailure { Log.w(TAG, "FTMS request control failed", it) }
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "FTMS control point setup failed", e)
         }
-
-        telemetryJobs = jobs
     }
 
     private fun touchTelemetry() {
