@@ -22,7 +22,19 @@ The companion website lives at [indoorbike.app](https://indoorbike.app), with an
 
 ## Status
 
-Pre-release. Currently in active development; v1.0 is targeted at F-Droid. iOS is on the roadmap but not started - the shared module is already KMM, so the lift should be reasonable.
+Pre-release. Currently in active development; an F-Droid listing is in preparation. iOS is on the roadmap but not started - the shared module is already KMM, so the lift should be reasonable.
+
+## Install
+
+[![Get it on Obtainium](https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://codeberg.org/juhanilehtimaki/IndoorCyclingApp)
+
+The easiest way to install and stay updated is [Obtainium](https://github.com/ImranR98/Obtainium), which pulls signed APKs straight from this repo's [releases](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases) - no store account, no Google services. Tap the badge above, or in Obtainium choose **Add App** and paste:
+
+```
+https://codeberg.org/juhanilehtimaki/IndoorCyclingApp
+```
+
+Obtainium then notifies you whenever a new release is published. You can also grab the APK directly from the [latest release](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases/latest). An F-Droid listing is in preparation.
 
 ## Building from source
 
