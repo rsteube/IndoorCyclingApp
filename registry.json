@@ -5,7 +5,7 @@
     {
       "id": "indoorbike-starter",
       "name": "Indoor Bike Starter Pack",
-      "description": "A handful of classic structured workouts to get you riding — endurance, threshold, VO2 max, and sweet spot. Built into the app and mirrored here so you can preview them before installing.",
+      "description": "A handful of classic structured workouts to get you riding - endurance, threshold, VO2 max, and sweet spot. Built into the app and mirrored here so you can preview them before installing.",
       "author": "Indoor Bike",
       "manifestUrl": "https://indoorbike.app/community/indoorbike-starter.json",
       "tags": ["Starter", "Threshold", "VO2 Max", "Endurance"],

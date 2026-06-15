@@ -1,5 +1,5 @@
 /* ============================================================
-   Workout editor — timeline-style.
+   Workout editor - timeline-style.
    Builds on the design tokens in ../styles.css.
    ============================================================ */
 
@@ -130,7 +130,7 @@
 }
 
 /* ============================================================
-   The builder — palette, timeline, inspector strip.
+   The builder - palette, timeline, inspector strip.
    ============================================================ */
 
 .builder {
@@ -155,7 +155,7 @@
 .palette-tiles { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
 
 /* Ribbon-style tile: a saturated zone-colour "tag" on the left, dark pill body
-   with the zone name on the right. The whole pill is the swatch — no tiny
+   with the zone name on the right. The whole pill is the swatch - no tiny
    color square trying to fight for attention. */
 .palette-tile {
   display: inline-flex;
@@ -181,7 +181,7 @@
 .palette-tile:active { cursor: grabbing; transform: translateY(0); }
 .palette-tile.is-dragging { opacity: 0.5; }
 
-/* Coloured "tag" — left half. */
+/* Coloured "tag" - left half. */
 .palette-tile-z {
   display: inline-flex;
   align-items: center;
@@ -197,7 +197,7 @@
   letter-spacing: 0.04em;
 }
 
-/* Pill body — right half. */
+/* Pill body - right half. */
 .palette-tile-name {
   display: inline-flex;
   align-items: center;
@@ -561,7 +561,7 @@
 .editor-footer a { color: var(--fg-2); }
 .editor-footer a:hover { color: var(--fg-1); }
 
-/* ---------- Modal — FIX for the [hidden] override ---------- */
+/* ---------- Modal - FIX for the [hidden] override ---------- */
 .modal {
   position: fixed; inset: 0;
   display: grid; place-items: center;

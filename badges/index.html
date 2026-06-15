@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Indoor Bike - Link badges</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--bg-0); color: var(--fg-1);
+    font-family: var(--font-body); -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility; font-feature-settings: "tnum";
+  }
+  a { color: inherit; text-decoration: none; }
+  ::selection { background: rgba(244,122,31,0.32); }
+
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 var(--s-6); }
+
+  /* ---------- header ---------- */
+  header.bar {
+    position: sticky; top: 0; z-index: 30;
+    background: rgba(15,12,9,0.82);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line-1);
+  }
+  header.bar .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+  .lockup { display: flex; align-items: center; gap: var(--s-3); }
+  .lockup img { height: 26px; display: block; }
+  .lockup .div { width: 1px; height: 22px; background: var(--line-2); }
+  .lockup .ctx { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
+    text-transform: uppercase; color: var(--fg-3); }
+  header.bar nav { display: flex; gap: var(--s-6); }
+  header.bar nav a { font-size: 13px; font-weight: 500; color: var(--fg-2);
+    transition: color var(--dur-fast) var(--ease-out); }
+  header.bar nav a:hover { color: var(--fg-1); }
+  @media (max-width: 720px){ header.bar nav { display: none; } }
+
+  /* ---------- hero ---------- */
+  .hero { position: relative; padding: var(--s-10) 0 var(--s-9); overflow: hidden; }
+  .hero::before {
+    content:""; position: absolute; inset: -20% -10% auto -10%; height: 460px; z-index: 0;
+    background: radial-gradient(58% 60% at 50% 0%, rgba(244,122,31,0.16), rgba(213,79,10,0.05) 42%, transparent 72%);
+    pointer-events: none;
+  }
+  .hero .wrap { position: relative; z-index: 1; }
+  .eyebrow { font-weight: 600; font-size: 11px; color: var(--fg-3);
+    text-transform: uppercase; letter-spacing: 0.14em; margin: 0 0 var(--s-3); }
+  .hero h1 {
+    font-family: var(--font-display); font-weight: 400; text-transform: uppercase;
+    font-size: clamp(44px, 7vw, 76px); line-height: 0.95; letter-spacing: 0.01em;
+    margin: 0 0 var(--s-4); max-width: 16ch;
+  }
+  .hero h1 .ac { color: var(--brand-500); }
+  .hero p.lead { font-size: 18px; color: var(--fg-2); line-height: 1.55; max-width: 56ch; margin: 0 0 var(--s-7); }
+  .hero-badge { margin-top: var(--s-2); }
+  .hero-meta { display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center;
+    font-family: var(--font-mono); font-size: 11px; color: var(--fg-3);
+    letter-spacing: 0.08em; text-transform: uppercase; margin-top: var(--s-6); }
+  .hero-meta .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-500);
+    box-shadow: 0 0 8px rgba(244,122,31,0.6); }
+
+  /* ---------- sections ---------- */
+  section { padding: var(--s-9) 0; border-top: 1px solid var(--line-1); }
+  .sec-head { margin-bottom: var(--s-7); }
+  .sec-head h2 {
+    font-family: var(--font-display); font-weight: 400; text-transform: uppercase;
+    font-size: clamp(28px, 4vw, 40px); line-height: 1.04; letter-spacing: 0.02em; margin: 0 0 var(--s-3);
+  }
+  .sec-head p { margin: 0; color: var(--fg-2); font-size: 15px; line-height: 1.6; max-width: 64ch; }
+
+  /* ---------- badge card ---------- */
+  .grid { display: grid; gap: var(--s-5); }
+  .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+  @media (max-width: 760px){ .grid.cols-2 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-lg);
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .card .stage {
+    padding: var(--s-8) var(--s-6); display: flex; align-items: center; justify-content: center;
+    gap: var(--s-5); flex-wrap: wrap; min-height: 132px; position: relative;
+  }
+  .card .stage[data-bg="dark"]  { background:
+    radial-gradient(120% 120% at 50% 0%, #1a1410 0%, #0f0c09 70%); }
+  .card .stage[data-bg="light"] { background:
+    radial-gradient(120% 120% at 50% 0%, #ffffff 0%, #f4efe7 100%); }
+  .card .stage[data-bg="busy"] {
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0 14px, transparent 14px 28px),
+      linear-gradient(120deg, #20303a, #2a1c2e 60%, #3a2418);
+  }
+  .badge-link { display: inline-flex; line-height: 0; cursor: pointer; }
+  .badge-link svg { display: block; }
+
+  .card .info { padding: var(--s-4) var(--s-5) var(--s-5); border-top: 1px solid var(--line-1); }
+  .card .info .nm { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; margin-bottom: 2px; }
+  .card .info h3 { font-family: var(--font-body); font-weight: 700; font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+  .card .info .dim { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); letter-spacing: 0.04em; }
+  .card .info .desc { color: var(--fg-2); font-size: 13px; margin: 4px 0 0; line-height: 1.5; }
+
+  /* ---------- code panel ---------- */
+  .code { border-top: 1px solid var(--line-1); background: var(--bg-0); }
+  .code .tabs { display: flex; gap: 2px; padding: var(--s-3) var(--s-3) 0; }
+  .code .tabs button {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--fg-3); background: transparent; border: 0; padding: 7px 11px; border-radius: var(--r-sm) var(--r-sm) 0 0;
+    cursor: pointer; transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  }
+  .code .tabs button:hover { color: var(--fg-1); }
+  .code .tabs button[aria-selected="true"] { color: var(--brand-400); background: var(--bg-1); }
+  .code .panel { position: relative; }
+  .code pre {
+    margin: 0; padding: var(--s-4) var(--s-5); max-height: 168px; overflow: auto;
+    font-family: var(--font-mono); font-size: 11.5px; line-height: 1.55; color: var(--fg-2);
+    white-space: pre; -moz-tab-size: 2; tab-size: 2;
+  }
+  .code pre code { color: inherit; }
+  .copy {
+    position: absolute; top: var(--s-3); right: var(--s-3);
+    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--line-2);
+    padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out);
+  }
+  .copy:hover { border-color: var(--line-3); color: var(--fg-1); }
+  .copy.ok { color: var(--zone-3); border-color: rgba(31,179,115,0.4); background: rgba(31,179,115,0.12); }
+  .actions { display: flex; gap: var(--s-2); padding: var(--s-3) var(--s-5) var(--s-5); }
+  .mini {
+    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--line-2);
+    padding: 8px 12px; border-radius: var(--r-sm); cursor: pointer;
+    transition: all var(--dur-fast) var(--ease-out); display: inline-flex; align-items: center; gap: 7px;
+  }
+  .mini:hover { border-color: var(--brand-500); color: var(--fg-1); }
+  .mini svg { width: 13px; height: 13px; }
+
+  /* ---------- usage ---------- */
+  .rules { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-5); }
+  @media (max-width: 760px){ .rules { grid-template-columns: 1fr; } }
+  .rule { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: var(--s-6); }
+  .rule h4 { display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-4);
+    font-family: var(--font-body); font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
+  .rule h4 .tag { font-family: var(--font-mono); font-size: 11px; padding: 3px 9px; border-radius: var(--r-pill);
+    letter-spacing: 0.1em; text-transform: uppercase; }
+  .rule.do h4 .tag { color: var(--zone-3); background: rgba(31,179,115,0.14); border: 1px solid rgba(31,179,115,0.34); }
+  .rule.dont h4 .tag { color: var(--danger); background: rgba(235,59,59,0.12); border: 1px solid rgba(235,59,59,0.32); }
+  .rule ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-3); }
+  .rule li { display: flex; gap: var(--s-3); font-size: 14px; color: var(--fg-2); line-height: 1.5; }
+  .rule li .gl { flex: none; width: 18px; text-align: center; font-family: var(--font-mono); font-weight: 700; }
+  .rule.do li .gl { color: var(--zone-3); }
+  .rule.dont li .gl { color: var(--danger); }
+  .rule li b { color: var(--fg-1); font-weight: 600; }
+
+  /* ---------- link target / params ---------- */
+  .urlbox { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: var(--s-6); }
+  .urlbox pre { margin: 0 0 var(--s-4); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
+    color: var(--fg-1); white-space: pre-wrap; word-break: break-all; }
+  .urlbox .b500 { color: var(--brand-400); }
+  .urlbox .b300 { color: var(--fg-3); }
+  .ptable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .ptable th, .ptable td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-1); vertical-align: top; }
+  .ptable th { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-3); font-weight: 500; }
+  .ptable td code { font-family: var(--font-mono); color: var(--brand-300); font-size: 12px; }
+  .ptable td { color: var(--fg-2); line-height: 1.5; }
+
+  /* ---------- downloads ---------- */
+  .dls { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-3); }
+  @media (max-width: 760px){ .dls { grid-template-columns: 1fr; } }
+  .dl {
+    display: flex; align-items: center; gap: var(--s-4); padding: var(--s-3) var(--s-4);
+    background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md);
+    transition: border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+    cursor: pointer;
+  }
+  .dl:hover { border-color: var(--line-3); transform: translateY(-1px); }
+  .dl .prev { flex: none; width: 132px; height: 44px; display: grid; place-items: center;
+    background: radial-gradient(120% 120% at 50% 0%, #1a1410, #0f0c09); border-radius: var(--r-sm);
+    border: 1px solid var(--line-1); overflow: hidden; }
+  .dl .prev[data-bg="light"] { background: #faf7f2; }
+  .dl .prev svg { transform: scale(0.78); }
+  .dl .meta { min-width: 0; }
+  .dl .meta .fn { font-family: var(--font-mono); font-size: 12px; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dl .meta .sz { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); margin-top: 2px; letter-spacing: 0.04em; }
+  .dl .arr { margin-left: auto; color: var(--fg-3); font-family: var(--font-mono); flex: none; }
+  .dl:hover .arr { color: var(--brand-400); }
+
+  footer { border-top: 1px solid var(--line-1); padding: var(--s-7) 0 var(--s-9); color: var(--fg-3); font-size: 13px; }
+  footer .wrap { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
+  footer a { color: var(--fg-2); } footer a:hover { color: var(--fg-1); }
+  .note { font-size: 12.5px; color: var(--fg-3); line-height: 1.6; margin-top: var(--s-4); }
+  .note code { font-family: var(--font-mono); color: var(--brand-300); font-size: 11.5px; }
+
+  @media (prefers-reduced-motion: reduce){ *,*::before,*::after{ transition:none!important; animation:none!important; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="wrap">
+    <div class="lockup">
+      <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      <div class="div"></div>
+      <span class="ctx">Link badges</span>
+    </div>
+    <nav>
+      <a href="#badges">Badges</a>
+      <a href="#sizes">Sizes</a>
+      <a href="#wording">Wording</a>
+      <a href="#usage">Usage</a>
+      <a href="#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero" style="border-top:0">
+  <div class="wrap">
+    <p class="eyebrow">Open API · editor deep-link</p>
+    <h1>Send a workout <span class="ac">straight to the saddle</span></h1>
+    <p class="lead">Drop one of these badges next to any workout your app generates. It links to the Indoor Bike
+      editor with the workout already loaded - the rider tweaks it, sends it to their phone, and rides. No account,
+      no SDK, just a URL. Optional, open source, always welcome.</p>
+    <div class="hero-badge" id="heroBadge"></div>
+    <div class="hero-meta">
+      <span class="dot"></span><span>indoorbike.app/editor</span>
+      <span>·</span><span>SVG + HTML</span>
+      <span>·</span><span>MIT-friendly</span>
+    </div>
+  </div>
+</section>
+
+<section id="badges">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>The badge family</h2>
+      <p>One mark, three treatments. The filled ember badge is the default - use it wherever it has room to breathe.
+        Reach for the outline when the badge sits in a busy interface, and the chip when space is tight. Every badge
+        carries the chainring mark on its home turf: a dark tile, so it reads on any background.</p>
+    </div>
+    <div class="grid cols-2" id="styleGrid"></div>
+  </div>
+</section>
+
+<section id="sizes">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Two sizes</h2>
+      <p>Standard sits comfortably beside a button or a workout title. Small slots into table rows, cards, and
+        dense lists. Don't scale below small - the mark stops reading.</p>
+    </div>
+    <div class="grid cols-2" id="sizeGrid"></div>
+  </div>
+</section>
+
+<section id="wording">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Pick your wording</h2>
+      <p>Four phrasings, same voice - direct, second person, no exclamation marks. Lead with the brand when you want
+        recognition, or with the action when the context already makes the brand obvious.</p>
+    </div>
+    <div class="grid cols-2" id="wordGrid"></div>
+  </div>
+</section>
+
+<section id="context">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>On light, on dark, on busy</h2>
+      <p>The filled badge is the safe pick everywhere. The outline comes in two inks - light text for dark UIs,
+        dark text for light pages. Always keep clear space around it equal to the height of the mark.</p>
+    </div>
+    <div class="grid cols-2" id="ctxGrid"></div>
+  </div>
+</section>
+
+<section id="link">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Where it links</h2>
+      <p>The badge is just an anchor. Point its <code style="font-family:var(--font-mono);color:var(--brand-300)">href</code>
+        at the editor and describe the workout entirely in the query string. Everything below is optional except
+        <code style="font-family:var(--font-mono);color:var(--brand-300)">s</code>, the segments.</p>
+    </div>
+    <div class="urlbox">
+      <pre><span class="b300">https://indoorbike.app/editor/?</span>v=1<span class="b300">&amp;</span>name=<span class="b500">Sweet+Spot+4x10</span><span class="b300">&amp;</span>ftp=<span class="b500">250</span><span class="b300">&amp;</span>s=<span class="b500">10m@55,4x(10m@90;5m@60),8m@50</span></pre>
+      <table class="ptable">
+        <thead><tr><th>Param</th><th>Req</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code>s</code></td><td>yes</td><td>The segments. <code>DURATION@POWER</code> items, comma-separated. <code>m</code>=minutes, bare/<code>s</code>=seconds, power is % of FTP. Repeats: <code>3x(8m@100;4m@55)</code>.</td></tr>
+          <tr><td><code>name</code></td><td>no</td><td>Workout name (≤80 chars).</td></tr>
+          <tr><td><code>desc</code></td><td>no</td><td>Description (≤600 chars).</td></tr>
+          <tr><td><code>tags</code></td><td>no</td><td>Comma-separated labels, e.g. <code>Threshold,Sweet Spot</code>.</td></tr>
+          <tr><td><code>ftp</code></td><td>no</td><td>Rider FTP in watts (50–600) so the watt preview is correct.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Full contract: <code>indoorbike.app/editor/llms.txt</code>. Encode spaces as <code>+</code>; the
+        segment characters <code>@ , ; ( ) x</code> are URL-safe and can stay as-is.</p>
+    </div>
+  </div>
+</section>
+
+<section id="usage">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Usage</h2>
+      <p>These assets are open source and entirely optional - but if you use them, keep them recognisable.</p>
+    </div>
+    <div class="rules">
+      <div class="rule do">
+        <h4><span class="tag">Do</span></h4>
+        <ul>
+          <li><span class="gl">✓</span><span>Link straight to <b>indoorbike.app/editor/</b> with the workout in the query string.</span></li>
+          <li><span class="gl">✓</span><span>Keep <b>clear space</b> around the badge equal to the height of the mark tile.</span></li>
+          <li><span class="gl">✓</span><span>Use the <b>filled</b> badge by default; switch to outline only on busy or branded surfaces.</span></li>
+          <li><span class="gl">✓</span><span>Match the badge to its background - <b>light ink on light, light text on dark</b>.</span></li>
+          <li><span class="gl">✓</span><span>Prefer the <b>inline-SVG</b> embed so the mark and type stay crisp at any scale.</span></li>
+        </ul>
+      </div>
+      <div class="rule dont">
+        <h4><span class="tag">Don't</span></h4>
+        <ul>
+          <li><span class="gl">✕</span><span><b>Recolor</b> the badge or the mark - the ember is the brand.</span></li>
+          <li><span class="gl">✕</span><span><b>Stretch, rotate, or add shadows.</b> Keep the proportions as drawn.</span></li>
+          <li><span class="gl">✕</span><span>Put the badge on a <b>clashing accent</b> or low-contrast background.</span></li>
+          <li><span class="gl">✕</span><span>Imply <b>endorsement</b> or official partnership - it's a link, not a co-brand.</span></li>
+          <li><span class="gl">✕</span><span>Rebuild the mark from scratch or swap in <b>emoji</b>. Use the supplied files.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="downloads">
+  <div class="wrap">
+    <div class="sec-head">
+      <h2>Download the assets</h2>
+      <p>Grab a single SVG, or take the whole set. Each file is self-contained - fonts fall back to a condensed sans
+        when embedded as an image, and render in full Bebas Neue when inlined.</p>
+    </div>
+    <div style="display:flex;gap:var(--s-3);flex-wrap:wrap;margin-bottom:var(--s-6)">
+      <button class="mini" id="dlAll" style="border-color:var(--brand-500);color:var(--fg-1)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download all as SVG
+      </button>
+    </div>
+    <div class="dls" id="dlGrid"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>Indoor Bike · Cadence design system · link badges</span>
+    <span>Open source · use encouraged, never required</span>
+  </div>
+</footer>
+
+<script src="badges.js"></script>
+<script src="gallery.js"></script>
+</body>
+</html>

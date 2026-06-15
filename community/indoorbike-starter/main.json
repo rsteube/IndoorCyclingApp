@@ -3,7 +3,7 @@
     "schemaVersion": 1,
     "id": "starter-15min",
     "name": "First Spin",
-    "description": "A welcoming 15-minute introduction. Easy warmup, then short tastes of tempo, threshold, and sweet-spot zones with plenty of recovery in between — so you can feel what each zone is like without committing to a hard ride.",
+    "description": "A welcoming 15-minute introduction. Easy warmup, then short tastes of tempo, threshold, and sweet-spot zones with plenty of recovery in between - so you can feel what each zone is like without committing to a hard ride.",
     "tags": ["Warm-up", "Endurance", "Threshold"],
     "segments": [
       { "lengthInSeconds": 180, "powerPercentFTP": 50, "intervalType": "CONSTANT" },

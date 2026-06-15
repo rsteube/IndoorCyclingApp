@@ -1,5 +1,5 @@
 /* ============================================================
-   Indoor Bike — community browser
+   Indoor Bike - community browser
    Three views (registry → repo → workout) routed via URL hash:
      #                       → registry list
      #repo=<id>              → repo detail
@@ -113,7 +113,7 @@
 
   // ── Cache ──────────────────────────────────────────────────────────────
   // Repos load once per session; the registry might be re-fetched on the
-  // back arrow but the hit is small. No persistence — that's the share/
+  // back arrow but the hit is small. No persistence - that's the share/
   // page's job once the workout is on the user's phone.
   let registryPromise = null;
   const manifestCache = new Map(); // repoId → manifest
@@ -133,7 +133,7 @@
   }
 
   // Highest schema versions this build of the page understands. The Android
-  // app keeps its own constants — we deliberately mirror them here so the
+  // app keeps its own constants - we deliberately mirror them here so the
   // website fails gracefully on a future-format manifest instead of trying
   // to render an unknown shape.
   const MAX_MANIFEST_SCHEMA = 2;
@@ -159,7 +159,7 @@
     }
     const bundles = Array.isArray(manifest.bundles) ? manifest.bundles : [];
     const supported = bundles.filter((b) => (b.schemaVersion ?? 1) <= MAX_BUNDLE_SCHEMA);
-    // Parallel fetch — bundles are independent. A single failure logs and
+    // Parallel fetch - bundles are independent. A single failure logs and
     // resolves to []; the rest of the repo still renders.
     const bundleResults = await Promise.all(supported.map((b) =>
       fetchBundle(resolveBundleUrl(b.url, manifestUrl)).catch((err) => {
@@ -262,7 +262,7 @@
     } catch (err) {
       clear(stage);
       stage.appendChild(el('div', { class: 'status is-error' },
-        el('p', {}, `Couldn't load the community registry — ${err.message || err}.`),
+        el('p', {}, `Couldn't load the community registry - ${err.message || err}.`),
         el('p', { class: 'status-action' },
           el('a', { class: 'btn btn-secondary', href: '#', onClick: (e) => { e.preventDefault(); renderRegistry(); } }, 'Retry')
         )
@@ -328,7 +328,7 @@
     catch (err) {
       clear(stage);
       stage.appendChild(el('div', { class: 'status is-error' },
-        el('p', {}, `Couldn't load the repository manifest — ${err.message || err}.`),
+        el('p', {}, `Couldn't load the repository manifest - ${err.message || err}.`),
         el('p', { class: 'status-action' },
           el('a', { class: 'btn btn-secondary', href: '#', onClick: (e) => { e.preventDefault(); renderRepo(repoId); } }, 'Retry')
         )

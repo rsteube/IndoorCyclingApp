@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Editor URL API - Indoor Bike</title>
+  <meta name="description" content="Open the Indoor Bike workout editor with a workout already loaded, using plain URL parameters. No backend, no account, no SDK.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    .api-main { max-width: 820px; margin: 0 auto; padding: var(--s-7) var(--s-5) var(--s-10); }
+    .api-main h1 {
+      font-family: var(--font-display); font-weight: 400;
+      font-size: clamp(40px, 7vw, 64px); line-height: 1;
+      letter-spacing: 0.02em; text-transform: uppercase;
+      margin: var(--s-2) 0 var(--s-3); color: var(--fg-1);
+    }
+    .api-main h2 {
+      font-family: var(--font-display); font-weight: 400;
+      font-size: 26px; letter-spacing: 0.02em;
+      text-transform: uppercase; margin: var(--s-7) 0 var(--s-3);
+      color: var(--fg-1);
+    }
+    .api-main p, .api-main li {
+      color: var(--fg-2); font-size: 15px; line-height: 1.7; max-width: 72ch;
+    }
+    .api-main p { margin: 0 0 var(--s-3); }
+    .api-main ul { padding-left: 22px; margin: 0 0 var(--s-4); }
+    .api-main li { margin-bottom: 6px; }
+    .api-main li strong { color: var(--fg-1); }
+    .api-main a { color: var(--brand-400); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
+    .api-main a:hover { color: var(--brand-300); }
+    .api-meta {
+      font-family: var(--font-mono); font-size: 11px;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      color: var(--fg-3); margin: 0 0 var(--s-4);
+    }
+    code {
+      font-family: var(--font-mono); font-size: 0.92em;
+      background: var(--bg-2); border: 1px solid var(--line-1);
+      padding: 1px 6px; border-radius: 4px; color: var(--brand-300);
+    }
+    .tldr {
+      background: var(--bg-1);
+      border: 1px solid var(--line-2);
+      border-left: 3px solid var(--brand-500);
+      border-radius: var(--r-md);
+      padding: var(--s-4) var(--s-5);
+      margin: var(--s-5) 0 var(--s-7);
+    }
+    .tldr p { margin: 0; color: var(--fg-1); }
+
+    /* Example URL blocks - wrap long links, monospace, clickable */
+    .api-url {
+      display: block;
+      font-family: var(--font-mono); font-size: 13px; line-height: 1.55;
+      background: var(--bg-1); border: 1px solid var(--line-2);
+      border-radius: var(--r-md); padding: var(--s-3) var(--s-4);
+      margin: 0 0 var(--s-3); color: var(--brand-300);
+      word-break: break-all; border-bottom: 1px solid var(--line-2);
+    }
+    .api-url:hover { color: var(--brand-200, var(--brand-300)); border-color: var(--line-3); }
+    .api-eg { margin: 0 0 var(--s-2); }
+    .api-eg-label {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--fg-3); margin: 0 0 6px;
+    }
+
+    /* Parameter table */
+    .api-table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-5); }
+    .api-table th, .api-table td {
+      text-align: left; padding: 10px 12px; vertical-align: top;
+      border-bottom: 1px solid var(--line-1); font-size: 14px; line-height: 1.5;
+    }
+    .api-table th {
+      font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--fg-3); border-bottom: 1px solid var(--line-2);
+    }
+    .api-table td:first-child { white-space: nowrap; color: var(--fg-1); }
+    .api-table td { color: var(--fg-2); }
+    .req { color: var(--brand-400); font-size: 11px; font-family: var(--font-mono); }
+
+    /* Syntax cheatsheet */
+    .api-grammar {
+      display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px;
+      background: var(--bg-1); border: 1px solid var(--line-2);
+      border-radius: var(--r-md); padding: var(--s-4) var(--s-5); margin: 0 0 var(--s-4);
+      font-size: 14px; line-height: 1.6;
+    }
+    .api-grammar code { background: none; border: 0; padding: 0; color: var(--brand-300); }
+    .api-grammar span { color: var(--fg-2); align-self: center; }
+    @media (max-width: 560px) {
+      .api-grammar { grid-template-columns: 1fr; gap: 2px 0; }
+      .api-grammar span { margin-bottom: 8px; }
+    }
+
+    .api-links {
+      display: flex; flex-wrap: wrap; gap: var(--s-3); margin: var(--s-3) 0 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="../index.html" aria-label="Indoor Bike home">
+        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../index.html#features">Features</a>
+        <a href="../index.html#how">How it works</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="../community/index.html">Community</a>
+        <a href="../privacy.html">Privacy</a>
+      </nav>
+      <a class="btn btn-primary" aria-disabled="true" href="../index.html#download">
+        Download <span class="btn-tag">soon</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="api-main">
+    <p class="api-meta">Developers · Editor URL API · v1</p>
+    <h1>Editor URL API</h1>
+
+    <div class="tldr">
+      <p>
+        Build a link, and it opens the Indoor Bike workout editor with your
+        workout already loaded. No backend, no account, no SDK - the workout
+        lives entirely in the URL. Perfect for letting another tool generate a
+        workout and hand it straight to the rider.
+      </p>
+    </div>
+
+    <p>
+      Say a training app like <strong>VertMatch</strong> works out that you need a
+      threshold session today. Instead of asking you to copy anything, it builds
+      an <code>indoorbike.app/editor/</code> link with the workout baked in. You
+      open it, see the workout on the timeline, tweak it if you like, then send it
+      to your phone the usual way - <em>Show QR &amp; link</em> or
+      <em>Share to phone</em> - and ride it.
+    </p>
+
+    <h2>Try it</h2>
+    <p>Open this link - the editor loads a 3×8 threshold workout:</p>
+    <a class="api-url" href="https://indoorbike.app/editor/?v=1&amp;name=Threshold+3x8&amp;ftp=250&amp;s=10m@50,3x(8m@100;4m@55),5m@50">https://indoorbike.app/editor/?v=1&amp;name=Threshold+3x8&amp;ftp=250&amp;s=10m@50,3x(8m@100;4m@55),5m@50</a>
+
+    <h2>The basics</h2>
+    <p>
+      Everything is in the query string of <code>https://indoorbike.app/editor/</code>.
+      Only <code>s</code> (the segments) is required; the rest are optional.
+    </p>
+
+    <table class="api-table">
+      <thead><tr><th>Param</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td><code>s</code> <span class="req">required</span></td><td>The workout segments. See <a href="#syntax">the syntax</a> below.</td></tr>
+        <tr><td><code>name</code></td><td>Workout title.</td></tr>
+        <tr><td><code>desc</code></td><td>Short description.</td></tr>
+        <tr><td><code>tags</code></td><td>Comma-separated labels, e.g. <code>Threshold,Sweet Spot</code>.</td></tr>
+        <tr><td><code>ftp</code></td><td>Rider FTP in watts (50–600). Just makes the watt preview accurate; the workout itself stays in % FTP.</td></tr>
+        <tr><td><code>v</code></td><td>API version. Use <code>1</code>.</td></tr>
+      </tbody>
+    </table>
+    <p>
+      Encode values the normal way: spaces become <code>+</code> or <code>%20</code>.
+      The segment characters <code>@ , ; ( ) x</code> are URL-safe - leave them as-is.
+    </p>
+
+    <h2 id="syntax">Segment syntax</h2>
+    <p>The <code>s</code> value is a comma-separated list. Each item is one of:</p>
+
+    <div class="api-grammar">
+      <code>DURATION@POWER</code><span>One segment - e.g. <code>5m@90</code>, <code>300@90</code>, <code>30s@120</code>.</span>
+      <code>Nx(SEG;SEG)</code><span>Repeat a group N times - e.g. <code>3x(8m@100;4m@55)</code>.</span>
+      <code>NxSEG</code><span>Repeat one segment N times - e.g. <code>8x30s@120</code>.</span>
+    </div>
+    <ul>
+      <li><strong>Duration</strong> - a number in <strong>seconds</strong> (<code>300</code>, <code>90s</code>), or <strong>minutes</strong> with an <code>m</code> (<code>5m</code>, <code>2.5m</code>).</li>
+      <li><strong>Power</strong> - a percentage of FTP (<code>100</code> = your threshold).</li>
+      <li>Inside a repeat group, separate segments with <code>;</code> (commas separate the top-level list).</li>
+    </ul>
+
+    <h2>More examples</h2>
+
+    <div class="api-eg">
+      <p class="api-eg-label">Sweet spot - 4×10 min @ 90%</p>
+      <a class="api-url" href="https://indoorbike.app/editor/?name=Sweet+Spot+4x10&amp;ftp=230&amp;s=10m@55,4x(10m@90;5m@60),8m@50">https://indoorbike.app/editor/?name=Sweet+Spot+4x10&amp;ftp=230&amp;s=10m@55,4x(10m@90;5m@60),8m@50</a>
+    </div>
+    <div class="api-eg">
+      <p class="api-eg-label">VO2 max - 6×3 min @ 115%</p>
+      <a class="api-url" href="https://indoorbike.app/editor/?name=VO2+6x3&amp;tags=VO2+Max&amp;s=12m@55,6x(3m@115;3m@50),8m@50">https://indoorbike.app/editor/?name=VO2+6x3&amp;tags=VO2+Max&amp;s=12m@55,6x(3m@115;3m@50),8m@50</a>
+    </div>
+    <div class="api-eg">
+      <p class="api-eg-label">Sprints - 8×30 s @ 130%</p>
+      <a class="api-url" href="https://indoorbike.app/editor/?name=Sprints&amp;s=10m@50,8x30s@130,5m@50">https://indoorbike.app/editor/?name=Sprints&amp;s=10m@50,8x30s@130,5m@50</a>
+    </div>
+
+    <h2>Badges (optional)</h2>
+    <p>
+      Want a ready-made "Open in Indoor Bike" badge to drop next to a workout
+      your app generates? There's a small set of SVG badges - filled, outline,
+      and compact chip, in two sizes and four wordings - with copy-paste embed
+      code and downloads.
+    </p>
+    <p>
+      <a class="btn btn-primary" href="../badges/index.html">Browse the badges</a>
+    </p>
+    <p style="color: var(--fg-3); font-size: 14px;">
+      These assets are <strong>completely optional and free to use</strong>. You
+      never need a badge (or our permission) to link to the editor - a plain text
+      link works perfectly. They're just there if you'd like a polished, on-brand
+      button. Use encouraged, never required.
+    </p>
+
+    <h2>Privacy</h2>
+    <p>
+      The editor has no server, no database, and no account. Your workout lives
+      in the URL and is read entirely by JavaScript in your browser - nothing is
+      uploaded to us, and there's nothing for us to store. Your in-progress
+      workout is kept only in your own browser so it survives a refresh. Full
+      detail is in the <a href="../privacy.html">privacy policy</a>.
+    </p>
+    <p>
+      One thing to keep in mind: because the workout is part of the link, treat a
+      generated URL like any shareable link, and don't put anything sensitive in
+      the name or description.
+    </p>
+
+    <h2>For LLMs &amp; full reference</h2>
+    <p>
+      Generating links with a model? Point it at the machine-readable spec - it
+      has the complete grammar, limits, and examples in one fetchable file:
+    </p>
+    <div class="api-links">
+      <a class="btn btn-secondary" href="../editor/llms.txt">/editor/llms.txt</a>
+      <a class="btn btn-secondary" href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md" target="_blank" rel="noopener">Full technical docs ↗</a>
+    </div>
+    <p style="margin-top: var(--s-5)">
+      The technical documentation covers the parts this page skips: validation
+      and limits (segment cap, clamping, error handling), how the API relates to
+      the QR / share hash format, the exact workout JSON model, and versioning.
+    </p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>© Indoor Bike · indoorbike.app</span>
+      <div class="footer-links">
+        <a href="../index.html">Home</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="../privacy.html">Privacy</a>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -44,7 +44,7 @@
   color: var(--fg-1);
 }
 
-/* Page header row — title on the left, secondary action (Publish your own)
+/* Page header row - title on the left, secondary action (Publish your own)
    on the right. Stacks on narrow screens so the title doesn't get squeezed. */
 .page-head {
   display: flex;
@@ -295,7 +295,7 @@
   margin: var(--s-2) 0 0;
 }
 
-/* Step list — same vibe as the editor's segment rows. */
+/* Step list - same vibe as the editor's segment rows. */
 .detail-steps {
   list-style: none;
   margin: 0;

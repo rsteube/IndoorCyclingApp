@@ -1,5 +1,5 @@
 /* ============================================================
-   indoorbike.app/share/ — landing page that decodes a workout
+   indoorbike.app/share/ - landing page that decodes a workout
    from a hash-fragment URL and lets the user save it or hand
    it off to the Indoor Bike app via the OS share sheet.
    ============================================================ */
@@ -43,8 +43,8 @@
 
   /**
    * Two payload forms are accepted:
-   *   `#wz=…` — gzip + base64url (current QR / link form, much shorter URL)
-   *   `#w=…`  — plain base64url JSON (legacy, still supported)
+   *   `#wz=…` - gzip + base64url (current QR / link form, much shorter URL)
+   *   `#w=…`  - plain base64url JSON (legacy, still supported)
    */
   function readWorkoutFromHash() {
     const hash = location.hash || '';

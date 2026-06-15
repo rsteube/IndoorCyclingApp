@@ -9,7 +9,7 @@
   "bundles": [
     {
       "id": "main",
-      "name": "Indoor Bike Starter Pack — main bundle",
+      "name": "Indoor Bike Starter Pack - main bundle",
       "schemaVersion": 1,
       "version": 1,
       "url": "indoorbike-starter/main.json"
