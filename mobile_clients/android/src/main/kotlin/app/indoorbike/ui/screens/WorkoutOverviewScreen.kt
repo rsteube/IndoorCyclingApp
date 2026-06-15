@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -41,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.share.ExportSheet
 import app.indoorbike.share.ShareSheet
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
@@ -83,6 +85,7 @@ fun WorkoutOverviewScreen(
     var targetWorkout by remember { mutableStateOf<Workout?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var showShareSheet by remember { mutableStateOf(false) }
+    var showExportSheet by remember { mutableStateOf(false) }
 
     val ftp by container.userSettings.ftp.collectAsState()
     val intervalsAthlete by container.userSettings.intervalsAthleteId.collectAsState()
@@ -284,6 +287,11 @@ fun WorkoutOverviewScreen(
                 TimeInZoneCard(ttzSeconds = ttz, totalSeconds = activeSession.durationSeconds.toInt())
             }
 
+            if (telemetry.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(Spacing.s6))
+                ExportFileCard(onExport = { showExportSheet = true })
+            }
+
             if (intervalsConfigured) {
                 Spacer(modifier = Modifier.height(Spacing.s6))
                 IntervalsUploadCard(
@@ -347,6 +355,19 @@ fun WorkoutOverviewScreen(
                 telemetry = telemetry,
                 ftp = ftp,
                 onDismiss = { showShareSheet = false }
+            )
+        }
+    }
+
+    if (showExportSheet) {
+        val sessionForExport = session
+        if (sessionForExport != null) {
+            ExportSheet(
+                session = sessionForExport,
+                telemetry = telemetry,
+                workout = targetWorkout,
+                ftp = ftp,
+                onDismiss = { showExportSheet = false }
             )
         }
     }
@@ -632,6 +653,48 @@ private fun IntervalsUploadCard(
         SecondaryBtn(
             text = if (uploading) "Uploading…" else "Upload",
             onClick = { if (!uploading) onUpload() }
+        )
+    }
+}
+
+@Composable
+private fun ExportFileCard(onExport: () -> Unit) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .padding(Spacing.s5),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.SaveAlt,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(Modifier.width(Spacing.s3))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Export file", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(
+                text = "Save or share this ride as FIT or TCX.",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
+        }
+        SecondaryBtn(
+            text = "Export",
+            onClick = onExport
         )
     }
 }
