@@ -897,6 +897,107 @@
     }
     return null;
   }
+  // ── Inbound URL-param API (third-party workout hand-off) ────────────────
+  // A 3rd-party site (e.g. VertMatch) can deep-link a ready-made workout into
+  // the editor with plain, human-readable query params instead of the binary
+  // #w= / #wz= blob — no gzip, no base64, nothing to compute. Full spec:
+  //   docs/EDITOR_URL_API.md  +  the machine copy at  /editor/llms.txt
+  // Example:
+  //   /editor/?v=1&name=Threshold+3x8&ftp=250&s=10m@50,3x(8m@100;4m@55),5m@50
+  const MAX_PARAM_SEGMENTS = 200;
+
+  /** Split on `sep` at the top level only (ignoring separators inside parens). */
+  function splitTopLevel(str, sep) {
+    const parts = [];
+    let depth = 0, cur = '';
+    for (const ch of str) {
+      if (ch === '(') { depth++; cur += ch; }
+      else if (ch === ')') { depth = Math.max(0, depth - 1); cur += ch; }
+      else if (ch === sep && depth === 0) { parts.push(cur); cur = ''; }
+      else cur += ch;
+    }
+    parts.push(cur);
+    return parts;
+  }
+
+  /** "300" | "300s" | "5m" | "2.5m" → integer seconds, or null when unparseable. */
+  function parseDurationToken(tok) {
+    const m = String(tok).trim().match(/^(\d+(?:\.\d+)?)\s*(m|s)?$/i);
+    if (!m) return null;
+    let n = parseFloat(m[1]);
+    if (!Number.isFinite(n)) return null;
+    if ((m[2] || 's').toLowerCase() === 'm') n *= 60;
+    return clamp(Math.round(n), 1, 60 * 60 * 4);
+  }
+
+  /** "DUR@PCT" → a segment object, or null when unparseable. */
+  function parseSegmentToken(tok) {
+    const at = String(tok).indexOf('@');
+    if (at < 0) return null;
+    const secs = parseDurationToken(tok.slice(0, at));
+    const pct = parseInt(tok.slice(at + 1), 10);
+    if (secs == null || !Number.isFinite(pct)) return null;
+    return { id: nextId(), lengthInSeconds: secs, powerPercentFTP: clamp(pct, 0, 300) };
+  }
+
+  /**
+   * Parse the `s=` segment DSL: a comma-separated list where each item is
+   * either a single `DUR@PCT` segment or a repeat group `Nx(seg;seg;…)` /
+   * shorthand `NxDUR@PCT`. Invalid items are skipped. Returns [] on no match.
+   */
+  function parseSegmentsDSL(s) {
+    const out = [];
+    for (let item of splitTopLevel(String(s), ',')) {
+      item = item.trim();
+      if (!item) continue;
+      const rep = item.match(/^(\d+)\s*[x*]\s*(.+)$/i);
+      if (rep) {
+        const reps = clamp(parseInt(rep[1], 10) || 1, 1, 40);
+        const body = rep[2].trim();
+        const inner = (body.startsWith('(') && body.endsWith(')'))
+          ? splitTopLevel(body.slice(1, -1), ';').map(t => parseSegmentToken(t.trim())).filter(Boolean)
+          : [parseSegmentToken(body)].filter(Boolean);
+        for (let r = 0; r < reps; r++) {
+          for (const seg of inner) out.push({ ...seg, id: nextId() });
+          if (out.length >= MAX_PARAM_SEGMENTS) break;
+        }
+      } else {
+        const seg = parseSegmentToken(item);
+        if (seg) out.push(seg);
+      }
+      if (out.length >= MAX_PARAM_SEGMENTS) break;
+    }
+    return out.slice(0, MAX_PARAM_SEGMENTS);
+  }
+
+  /**
+   * Read a workout from the query string (the documented third-party API).
+   * Requires `s=` to be present; `name` / `desc` / `tags` / `ftp` ride along.
+   * Returns the parsed workout, or null when there's no `s=` param. When `s=`
+   * is present but yields no valid segments, returns null and toasts an error.
+   */
+  function readWorkoutFromQuery() {
+    const params = new URLSearchParams(location.search);
+    const s = params.get('s');
+    if (s == null) return null;
+    const segments = parseSegmentsDSL(s);
+    if (segments.length === 0) {
+      toast('Couldn\'t read a workout from this link — check the `s` parameter.', true);
+      return null;
+    }
+    const desc = params.get('desc') ?? params.get('description') ?? '';
+    const tags = params.get('tags');
+    const out = {
+      name: (params.get('name') || '').slice(0, 80),
+      description: desc.slice(0, 600),
+      tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : [],
+      segments,
+    };
+    const ftpParam = parseInt(params.get('ftp'), 10);
+    if (Number.isFinite(ftpParam) && ftpParam >= 50 && ftpParam <= 600) out._ftp = ftpParam;
+    return out;
+  }
+
   /**
    * Build the share URL. We gzip-then-base64url the JSON whenever pako is
    * loaded — typical workout JSON has so many repeated keys that this cuts
@@ -967,12 +1068,45 @@
     toast(`Loaded "${state.name || 'workout'}" with ${state.segments.length} segments`);
   }
   function resetAll() {
-    if (state.segments.length > 0 && !confirm('Clear the current workout?')) return;
+    const hadWork = state.segments.length > 0 || !!state.name || !!state.description;
+    const snapshot = hadWork ? captureState() : null;
     state.name = ''; state.description = ''; state.tags = [];
     state.segments = []; state.selectedIds = new Set();
     $('#workout-name').value = ''; $('#workout-description').value = '';
     afterChange(); renderTags();
-    toast('Cleared');
+    if (snapshot) {
+      toast('Cleared', false, { label: 'Undo', duration: 12000, onClick: () => restoreState(snapshot) });
+    } else {
+      toast('Cleared');
+    }
+  }
+
+  // ── Undo support (snapshot / restore the whole workout) ──────────────────
+  // Used to make destructive loads/resets reversible instead of gating them
+  // behind a blocking confirm() dialog. A snapshot is a deep-ish copy of the
+  // user-visible workout plus the FTP preview value.
+  let pendingLoadToast = null; // fired at end of init() once renderers are wired
+  function captureState() {
+    return {
+      name: state.name,
+      description: state.description,
+      tags: [...state.tags],
+      segments: state.segments.map(s => ({ ...s })),
+      ftp,
+    };
+  }
+  function restoreState(snap) {
+    state.name = snap.name || '';
+    state.description = snap.description || '';
+    state.tags = Array.isArray(snap.tags) ? [...snap.tags] : [];
+    state.segments = snap.segments.map(s => ({ ...s, id: nextId() }));
+    state.selectedIds = new Set();
+    if (Number.isFinite(snap.ftp)) { ftp = snap.ftp; persistFtp(); $('#ftp-input').value = String(ftp); }
+    $('#workout-name').value = state.name;
+    $('#workout-description').value = state.description;
+    afterChange();
+    renderTags();
+    toast('Restored your previous workout');
   }
 
   // ── Modals ──────────────────────────────────────────────────────────────
@@ -1025,14 +1159,29 @@
   }
 
   // ── Toast ───────────────────────────────────────────────────────────────
+  // Optional `action` = { label, onClick, duration } renders an inline button
+  // (e.g. "Undo") and holds the toast open longer so it's actually clickable.
   let toastTimer = null;
-  function toast(msg, isError = false) {
+  function toast(msg, isError = false, action = null) {
     const t = $('#toast');
-    t.textContent = msg;
     t.classList.toggle('toast-error', isError);
+    t.innerHTML = '';
+    t.appendChild(el('span', { class: 'toast-msg' }, msg));
+    let duration = 2400;
+    if (action) {
+      duration = action.duration || 9000;
+      t.appendChild(el('button', {
+        class: 'toast-action', type: 'button',
+        onClick: () => {
+          t.hidden = true;
+          if (toastTimer) clearTimeout(toastTimer);
+          action.onClick();
+        },
+      }, action.label || 'Undo'));
+    }
     t.hidden = false;
     if (toastTimer) clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { t.hidden = true; }, 2400);
+    toastTimer = setTimeout(() => { t.hidden = true; }, duration);
   }
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────
@@ -1116,32 +1265,45 @@
   function init() {
     hydrate();
 
-    // If the URL has a workout in the hash (the "Open in editor" handoff
-    // from the community browser), use it instead of localStorage. When the
-    // user already has unsaved work, ask before clobbering — same posture as
-    // resetAll. The hash is cleared either way so a refresh doesn't re-prompt.
-    const hashWorkout = (typeof readWorkoutFromHash === 'function') ? readWorkoutFromHash() : null;
-    if (hashWorkout) {
-      const hasExistingWork = state.segments.length > 0 || state.name || state.description;
-      const incomingName = hashWorkout.name || 'this workout';
-      const proceed = !hasExistingWork ||
-        confirm(`Replace your current workout with "${incomingName}"?`);
-      // Always clear the hash so a refresh / share doesn't keep re-prompting,
-      // even if the user said no.
+    // If the URL carries a workout, load it instead of localStorage. Two
+    // sources, query first: the documented `?s=…` third-party URL API (e.g.
+    // VertMatch hands off a generated workout), then the binary `#wz=`/`#w=`
+    // hash blob (the "Open in editor" handoff from the community browser).
+    //
+    // We load it immediately — no blocking confirm() — and protect against an
+    // accidental clobber with an Undo toast that snapshots whatever the user
+    // had. Undo beats a modal: it's non-blocking and reversible. The URL is
+    // cleared so a refresh / share doesn't reload-and-clobber a second time.
+    const incoming = readWorkoutFromQuery() ||
+      ((typeof readWorkoutFromHash === 'function') ? readWorkoutFromHash() : null);
+    if (incoming) {
+      const hadExistingWork = state.segments.length > 0 || !!state.name || !!state.description;
+      const snapshot = hadExistingWork ? captureState() : null;
       try { history.replaceState(null, '', location.pathname); } catch (_) {}
-      if (proceed) {
-        state.name = hashWorkout.name || '';
-        state.description = hashWorkout.description || '';
-        state.tags = Array.isArray(hashWorkout.tags) ? hashWorkout.tags : [];
-        state.segments = hashWorkout.segments
-          .filter(s => s && Number.isFinite(s.lengthInSeconds) && Number.isFinite(s.powerPercentFTP))
-          .map(s => ({
-            id: nextId(),
-            lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10), 0, 60 * 60 * 4),
-            powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10), 0, 300),
-          }));
-        state.selectedIds = new Set();
-        persist();
+
+      state.name = incoming.name || '';
+      state.description = incoming.description || '';
+      state.tags = Array.isArray(incoming.tags) ? incoming.tags : [];
+      state.segments = incoming.segments
+        .filter(s => s && Number.isFinite(s.lengthInSeconds) && Number.isFinite(s.powerPercentFTP))
+        .map(s => ({
+          id: nextId(),
+          lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10), 0, 60 * 60 * 4),
+          powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10), 0, 300),
+        }));
+      state.selectedIds = new Set();
+      if (Number.isFinite(incoming._ftp)) { ftp = incoming._ftp; persistFtp(); }
+      persist();
+
+      // Defer the toast until after init() has wired up the DOM/renderers, so
+      // an Undo tap can repaint cleanly.
+      const loadedName = incoming.name || 'workout';
+      if (snapshot) {
+        pendingLoadToast = () => toast(`Loaded "${loadedName}" — replaced your previous workout`, false, {
+          label: 'Undo', duration: 12000, onClick: () => restoreState(snapshot),
+        });
+      } else {
+        pendingLoadToast = () => toast(`Loaded "${loadedName}"`);
       }
     }
 
@@ -1206,6 +1368,10 @@
     setupTimelineDropTarget();
     afterChange();
     window.addEventListener('resize', () => { renderClips(); });
+
+    // Now that everything is rendered, surface the "loaded from URL" toast
+    // (with its Undo action, if we replaced existing work).
+    if (pendingLoadToast) { pendingLoadToast(); pendingLoadToast = null; }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -1,0 +1,80 @@
+# Indoor Bike — Editor URL Workout API (v1)
+
+> Generate a link that opens https://indoorbike.app/editor/ with a structured
+> power-zone cycling workout already loaded. Pure URL query params. No backend,
+> no auth, no SDK, no compression. Build the string, output the link.
+
+Human docs: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md
+This file is the authoritative machine spec. If it conflicts with anything, this wins.
+
+## Endpoint
+
+GET (open in a browser):
+  https://indoorbike.app/editor/?<params>
+
+The whole workout lives in the query string. `s` is the only required param.
+
+## Parameters
+
+  s     REQUIRED. The segments (the workout itself). See GRAMMAR.
+  name  optional. Workout title. Max 80 chars.
+  desc  optional. Description. Max 600 chars. (alias: description)
+  tags  optional. Comma-separated labels, e.g. tags=Threshold,Sweet Spot
+  ftp   optional. Rider FTP in watts, 50..600. Only drives the watt preview;
+        the workout stays FTP-relative. Omit if unknown.
+  v     optional. API version. Use 1. Unknown values ignored.
+
+URL-encode values: space -> + or %20; percent-encode literal & # % inside a value.
+The segment syntax characters @ , ; ( ) x are URL-safe — do NOT encode them.
+
+## GRAMMAR (the `s` param)
+
+s            := item ("," item)*
+item         := segment | repeat
+segment      := DURATION "@" POWER
+repeat       := COUNT "x" "(" segment (";" segment)* ")"   ; group repeat
+              | COUNT "x" segment                          ; single-segment repeat
+DURATION     := NUMBER          ; seconds  (e.g. 300)
+              | NUMBER "s"       ; seconds  (e.g. 90s)
+              | NUMBER "m"       ; minutes, decimals ok (e.g. 5m, 2.5m)
+POWER        := integer percent of FTP, 0..300   ; 100 = FTP
+COUNT        := integer 1..40
+
+Top-level items are comma-separated. Segments INSIDE a repeat group are
+semicolon-separated (commas are reserved for the top level).
+
+## LIMITS / VALIDATION (applied by the editor)
+
+- max 200 segments (extra dropped)
+- duration clamped 1s..4h, power clamped 0..300, count clamped 1..40
+- unparseable items are skipped silently; if `s` yields 0 valid segments the
+  editor shows an error and opens empty — so emit valid syntax.
+- no per-segment labels in v1 (editor stores duration+power only).
+
+## EXAMPLES
+
+3x8 threshold (warmup, 3 blocks of 8min@100% / 4min@55%, cooldown):
+  https://indoorbike.app/editor/?v=1&name=Threshold+3x8&ftp=250&s=10m@50,3x(8m@100;4m@55),5m@50
+
+4x10 sweet spot:
+  https://indoorbike.app/editor/?name=Sweet+Spot+4x10&ftp=230&s=10m@55,4x(10m@90;5m@60),8m@50
+
+6x3 VO2 max:
+  https://indoorbike.app/editor/?name=VO2+6x3&tags=VO2+Max&s=12m@55,6x(3m@115;3m@50),8m@50
+
+8x30s sprints:
+  https://indoorbike.app/editor/?name=Sprints&s=10m@50,8x30s@130,5m@50
+
+Flat list, seconds, no repeats:
+  https://indoorbike.app/editor/?name=Pyramid&s=300@50,300@70,300@90,300@105,300@90,300@70,300@50
+
+## RESULT MODEL (what the link decodes to)
+
+{ "name": "...", "description": "...", "tags": ["..."],
+  "segments": [ { "lengthInSeconds": 600, "powerPercentFTP": 50, "intervalType": "CONSTANT" } ] }
+
+## DOWNSTREAM FLOW (for context, not needed to build the link)
+
+Opening the link renders the workout in the editor. The user then taps
+"Show QR & link" or "Share to phone" to import it into the Indoor Bike Android
+app (QR scan / OS share sheet). The third party's job ends at producing the URL.
