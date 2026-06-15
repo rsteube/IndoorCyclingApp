@@ -1,4 +1,4 @@
-// Indoor Bike — screen components
+// Indoor Bike - screen components
 
 function WorkoutListScreen({ onPick, onTab }) {
   React.useEffect(() => { if (window.lucide) window.lucide.createIcons(); });

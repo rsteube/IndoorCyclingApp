@@ -6,9 +6,9 @@
 
 /* ----- FONTS -------------------------------------------------
    WILD-SPORTS GRAVEL aesthetic.
-   Display: "Bebas Neue" — tall, rugged, condensed sans. Trail-poster energy.
-   Body:    "Inter" — neutral, dense numerics, legible at distance.
-   Mono:    "JetBrains Mono" — telemetry, units, file names.
+   Display: "Bebas Neue" - tall, rugged, condensed sans. Trail-poster energy.
+   Body:    "Inter" - neutral, dense numerics, legible at distance.
+   Mono:    "JetBrains Mono" - telemetry, units, file names.
    ------------------------------------------------------------- */
 @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
@@ -18,7 +18,7 @@
   --font-body:    "Inter", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
-  /* Type scale — modular, optimized for reading at arm's length on a bike */
+  /* Type scale - modular, optimized for reading at arm's length on a bike */
   --t-display-xl: 72px;  /* in-ride power readout */
   --t-display-l:  56px;
   --t-display-m:  40px;
@@ -40,10 +40,10 @@
   --tr-wide:    0.04em;
   --tr-caps:    0.12em;
 
-  /* ---------- COLOR — NEUTRALS (dark, gravel-warm) ----------
+  /* ---------- COLOR - NEUTRALS (dark, gravel-warm) ----------
      Warm peat-brown blacks instead of cool bluish blacks. Reads like
      dirt + dusk, not metallic + city. Pairs naturally w/ ember orange. */
-  --bg-0:       #0F0C09;  /* app base — burnt-coffee black */
+  --bg-0:       #0F0C09;  /* app base - burnt-coffee black */
   --bg-1:       #181410;  /* surfaces, cards */
   --bg-2:       #221C16;  /* raised surfaces */
   --bg-3:       #2D251D;  /* hover, popovers */
@@ -53,22 +53,22 @@
   --line-2:     rgba(255,236,210,0.10);
   --line-3:     rgba(255,236,210,0.18);
 
-  --fg-1:       #F4ECDF;  /* primary — trail-dust off-white */
-  --fg-2:       #C2B5A1;  /* secondary — oat */
-  --fg-3:       #8A7E6C;  /* tertiary — sand */
+  --fg-1:       #F4ECDF;  /* primary - trail-dust off-white */
+  --fg-2:       #C2B5A1;  /* secondary - oat */
+  --fg-3:       #8A7E6C;  /* tertiary - sand */
   --fg-4:       #4F4838;  /* disabled */
 
-  /* ---------- COLOR — BRAND ---------- */
+  /* ---------- COLOR - BRAND ---------- */
   /* Cadence ember: warm orange linking visually to VertMatch.
      Same hot/saturated orange family used for VertMatch's 'Add Race' CTA, TEP value, and the Mastering TEP hero. */
-  --brand-500:  #F47A1F;  /* primary accent — ember orange */
+  --brand-500:  #F47A1F;  /* primary accent - ember orange */
   --brand-600:  #E0660D;  /* hover / active */
   --brand-700:  #B8520A;  /* pressed */
   --brand-400:  #FF9847;
   --brand-300:  #FFB57A;
   --brand-glow: 0 0 24px rgba(244, 122, 31, 0.35);
 
-  /* Sibling vector — deep ember, used in gradients with brand */
+  /* Sibling vector - deep ember, used in gradients with brand */
   --ember-600:  #D54F0A;
   --ember-700:  #A03808;
 
@@ -76,7 +76,7 @@
   --azure-600:  #D54F0A;
   --azure-700:  #A03808;
 
-  /* ---------- COLOR — LIGHT MIRROR (for marketing/web parity with VertMatch) ---------- */
+  /* ---------- COLOR - LIGHT MIRROR (for marketing/web parity with VertMatch) ---------- */
   --paper-0:    #FAF7F2;  /* VertMatch off-white background */
   --paper-1:    #FFFFFF;  /* card */
   --paper-2:    #F4EFE7;  /* warning tint */
@@ -84,7 +84,7 @@
   --ink-2:      #4B433D;
   --ink-3:      #8A7F76;
 
-  /* ---------- COLOR — POWER ZONES (FTP %) ----------
+  /* ---------- COLOR - POWER ZONES (FTP %) ----------
      Z1 Active Recovery   <55%    cool gray-blue
      Z2 Endurance         56-75%  blue
      Z3 Tempo             76-90%  green
@@ -109,7 +109,7 @@
   --zone-6-bg:  rgba(235,59,59,0.20);
   --zone-7-bg:  rgba(197,59,255,0.20);
 
-  /* ---------- COLOR — SEMANTIC ---------- */
+  /* ---------- COLOR - SEMANTIC ---------- */
   --success:    #1FB373;
   --warning:    #F0C419;
   --danger:     #EB3B3B;

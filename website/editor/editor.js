@@ -1,5 +1,5 @@
 /* ============================================================
-   Indoor Bike — Workout Editor
+   Indoor Bike - Workout Editor
    Timeline-style. Multi-select, rubber-band, drag-to-reorder,
    alt-drag to duplicate, drag handles to resize.
    No backend. State persists in localStorage.
@@ -39,7 +39,7 @@
     selectedIds: new Set(),
   };
 
-  /** Internal clipboard for Ctrl+C / Ctrl+V — array (multi-select). */
+  /** Internal clipboard for Ctrl+C / Ctrl+V - array (multi-select). */
   let clipboardSegments = [];
 
   let ftp = 200;
@@ -76,7 +76,7 @@
 
   /**
    * Lightweight createElement helper. Special handling for `style` so that
-   * CSS custom properties (`--zone-fill: …`) actually take effect — they
+   * CSS custom properties (`--zone-fill: …`) actually take effect - they
    * have to be set via setProperty(), not via direct property assignment.
    */
   function el(tag, props = {}, ...kids) {
@@ -309,7 +309,7 @@
       }, { passive: false });
     });
 
-    // HTML5 drag — reorder OR alt-duplicate. Multi-select ⇒ all selected move/copy.
+    // HTML5 drag - reorder OR alt-duplicate. Multi-select ⇒ all selected move/copy.
     clip.addEventListener('dragstart', (e) => {
       if (e.target.matches('[data-resize]')) { e.preventDefault(); return; }
       // If the clip we started dragging isn't in the current selection, replace
@@ -530,7 +530,7 @@
           !e.target.classList.contains('timeline-grid-label') &&
           !e.target.classList.contains('timeline-empty') &&
           !e.target.classList.contains('timeline-clips')) {
-        return; // pressing on a clip / handle / gap — let other handlers run
+        return; // pressing on a clip / handle / gap - let other handlers run
       }
       if (e.button !== 0) return;
       startRubberBand(e);
@@ -543,7 +543,7 @@
     if (toMove.length === 0) return;
 
     const remaining = state.segments.filter(s => !ids.includes(s.id));
-    // Recompute drop index relative to the remaining array — for each id we
+    // Recompute drop index relative to the remaining array - for each id we
     // remove that sits before dropIdx, dropIdx shifts down by 1.
     let adjusted = dropIdx;
     state.segments.forEach((s, i) => {
@@ -839,7 +839,7 @@
       } else if (navigator.share) {
         await navigator.share({ title: w.name, text });
       } else {
-        toast('Web Share isn\'t available on this device — use Download instead.', true);
+        toast('Web Share isn\'t available on this device - use Download instead.', true);
       }
     } catch (e) {
       if (e && e.name !== 'AbortError') toast('Share failed: ' + (e.message || e), true);
@@ -850,7 +850,7 @@
     try {
       await navigator.clipboard.writeText(text);
       toast('JSON copied to clipboard');
-    } catch (_) { toast('Copy failed — clipboard access blocked.', true); }
+    } catch (_) { toast('Copy failed - clipboard access blocked.', true); }
   }
 
   function b64urlEncodeBytes(bytes) {
@@ -872,7 +872,7 @@
   /**
    * Decode an inbound `#wz=…` (gzipped) or `#w=…` (plain) hash payload.
    * Used when the user arrives via "Open in editor" from the community
-   * browser — same wire format the share page and Android app accept, so
+   * browser - same wire format the share page and Android app accept, so
    * one URL works everywhere a workout might land.
    * Returns the parsed workout, or null if no usable payload is present.
    */
@@ -900,7 +900,7 @@
   // ── Inbound URL-param API (third-party workout hand-off) ────────────────
   // A 3rd-party site (e.g. VertMatch) can deep-link a ready-made workout into
   // the editor with plain, human-readable query params instead of the binary
-  // #w= / #wz= blob — no gzip, no base64, nothing to compute. Full spec:
+  // #w= / #wz= blob - no gzip, no base64, nothing to compute. Full spec:
   //   docs/EDITOR_URL_API.md  +  the machine copy at  /editor/llms.txt
   // Example:
   //   /editor/?v=1&name=Threshold+3x8&ftp=250&s=10m@50,3x(8m@100;4m@55),5m@50
@@ -982,7 +982,7 @@
     if (s == null) return null;
     const segments = parseSegmentsDSL(s);
     if (segments.length === 0) {
-      toast('Couldn\'t read a workout from this link — check the `s` parameter.', true);
+      toast('Couldn\'t read a workout from this link - check the `s` parameter.', true);
       return null;
     }
     const desc = params.get('desc') ?? params.get('description') ?? '';
@@ -1000,7 +1000,7 @@
 
   /**
    * Build the share URL. We gzip-then-base64url the JSON whenever pako is
-   * loaded — typical workout JSON has so many repeated keys that this cuts
+   * loaded - typical workout JSON has so many repeated keys that this cuts
    * URL length in half, which drops the QR a few versions and makes modules
    * chunky enough for phone cameras to lock onto. The decoder side
    * (share.js, WorkoutLinkParser.kt) accepts both `#w=` (plain) and `#wz=`
@@ -1200,7 +1200,7 @@
         setSelection(state.segments.map(s => s.id), 'replace');
         return;
       }
-      // Copy / Cut / Paste — work on the multi-selection
+      // Copy / Cut / Paste - work on the multi-selection
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c' && sel.length) {
         clipboardSegments = sel.map(s => ({ ...s }));
         toast(`${sel.length} clip${sel.length === 1 ? '' : 's'} copied`);
@@ -1270,7 +1270,7 @@
     // VertMatch hands off a generated workout), then the binary `#wz=`/`#w=`
     // hash blob (the "Open in editor" handoff from the community browser).
     //
-    // We load it immediately — no blocking confirm() — and protect against an
+    // We load it immediately - no blocking confirm() - and protect against an
     // accidental clobber with an Undo toast that snapshots whatever the user
     // had. Undo beats a modal: it's non-blocking and reversible. The URL is
     // cleared so a refresh / share doesn't reload-and-clobber a second time.
@@ -1299,7 +1299,7 @@
       // an Undo tap can repaint cleanly.
       const loadedName = incoming.name || 'workout';
       if (snapshot) {
-        pendingLoadToast = () => toast(`Loaded "${loadedName}" — replaced your previous workout`, false, {
+        pendingLoadToast = () => toast(`Loaded "${loadedName}" - replaced your previous workout`, false, {
           label: 'Undo', duration: 12000, onClick: () => restoreState(snapshot),
         });
       } else {

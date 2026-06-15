@@ -1,5 +1,5 @@
 /* ============================================================
-   Contribute page — extends community.css
+   Contribute page - extends community.css
    Schema tables, code blocks, numbered/bulleted lists.
    ============================================================ */
 
@@ -105,8 +105,8 @@
   .schema-row { grid-template-columns: 1fr; gap: 4px; }
   .schema-row.schema-head { display: none; }
   .schema-row > span:nth-child(1)::before { content: ""; }
-  .schema-row > span:nth-child(2)::before { content: "Type — "; color: var(--fg-3); }
-  .schema-row > span:nth-child(3)::before { content: "Required — "; color: var(--fg-3); }
+  .schema-row > span:nth-child(2)::before { content: "Type - "; color: var(--fg-3); }
+  .schema-row > span:nth-child(3)::before { content: "Required - "; color: var(--fg-3); }
 }
 
 /* ─── Code blocks ─────────────────────────────────────────── */

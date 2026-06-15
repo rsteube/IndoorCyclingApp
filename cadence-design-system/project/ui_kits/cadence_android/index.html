@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Indoor Bike App — Android UI Kit</title>
+  <title>Indoor Bike App - Android UI Kit</title>
   <link rel="stylesheet" href="../../colors_and_type.css">
   <style>
     body { margin: 0; background: radial-gradient(ellipse at top, #181410 0%, #0F0C09 70%); min-height: 100vh; font-family: var(--font-body); color: var(--fg-1); }
@@ -87,7 +87,7 @@
       if (view === 'summary')  return <div className="stage"><Wrap label="04 · Ride summary"><SummaryScreen onDone={onDone} /></Wrap></div>;
       if (view === 'progress') return <div className="stage"><Wrap label="05 · Progress"><ProgressScreen onTab={onTab} /></Wrap></div>;
 
-      // 'all' — show all five
+      // 'all' - show all five
       return (
         <div className="stage">
           <Wrap label="01 · Workout list"><WorkoutListScreen onPick={onPick} onTab={onTab} /></Wrap>

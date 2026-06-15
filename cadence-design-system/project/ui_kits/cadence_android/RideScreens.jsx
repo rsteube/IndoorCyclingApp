@@ -1,4 +1,4 @@
-// Indoor Bike — in-ride HUD + summary
+// Indoor Bike - in-ride HUD + summary
 
 function RideScreen({ workout, onEnd }) {
   const [t, setT] = React.useState(0);
@@ -51,7 +51,7 @@ function RideScreen({ workout, onEnd }) {
   return (
     <div style={{ position: 'relative', height: '100%', overflow: 'hidden', background: C.bg0,
       display: 'flex', flexDirection: 'column' }}>
-      {/* Tilted horizon ridge backdrop — fills bottom 50% of HUD */}
+      {/* Tilted horizon ridge backdrop - fills bottom 50% of HUD */}
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: 110, height: 200, pointerEvents: 'none', zIndex: 0 }}>
         <svg width="100%" height="100%" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ display: 'block' }}>
           <defs>
@@ -60,9 +60,9 @@ function RideScreen({ workout, onEnd }) {
               <stop offset="100%" stopColor={C.z[curZone-1]} stopOpacity="0.04"/>
             </linearGradient>
           </defs>
-          {/* far ridge — pale, behind */}
+          {/* far ridge - pale, behind */}
           <path d={ridgePath} fill={C.bg2} opacity="0.5" transform="translate(0,18) scale(1,0.7)"/>
-          {/* near ridge — tinted by current zone */}
+          {/* near ridge - tinted by current zone */}
           <path d={ridgePath} fill="url(#ridgeFill)"/>
           <path d={ridgePath} fill="none" stroke={C.z[curZone-1]} strokeWidth="1.5"/>
           {/* progress marker */}
@@ -229,7 +229,7 @@ function ProgressScreen({ onTab }) {
           <div style={{ height: 6, background: C.bg0, borderRadius: 999, marginTop: 12, overflow: 'hidden' }}>
             <div style={{ width: '76%', height: '100%', background: `linear-gradient(90deg, ${C.brand}, ${C.azure})` }} />
           </div>
-          <div style={{ fontFamily: FF.mono, fontSize: 10, color: C.fg3, marginTop: 8, letterSpacing: '0.04em' }}>NEXT · TEMPO V — UNLOCKS 30/30 LIBRARY</div>
+          <div style={{ fontFamily: FF.mono, fontSize: 10, color: C.fg3, marginTop: 8, letterSpacing: '0.04em' }}>NEXT · TEMPO V - UNLOCKS 30/30 LIBRARY</div>
         </div>
 
         {/* Badges */}

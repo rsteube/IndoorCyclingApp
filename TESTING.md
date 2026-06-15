@@ -1,9 +1,9 @@
-# Indoor Bike — test plan
+# Indoor Bike - test plan
 
 This document covers v1.0 of the app. Two layers of testing:
 
-1. **Automated smoke test** ([scripts/smoke_test.ps1](scripts/smoke_test.ps1)) — installs the debug APK, walks through onboarding + mock-trainer pair + starter ride, captures a screenshot at each step and a logcat tail. Catches "did the app crash on the happy path" but does not assert UI correctness.
-2. **Manual checklist** (below) — exhaustive feature verification, organised by area. A human or LLM with screenshot access can tick through it.
+1. **Automated smoke test** ([scripts/smoke_test.ps1](scripts/smoke_test.ps1)) - installs the debug APK, walks through onboarding + mock-trainer pair + starter ride, captures a screenshot at each step and a logcat tail. Catches "did the app crash on the happy path" but does not assert UI correctness.
+2. **Manual checklist** (below) - exhaustive feature verification, organised by area. A human or LLM with screenshot access can tick through it.
 
 The smoke test always runs against the `app.indoorbike.debug` install so a production build on the same device is left alone.
 
@@ -31,8 +31,8 @@ The repo's `gradlew.bat` and `adb` must be on PATH (PowerShell session). On Wind
 
 What it does:
 
-1. `:mobile_clients:android:installDebug` — fresh APK on the device.
-2. `pm clear app.indoorbike.debug` — resets prefs/database so the next launch is a true first-run.
+1. `:mobile_clients:android:installDebug` - fresh APK on the device.
+2. `pm clear app.indoorbike.debug` - resets prefs/database so the next launch is a true first-run.
 3. `am start` the activity, wait for first frame.
 4. Walks the welcome → onboarding sheet → "Don't know your FTP" → Save flow, screenshotting each state.
 5. Settings → Devices → Trainer → Pair → **Use Mock Trainer**, screenshotting each state.
@@ -41,10 +41,10 @@ What it does:
 
 Output lives at `build/test-artifacts/<timestamp>/`:
 
-- `00-launch-welcome.png` ... `NN-ride-screen.png` — visual evidence of each state
-- `logcat.txt` — full log dump for forensics
-- `summary.txt` — per-step pass/fail line-log
-- `build.log` — gradle output (only when `-SkipBuild` not passed)
+- `00-launch-welcome.png` ... `NN-ride-screen.png` - visual evidence of each state
+- `logcat.txt` - full log dump for forensics
+- `summary.txt` - per-step pass/fail line-log
+- `build.log` - gradle output (only when `-SkipBuild` not passed)
 
 **Limitations.** The script asserts only "no fatal exception" and "the expected button was tappable at this point". It does not check label text, layout correctness, or BLE behaviour. Use the manual checklist below for those.
 
@@ -52,7 +52,7 @@ Output lives at `build/test-artifacts/<timestamp>/`:
 
 ## Manual test plan
 
-Each numbered scenario is independent — start each from a clean state by either uninstalling and reinstalling, or `adb shell pm clear app.indoorbike.debug`.
+Each numbered scenario is independent - start each from a clean state by either uninstalling and reinstalling, or `adb shell pm clear app.indoorbike.debug`.
 
 ### 1. First launch & onboarding
 
@@ -178,7 +178,7 @@ Running before any release is recommended.
 
 Common causes:
 
-- **Device not on PATH / no USB debugging** — `adb devices` should show your device.
-- **Welcome banner missing** — onboarding flag was already set. Run `adb shell pm clear app.indoorbike.debug` (the script does this, but if the script was killed mid-run the state may be inconsistent).
-- **Tap missed** — open the most recent screenshot and the matching logcat lines around that timestamp. The `Tap-Text` helper finds nodes by `contains(@text, ...)`; if a screen renames a button, the script needs an update.
-- **Fatal exception** — `logcat.txt` will have the full stack at the line `FATAL EXCEPTION`.
+- **Device not on PATH / no USB debugging** - `adb devices` should show your device.
+- **Welcome banner missing** - onboarding flag was already set. Run `adb shell pm clear app.indoorbike.debug` (the script does this, but if the script was killed mid-run the state may be inconsistent).
+- **Tap missed** - open the most recent screenshot and the matching logcat lines around that timestamp. The `Tap-Text` helper finds nodes by `contains(@text, ...)`; if a screen renames a button, the script needs an update.
+- **Fatal exception** - `logcat.txt` will have the full stack at the line `FATAL EXCEPTION`.

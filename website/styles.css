@@ -1,5 +1,5 @@
 /* ============================================================
-   indoorbike.app — promo site
+   indoorbike.app - promo site
    Built on the Cadence Design System tokens.
    ============================================================ */
 
@@ -11,7 +11,7 @@
   --font-body:    "Inter", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
-  /* Neutrals — gravel-warm dark */
+  /* Neutrals - gravel-warm dark */
   --bg-0:  #0F0C09;
   --bg-1:  #181410;
   --bg-2:  #221C16;

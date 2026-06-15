@@ -1,5 +1,5 @@
 
-// Android.jsx — Simplified Android (Material 3) device frame
+// Android.jsx - Simplified Android (Material 3) device frame
 // Status bar + top app bar + content + gesture nav + keyboard.
 // Based on Figma M3 spec. No dependencies, no image assets.
 
@@ -136,7 +136,7 @@ function AndroidNavBar({ dark = false }) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Device frame — wraps everything
+// Device frame - wraps everything
 // ─────────────────────────────────────────────────────────────
 function AndroidDevice({
   children, width = 412, height = 892, dark = false,
@@ -162,7 +162,7 @@ function AndroidDevice({
 }
 
 // ─────────────────────────────────────────────────────────────
-// Keyboard — Gboard (Material 3)
+// Keyboard - Gboard (Material 3)
 // ─────────────────────────────────────────────────────────────
 function AndroidKeyboard() {
   let _k = 0;

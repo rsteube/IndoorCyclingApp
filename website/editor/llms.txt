@@ -1,10 +1,12 @@
-# Indoor Bike — Editor URL Workout API (v1)
+# Indoor Bike - Editor URL Workout API (v1)
 
 > Generate a link that opens https://indoorbike.app/editor/ with a structured
 > power-zone cycling workout already loaded. Pure URL query params. No backend,
 > no auth, no SDK, no compression. Build the string, output the link.
 
-Human docs: https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md
+Human page:  https://indoorbike.app/api/   (concise, for people)
+Full docs:   https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md
+Badges:      https://indoorbike.app/badges/ (optional, free "Open in Indoor Bike" SVG badges)
 This file is the authoritative machine spec. If it conflicts with anything, this wins.
 
 ## Endpoint
@@ -25,7 +27,7 @@ The whole workout lives in the query string. `s` is the only required param.
   v     optional. API version. Use 1. Unknown values ignored.
 
 URL-encode values: space -> + or %20; percent-encode literal & # % inside a value.
-The segment syntax characters @ , ; ( ) x are URL-safe — do NOT encode them.
+The segment syntax characters @ , ; ( ) x are URL-safe - do NOT encode them.
 
 ## GRAMMAR (the `s` param)
 
@@ -48,7 +50,7 @@ semicolon-separated (commas are reserved for the top level).
 - max 200 segments (extra dropped)
 - duration clamped 1s..4h, power clamped 0..300, count clamped 1..40
 - unparseable items are skipped silently; if `s` yields 0 valid segments the
-  editor shows an error and opens empty — so emit valid syntax.
+  editor shows an error and opens empty - so emit valid syntax.
 - no per-segment labels in v1 (editor stores duration+power only).
 
 ## EXAMPLES

@@ -1,6 +1,6 @@
 ---
 name: indoor-bike-design
-description: Use this skill to generate well-branded interfaces and assets for Indoor Bike App (an indoor cycling app for smart trainers — dark, telemetry-first, F-Droid friendly), either for production or throwaway prototypes/mocks/etc. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping.
+description: Use this skill to generate well-branded interfaces and assets for Indoor Bike App (an indoor cycling app for smart trainers - dark, telemetry-first, F-Droid friendly), either for production or throwaway prototypes/mocks/etc. Contains essential design guidelines, colors, type, fonts, assets, and UI kit components for prototyping.
 user-invocable: true
 ---
 

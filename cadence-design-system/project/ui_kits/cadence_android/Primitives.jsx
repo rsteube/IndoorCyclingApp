@@ -1,4 +1,4 @@
-// Indoor Bike shared UI primitives — dark Android telemetry styling
+// Indoor Bike shared UI primitives - dark Android telemetry styling
 // All components Babel-globally-exported via window assignment at bottom
 
 const C = {
