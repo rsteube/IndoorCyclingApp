@@ -1092,6 +1092,7 @@ private fun BackupSyncCard() {
     val syncFolderUri by settings.syncFolderUri.collectAsState()
     val deviceLabel by settings.deviceLabel.collectAsState()
     val status by engine.status.collectAsState()
+    val paused by settings.syncPaused.collectAsState()
     val configured = !syncFolderUri.isNullOrBlank()
 
     val pickFolderLauncher = rememberLauncherForActivityResult(
@@ -1181,17 +1182,46 @@ private fun BackupSyncCard() {
 
             SyncStatusLine(status)
 
-            // "Sync now" is the action a rider reaches for 99% of the time;
-            // give it the full row. "Stop syncing" is rare + destructive (well,
-            // soft-destructive — local data stays) and lives below as a small
-            // text link, mirroring the "Change" affordance in FolderRow above.
-            PrimaryBtn(
-                text = if (status is SyncStatus.Syncing) "Syncing…" else "Sync now",
-                leadingIcon = null,
-                enabled = status !is SyncStatus.Syncing,
-                onClick = { scope.launch { engine.syncNow() } },
-                modifier = Modifier.fillMaxWidth()
-            )
+            val review = status as? SyncStatus.NeedsReview
+            // If we're paused but the status hasn't been recomputed into a
+            // NeedsReview yet (e.g. Settings opened before the launch sync
+            // finished), kick a read-only assess so the counts populate.
+            LaunchedEffect(paused, review == null) {
+                if (paused && review == null) engine.syncNow()
+            }
+
+            if (paused || review != null) {
+                // Backup safety: a suspicious reset paused syncing. Make the
+                // rider choose before anything is written to the folder.
+                SyncReviewBlock(
+                    review = review,
+                    busy = status is SyncStatus.Syncing,
+                    onRestore = { scope.launch { engine.resolveRestoreFromBackup() } },
+                    onKeepLocal = { scope.launch { engine.resolveKeepLocal() } }
+                )
+            } else {
+                // "Sync now" is the action a rider reaches for 99% of the time;
+                // give it the full row.
+                PrimaryBtn(
+                    text = if (status is SyncStatus.Syncing) "Syncing…" else "Sync now",
+                    leadingIcon = null,
+                    enabled = status !is SyncStatus.Syncing,
+                    onClick = { scope.launch { engine.syncNow() } },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                // Pull the folder's backup onto this device (additive - never
+                // deletes local rides). Handy after an update wiped app data.
+                Text(
+                    text = "Restore from backup",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Brand500,
+                    modifier = Modifier
+                        .clickable(enabled = status !is SyncStatus.Syncing) {
+                            scope.launch { engine.resolveRestoreFromBackup() }
+                        }
+                        .padding(top = 8.dp, bottom = 4.dp)
+                )
+            }
 
             Spacer(Modifier.height(Spacing.s2))
 
@@ -1232,6 +1262,67 @@ private fun BackupSyncCard() {
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun SyncReviewBlock(
+    review: SyncStatus.NeedsReview?,
+    busy: Boolean,
+    onRestore: () -> Unit,
+    onKeepLocal: () -> Unit
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Warning.copy(alpha = 0.10f))
+            .border(1.dp, CadenceColors.Warning.copy(alpha = 0.5f), shape)
+            .padding(Spacing.s4),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Text(
+            text = "⚠ Backup paused",
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Warning
+        )
+        val detail = if (review != null) {
+            "This device has ${review.localSessions} ride(s) and ${review.localImports} " +
+                "workout(s), but the backup has ${review.backupSessions} ride(s) and " +
+                "${review.backupImports} workout(s). That looks like the app's data was reset. " +
+                "Automatic backup is paused so it can't overwrite the folder. Choose what to do:"
+        } else {
+            "Your local data looks reset compared to the backup. Automatic backup is paused " +
+                "so it can't overwrite the folder. Choose what to do:"
+        }
+        Text(text = detail, style = CadenceType.small, color = CadenceColors.Fg2)
+
+        PrimaryBtn(
+            text = if (busy) "Working…" else "Restore from backup",
+            leadingIcon = null,
+            enabled = !busy,
+            onClick = onRestore,
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = "Brings the folder's rides, workouts, and settings back onto this device. " +
+                "Recommended if the data loss was accidental.",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg3
+        )
+
+        SecondaryBtn(
+            text = "Keep this device's data",
+            onClick = { if (!busy) onKeepLocal() },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            text = "Use only if you meant to clear these rides - the backup will be updated to " +
+                "match this device, discarding the extras it holds.",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg3
+        )
     }
 }
 
@@ -1345,6 +1436,8 @@ private fun SyncStatusLine(status: SyncStatus) {
         }
         is SyncStatus.Failed -> "Couldn't sync: ${status.message}" to CadenceColors.Danger
         SyncStatus.NotConfigured -> "Not configured" to CadenceColors.Fg3
+        is SyncStatus.NeedsReview ->
+            "Paused - local data looks reset. Review below." to CadenceColors.Warning
     }
     Text(
         text = text,

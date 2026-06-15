@@ -22,6 +22,7 @@ import app.indoorbike.shared.settings.UserSettings
 import app.indoorbike.shared.sync.BackupDocument
 import app.indoorbike.shared.sync.BackupImportedWorkout
 import app.indoorbike.shared.sync.BackupMerger
+import app.indoorbike.shared.sync.BackupSafety
 import app.indoorbike.shared.sync.BackupParseException
 import app.indoorbike.shared.sync.BackupSerializer
 import app.indoorbike.shared.sync.BackupSession
@@ -97,20 +98,109 @@ class SyncEngine(
             _status.value = s
             return s
         }
+        // A previous round flagged a suspicious local reset and paused syncing
+        // to protect the backup. Don't auto-resume (that's exactly how a wipe
+        // would propagate) - surface the review state so the rider can decide.
+        // This is the single chokepoint that gates both the on-launch auto-sync
+        // and a manual "Sync now" tap.
+        if (userSettings.syncPaused.value) {
+            val s = try {
+                assess(storage)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Assess failed", t)
+                SyncStatus.Failed(t.message ?: "Couldn't read backup")
+            }
+            _status.value = s
+            return s
+        }
+        runSync(storage, SyncMode.Normal)
+    }
+
+    /**
+     * Rider chose **Restore from backup**: pull the backup into local without
+     * inferring any deletes, then republish. Clears the pause on success.
+     */
+    suspend fun resolveRestoreFromBackup(): SyncStatus = mutex.withLock {
+        val storage = storageProvider() ?: run {
+            _status.value = SyncStatus.NotConfigured; return SyncStatus.NotConfigured
+        }
+        val out = runSync(storage, SyncMode.RestoreFromBackup)
+        if (out is SyncStatus.Success) userSettings.setSyncPaused(false)
+        out
+    }
+
+    /**
+     * Rider chose **Keep this device's data** after a reset warning: proceed
+     * with the inferred deletes (the backup is made to match local). Clears
+     * the pause on success.
+     */
+    suspend fun resolveKeepLocal(): SyncStatus = mutex.withLock {
+        val storage = storageProvider() ?: run {
+            _status.value = SyncStatus.NotConfigured; return SyncStatus.NotConfigured
+        }
+        val out = runSync(storage, SyncMode.ForceKeepLocal)
+        if (out is SyncStatus.Success) userSettings.setSyncPaused(false)
+        out
+    }
+
+    /** Shared run wrapper: status transitions + exception → [SyncStatus.Failed]. */
+    private suspend fun runSync(storage: SyncStorage, mode: SyncMode): SyncStatus {
         _status.value = SyncStatus.Syncing
         val out = try {
-            val outcome = performSync(storage)
-            SyncStatus.Success(
-                syncedAtEpoch = now(),
-                devicesSeen = outcome.devicesSeen,
-                slicesSkipped = outcome.slicesSkipped,
-            )
+            performSync(storage, mode)
         } catch (t: Throwable) {
             Log.w(TAG, "Sync failed", t)
             SyncStatus.Failed(t.message ?: "Sync failed")
         }
         _status.value = out
-        out
+        return out
+    }
+
+    /** How a sync round treats inferred deletes / the safety check. */
+    private enum class SyncMode {
+        /** Detect a suspicious reset and pause instead of publishing deletes. */
+        Normal,
+
+        /** Skip the safety check; publish the inferred deletes (rider confirmed). */
+        ForceKeepLocal,
+
+        /** Infer no deletes; pull the backup into local and republish. */
+        RestoreFromBackup,
+    }
+
+    /**
+     * Read-only assessment used when syncing is paused: counts what's local vs
+     * what's in the backup so the UI can render the review prompt. Writes
+     * nothing.
+     */
+    private suspend fun assess(storage: SyncStorage): SyncStatus {
+        val deviceId = userSettings.deviceId
+        val parsed = storage.readAllSlices().mapNotNull { text ->
+            runCatching { BackupSerializer.decode(text) }.getOrNull()
+        }
+        val previousOwn = parsed.firstOrNull { it.deviceId == deviceId }
+        val others = parsed.filter { it.deviceId != deviceId }
+        val localSessions = historyRepository.getAllSessions().first()
+            .count { it.externalId.isNotEmpty() }
+        val localImports = workoutImporter.loadUserWorkouts().size
+        return needsReview(previousOwn, others, localSessions, localImports)
+    }
+
+    private fun needsReview(
+        previousOwn: BackupDocument?,
+        others: List<BackupDocument>,
+        localSessions: Int,
+        localImports: Int,
+    ): SyncStatus.NeedsReview {
+        val all = (if (previousOwn != null) listOf(previousOwn) else emptyList()) + others
+        val backupSessions = all.flatMap { it.sessions }.map { it.externalId }.toSet().size
+        val backupImports = all.flatMap { it.importedWorkouts }.map { it.workout.id }.toSet().size
+        return SyncStatus.NeedsReview(
+            localSessions = localSessions,
+            backupSessions = backupSessions,
+            localImports = localImports,
+            backupImports = backupImports,
+        )
     }
 
     /**
@@ -121,9 +211,7 @@ class SyncEngine(
      * success — see [SyncStatus.Success.slicesSkipped] for the user-facing
      * symptom.
      */
-    private data class SyncOutcome(val devicesSeen: Int, val slicesSkipped: Int)
-
-    private suspend fun performSync(storage: SyncStorage): SyncOutcome {
+    private suspend fun performSync(storage: SyncStorage, mode: SyncMode): SyncStatus {
         val nowMs = now()
         val deviceId = userSettings.deviceId
 
@@ -151,16 +239,46 @@ class SyncEngine(
         val localImportsBefore = workoutImporter.loadUserWorkouts()
         val localImportIdsBefore = localImportsBefore.map { it.id }.toSet()
 
-        val newSessionTombstones = BackupSliceBuilder.computeSessionDeletes(
+        // RestoreFromBackup deliberately infers NO deletes - the whole point is
+        // to pull the backup back into an emptied local, not to mirror local's
+        // emptiness up to the backup.
+        val newSessionTombstones = if (mode == SyncMode.RestoreFromBackup) emptyList()
+        else BackupSliceBuilder.computeSessionDeletes(
             previousOwn = previousOwn,
             currentLocalExternalIds = localSessionIdsBefore,
             nowEpoch = nowMs,
         )
-        val newImportTombstones = BackupSliceBuilder.computeImportDeletes(
+        val newImportTombstones = if (mode == SyncMode.RestoreFromBackup) emptyList()
+        else BackupSliceBuilder.computeImportDeletes(
             previousOwn = previousOwn,
             currentLocalWorkoutIds = localImportIdsBefore,
             nowEpoch = nowMs,
         )
+
+        // 2b. Safety gate (Normal only). If this round would delete a large
+        //     share of the backup - the shape of an accidental local reset
+        //     rather than a deliberate delete - pause syncing and surface a
+        //     review prompt INSTEAD of applying/publishing. Nothing is written
+        //     locally or to the folder, so both local and backup are preserved
+        //     exactly as they were until the rider chooses.
+        if (mode == SyncMode.Normal) {
+            val suspicious = BackupSafety.isSuspiciousReset(
+                hadPreviousOwn = previousOwn != null,
+                localItemCount = localSessionIdsBefore.size + localImportIdsBefore.size,
+                priorItemCount = (previousOwn?.sessions?.size ?: 0) +
+                    (previousOwn?.importedWorkouts?.size ?: 0),
+                deletedItemCount = newSessionTombstones.size + newImportTombstones.size,
+            )
+            if (suspicious) {
+                Log.w(TAG, "Suspicious reset detected; pausing sync to protect backup.")
+                userSettings.setSyncPaused(true)
+                return needsReview(
+                    previousOwn, others,
+                    localSessions = localSessionIdsBefore.size,
+                    localImports = localImportIdsBefore.size,
+                )
+            }
+        }
 
         // 3. Merge: previous-own (still authoritative for our previously-published
         //    sessions on a reinstall) + others + a tombstone-only provisional self
@@ -226,7 +344,11 @@ class SyncEngine(
         // distinct device count, for the status line
         val devicesSeen = parsed.map { it.deviceId }.toSet().size +
             (if (previousOwn == null) 1 else 0)
-        return SyncOutcome(devicesSeen = devicesSeen, slicesSkipped = slicesSkipped)
+        return SyncStatus.Success(
+            syncedAtEpoch = now(),
+            devicesSeen = devicesSeen,
+            slicesSkipped = slicesSkipped,
+        )
     }
 
     private fun applyMergedSettings(merged: BackupSettings?) {
@@ -366,4 +488,18 @@ sealed class SyncStatus {
     ) : SyncStatus()
     data class Failed(val message: String) : SyncStatus()
     data object NotConfigured : SyncStatus()
+
+    /**
+     * Syncing is paused because the last round looked like an accidental local
+     * reset (local data far smaller than the backup). The engine wrote nothing;
+     * the rider must choose to restore from the backup or keep local data and
+     * discard the backup's extras. Carries the counts so the UI can spell out
+     * the stakes ("backup has N rides, this device has M").
+     */
+    data class NeedsReview(
+        val localSessions: Int,
+        val backupSessions: Int,
+        val localImports: Int,
+        val backupImports: Int,
+    ) : SyncStatus()
 }

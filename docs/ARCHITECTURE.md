@@ -272,6 +272,18 @@ The API key sits in plaintext DataStore for now. When device-credential hardenin
 
 **F-Droid posture.** Triggers `NonFreeNet` only when the user opts in. Manifest declares `INTERNET` (already present for the registry feature). No third-party libs added - FIT writing is pure Kotlin in shared, multipart POST is `HttpURLConnection`. Auto-upload is off by default and disabled in the UI until both credentials are provided. Can be unilaterally disabled from Settings without losing locally-stored ride history.
 
+### Backup & sync safety (anti-wipe guard)
+
+The folder-based "Backup & sync" feature ([`SyncEngine`](../mobile_clients/android/src/main/kotlin/app/indoorbike/sync/SyncEngine.kt)) writes one slice per device (`indoorbike-device-<deviceId>.json`) and **infers deletes by diffing** local state against the device's previous own-slice: anything in the slice but absent locally is tombstoned ([`BackupSliceBuilder.computeSessionDeletes`](../shared/src/commonMain/kotlin/app/indoorbike/shared/sync/BackupSliceBuilder.kt)). That inference is correct for a deliberate in-app delete but dangerous when local data vanished for another reason (reinstall, cleared data, a failed DB migration): the diff reads as "the rider deleted everything" and the tombstones propagate the loss into the backup and every peer. Auto-sync runs on every launch, so the wipe could happen with no interaction.
+
+Three layers now guard against that:
+
+- **Suspicious-reset detection.** [`BackupSafety.isSuspiciousReset`](../shared/src/commonMain/kotlin/app/indoorbike/shared/sync/BackupSafety.kt) (pure, unit-tested) flags a round that would delete a large share of the backup - local emptied while the backup holds data, or a single round removing >= 5 items and >= half the backup. Normal one-off deletes don't trip it. When tripped, `SyncEngine` sets a persisted `UserSettings.syncPaused` flag and returns `SyncStatus.NeedsReview(local…, backup…)` **without writing anything** (local and folder both untouched).
+- **Paused = no automated writes.** `syncNow()` is the single chokepoint for both the launch auto-sync and the manual button; while `syncPaused` it only does a read-only `assess()` and surfaces the review state. The rider resolves via `resolveRestoreFromBackup()` (pull the backup back onto this device, infer no deletes) or `resolveKeepLocal()` (confirm the deletes), both of which clear the flag. The Settings "Backup & sync" card renders the warning + both buttons, plus an always-available **Restore from backup** action.
+- **One-deep slice backup.** [`SafSyncStorage.writeOwnSlice`](../mobile_clients/android/src/main/kotlin/app/indoorbike/sync/SafSyncStorage.kt) renames the existing slice to `…json.prev` (skipped by `readAllSlices`) before promoting the new one, so any overwrite is recoverable.
+
+Note `deviceId` is a random UUID in DataStore, which Auto Backup **excludes** ([`data_extraction_rules.xml`](../mobile_clients/android/src/main/res/xml/data_extraction_rules.xml)); a true data wipe regenerates it, so the device writes a fresh slice rather than clobbering the old one. The guard above covers the residual case where the id survives while the DB is emptied.
+
 ### F-Droid hygiene checklist
 
 - **Fonts**: bundled locally as OFL TTFs in `mobile_clients/android/src/main/res/font/` - no Google Fonts CDN, no runtime download. Sources are the OFL distribution at rest in `github.com/google/fonts`:

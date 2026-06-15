@@ -119,6 +119,18 @@ interface UserSettings {
 
     val syncFolderUri: StateFlow<String?>
     fun setSyncFolderUri(uri: String?)
+
+    // ── Backup safety pause ───────────────────────────────────────────────
+    // Set by the sync engine when a sync round looks like an accidental local
+    // reset (e.g. a reinstall / cleared data / bad migration left the local
+    // DB empty while the backup still holds rides). While paused, all
+    // automated and manual syncs are blocked from *writing* until the rider
+    // explicitly resolves it (restore from backup, or confirm the deletes) so
+    // a wipe can't silently propagate into the backup. Persisted so a relaunch
+    // doesn't quietly resume and overwrite the backup.
+
+    val syncPaused: StateFlow<Boolean>
+    fun setSyncPaused(paused: Boolean)
 }
 
 /** FTP fallback used when a new rider taps "I don't know my FTP" in onboarding. */

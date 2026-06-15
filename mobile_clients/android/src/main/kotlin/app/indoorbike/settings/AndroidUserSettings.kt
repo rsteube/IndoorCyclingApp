@@ -129,6 +129,9 @@ class AndroidUserSettings(
     private val _syncFolderUri = MutableStateFlow<String?>(initialPrefs[KEY_SYNC_FOLDER_URI])
     override val syncFolderUri: StateFlow<String?> = _syncFolderUri.asStateFlow()
 
+    private val _syncPaused = MutableStateFlow(initialPrefs[KEY_SYNC_PAUSED] ?: false)
+    override val syncPaused: StateFlow<Boolean> = _syncPaused.asStateFlow()
+
     init {
         scope.launch {
             store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
@@ -201,6 +204,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_SYNC_FOLDER_URI] }.collect { value ->
                 if (value != _syncFolderUri.value) _syncFolderUri.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_SYNC_PAUSED] ?: false }.collect { value ->
+                if (value != _syncPaused.value) _syncPaused.value = value
             }
         }
     }
@@ -300,6 +308,12 @@ class AndroidUserSettings(
         }
     }
 
+    override fun setSyncPaused(paused: Boolean) {
+        if (paused == _syncPaused.value) return
+        _syncPaused.value = paused
+        scope.launch { store.edit { it[KEY_SYNC_PAUSED] = paused } }
+    }
+
     override fun setDeviceLabel(label: String) {
         val cleaned = label.trim().take(MAX_DEVICE_LABEL_LEN).ifEmpty { return }
         if (cleaned == _deviceLabel.value) return
@@ -342,6 +356,7 @@ class AndroidUserSettings(
         private val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         private val KEY_DEVICE_LABEL = stringPreferencesKey("device_label")
         private val KEY_SYNC_FOLDER_URI = stringPreferencesKey("sync_folder_uri")
+        private val KEY_SYNC_PAUSED = booleanPreferencesKey("sync_paused")
 
         /**
          * Cap the label so it can't poison the backup file (a multi-MB string

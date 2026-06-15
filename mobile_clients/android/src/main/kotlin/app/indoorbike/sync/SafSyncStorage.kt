@@ -90,9 +90,21 @@ class SafSyncStorage(
             throw t
         }
 
-        // 2. Promote .tmp → final. Try renameTo first (most providers
-        //    support it); fall back to copy-then-delete if rejected.
-        tree.findFile(name)?.delete()
+        // 2. Promote .tmp → final. First preserve the existing slice as a
+        //    one-deep `.prev` backup so an unexpected or empty overwrite is
+        //    always recoverable (readAllSlices skips `.prev` since it doesn't
+        //    end in `.json`). If the provider rejects the rename-to-prev, fall
+        //    back to deleting the old slice (prior behaviour) so a write still
+        //    completes.
+        val prevName = "$name$PREV_SUFFIX"
+        val existing = tree.findFile(name)
+        if (existing != null) {
+            tree.findFile(prevName)?.delete()
+            if (!existing.renameTo(prevName)) {
+                Log.w(TAG, "Couldn't keep .prev backup for $name; replacing in place")
+                existing.delete()
+            }
+        }
         if (tmpDoc.renameTo(name)) return@withContext
 
         // Rename rejected by this provider. Fall back to copy-into-fresh-doc.
@@ -124,6 +136,7 @@ class SafSyncStorage(
         private const val TAG = "SafSyncStorage"
         private const val SLICE_PREFIX = "indoorbike-device-"
         private const val SLICE_EXT = ".json"
+        private const val PREV_SUFFIX = ".prev"
         private const val MIME_JSON = "application/json"
 
         /**
