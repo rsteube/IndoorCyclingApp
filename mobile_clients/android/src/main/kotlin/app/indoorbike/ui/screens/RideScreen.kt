@@ -66,10 +66,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
@@ -342,11 +345,29 @@ fun RideScreen(
                 onMockToggle = { trainerManager.toggleMockPedaling() }
             )
 
+            // Expanded width (landscape tablet / unfolded foldable): scale the
+            // HUD up so the numbers read from a distance and use the extra room.
+            val isExpandedHud = LocalConfiguration.current.screenWidthDp >= 840
+            // Live average power for the tablet stats strip. Recomputed each
+            // second (keyed on `elapsed`); telemetrySnapshot() is a cheap copy.
+            // Only computed on expanded screens where the strip is shown.
+            val avgPowerWatts: Int = if (isExpandedHud) {
+                remember(elapsed) {
+                    val tele = sessionManager.telemetrySnapshot()
+                    if (tele.isEmpty()) 0 else (tele.sumOf { it.power } / tele.size).toInt()
+                }
+            } else 0
+            val flankWidth: Dp = if (isExpandedHud) 240.dp else 150.dp
+            val flankFont: TextUnit = if (isExpandedHud) 56.sp else 32.sp
+            val heroFont: TextUnit = if (isExpandedHud) 176.sp else 112.sp
+            val heroNumberWidth: Dp = if (isExpandedHud) 440.dp else 280.dp
+            val heroWkgBarWidth: Dp = if (isExpandedHud) 320.dp else 220.dp
+
             Row(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = Spacing.s5),
+                    .padding(horizontal = if (isExpandedHud) Spacing.s8 else Spacing.s5),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -355,7 +376,9 @@ fun RideScreen(
                     value = animatedCadence.toString(),
                     unit = "RPM",
                     isStale = false,
-                    valueColor = CadenceColors.Fg1
+                    valueColor = CadenceColors.Fg1,
+                    cardWidth = flankWidth,
+                    valueFontSize = flankFont
                 )
 
                 HeroPowerReadout(
@@ -367,7 +390,10 @@ fun RideScreen(
                     biasPercent = biasPercent,
                     ergLocked = state == WorkoutState.Active && targetPower > 0,
                     onAdjust = { delta -> sessionManager.adjustDifficulty(delta) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    powerFontSize = heroFont,
+                    numberWidth = heroNumberWidth,
+                    wkgBarWidth = heroWkgBarWidth
                 )
 
                 FlankMetric(
@@ -377,7 +403,23 @@ fun RideScreen(
                     isStale = showStaleHr,
                     valueColor = hrZone?.color ?: CadenceColors.Danger,
                     sublabel = if (showStaleHr) null
-                        else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" }
+                        else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                    cardWidth = flankWidth,
+                    valueFontSize = flankFont
+                )
+            }
+
+            // Tablet-only live stats strip - uses the extra space to surface the
+            // running ride numbers (elapsed, avg / normalised power, IF, TSS,
+            // kJ, interval progress) without crowding the phone HUD.
+            if (isExpandedHud && state != WorkoutState.Countdown) {
+                RideStatsStrip(
+                    elapsedSeconds = elapsed,
+                    avgPowerWatts = avgPowerWatts,
+                    intervalIndex = (currentSegIdx + 1).coerceAtMost(workout!!.segments.size),
+                    intervalCount = workout!!.segments.size,
+                    zoneColor = animatedZoneColor,
+                    modifier = Modifier.padding(bottom = Spacing.s3)
                 )
             }
 
@@ -424,7 +466,8 @@ fun RideScreen(
                 RidgeTimeline(
                     workout = workout!!,
                     currentSegIdx = currentSegIdx,
-                    elapsedInSeg = elapsedInSeg
+                    elapsedInSeg = elapsedInSeg,
+                    height = if (isExpandedHud) 112.dp else 72.dp
                 )
             }
         }
@@ -626,12 +669,16 @@ private fun FlankMetric(
     isStale: Boolean = false,
     /** Small caption under the number — e.g. "Z3 · AEROBIC" for the HR zone. */
     sublabel: String? = null,
+    // Default to the phone HUD; the ride screen passes larger values on
+    // expanded-width screens so the flanking metrics stay legible.
+    cardWidth: Dp = 150.dp,
+    valueFontSize: TextUnit = 32.sp,
 ) {
     // Fixed width so 2-digit ↔ 3-digit transitions don't reflow the row.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .width(150.dp)
+            .width(cardWidth)
             .clip(RoundedCornerShape(12.dp))
             .background(CadenceColors.Bg1.copy(alpha = 0.35f))
             .border(1.dp, CadenceColors.Line2.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
@@ -645,7 +692,7 @@ private fun FlankMetric(
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = value,
-                    fontSize = 32.sp,
+                    fontSize = valueFontSize,
                     fontWeight = FontWeight.Bold,
                     color = valueColor
                 )
@@ -664,6 +711,72 @@ private fun FlankMetric(
                 color = valueColor,
                 modifier = Modifier.padding(top = 2.dp)
             )
+        }
+    }
+}
+
+/**
+ * Tablet-only live stats strip shown under the main HUD metrics. A tidy
+ * centered trio - elapsed time, average power, and interval progress - tinted
+ * with the current zone color so it stays tied to the effort.
+ */
+@Composable
+private fun RideStatsStrip(
+    elapsedSeconds: Int,
+    avgPowerWatts: Int,
+    intervalIndex: Int,
+    intervalCount: Int,
+    zoneColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+            StatTile("ELAPSED", formatClock(elapsedSeconds), accent = zoneColor)
+            StatTile("AVG", avgPowerWatts.toString(), unit = "W", accent = zoneColor)
+            StatTile("INTERVAL", "$intervalIndex / $intervalCount", accent = zoneColor)
+        }
+    }
+}
+
+@Composable
+private fun StatTile(
+    label: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+    unit: String = "",
+) {
+    Column(
+        modifier = modifier
+            .width(220.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(CadenceColors.Bg1.copy(alpha = 0.35f))
+            .border(1.dp, CadenceColors.Line2.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(30.dp)
+                .height(3.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(accent)
+        )
+        Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(text = value, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = CadenceColors.Fg1)
+            if (unit.isNotEmpty()) {
+                Text(
+                    text = " $unit",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Fg3,
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+            }
         }
     }
 }

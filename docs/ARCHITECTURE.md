@@ -2,7 +2,7 @@
 
 A working reference for how Indoor Bike fits together, kept in step with the code. If you're trying to find where to make a change or why something is shaped the way it is, start here. For build / install / test instructions see [CONTRIBUTING.md](../CONTRIBUTING.md); for the project pitch see [README.md](../README.md).
 
-**Current version: 1.0** (`versionCode = 1`, `versionName = "1.0"` in [mobile_clients/android/build.gradle.kts](../mobile_clients/android/build.gradle.kts)).
+**Current version: 1.1** (`versionCode = 2`, `versionName = "1.1"` in [mobile_clients/android/build.gradle.kts](../mobile_clients/android/build.gradle.kts)).
 
 ## Overview
 

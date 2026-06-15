@@ -41,6 +41,8 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.Workout
@@ -262,7 +264,13 @@ fun HeroPowerReadout(
     biasPercent: Int,
     ergLocked: Boolean,
     onAdjust: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    // Sizes default to the phone HUD; the ride screen passes larger values on
+    // expanded-width screens (landscape tablets / unfolded foldables) so the
+    // power number stays glanceable from across a room.
+    powerFontSize: TextUnit = 112.sp,
+    numberWidth: Dp = 280.dp,
+    wkgBarWidth: Dp = 220.dp,
 ) {
     // Smoothly tween power and W/kg across 1-second BLE samples. We tween W/kg
     // as an Int * 100 (centiwatts/kg) so the existing Int animator works without
@@ -303,14 +311,14 @@ fun HeroPowerReadout(
 
         // Fixed-width frame so digit count changes don't shift the rest of the row.
         Box(
-            modifier = Modifier.width(280.dp),
+            modifier = Modifier.width(numberWidth),
             contentAlignment = Alignment.Center
         ) {
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = if (isStale) "--" else animatedPower.toString(),
-                    fontSize = 112.sp,
-                    lineHeight = 112.sp,
+                    fontSize = powerFontSize,
+                    lineHeight = powerFontSize,
                     fontWeight = FontWeight.Normal,
                     fontFamily = app.indoorbike.ui.theme.DisplayFontFamily,
                     fontStyle = FontStyle.Normal,
@@ -325,7 +333,7 @@ fun HeroPowerReadout(
             }
         }
 
-        WattsPerKgBar(wkgCenti = animatedWkgCenti, zoneColor = zoneColor)
+        WattsPerKgBar(wkgCenti = animatedWkgCenti, zoneColor = zoneColor, barWidth = wkgBarWidth)
 
         Spacer(Modifier.height(10.dp))
 
@@ -349,13 +357,13 @@ fun HeroPowerReadout(
  *   Using ints keeps the animator stable and avoids float-tween jitter at 1 Hz.
  */
 @Composable
-private fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color) {
+private fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color, barWidth: Dp = 220.dp) {
     val safe = wkgCenti.coerceAtLeast(0)
     val fraction = (safe / 500f).coerceIn(0f, 1f)
     Box(
         modifier = Modifier
             .padding(top = 6.dp)
-            .width(220.dp)
+            .width(barWidth)
             .height(3.dp)
             .clip(RoundedCornerShape(2.dp))
             .background(CadenceColors.Bg2.copy(alpha = 0.6f))
