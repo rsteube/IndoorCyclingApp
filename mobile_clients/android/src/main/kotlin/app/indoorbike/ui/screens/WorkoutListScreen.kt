@@ -35,8 +35,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -272,17 +274,23 @@ fun WorkoutListScreen(
                 visible.filter { it.workout.id != STARTER_WORKOUT_ID }
             } else visible
 
-            LazyColumn(
+            // Adaptive grid: one column on phones, more as width allows on
+            // tablets / unfolded foldables. The full-width banners (pinned
+            // starter, trailing "add more") span every column; the compact
+            // workout cards flow into the grid.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 340.dp),
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(
                     start = Spacing.s5, end = Spacing.s5,
                     top = 0.dp, bottom = Spacing.s5
                 ),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (showStarterCard) {
                     val pin = starter!!
-                    item(key = "starter-pinned") {
+                    item(key = "starter-pinned", span = { GridItemSpan(maxLineSpan) }) {
                         StarterCard(
                             summary = pin,
                             onClick = { onPick(pin.workout) },
@@ -302,7 +310,7 @@ fun WorkoutListScreen(
                 // Trailing "add more" card. Catches users who scrolled the
                 // whole list looking for what they wanted; complements the
                 // top-bar Library pill, which catches the top-bar reflex.
-                item(key = "add-more-workouts") {
+                item(key = "add-more-workouts", span = { GridItemSpan(maxLineSpan) }) {
                     AddMoreWorkoutsCard(onClick = onOpenLibrary)
                 }
             }

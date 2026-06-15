@@ -40,10 +40,17 @@ import androidx.compose.material.icons.outlined.AccessTime
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.navigationsuite.ExperimentalMaterial3AdaptiveNavigationSuiteApi
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteType
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -288,6 +295,7 @@ private val TOP_LEVEL_ROUTES = mapOf<NavKey, TabItem>(
     TabSettings to TabItem("settings", Icons.Outlined.Settings, "Settings")
 )
 
+@OptIn(ExperimentalMaterial3AdaptiveNavigationSuiteApi::class)
 @Composable
 private fun AppNavigator(entries: List<WorkoutEntry>) {
     val container = LocalAppContainer.current
@@ -438,24 +446,61 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
     }
 
     CompositionLocalProvider(LocalRideResumer provides resumer) {
-        Scaffold(
-            bottomBar = {
-                // Only show bottom bar on tab roots (depth == 1).
-                if (navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys &&
-                    navigationState.backStacks[navigationState.topLevelRoute]?.size == 1
-                ) {
-                    TabBar(
-                        active = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides",
-                        tabs = TOP_LEVEL_ROUTES.values.toList(),
-                        onTabSelected = { tabId ->
-                            val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
-                            targetTab?.let { navigator.navigate(it) }
-                        }
+        // The navigation area is only shown on tab roots (depth == 1); detail
+        // screens stay full-screen, same as before. On a tab root it adapts to
+        // window width: a bottom bar on phones, a side rail on tablets /
+        // unfolded foldables (>= 600dp). NavigationSuiteScaffold picks the
+        // chrome; we just feed it the layout type.
+        val atTabRoot = navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys &&
+            navigationState.backStacks[navigationState.topLevelRoute]?.size == 1
+        val widthDp = LocalConfiguration.current.screenWidthDp
+        val navLayoutType = when {
+            !atTabRoot -> NavigationSuiteType.None
+            widthDp >= 600 -> NavigationSuiteType.NavigationRail
+            else -> NavigationSuiteType.NavigationBar
+        }
+        val activeTabId = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides"
+
+        // Color computations are @Composable, so they must be hoisted out of the
+        // (non-composable) navigationSuiteItems builder lambda below.
+        val navItemColors = NavigationSuiteDefaults.itemColors(
+            navigationBarItemColors = NavigationBarItemDefaults.colors(
+                selectedIconColor = CadenceColors.Brand500,
+                selectedTextColor = CadenceColors.Brand500,
+                unselectedIconColor = CadenceColors.Fg3,
+                unselectedTextColor = CadenceColors.Fg3,
+                indicatorColor = CadenceColors.Brand500.copy(alpha = 0.15f),
+            ),
+            navigationRailItemColors = NavigationRailItemDefaults.colors(
+                selectedIconColor = CadenceColors.Brand500,
+                selectedTextColor = CadenceColors.Brand500,
+                unselectedIconColor = CadenceColors.Fg3,
+                unselectedTextColor = CadenceColors.Fg3,
+                indicatorColor = CadenceColors.Brand500.copy(alpha = 0.15f),
+            ),
+        )
+        val navSuiteColors = NavigationSuiteDefaults.colors(
+            navigationBarContainerColor = CadenceColors.Bg1,
+            navigationRailContainerColor = CadenceColors.Bg1,
+        )
+
+        NavigationSuiteScaffold(
+            layoutType = navLayoutType,
+            containerColor = CadenceColors.Bg0,
+            navigationSuiteColors = navSuiteColors,
+            navigationSuiteItems = {
+                TOP_LEVEL_ROUTES.forEach { (route, tab) ->
+                    item(
+                        selected = activeTabId == tab.id,
+                        onClick = { navigator.navigate(route) },
+                        icon = { Icon(imageVector = tab.icon, contentDescription = tab.label) },
+                        label = { Text(tab.label) },
+                        colors = navItemColors,
                     )
                 }
-            }
-        ) { innerPadding ->
-            Box(modifier = Modifier.padding(innerPadding).fillMaxSize()) {
+            },
+        ) {
+            Box(modifier = Modifier.fillMaxSize()) {
                 NavDisplay(
                     entries = navigationState.toDecoratedEntries(entryProvider),
                     onBack = { navigator.goBack() }
