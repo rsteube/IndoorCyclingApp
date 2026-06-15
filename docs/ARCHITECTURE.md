@@ -222,6 +222,14 @@ The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](../mobile_clients/and
 
 **Permissions** — `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 
+### Editor URL workout API (third-party deep links)
+
+The browser editor accepts a **readable query-param API** so a third-party site (e.g. VertMatch) can generate a workout and open the editor with it pre-loaded — no backend, no SDK, no base64. Example: `https://indoorbike.app/editor/?name=Threshold+3x8&ftp=250&s=10m@50,3x(8m@100;4m@55),5m@50`. The user then uses the existing **Show QR & link** / **Share to phone** path to import it into the app, so this is a pure front-of-funnel feature with no new device-side code.
+
+- Parser lives in [`website/editor/editor.js`](../website/editor/editor.js) (`readWorkoutFromQuery` + `parseSegmentsDSL`), wired into `init()` ahead of the binary `#wz=`/`#w=` hash path (query wins if both present).
+- The `s=` DSL is a comma-separated list of `DURATION@POWER` segments with repeat groups `Nx(seg;seg)` and shorthand `NxSEG`; durations take `s`/`m` units. Segments map to the same `{lengthInSeconds, powerPercentFTP, intervalType:"CONSTANT"}` model — no per-segment labels in v1 because the editor stores duration+power only.
+- **Two docs, cross-linked:** human-readable [docs/EDITOR_URL_API.md](EDITOR_URL_API.md), and a machine/LLM spec served at a stable URL — [`website/editor/llms.txt`](../website/editor/llms.txt) → `https://indoorbike.app/editor/llms.txt`. A third party can point an LLM at the `llms.txt` URL to emit valid links.
+
 ### FIT export + Intervals.icu cloud sync
 
 End-to-end activity sync to [intervals.icu](https://intervals.icu). Strict opt-in posture — no network call happens unless the user explicitly configures credentials and either taps Upload or turns auto-upload on.
