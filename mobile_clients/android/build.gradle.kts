@@ -137,3 +137,8 @@ dependencies {
 
     debugImplementation(libs.compose.ui.tooling)
 }
+
+tasks.register("prepareKotlinBuildScriptModel") {}
+tasks.register("prepareKotlinIdeaImport") {
+    dependsOn(project(":shared").tasks.named("prepareKotlinIdeaImport"))
+}
