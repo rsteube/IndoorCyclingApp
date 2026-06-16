@@ -39,11 +39,28 @@ class TrainerManagerErgErrorTest {
     }
 
     @Test
-    fun controlNotPermittedIsSurfaced() {
+    fun controlNotPermittedRecoversThenSurfaces() {
         val tm = TrainerManager()
-        tm.handleControlPointResponse(bytes(0x80, 0x05, 0x05)) // Control Not Permitted
+        // Early "Control Not Permitted" rejections trigger silent recovery
+        // (re-request control + re-apply target), so no banner appears yet.
+        tm.handleControlPointResponse(bytes(0x80, 0x05, 0x05))
+        assertNull(tm.ergError.value)
+        // Once the retry budget is exhausted, surface a helpful error.
+        repeat(TrainerManager.MAX_CONTROL_RETRIES) {
+            tm.handleControlPointResponse(bytes(0x80, 0x05, 0x05))
+        }
         val msg = tm.ergError.value
-        assertTrue(msg != null && msg.contains("control wasn't granted"))
+        assertTrue(msg != null && msg.contains("ERG control"))
+    }
+
+    @Test
+    fun setTargetPowerSuccessAfterControlGrantedResetsRetries() {
+        val tm = TrainerManager()
+        // A Set Target Power success clears the retry budget so a later isolated
+        // rejection gets the full recovery allowance again (no immediate banner).
+        tm.handleControlPointResponse(bytes(0x80, 0x05, 0x01)) // Set Target Power OK
+        tm.handleControlPointResponse(bytes(0x80, 0x05, 0x05)) // one rejection
+        assertNull(tm.ergError.value)
     }
 
     @Test

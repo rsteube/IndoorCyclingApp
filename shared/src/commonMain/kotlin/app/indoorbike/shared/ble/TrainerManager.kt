@@ -151,6 +151,15 @@ class TrainerManager {
     private var activePeripheral: Peripheral? = null
     private var ftmsControlPointWriter: (suspend (ByteArray) -> Unit)? = null
 
+    // FTMS control handshake. The Control Point only honors Set Target Power
+    // (0x05) after a successful Request Control (0x00); strict trainers (Zwift
+    // Hub) reject with "Control Not Permitted" (0x05) otherwise. We confirm the
+    // grant from the 0x00 success indication and, until then, pair a Request
+    // Control with each target write. If a command is ever rejected we re-request
+    // control and re-apply the target rather than giving up. Reset on (re)connect.
+    private var ftmsControlGranted = false
+    private var ftmsControlRetries = 0
+
     private var isMockPedaling = false
     // Cadence math from CPS uses crank revolution timestamps to derive RPM.
     private var lastCrankRevs: Int? = null
@@ -170,8 +179,7 @@ class TrainerManager {
     fun setTargetPower(watts: Int) {
         val clamped = watts.coerceAtLeast(0)
         _targetPower.value = clamped
-        val writer = ftmsControlPointWriter
-        if (writer == null) {
+        if (ftmsControlPointWriter == null) {
             // No FTMS Control Point on this peripheral. Only a problem for a real
             // trainer we're actually connected to — the mock path and the
             // disconnected state legitimately have no writer.
@@ -181,19 +189,38 @@ class TrainerManager {
             }
             return
         }
+        // App-driven target change: fresh recovery budget for the control handshake.
+        ftmsControlRetries = 0
+        writeTargetPower(clamped)
+    }
+
+    /**
+     * Write Set Target Power (0x05) to the FTMS Control Point, first taking
+     * control (0x00) if the grant hasn't been confirmed yet. Both writes use
+     * WriteType.WithResponse, which serialises them on the GATT queue, so the
+     * trainer processes the control grant before the target that follows — this
+     * is what makes strict trainers (Zwift Hub) actually honor ERG instead of
+     * replying "Control Not Permitted". Also used by the rejection-recovery path.
+     */
+    private fun writeTargetPower(watts: Int) {
+        val writer = ftmsControlPointWriter ?: return
+        val clamped = watts.coerceAtLeast(0)
         scope.launch {
             try {
-                // FTMS Control Point: 0x05 = Set Target Power, int16 LE watts
-                val payload = byteArrayOf(
-                    0x05,
-                    (clamped and 0xFF).toByte(),
-                    ((clamped shr 8) and 0xFF).toByte()
+                if (!ftmsControlGranted) {
+                    writer(byteArrayOf(0x00)) // Request Control
+                }
+                writer(
+                    byteArrayOf(
+                        0x05,
+                        (clamped and 0xFF).toByte(),
+                        ((clamped shr 8) and 0xFF).toByte()
+                    )
                 )
-                writer(payload)
                 // The BLE write was acknowledged. A trainer that rejects the
                 // command still reports it via the control-point indication
-                // (handled in startTelemetrySubscriptions), which will re-raise
-                // the error; for now clear any stale transient failure.
+                // (handleControlPointResponse), which drives recovery / errors;
+                // for now clear any stale transient failure.
                 _ergError.value = null
             } catch (e: Exception) {
                 Log.w(TAG, "FTMS Set Target Power write failed: $clamped W", e)
@@ -505,6 +532,7 @@ class TrainerManager {
                             telemetryJobs.forEach { it.cancel() }
                             telemetryJobs = emptyList()
                             ftmsControlPointWriter = null
+                            ftmsControlGranted = false
                             activePeripheral = null
                             _connectedTrainerName.value = null
                             _ergError.value = null
@@ -590,6 +618,9 @@ class TrainerManager {
         try {
             val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, FTMS_CONTROL_POINT)
             if (char != null) {
+                // Fresh connection: control hasn't been granted yet.
+                ftmsControlGranted = false
+                ftmsControlRetries = 0
                 ftmsControlPointWriter = { payload ->
                     peripheral.write(char, payload, WriteType.WithResponse)
                 }
@@ -603,13 +634,15 @@ class TrainerManager {
                     .onEach { bytes -> handleControlPointResponse(bytes) }
                     .catch { Log.w(TAG, "FTMS control point observe failed", it) }
                     .launchIn(scope)
-                // Request control: opcode 0x00.
+                // Best-effort early Request Control (0x00). If it lands and the
+                // trainer grants control, the success indication sets
+                // `ftmsControlGranted` so later target writes skip the re-request.
+                // If it doesn't take (a strict trainer may ignore it when sent
+                // before indications are fully enabled), it's not fatal:
+                // setTargetPower pairs a fresh Request Control with the target
+                // write and recovers from any "Control Not Permitted" reply.
                 runCatching { peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse) }
-                    .onFailure {
-                        Log.w(TAG, "FTMS request control failed", it)
-                        _ergError.value = "Couldn't take control of the trainer for " +
-                            "ERG mode. Target power may not be applied."
-                    }
+                    .onFailure { Log.w(TAG, "FTMS early request-control failed (will retry on target write)", it) }
             }
         } catch (e: Exception) {
             Log.w(TAG, "FTMS control point setup failed", e)
@@ -618,10 +651,15 @@ class TrainerManager {
 
     /**
      * Parse an FTMS Control Point indication. The machine answers every command
-     * with `[0x80, requestOpCode, resultCode, ...]`. A success (0x01) for a Set
-     * Target Power request clears any lingering ERG error; any other result code
-     * is surfaced to the rider so a silently-rejected command doesn't look like
-     * working ERG.
+     * with `[0x80, requestOpCode, resultCode, ...]`.
+     *
+     *  - Request Control (0x00) success → control is granted; remember it so we
+     *    stop prepending Request Control to every target write.
+     *  - Set Target Power (0x05) success → clear any error.
+     *  - "Control Not Permitted" (0x05) → the grant didn't take (or was lost).
+     *    Re-request control and re-apply the target rather than giving up;
+     *    surface a helpful error only once recovery is exhausted.
+     *  - Other result codes → surface to the rider.
      */
     internal fun handleControlPointResponse(bytes: ByteArray) {
         val hex = bytes.joinToString(" ") { b -> (b.toInt() and 0xFF).toString(16) }
@@ -629,16 +667,34 @@ class TrainerManager {
         if (bytes.size < 3 || (bytes[0].toInt() and 0xFF) != 0x80) return
         val requestOpCode = bytes[1].toInt() and 0xFF
         val resultCode = bytes[2].toInt() and 0xFF
-        if (resultCode == 0x01) {
-            // Success. Clear the banner once the trainer confirms it took the
-            // Set Target Power (0x05) command.
-            if (requestOpCode == 0x05) _ergError.value = null
+
+        if (resultCode == 0x01) { // Success
+            when (requestOpCode) {
+                0x00 -> { ftmsControlGranted = true; ftmsControlRetries = 0 }
+                0x05 -> { ftmsControlRetries = 0; _ergError.value = null }
+            }
             return
         }
+
+        // Control Not Permitted: the trainer doesn't think we hold control.
+        if (resultCode == 0x05) {
+            ftmsControlGranted = false
+            if (ftmsControlRetries < MAX_CONTROL_RETRIES) {
+                ftmsControlRetries++
+                Log.w(TAG, "FTMS control not permitted; re-requesting control (attempt $ftmsControlRetries)")
+                // writeTargetPower re-sends Request Control (granted is false) then
+                // the target, serialised on the GATT queue.
+                writeTargetPower(_targetPower.value)
+            } else {
+                _ergError.value = "Trainer rejected ERG control. Close any other app " +
+                    "connected to the trainer (e.g. Zwift), then re-pair it in Settings."
+            }
+            return
+        }
+
         val reason = when (resultCode) {
             0x02 -> "the command isn't supported"
             0x03 -> "the target power was out of range"
-            0x05 -> "control wasn't granted"
             else -> "the trainer reported an error"
         }
         _ergError.value = "Trainer rejected the ERG command: $reason."
@@ -795,6 +851,13 @@ class TrainerManager {
 
     companion object {
         private const val TAG = "TrainerManager"
+
+        /**
+         * How many times a "Control Not Permitted" rejection triggers an
+         * automatic re-request of control + target re-apply before we stop and
+         * surface an error. Reset on each app-driven target change and on connect.
+         */
+        internal const val MAX_CONTROL_RETRIES = 3
 
         /**
          * Quiet period without a new crank revolution before we commit cadence

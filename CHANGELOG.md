@@ -4,6 +4,23 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [1.2.1] (4) - 2026-06-16
+
+### Fixed
+
+- **ERG mode on the Zwift Hub (and other strict FTMS trainers).** These trainers
+  reject target-power commands with "Control Not Permitted" unless control has
+  genuinely been granted first. The app now takes control (FTMS Request Control)
+  together with each target-power write until the trainer confirms the grant,
+  and automatically re-requests control if a command is ever rejected, instead
+  of giving up. If control still can't be obtained, the error now explains the
+  usual cause: another app (e.g. Zwift) is connected to the trainer and holding
+  control - close it and re-pair.
+
+### Notes
+
+- `versionCode 4`, signed with the project's release key.
+
 ## [1.2] (3) - 2026-06-16
 
 ### Added
