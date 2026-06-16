@@ -394,7 +394,7 @@ private fun WelcomeBanner(onGetStarted: () -> Unit, modifier: Modifier = Modifie
         )
         Spacer(Modifier.height(Spacing.s2))
         Text(
-            text = "Power-zone workouts for your smart trainer. Set your FTP and weight so the targets match you — takes about 30 seconds.",
+            text = "Power-zone workouts for your smart trainer. Set your FTP and weight so the targets match you - takes about 30 seconds.",
             style = CadenceType.body,
             color = CadenceColors.Fg2
         )

@@ -380,7 +380,7 @@ private fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color, barWidth: Dp = 220.dp
         )
     }
     Text(
-        text = if (safe > 0) "${formatWkg(safe)} W/kg" else "—",
+        text = if (safe > 0) "${formatWkg(safe)} W/kg" else "--",
         style = CadenceType.tick.copy(fontSize = 10.sp),
         color = CadenceColors.Fg3,
     )

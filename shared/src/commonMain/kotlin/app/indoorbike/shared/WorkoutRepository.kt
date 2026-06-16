@@ -42,7 +42,7 @@ object WorkoutRepository {
                     if (seen.add(w.id)) {
                         out.add(w)
                     } else {
-                        Log.w(TAG, "Duplicate workout id '${w.id}' — keeping first occurrence.")
+                        Log.w(TAG, "Duplicate workout id '${w.id}' - keeping first occurrence.")
                     }
                 }
             } catch (e: Exception) {

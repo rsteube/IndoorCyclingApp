@@ -55,10 +55,10 @@ fun ReportProblemDialog(
                 style = CadenceType.small,
                 color = CadenceColors.Fg2,
                 text = "This opens your email app with a draft to the developer. " +
-                    "Nothing is sent automatically — you review it and decide whether to send.\n\n" +
+                    "Nothing is sent automatically: you review it and decide whether to send.\n\n" +
                     "The draft includes your device model, Android version, app version, and recent " +
-                    "diagnostic logs (technical app state only). No personal information — no name, " +
-                    "email, body metrics, or location — is collected."
+                    "diagnostic logs (technical app state only). No personal information (no name, " +
+                    "email, body metrics, or location) is collected."
             )
         },
         confirmButton = {

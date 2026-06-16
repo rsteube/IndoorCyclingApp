@@ -29,6 +29,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -36,10 +39,13 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Reuse the trainer's connection-state shape — same lifecycle. */
 typealias ControllerConnectionState = TrainerConnectionState
@@ -105,6 +111,10 @@ class ControllerManager {
     private val _events = MutableSharedFlow<ControllerEvent>(extraBufferCapacity = 8)
     val events: SharedFlow<ControllerEvent> = _events.asSharedFlow()
 
+    /** Emits the device name on each (re)connect; drives the UI "connected" toast. */
+    private val _justConnected = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val justConnected: SharedFlow<String> = _justConnected.asSharedFlow()
+
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
     private var stateListenerJob: Job? = null
@@ -112,46 +122,108 @@ class ControllerManager {
     private var activePeripheral: Peripheral? = null
     private val advertisementById = mutableMapOf<String, Advertisement>()
 
+    // Persistent auto-reconnect supervisor (see TrainerManager for the model).
+    private val wantReconnect = MutableStateFlow(false)
+    private val scanningAllowed = MutableStateFlow(true)
+    private var targetPairedId: String? = null
+
+    init { scope.launch { reconnectSupervisor() } }
+
     // Edge-tracking for press detection — only emit on released → pressed.
     private var plusPressed = false
     private var minusPressed = false
 
     // Public API ─────────────────────────────────────────────────────────────
 
-    /** Try to silently re-connect to a previously paired controller at app launch. */
-    fun autoConnectIfPaired(pairedId: String?, timeoutMillis: Long = 15_000) {
+    /**
+     * Arm persistent auto-reconnect to a previously paired controller. Records
+     * the standing intent and keeps retrying (windowed scans + backoff) until
+     * the controller is found. Scanning is gated to foreground/active-ride via
+     * [pauseAutoReconnect] / [resumeAutoReconnect].
+     */
+    fun autoConnectIfPaired(pairedId: String?) {
         if (pairedId.isNullOrBlank()) return
-        if (_connectionState.value != ControllerConnectionState.Disconnected) return
-
+        targetPairedId = pairedId
         _pairedDeviceId.value = pairedId
-        _connectionState.value = ControllerConnectionState.Scanning
-        _discoveredDevices.value = emptyList()
-        advertisementById.clear()
+        wantReconnect.value = true
+    }
 
-        scanJob?.cancel()
-        scanJob = scope.launch {
-            val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
-                try {
-                    Scanner().advertisements
-                        .onEach { addDiscovered(it) }
-                        .firstOrNull { it.identifier == pairedId }
-                } catch (e: Exception) {
-                    Log.w(TAG, "Controller auto-connect scan failed", e)
-                    null
-                }
+    /** Lifecycle gate: stop scanning (keeps intent + any live connection). */
+    fun pauseAutoReconnect() { scanningAllowed.value = false }
+
+    /** Lifecycle gate: allow scanning again. */
+    fun resumeAutoReconnect() { scanningAllowed.value = true }
+
+    private fun gateOpen() = combine(wantReconnect, scanningAllowed) { want, allowed -> want && allowed }
+
+    private suspend fun reconnectSupervisor() {
+        while (true) {
+            gateOpen().first { it }
+            coroutineScope {
+                val worker = launch { reconnectWorker() }
+                gateOpen().first { !it }
+                worker.cancelAndJoin()
             }
-            if (found != null) {
-                connectInternal(found)
-            } else if (_connectionState.value == ControllerConnectionState.Scanning) {
+            if (_connectionState.value == ControllerConnectionState.Scanning) {
                 _connectionState.value = ControllerConnectionState.Disconnected
             }
         }
     }
 
+    private suspend fun reconnectWorker() {
+        var backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+        while (true) {
+            val id = targetPairedId
+            if (id == null) {
+                delay(BleReconnectPolicy.INITIAL_BACKOFF_MS)
+                continue
+            }
+
+            val state = _connectionState.value
+            if (state == ControllerConnectionState.Connected ||
+                state == ControllerConnectionState.Connecting
+            ) {
+                _connectionState.first {
+                    it == ControllerConnectionState.Disconnected || it == ControllerConnectionState.Error
+                }
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                continue
+            }
+
+            _connectionState.value = ControllerConnectionState.Scanning
+            val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
+                try {
+                    Scanner().advertisements
+                        .onEach { addDiscovered(it) }
+                        .firstOrNull { it.identifier == id }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Controller auto-reconnect scan failed", e)
+                    null
+                }
+            }
+
+            if (found != null) {
+                connectInternal(found)
+                _connectionState.first {
+                    it == ControllerConnectionState.Disconnected || it == ControllerConnectionState.Error
+                }
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
+            } else {
+                if (_connectionState.value == ControllerConnectionState.Scanning) {
+                    _connectionState.value = ControllerConnectionState.Disconnected
+                }
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(BleReconnectPolicy.MAX_BACKOFF_MS)
+            }
+        }
+    }
+
     fun startScan() {
-        if (_connectionState.value == ControllerConnectionState.Scanning ||
-            _connectionState.value == ControllerConnectionState.Connected
-        ) return
+        // Manual pairing takes over from background auto-reconnect.
+        wantReconnect.value = false
+
+        if (_connectionState.value == ControllerConnectionState.Connected) return
 
         _connectionState.value = ControllerConnectionState.Scanning
         _discoveredDevices.value = emptyList()
@@ -189,6 +261,7 @@ class ControllerManager {
     }
 
     fun disconnect() {
+        wantReconnect.value = false
         scope.launch {
             try {
                 activePeripheral?.disconnect()
@@ -200,6 +273,7 @@ class ControllerManager {
 
     fun forgetDevice() {
         disconnect()
+        targetPairedId = null
         _pairedDeviceId.value = null
         _connectedDeviceName.value = null
         _connectionState.value = ControllerConnectionState.Disconnected
@@ -241,6 +315,10 @@ class ControllerManager {
         _pairedDeviceId.value = advertisement.identifier
         _connectedDeviceName.value = advertisement.name ?: "Unknown Controller"
 
+        // Stay on this controller: arm persistent reconnect for future drops.
+        targetPairedId = advertisement.identifier
+        wantReconnect.value = true
+
         stateListenerJob?.cancel()
         observeJobs.forEach { it.cancel() }
         observeJobs = emptyList()
@@ -258,6 +336,7 @@ class ControllerManager {
                         is State.Connecting -> _connectionState.value = ControllerConnectionState.Connecting
                         is State.Connected -> {
                             _connectionState.value = ControllerConnectionState.Connected
+                            _justConnected.tryEmit(_connectedDeviceName.value ?: "Controller")
                             startKeypadObserve(peripheral)
                         }
                         is State.Disconnecting -> _connectionState.value = ControllerConnectionState.Disconnecting
@@ -289,7 +368,7 @@ class ControllerManager {
             try {
                 val syncRx = peripheral.findCharacteristic(ZWIFT_CUSTOM_SERVICE, ZWIFT_SYNC_RX_CHAR)
                 if (syncRx == null) {
-                    Log.w(TAG, "Zwift sync-RX characteristic not found — not a Click?")
+                    Log.w(TAG, "Zwift sync-RX characteristic not found - not a Click?")
                     return@launch
                 }
                 runCatching {

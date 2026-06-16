@@ -156,7 +156,7 @@ class RideSessionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Indoor Bike — Ride in progress")
+            .setContentTitle("Indoor Bike - Ride in progress")
             .setContentText(line)
             .setSmallIcon(R.drawable.ic_stat_bike)
             .setOngoing(true)

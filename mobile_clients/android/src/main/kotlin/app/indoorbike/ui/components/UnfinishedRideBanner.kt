@@ -250,7 +250,7 @@ private fun AbandonConfirmDialog(
                 color = CadenceColors.Fg1
             )
             Text(
-                text = "$workoutName — ${formatClock(elapsed)} of ${formatClock(total)} won't be saved. " +
+                text = "$workoutName - ${formatClock(elapsed)} of ${formatClock(total)} won't be saved. " +
                         "This can't be undone.",
                 style = CadenceType.body,
                 color = CadenceColors.Fg2

@@ -30,15 +30,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.min
 
 enum class TrainerConnectionState {
@@ -105,6 +113,14 @@ class TrainerManager {
     private val _ergError = MutableStateFlow<String?>(null)
     val ergError: StateFlow<String?> = _ergError.asStateFlow()
 
+    /**
+     * Emits the connected trainer's name each time a connection is established
+     * (initial connect or auto-reconnect). The UI uses this to show a transient
+     * "connected" notification. Replay 0 so a late collector doesn't re-fire it.
+     */
+    private val _justConnected = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val justConnected: SharedFlow<String> = _justConnected.asSharedFlow()
+
     private val _isMockTrainer = MutableStateFlow(false)
     val isMockTrainer: StateFlow<Boolean> = _isMockTrainer.asStateFlow()
 
@@ -118,6 +134,19 @@ class TrainerManager {
     private var stateListenerJob: Job? = null
     private var telemetryJobs: List<Job> = emptyList()
     private var mockJob: Job? = null
+
+    // Persistent auto-reconnect, modelled as a single supervisor coroutine
+    // (started in `init`) driven by two flags, so there are no job-restart races
+    // between the app-lifecycle gate and the startup arm:
+    //  - wantReconnect: standing intent to stay on `targetPairedId`. Cleared only
+    //    by an explicit disconnect/forget/mock; re-armed by any connect.
+    //  - scanningAllowed: lifecycle gate (app foreground OR active ride).
+    // The supervisor scans/connects only while BOTH are true, cancels its scan
+    // worker the moment either drops, and never tears down an established
+    // connection (that's owned by `connectionJob`) — only scanning pauses.
+    private val wantReconnect = MutableStateFlow(false)
+    private val scanningAllowed = MutableStateFlow(true)
+    private var targetPairedId: String? = null
 
     private var activePeripheral: Peripheral? = null
     private var ftmsControlPointWriter: (suspend (ByteArray) -> Unit)? = null
@@ -193,6 +222,10 @@ class TrainerManager {
         // telemetry can never both write the same StateFlows. Without this,
         // toggling Mock while a real trainer is connected leaves the BLE
         // observe jobs running and racing the mock stream.
+        // A mock session is an explicit override — stop chasing the real trainer.
+        wantReconnect.value = false
+        targetPairedId = null
+
         scope.launch {
             try {
                 activePeripheral?.disconnect()
@@ -213,24 +246,82 @@ class TrainerManager {
     }
 
     /**
-     * Try to silently re-connect to a previously paired trainer at app launch.
-     * Scans briefly for an advertisement matching [pairedId]; if found within
-     * [timeoutMillis], connects. Otherwise drops back to Disconnected so the
-     * UI doesn't get stuck in Scanning forever.
+     * Arm persistent auto-reconnect to a previously paired trainer. Unlike a
+     * one-shot scan, this records the standing intent to stay connected and
+     * keeps retrying (in scan windows with backoff) until the trainer is found —
+     * so opening the app before the trainer wakes up still results in a
+     * connection once it starts advertising. Scanning is gated to
+     * foreground/active-ride via [pauseAutoReconnect] / [resumeAutoReconnect].
      *
-     * No-op for the "mock" trainer pseudo-id and when already connected/scanning.
+     * No-op for the "mock" pseudo-id and while a mock session is active.
      */
-    fun autoConnectIfPaired(pairedId: String?, timeoutMillis: Long = 15_000) {
+    fun autoConnectIfPaired(pairedId: String?) {
         if (pairedId.isNullOrBlank() || pairedId == "mock") return
-        if (_connectionState.value != TrainerConnectionState.Disconnected) return
+        if (_isMockTrainer.value) return
 
+        targetPairedId = pairedId
         _pairedTrainerId.value = pairedId
-        _connectionState.value = TrainerConnectionState.Scanning
-        _discoveredDevices.value = emptyList()
+        wantReconnect.value = true
+    }
 
-        scanJob?.cancel()
-        scanJob = scope.launch {
-            val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
+    /**
+     * Lifecycle gate: stop scanning while the app is backgrounded with no active
+     * ride, to spare the radio. Keeps the standing reconnect intent and does NOT
+     * drop an established connection — only scanning pauses. Resume with
+     * [resumeAutoReconnect].
+     */
+    fun pauseAutoReconnect() { scanningAllowed.value = false }
+
+    /** Lifecycle gate: allow scanning again (app foregrounded or ride started). */
+    fun resumeAutoReconnect() { scanningAllowed.value = true }
+
+    private fun gateOpen() = combine(wantReconnect, scanningAllowed) { want, allowed -> want && allowed }
+
+    /**
+     * Single long-lived coroutine (started in [init]). Parks until both flags
+     * are set, then runs [reconnectWorker] until either flag clears, cancelling
+     * the in-flight scan promptly. No job is ever restarted from a public
+     * method, so concurrent gate flips and arms can't spawn competing loops.
+     */
+    private suspend fun reconnectSupervisor() {
+        while (true) {
+            gateOpen().first { it }
+            coroutineScope {
+                val worker = launch { reconnectWorker() }
+                gateOpen().first { !it }
+                worker.cancelAndJoin()
+            }
+            // Don't leave the UI stuck on "Scanning…" after the gate closed.
+            if (_connectionState.value == TrainerConnectionState.Scanning) {
+                _connectionState.value = TrainerConnectionState.Disconnected
+            }
+        }
+    }
+
+    private suspend fun reconnectWorker() {
+        var backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+        while (true) {
+            val id = targetPairedId
+            if (id == null) {
+                delay(BleReconnectPolicy.INITIAL_BACKOFF_MS)
+                continue
+            }
+
+            // Already up (or coming up): hold for the whole connected lifetime
+            // and only rescan once the link drops.
+            val state = _connectionState.value
+            if (state == TrainerConnectionState.Connected ||
+                state == TrainerConnectionState.Connecting
+            ) {
+                _connectionState.first {
+                    it == TrainerConnectionState.Disconnected || it == TrainerConnectionState.Error
+                }
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                continue
+            }
+
+            _connectionState.value = TrainerConnectionState.Scanning
+            val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
                     Scanner {
                         filters = listOf(
@@ -239,24 +330,39 @@ class TrainerManager {
                         )
                     }.advertisements
                         .onEach { addDiscovered(it) }
-                        .firstOrNull { it.identifier == pairedId }
+                        .firstOrNull { it.identifier == id }
                 } catch (e: Exception) {
-                    Log.w(TAG, "auto-connect scan failed", e)
+                    Log.w(TAG, "auto-reconnect scan failed", e)
                     null
                 }
             }
+
             if (found != null) {
                 connectInternal(found)
-            } else if (_connectionState.value == TrainerConnectionState.Scanning) {
-                _connectionState.value = TrainerConnectionState.Disconnected
+                // Returns on a failed attempt or a later drop, then we rescan.
+                _connectionState.first {
+                    it == TrainerConnectionState.Disconnected || it == TrainerConnectionState.Error
+                }
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
+            } else {
+                // Trainer still asleep / out of range. Settle the UI and back
+                // off before the next window (this is the wake-up watch path).
+                if (_connectionState.value == TrainerConnectionState.Scanning) {
+                    _connectionState.value = TrainerConnectionState.Disconnected
+                }
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(BleReconnectPolicy.MAX_BACKOFF_MS)
             }
         }
     }
 
     fun startScan() {
-        if (_connectionState.value == TrainerConnectionState.Scanning ||
-            _connectionState.value == TrainerConnectionState.Connected
-        ) return
+        // A manual pairing scan takes over from any background auto-reconnect so
+        // the two don't fight over the radio; a successful pick re-arms it.
+        wantReconnect.value = false
+
+        if (_connectionState.value == TrainerConnectionState.Connected) return
 
         _connectionState.value = TrainerConnectionState.Scanning
         _discoveredDevices.value = emptyList()
@@ -296,6 +402,8 @@ class TrainerManager {
     }
 
     fun disconnect() {
+        // Explicit user action: stop auto-reconnecting until they reconnect/pair.
+        wantReconnect.value = false
         scope.launch {
             try {
                 activePeripheral?.disconnect()
@@ -313,6 +421,7 @@ class TrainerManager {
 
     fun forgetTrainer() {
         disconnect()
+        targetPairedId = null
         _pairedTrainerId.value = null
         _isMockTrainer.value = false
         _connectedTrainerName.value = null
@@ -327,6 +436,10 @@ class TrainerManager {
     // Internals ──────────────────────────────────────────────────────────────
 
     private val lastAdvertisements = mutableMapOf<String, Advertisement>()
+
+    // Declared after all state the supervisor touches, so they're initialised
+    // before its coroutine body runs.
+    init { scope.launch { reconnectSupervisor() } }
 
     private fun addDiscovered(ad: Advertisement) {
         lastAdvertisements[ad.identifier] = ad
@@ -345,6 +458,11 @@ class TrainerManager {
         _connectionState.value = TrainerConnectionState.Connecting
         _pairedTrainerId.value = advertisement.identifier
         _connectedTrainerName.value = advertisement.name ?: "Unknown Trainer"
+
+        // Connecting to a trainer (manual or auto) means we want to stay on it:
+        // arm persistent reconnect so a later drop is chased automatically.
+        targetPairedId = advertisement.identifier
+        wantReconnect.value = true
 
         // Tear down any mock-trainer state so a real connect after a mock
         // session doesn't have two telemetry sources racing the StateFlows.
@@ -378,6 +496,7 @@ class TrainerManager {
                         is State.Connected -> {
                             _connectionState.value = TrainerConnectionState.Connected
                             _ergError.value = null
+                            _justConnected.tryEmit(_connectedTrainerName.value ?: "Trainer")
                             startTelemetrySubscriptions(peripheral)
                         }
                         is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting

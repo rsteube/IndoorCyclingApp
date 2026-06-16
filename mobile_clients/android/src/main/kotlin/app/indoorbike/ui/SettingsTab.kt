@@ -1026,7 +1026,7 @@ private fun IntervalsIcuCard() {
         }
 
         Text(
-            text = "Sync your finished rides to intervals.icu. Off by default — your athlete id " +
+            text = "Sync your finished rides to intervals.icu. Off by default - your athlete id " +
                 "and API key live only on this phone, and the app only contacts intervals.icu " +
                 "when an upload is triggered (manually or via auto-upload below).",
             style = CadenceType.small,
@@ -1226,11 +1226,11 @@ private fun BackupSyncCard() {
         }
 
         Text(
-            text = "Pick any folder on your device or in cloud storage — Drive, Dropbox, " +
+            text = "Pick any folder on your device or in cloud storage - Drive, Dropbox, " +
                 "Nextcloud, Syncthing, OneDrive, anything that exposes itself as a folder. " +
                 "Each device writes one small JSON file there; other devices pointed at the " +
                 "same folder share your rides, library, and settings. No accounts, no servers " +
-                "— just a file in a folder you already trust.",
+                "- just a file in a folder you already trust.",
             style = CadenceType.small,
             color = CadenceColors.Fg3
         )
@@ -1304,7 +1304,7 @@ private fun BackupSyncCard() {
             ) {
                 Text(
                     text = "Disconnects this device from the folder. Local rides, settings, " +
-                        "and library stay put — slices in the folder aren't deleted.",
+                        "and library stay put - slices in the folder aren't deleted.",
                     style = CadenceType.tick,
                     color = CadenceColors.Fg4,
                     modifier = Modifier.weight(1f)

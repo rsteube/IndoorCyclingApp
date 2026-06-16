@@ -52,7 +52,7 @@ object BugReport {
      */
     fun launchEmailDraft(context: Context, errorContext: String? = null): Boolean {
         val report = buildReport(context, errorContext)
-        val subject = "Cycling app bug report — v${BuildConfig.VERSION_NAME}"
+        val subject = "Cycling app bug report - v${BuildConfig.VERSION_NAME}"
 
         val intent = Intent(Intent.ACTION_SEND).apply {
             // message/rfc822 biases the chooser toward email apps; EXTRA_EMAIL
@@ -92,7 +92,7 @@ object BugReport {
         appendLine("Describe what happened (optional):")
         appendLine()
         appendLine()
-        appendLine("———————————————————————————————")
+        appendLine("--------------------------------")
         appendLine("Diagnostics (no personal data):")
         appendLine()
         if (!errorContext.isNullOrBlank()) {

@@ -29,14 +29,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** Reuse the trainer's connection-state shape — same lifecycle. */
 typealias HrmConnectionState = TrainerConnectionState
@@ -81,6 +90,10 @@ class HeartRateMonitor {
     private val _lastSampleEpochMs = MutableStateFlow(0L)
     val lastSampleEpochMs: StateFlow<Long> = _lastSampleEpochMs.asStateFlow()
 
+    /** Emits the device name on each (re)connect; drives the UI "connected" toast. */
+    private val _justConnected = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val justConnected: SharedFlow<String> = _justConnected.asSharedFlow()
+
     private var scanJob: Job? = null
     private var connectionJob: Job? = null
     private var stateListenerJob: Job? = null
@@ -88,44 +101,101 @@ class HeartRateMonitor {
     private var activePeripheral: Peripheral? = null
     private val advertisementById = mutableMapOf<String, Advertisement>()
 
+    // Persistent auto-reconnect supervisor (see TrainerManager for the model).
+    private val wantReconnect = MutableStateFlow(false)
+    private val scanningAllowed = MutableStateFlow(true)
+    private var targetPairedId: String? = null
+
+    init { scope.launch { reconnectSupervisor() } }
+
     /**
-     * Try to silently re-connect to a previously paired HRM at app launch.
-     * Mirrors [TrainerManager.autoConnectIfPaired]: scans briefly for [pairedId]
-     * and connects when seen, otherwise drops back to Disconnected after [timeoutMillis].
+     * Arm persistent auto-reconnect to a previously paired HRM. Mirrors
+     * [TrainerManager.autoConnectIfPaired]: records the standing intent and keeps
+     * retrying (windowed scans + backoff) until the strap is found, instead of
+     * giving up after one scan. Scanning is gated to foreground/active-ride via
+     * [pauseAutoReconnect] / [resumeAutoReconnect].
      */
-    fun autoConnectIfPaired(pairedId: String?, timeoutMillis: Long = 15_000) {
+    fun autoConnectIfPaired(pairedId: String?) {
         if (pairedId.isNullOrBlank()) return
-        if (_connectionState.value != HrmConnectionState.Disconnected) return
-
+        targetPairedId = pairedId
         _pairedDeviceId.value = pairedId
-        _connectionState.value = HrmConnectionState.Scanning
-        _discoveredDevices.value = emptyList()
-        advertisementById.clear()
+        wantReconnect.value = true
+    }
 
-        scanJob?.cancel()
-        scanJob = scope.launch {
-            val found = kotlinx.coroutines.withTimeoutOrNull(timeoutMillis) {
-                try {
-                    Scanner().advertisements
-                        .onEach { addDiscovered(it) }
-                        .firstOrNull { it.identifier == pairedId }
-                } catch (e: Exception) {
-                    Log.w(TAG, "HRM auto-connect scan failed", e)
-                    null
-                }
+    /** Lifecycle gate: stop scanning (keeps intent + any live connection). */
+    fun pauseAutoReconnect() { scanningAllowed.value = false }
+
+    /** Lifecycle gate: allow scanning again. */
+    fun resumeAutoReconnect() { scanningAllowed.value = true }
+
+    private fun gateOpen() = combine(wantReconnect, scanningAllowed) { want, allowed -> want && allowed }
+
+    private suspend fun reconnectSupervisor() {
+        while (true) {
+            gateOpen().first { it }
+            coroutineScope {
+                val worker = launch { reconnectWorker() }
+                gateOpen().first { !it }
+                worker.cancelAndJoin()
             }
-            if (found != null) {
-                connectInternal(found)
-            } else if (_connectionState.value == HrmConnectionState.Scanning) {
+            if (_connectionState.value == HrmConnectionState.Scanning) {
                 _connectionState.value = HrmConnectionState.Disconnected
             }
         }
     }
 
+    private suspend fun reconnectWorker() {
+        var backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+        while (true) {
+            val id = targetPairedId
+            if (id == null) {
+                delay(BleReconnectPolicy.INITIAL_BACKOFF_MS)
+                continue
+            }
+
+            val state = _connectionState.value
+            if (state == HrmConnectionState.Connected || state == HrmConnectionState.Connecting) {
+                _connectionState.first {
+                    it == HrmConnectionState.Disconnected || it == HrmConnectionState.Error
+                }
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                continue
+            }
+
+            _connectionState.value = HrmConnectionState.Scanning
+            val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
+                try {
+                    Scanner().advertisements
+                        .onEach { addDiscovered(it) }
+                        .firstOrNull { it.identifier == id }
+                } catch (e: Exception) {
+                    Log.w(TAG, "HRM auto-reconnect scan failed", e)
+                    null
+                }
+            }
+
+            if (found != null) {
+                connectInternal(found)
+                _connectionState.first {
+                    it == HrmConnectionState.Disconnected || it == HrmConnectionState.Error
+                }
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
+            } else {
+                if (_connectionState.value == HrmConnectionState.Scanning) {
+                    _connectionState.value = HrmConnectionState.Disconnected
+                }
+                delay(backoff)
+                backoff = (backoff * 2).coerceAtMost(BleReconnectPolicy.MAX_BACKOFF_MS)
+            }
+        }
+    }
+
     fun startScan() {
-        if (_connectionState.value == HrmConnectionState.Scanning ||
-            _connectionState.value == HrmConnectionState.Connected
-        ) return
+        // Manual pairing takes over from background auto-reconnect.
+        wantReconnect.value = false
+
+        if (_connectionState.value == HrmConnectionState.Connected) return
 
         _connectionState.value = HrmConnectionState.Scanning
         _discoveredDevices.value = emptyList()
@@ -159,6 +229,7 @@ class HeartRateMonitor {
     }
 
     fun disconnect() {
+        wantReconnect.value = false
         scope.launch {
             try {
                 activePeripheral?.disconnect()
@@ -170,6 +241,7 @@ class HeartRateMonitor {
 
     fun forgetDevice() {
         disconnect()
+        targetPairedId = null
         _pairedDeviceId.value = null
         _connectedDeviceName.value = null
         _connectionState.value = HrmConnectionState.Disconnected
@@ -210,6 +282,10 @@ class HeartRateMonitor {
         _pairedDeviceId.value = advertisement.identifier
         _connectedDeviceName.value = advertisement.name ?: "Unknown HRM"
 
+        // Stay on this strap: arm persistent reconnect for future drops.
+        targetPairedId = advertisement.identifier
+        wantReconnect.value = true
+
         stateListenerJob?.cancel()
         observeJob?.cancel()
         connectionJob?.cancel()
@@ -224,6 +300,7 @@ class HeartRateMonitor {
                         is State.Connecting -> _connectionState.value = HrmConnectionState.Connecting
                         is State.Connected -> {
                             _connectionState.value = HrmConnectionState.Connected
+                            _justConnected.tryEmit(_connectedDeviceName.value ?: "Heart rate monitor")
                             startHeartRateObserve(peripheral)
                         }
                         is State.Disconnecting -> _connectionState.value = HrmConnectionState.Disconnecting

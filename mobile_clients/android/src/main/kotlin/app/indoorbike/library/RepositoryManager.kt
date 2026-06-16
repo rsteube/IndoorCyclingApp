@@ -126,11 +126,11 @@ class RepositoryManager(
             val workouts = mutableListOf<Workout>()
             for (entry in manifest.bundles) {
                 if (entry.schemaVersion > BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED) {
-                    Log.w(TAG, "Skipping bundle '${entry.id}' — schema v${entry.schemaVersion} > supported")
+                    Log.w(TAG, "Skipping bundle '${entry.id}' - schema v${entry.schemaVersion} > supported")
                     continue
                 }
                 val resolved = resolveBundleUrl(entry.url, manifestUrl) ?: run {
-                    Log.w(TAG, "Bundle '${entry.id}' has relative URL '${entry.url}' but no base — skip")
+                    Log.w(TAG, "Bundle '${entry.id}' has relative URL '${entry.url}' but no base - skip")
                     continue
                 }
                 try {

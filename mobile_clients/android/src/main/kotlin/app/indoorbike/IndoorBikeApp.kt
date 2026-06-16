@@ -15,7 +15,9 @@
  */
 package app.indoorbike
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.indoorbike.library.RepositoryManager
 import app.indoorbike.library.WorkoutImporter
@@ -170,6 +172,27 @@ class IndoorBikeApp : Application() {
 
     private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    // Device auto-reconnect scanning is gated to "app in use": scan while the UI
+    // is foregrounded, or while a ride is in progress (the rider may have the
+    // screen off mid-workout and we still want to recover a dropped trainer).
+    // Established connections are never dropped by this gate — only scanning is
+    // paused — so a backgrounded idle app isn't draining the BLE radio.
+    private var startedActivityCount = 0
+    private var rideActive = false
+
+    private fun updateDeviceScanGate() {
+        val shouldScan = startedActivityCount > 0 || rideActive
+        if (shouldScan) {
+            container.trainerManager.resumeAutoReconnect()
+            container.heartRateMonitor.resumeAutoReconnect()
+            container.controllerManager.resumeAutoReconnect()
+        } else {
+            container.trainerManager.pauseAutoReconnect()
+            container.heartRateMonitor.pauseAutoReconnect()
+            container.controllerManager.pauseAutoReconnect()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         Log.i("IndoorBikeApp", "App start")
@@ -194,8 +217,9 @@ class IndoorBikeApp : Application() {
             // engine serialises against any user-triggered "Sync now" tap.
             container.syncEngine.syncNow()
         }
-        // Silently re-connect to previously paired BLE devices so users don't
-        // have to dig into settings every launch.
+        // Arm persistent auto-reconnect for previously paired BLE devices so
+        // users don't have to dig into settings every launch. The managers keep
+        // retrying (gated by updateDeviceScanGate) until each device is found.
         initScope.launch {
             container.trainerManager.autoConnectIfPaired(container.userSettings.pairedTrainerId.value)
         }
@@ -205,6 +229,23 @@ class IndoorBikeApp : Application() {
         initScope.launch {
             container.controllerManager.autoConnectIfPaired(container.userSettings.pairedControllerId.value)
         }
+
+        // Foreground tracking: scan only while at least one Activity is started.
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStarted(activity: Activity) {
+                startedActivityCount++
+                updateDeviceScanGate()
+            }
+            override fun onActivityStopped(activity: Activity) {
+                startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
+                updateDeviceScanGate()
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+            override fun onActivityResumed(activity: Activity) {}
+            override fun onActivityPaused(activity: Activity) {}
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+            override fun onActivityDestroyed(activity: Activity) {}
+        })
 
         // Drive the foreground service from the session state instead of the
         // ride screen's composition. Previously a config change (rotation,
@@ -224,6 +265,18 @@ class IndoorBikeApp : Application() {
                     WorkoutState.Idle,
                     WorkoutState.Completed -> RideSessionService.stop(this@IndoorBikeApp)
                 }
+                // A ride in flight keeps device scanning alive even if the app
+                // is backgrounded (screen off mid-workout), so a dropped trainer
+                // is recovered without the rider reopening the app.
+                rideActive = when (state) {
+                    WorkoutState.Standby,
+                    WorkoutState.Countdown,
+                    WorkoutState.Active,
+                    WorkoutState.Paused -> true
+                    WorkoutState.Idle,
+                    WorkoutState.Completed -> false
+                }
+                updateDeviceScanGate()
             }
         }
     }

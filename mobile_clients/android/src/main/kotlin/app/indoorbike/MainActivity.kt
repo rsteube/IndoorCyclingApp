@@ -94,6 +94,7 @@ import app.indoorbike.ui.HrmPairingScreen
 import app.indoorbike.ui.ProgressTab
 import app.indoorbike.ui.SettingsTab
 import app.indoorbike.ui.TrainerPairingScreen
+import app.indoorbike.ui.components.ConnectionToastHost
 import app.indoorbike.ui.components.TabBar
 import app.indoorbike.ui.components.TabItem
 import app.indoorbike.ui.screens.RideScreen
@@ -505,6 +506,9 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                     entries = navigationState.toDecoratedEntries(entryProvider),
                     onBack = { navigator.goBack() }
                 )
+                // Transient "device connected" banner, overlaid at the top so it
+                // shows on any screen (including silent auto-reconnects).
+                ConnectionToastHost(modifier = Modifier.align(Alignment.TopCenter))
             }
         }
     }
