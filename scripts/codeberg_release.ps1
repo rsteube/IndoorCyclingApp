@@ -30,12 +30,18 @@ if (-not (Test-Path $Apk)) { Write-Error "APK not found: $Apk"; exit 1 }
 $api      = "https://codeberg.org/api/v1/repos/$Repo"
 $version  = $Tag.TrimStart("v")
 $assetName = "indoorbike-$version.apk"
-$body     = if ($NotesFile -and (Test-Path $NotesFile)) { Get-Content -Raw $NotesFile } else { "" }
+# Read as a plain .NET string. `Get-Content -Raw` decorates its output with
+# PowerShell note properties, which Windows PowerShell 5.1's ConvertTo-Json then
+# serialises as an object ({"value":...}) instead of a JSON string.
+$body     = if ($NotesFile -and (Test-Path $NotesFile)) { [System.IO.File]::ReadAllText((Resolve-Path $NotesFile)) } else { "" }
 
 # 1. Create the release for the (already-pushed) tag.
 $payloadFile = New-TemporaryFile
-@{ tag_name = $Tag; name = "Indoor Bike $version"; body = $body; draft = $false; prerelease = $false } |
-    ConvertTo-Json -Compress | Set-Content -Path $payloadFile -Encoding utf8
+$payloadJson = @{ tag_name = $Tag; name = "Indoor Bike $version"; body = $body; draft = $false; prerelease = $false } |
+    ConvertTo-Json -Compress
+# Write UTF-8 WITHOUT a BOM. Windows PowerShell 5.1's `Set-Content -Encoding utf8`
+# emits a BOM, which Codeberg's JSON parser rejects ("invalid character 'ï'").
+[System.IO.File]::WriteAllText($payloadFile, $payloadJson, (New-Object System.Text.UTF8Encoding($false)))
 
 Write-Host "Creating release $Tag on $Repo ..." -ForegroundColor Cyan
 $created = curl.exe -sS -X POST "$api/releases" `
