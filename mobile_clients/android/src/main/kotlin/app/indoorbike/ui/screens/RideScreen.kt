@@ -66,7 +66,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontStyle
@@ -82,6 +81,8 @@ import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.service.RideSessionService
+import androidx.compose.ui.platform.LocalConfiguration
+import app.indoorbike.shared.Workout
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.components.IconBtn
@@ -139,7 +140,10 @@ fun RideScreen(
     onBack: () -> Unit,
     onNavigateToOverview: (Long) -> Unit,
 ) {
-    LockScreenOrientationAndFullScreen(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE)
+    // Follow the device's own rotation (respecting the user's auto-rotate
+    // setting) rather than forcing landscape - the HUD adapts to whichever
+    // orientation the rider chooses. Still goes fullscreen + keeps the screen on.
+    LockScreenOrientationAndFullScreen(ActivityInfo.SCREEN_ORIENTATION_USER)
 
     val container = LocalAppContainer.current
     val context = LocalContext.current
@@ -365,133 +369,209 @@ fun RideScreen(
                     }
                 },
                 onSkipStep = { sessionManager.skipSegment() },
-                onMockToggle = { trainerManager.toggleMockPedaling() }
+                onMockToggle = { trainerManager.toggleMockPedaling() },
+                // Narrow widths (portrait) get a reflowed two-row header so the
+                // title and state don't collapse into a one-letter-wide column.
+                compact = LocalConfiguration.current.screenWidthDp < 600
             )
 
-            // Expanded width (landscape tablet / unfolded foldable): scale the
-            // HUD up so the numbers read from a distance and use the extra room.
-            val isExpandedHud = LocalConfiguration.current.screenWidthDp >= 840
-            // Live average power for the tablet stats strip. Recomputed each
-            // second (keyed on `elapsed`); telemetrySnapshot() is a cheap copy.
-            // Only computed on expanded screens where the strip is shown.
-            val avgPowerWatts: Int = if (isExpandedHud) {
-                remember(elapsed) {
-                    val tele = sessionManager.telemetrySnapshot()
-                    if (tele.isEmpty()) 0 else (tele.sumOf { it.power } / tele.size).toInt()
-                }
-            } else 0
-            val flankWidth: Dp = if (isExpandedHud) 240.dp else 150.dp
-            val flankFont: TextUnit = if (isExpandedHud) 56.sp else 32.sp
-            val heroFont: TextUnit = if (isExpandedHud) 176.sp else 112.sp
-            val heroNumberWidth: Dp = if (isExpandedHud) 440.dp else 280.dp
-            val heroWkgBarWidth: Dp = if (isExpandedHud) 320.dp else 220.dp
-
-            Row(
+            // Responsive HUD: the layout is chosen from the ACTUAL space the HUD
+            // gets (covering every orientation, foldable posture, and split-screen
+            // size) rather than a global width breakpoint, so nothing is ever
+            // clipped or hidden by accident.
+            //  - Portrait / narrow → vertical stack: power hero on top, cadence +
+            //    HR side-by-side beneath, segment + timeline pinned to the bottom.
+            //  - Landscape phone (wide but short) → three-across with medium
+            //    numbers and NO stats strip, sized to fit the limited height
+            //    (this is the case that used to clip the metrics).
+            //  - Tablet / foldable (wide AND tall) → three-across with oversized
+            //    numbers plus the live stats strip.
+            BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = if (isExpandedHud) Spacing.s8 else Spacing.s5),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                FlankMetric(
-                    label = "CADENCE",
-                    value = animatedCadence.toString(),
-                    unit = "RPM",
-                    isStale = false,
-                    valueColor = CadenceColors.Fg1,
-                    cardWidth = flankWidth,
-                    valueFontSize = flankFont
-                )
+                val wide = maxWidth >= 600.dp
+                val tall = maxHeight >= 600.dp
+                val expanded = maxWidth >= 840.dp && tall
 
-                HeroPowerReadout(
-                    powerWatts = currentPower,
-                    isStale = showStalePower,
-                    targetWatts = targetPower,
-                    wattsPerKg = wattsPerKg,
-                    zoneColor = animatedZoneColor,
-                    biasPercent = biasPercent,
-                    ergLocked = state == WorkoutState.Active && targetPower > 0,
-                    onAdjust = { delta -> sessionManager.adjustDifficulty(delta) },
-                    modifier = Modifier.weight(1f),
-                    powerFontSize = heroFont,
-                    numberWidth = heroNumberWidth,
-                    wkgBarWidth = heroWkgBarWidth
-                )
-
-                FlankMetric(
-                    label = "HEART RATE",
-                    value = if (showStaleHr) "--" else animatedHr.toString(),
-                    unit = "BPM",
-                    isStale = showStaleHr,
-                    valueColor = hrZone?.color ?: CadenceColors.Danger,
-                    sublabel = if (showStaleHr) null
-                        else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
-                    cardWidth = flankWidth,
-                    valueFontSize = flankFont
-                )
-            }
-
-            // Tablet-only live stats strip - uses the extra space to surface the
-            // running ride numbers (elapsed, avg / normalised power, IF, TSS,
-            // kJ, interval progress) without crowding the phone HUD.
-            if (isExpandedHud && state != WorkoutState.Countdown) {
-                RideStatsStrip(
-                    elapsedSeconds = elapsed,
-                    avgPowerWatts = avgPowerWatts,
-                    intervalIndex = (currentSegIdx + 1).coerceAtMost(workout!!.segments.size),
-                    intervalCount = workout!!.segments.size,
-                    zoneColor = animatedZoneColor,
-                    modifier = Modifier.padding(bottom = Spacing.s3)
-                )
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
-            ) {
+                val ergLocked = state == WorkoutState.Active && targetPower > 0
                 val segLabel = currentSeg?.intervalType ?: "Segment"
                 val segPower = currentSeg?.powerPercentFTP ?: 0
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Topographic peak glyph in zone color.
-                    Text(
-                        text = "▲",
-                        style = CadenceType.bodyStrong,
-                        color = animatedZoneColor
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "$segLabel · $segPower% FTP",
-                        style = CadenceType.bodyStrong,
-                        color = CadenceColors.Fg1
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    // Timer attached to the segment label as a chip — reads as
-                    // "this segment, ending in 4:25". Fixed width: clock format
-                    // is M:SS (or H:MM:SS for very long segments).
-                    SegmentTimerChip(remainingSeconds = remainingInSeg, zoneColor = animatedZoneColor)
-                    Spacer(Modifier.weight(1f))
-                    if (nextZone != null) {
-                        Text(
-                            text = "UP NEXT · Z${nextZone.number} ${nextZone.label.uppercase()}",
-                            style = CadenceType.tick,
-                            color = nextZone.color
+
+                if (wide) {
+                    // ── three-across (landscape phone → tablet) ──
+                    // Sizes step down with available height so the power column
+                    // (eyebrow + number + W/kg + target steppers) always fits the
+                    // metrics row without the bottom pill clipping into the
+                    // timeline. A landscape phone is genuinely short (~330-410dp),
+                    // hence the small bottom tier; tablets get the big numbers.
+                    val flankWidth = if (expanded) 240.dp else 168.dp
+                    val flankFont: TextUnit = when {
+                        expanded -> 56.sp
+                        maxHeight >= 440.dp -> 30.sp
+                        else -> 26.sp
+                    }
+                    val heroFont: TextUnit = when {
+                        expanded -> 176.sp
+                        maxHeight >= 560.dp -> 120.sp
+                        maxHeight >= 440.dp -> 92.sp
+                        else -> 68.sp
+                    }
+                    val heroNumberWidth = if (expanded) 440.dp else 240.dp
+                    val heroWkgBarWidth = if (expanded) 320.dp else 190.dp
+                    val wideTimelineHeight = when {
+                        expanded -> 112.dp
+                        maxHeight >= 440.dp -> 64.dp
+                        else -> 48.dp
+                    }
+
+                    // Live average power for the stats strip; only computed when
+                    // the strip is actually shown (expanded). Recomputed per second.
+                    val avgPowerWatts = if (expanded) remember(elapsed) {
+                        val tele = sessionManager.telemetrySnapshot()
+                        if (tele.isEmpty()) 0 else (tele.sumOf { it.power } / tele.size).toInt()
+                    } else 0
+
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .padding(horizontal = if (expanded) Spacing.s8 else Spacing.s5),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FlankMetric(
+                                label = "CADENCE",
+                                value = animatedCadence.toString(),
+                                unit = "RPM",
+                                valueColor = CadenceColors.Fg1,
+                                cardWidth = flankWidth,
+                                valueFontSize = flankFont
+                            )
+                            HeroPowerReadout(
+                                powerWatts = currentPower,
+                                isStale = showStalePower,
+                                targetWatts = targetPower,
+                                wattsPerKg = wattsPerKg,
+                                zoneColor = animatedZoneColor,
+                                biasPercent = biasPercent,
+                                ergLocked = ergLocked,
+                                onAdjust = { delta -> sessionManager.adjustDifficulty(delta) },
+                                modifier = Modifier.weight(1f),
+                                powerFontSize = heroFont,
+                                numberWidth = heroNumberWidth,
+                                wkgBarWidth = heroWkgBarWidth
+                            )
+                            FlankMetric(
+                                label = "HEART RATE",
+                                value = if (showStaleHr) "--" else animatedHr.toString(),
+                                unit = "BPM",
+                                isStale = showStaleHr,
+                                valueColor = hrZone?.color ?: CadenceColors.Danger,
+                                sublabel = if (showStaleHr) null
+                                    else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                                cardWidth = flankWidth,
+                                valueFontSize = flankFont
+                            )
+                        }
+
+                        if (expanded && state != WorkoutState.Countdown) {
+                            RideStatsStrip(
+                                elapsedSeconds = elapsed,
+                                avgPowerWatts = avgPowerWatts,
+                                intervalIndex = (currentSegIdx + 1).coerceAtMost(workout!!.segments.size),
+                                intervalCount = workout!!.segments.size,
+                                zoneColor = animatedZoneColor,
+                                modifier = Modifier.padding(bottom = Spacing.s3)
+                            )
+                        }
+
+                        SegmentAndTimeline(
+                            workout = workout!!,
+                            currentSegIdx = currentSegIdx,
+                            elapsedInSeg = elapsedInSeg,
+                            segLabel = segLabel,
+                            segPower = segPower,
+                            remainingInSeg = remainingInSeg,
+                            nextZone = nextZone,
+                            zoneColor = animatedZoneColor,
+                            timelineHeight = wideTimelineHeight
+                        )
+                    }
+                } else {
+                    // ── vertical stack (portrait, phone or tablet) ──
+                    val heroFont: TextUnit = if (tall) 112.sp else 96.sp
+                    val sidePad = Spacing.s5
+                    val flankWidth = (maxWidth - sidePad * 2 - Spacing.s3) / 2
+                    val heroNumberWidth = (maxWidth * 0.82f).coerceAtMost(340.dp)
+                    val heroWkgBarWidth = (maxWidth * 0.6f).coerceAtMost(280.dp)
+
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Power + cadence/HR centered in the space above the
+                        // timeline, so the metrics sit at eye level and the
+                        // timeline stays pinned to the bottom - nothing overflows.
+                        Column(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(Spacing.s6, Alignment.CenterVertically),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            HeroPowerReadout(
+                                powerWatts = currentPower,
+                                isStale = showStalePower,
+                                targetWatts = targetPower,
+                                wattsPerKg = wattsPerKg,
+                                zoneColor = animatedZoneColor,
+                                biasPercent = biasPercent,
+                                ergLocked = ergLocked,
+                                onAdjust = { delta -> sessionManager.adjustDifficulty(delta) },
+                                modifier = Modifier.fillMaxWidth(),
+                                powerFontSize = heroFont,
+                                numberWidth = heroNumberWidth,
+                                wkgBarWidth = heroWkgBarWidth
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = sidePad),
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+                            ) {
+                                FlankMetric(
+                                    label = "CADENCE",
+                                    value = animatedCadence.toString(),
+                                    unit = "RPM",
+                                    valueColor = CadenceColors.Fg1,
+                                    cardWidth = flankWidth,
+                                    valueFontSize = 30.sp
+                                )
+                                FlankMetric(
+                                    label = "HEART RATE",
+                                    value = if (showStaleHr) "--" else animatedHr.toString(),
+                                    unit = "BPM",
+                                    isStale = showStaleHr,
+                                    valueColor = hrZone?.color ?: CadenceColors.Danger,
+                                    sublabel = if (showStaleHr) null
+                                        else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                                    cardWidth = flankWidth,
+                                    valueFontSize = 30.sp
+                                )
+                            }
+                        }
+                        SegmentAndTimeline(
+                            workout = workout!!,
+                            currentSegIdx = currentSegIdx,
+                            elapsedInSeg = elapsedInSeg,
+                            segLabel = segLabel,
+                            segPower = segPower,
+                            remainingInSeg = remainingInSeg,
+                            nextZone = nextZone,
+                            zoneColor = animatedZoneColor,
+                            timelineHeight = 88.dp,
+                            compact = true
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                RidgeTimeline(
-                    workout = workout!!,
-                    currentSegIdx = currentSegIdx,
-                    elapsedInSeg = elapsedInSeg,
-                    height = if (isExpandedHud) 112.dp else 72.dp
-                )
             }
         }
 
@@ -597,8 +677,63 @@ private fun RideHeader(
     onBack: () -> Unit,
     onPauseToggle: () -> Unit,
     onSkipStep: () -> Unit,
-    onMockToggle: () -> Unit
+    onMockToggle: () -> Unit,
+    compact: Boolean,
 ) {
+    val timeText = "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}"
+    val stateText: String? = when (state) {
+        WorkoutState.Standby -> "STANDBY · PEDAL TO START"
+        WorkoutState.Paused -> "PAUSED · TRAINER AT 0 W"
+        else -> null
+    }
+    val stateColor = if (state == WorkoutState.Paused) CadenceColors.Warning else CadenceColors.Brand500
+
+    if (compact) {
+        // Portrait: two rows so nothing has to share a single narrow line.
+        //   row 1: back · title (flexes, ellipsised) · controls
+        //   row 2: state · elapsed/total
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.s5, vertical = Spacing.s3),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
+                Text(
+                    text = workoutName,
+                    style = CadenceType.h3,
+                    color = CadenceColors.Fg1,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stateText.orEmpty(),
+                    style = CadenceType.tick,
+                    color = stateColor,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(text = timeText, style = CadenceType.bodyStrong, color = CadenceColors.Fg1, maxLines = 1)
+            }
+        }
+        return
+    }
+
+    // Wide (landscape / tablet): single row.
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -619,10 +754,8 @@ private fun RideHeader(
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
             )
-            when (state) {
-                WorkoutState.Standby -> Text("STANDBY · PEDAL TO START", style = CadenceType.tick, color = CadenceColors.Brand500)
-                WorkoutState.Paused -> Text("PAUSED · TRAINER AT 0 W", style = CadenceType.tick, color = CadenceColors.Warning)
-                else -> {}
+            if (stateText != null) {
+                Text(stateText, style = CadenceType.tick, color = stateColor, maxLines = 1)
             }
         }
 
@@ -636,24 +769,108 @@ private fun RideHeader(
                 modifier = Modifier.width(180.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                Text(
-                    text = "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}",
-                    style = CadenceType.h3,
-                    color = CadenceColors.Fg1
-                )
+                Text(text = timeText, style = CadenceType.h3, color = CadenceColors.Fg1)
             }
-            if (isMockTrainer) {
-                SecondaryBtn(text = "Mock", onClick = onMockToggle)
-            }
-            if (state == WorkoutState.Active || state == WorkoutState.Paused) {
-                SecondaryBtn(text = "Skip", leadingIcon = Icons.Outlined.SkipNext, onClick = onSkipStep)
-            }
-            if (state == WorkoutState.Active) {
-                SecondaryBtn(text = "Pause", onClick = onPauseToggle)
-            } else if (state == WorkoutState.Paused) {
-                SecondaryBtn(text = "Resume", onClick = onPauseToggle)
+            RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle)
+        }
+    }
+}
+
+@Composable
+private fun RideControls(
+    state: WorkoutState,
+    isMockTrainer: Boolean,
+    onMockToggle: () -> Unit,
+    onSkipStep: () -> Unit,
+    onPauseToggle: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isMockTrainer) {
+            SecondaryBtn(text = "Mock", onClick = onMockToggle)
+        }
+        if (state == WorkoutState.Active || state == WorkoutState.Paused) {
+            SecondaryBtn(text = "Skip", leadingIcon = Icons.Outlined.SkipNext, onClick = onSkipStep)
+        }
+        if (state == WorkoutState.Active) {
+            SecondaryBtn(text = "Pause", onClick = onPauseToggle)
+        } else if (state == WorkoutState.Paused) {
+            SecondaryBtn(text = "Resume", onClick = onPauseToggle)
+        }
+    }
+}
+
+@Composable
+private fun SegmentAndTimeline(
+    workout: Workout,
+    currentSegIdx: Int,
+    elapsedInSeg: Int,
+    segLabel: String,
+    segPower: Int,
+    remainingInSeg: Int,
+    nextZone: PowerZone?,
+    zoneColor: Color,
+    timelineHeight: Dp,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val upNext: String? = nextZone?.let { "UP NEXT · Z${it.number} ${it.label.uppercase()}" }
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Topographic peak glyph in zone color.
+            Text(text = "▲", style = CadenceType.bodyStrong, color = zoneColor)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = "$segLabel · $segPower% FTP",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                // Compact: take the row's spare width and ellipsise so the timer
+                // chip stays on-line and "UP NEXT" can drop to its own line.
+                modifier = if (compact) Modifier.weight(1f) else Modifier
+            )
+            Spacer(Modifier.width(8.dp))
+            // Timer attached to the segment label as a chip — reads as
+            // "this segment, ending in 4:25".
+            SegmentTimerChip(remainingSeconds = remainingInSeg, zoneColor = zoneColor)
+            // Wide layout: "UP NEXT" sits inline on the right.
+            if (!compact && upNext != null) {
+                Spacer(Modifier.weight(1f))
+                Text(text = upNext, style = CadenceType.tick, color = nextZone.color, maxLines = 1)
             }
         }
+
+        // Compact (portrait): "UP NEXT" gets its own line so it can't be squeezed
+        // into a vertical one-letter sliver on a narrow screen.
+        if (compact && upNext != null) {
+            Text(
+                text = upNext,
+                style = CadenceType.tick,
+                color = nextZone.color,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        RidgeTimeline(
+            workout = workout,
+            currentSegIdx = currentSegIdx,
+            elapsedInSeg = elapsedInSeg,
+            height = timelineHeight
+        )
     }
 }
 

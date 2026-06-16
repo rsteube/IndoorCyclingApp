@@ -4,6 +4,29 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [1.2.2] (5) - 2026-06-16
+
+### Changed
+
+- **Ride in any orientation.** The ride screen is no longer locked to landscape -
+  it follows your device's own rotation, so you can train in portrait or
+  landscape. The HUD now picks its layout from the actual screen space: a
+  vertical stack in portrait (big power on top, cadence and heart rate beneath),
+  a compact three-across on a landscape phone, and the full three-across with the
+  live stats strip on tablets and foldables.
+
+### Fixed
+
+- **Heart rate (and the other metrics) no longer get cut off or overlap.** The
+  HUD previously switched into the tablet layout on short screens and clipped the
+  readouts; sizes now scale to the available height so nothing is hidden by
+  accident. The portrait header also reflows to two rows instead of squashing the
+  workout title and status into a sliver.
+
+### Notes
+
+- `versionCode 5`, signed with the project's release key.
+
 ## [1.2.1] (4) - 2026-06-16
 
 ### Fixed

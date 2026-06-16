@@ -17,7 +17,6 @@ package app.indoorbike
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -131,13 +130,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val metrics = resources.displayMetrics
-        val dpWidth = metrics.widthPixels / metrics.density
-        val dpHeight = metrics.heightPixels / metrics.density
-        val smallestWidth = minOf(dpWidth, dpHeight)
-        if (smallestWidth < 600) {
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
+        // Orientation is intentionally unlocked: riders can use portrait or
+        // landscape on any device. The ride HUD and the rest of the UI adapt to
+        // the available space (see RideScreen's BoxWithConstraints HUD), and the
+        // activity declares configChanges for orientation so a rotation never
+        // tears down or interrupts an in-progress ride.
 
         enableEdgeToEdge()
 
