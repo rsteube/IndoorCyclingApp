@@ -16,6 +16,7 @@
 package app.indoorbike.shared.ble
 
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
 import com.juul.kable.Peripheral
@@ -180,7 +181,7 @@ class ControllerManager {
 
     fun connectToCandidate(candidateId: String) {
         val ad = advertisementById[candidateId] ?: run {
-            Log.w(TAG, "connectToCandidate: unknown controller id=$candidateId")
+            Log.w(TAG, "connectToCandidate: unknown controller id=${redactDeviceId(candidateId)}")
             _connectionState.value = ControllerConnectionState.Error
             return
         }

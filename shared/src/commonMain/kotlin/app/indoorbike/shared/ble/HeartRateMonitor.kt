@@ -17,6 +17,7 @@ package app.indoorbike.shared.ble
 
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
 import com.juul.kable.Peripheral
@@ -150,7 +151,7 @@ class HeartRateMonitor {
 
     fun connectToCandidate(candidateId: String) {
         val ad = advertisementById[candidateId] ?: run {
-            Log.w(TAG, "connectToCandidate: unknown HRM id=$candidateId")
+            Log.w(TAG, "connectToCandidate: unknown HRM id=${redactDeviceId(candidateId)}")
             _connectionState.value = HrmConnectionState.Error
             return
         }

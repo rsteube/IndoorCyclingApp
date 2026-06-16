@@ -80,6 +80,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.service.RideSessionService
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
@@ -163,6 +164,10 @@ fun RideScreen(
     // session manager auto-pauses on this signal; the banner explains why
     // and gives the rider a path to recover.
     val fgsFailure by sessionManager.foregroundServiceFailure.collectAsState()
+    // Surfaces ERG-mode problems from the trainer (no FTMS control point, control
+    // not granted, write failed, or a command the trainer rejected) so target
+    // power not reaching the trainer doesn't fail silently.
+    val ergError by trainerManager.ergError.collectAsState()
     // Prefer the dedicated HRM if it's emitting; fall back to whatever the trainer has.
     val currentHr = if (hrmHr > 0) hrmHr else trainerHr
     val targetPower by trainerManager.targetPower.collectAsState()
@@ -312,6 +317,16 @@ fun RideScreen(
         )
 
         // Layer 2: foreground content
+        // Non-null while the "Report a problem" disclosure dialog is open; holds
+        // the specific error the rider tapped Report on so it's pre-filled.
+        var reportContext by remember { mutableStateOf<String?>(null) }
+        var showReportDialog by remember { mutableStateOf(false) }
+        if (showReportDialog) {
+            ReportProblemDialog(
+                errorContext = reportContext,
+                onDismiss = { showReportDialog = false }
+            )
+        }
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             fgsFailure?.let { msg ->
                 ForegroundServiceFailureBanner(
@@ -324,7 +339,15 @@ fun RideScreen(
                             RideSessionService.start(context)
                         }
                     },
+                    onReport = { reportContext = "Ride paused: $msg"; showReportDialog = true },
                     onDismiss = { sessionManager.clearForegroundServiceFailure() }
+                )
+            }
+            ergError?.let { msg ->
+                ErgModeErrorBanner(
+                    message = msg,
+                    onReport = { reportContext = "ERG mode: $msg"; showReportDialog = true },
+                    onDismiss = { trainerManager.clearErgError() }
                 )
             }
             RideHeader(
@@ -793,6 +816,7 @@ private fun StatTile(
 private fun ForegroundServiceFailureBanner(
     message: String,
     onRetry: () -> Unit,
+    onReport: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val shape = RoundedCornerShape(Radii.md)
@@ -837,6 +861,14 @@ private fun ForegroundServiceFailureBanner(
                         .padding(vertical = 4.dp, horizontal = 6.dp)
                 )
                 Text(
+                    text = "Report",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Brand500,
+                    modifier = Modifier
+                        .clickable(onClick = onReport)
+                        .padding(vertical = 4.dp, horizontal = 6.dp)
+                )
+                Text(
                     text = "Dismiss",
                     style = CadenceType.bodyStrong,
                     color = CadenceColors.Fg3,
@@ -845,6 +877,68 @@ private fun ForegroundServiceFailureBanner(
                         .padding(vertical = 4.dp, horizontal = 6.dp)
                 )
             }
+        }
+        IconBtn(
+            icon = Icons.Outlined.Close,
+            contentDescription = "Dismiss",
+            tint = CadenceColors.Fg3,
+            onClick = onDismiss
+        )
+    }
+}
+
+/**
+ * Warns the rider that ERG mode isn't working — target power isn't reaching the
+ * trainer. Unlike the foreground-service banner there's no Retry: the cause is
+ * the trainer/connection, so the actionable next step is to reconnect or accept
+ * a non-ERG ride. The banner clears itself once a target-power command succeeds.
+ */
+@Composable
+private fun ErgModeErrorBanner(
+    message: String,
+    onReport: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
+            .clip(shape)
+            .background(CadenceColors.Danger.copy(alpha = 0.15f))
+            .border(1.dp, CadenceColors.Danger.copy(alpha = 0.4f), shape)
+            .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.WarningAmber,
+            contentDescription = null,
+            tint = CadenceColors.Danger,
+            modifier = Modifier.size(20.dp).padding(top = 2.dp)
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "ERG mode problem",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Text(
+                text = message,
+                style = CadenceType.small,
+                color = CadenceColors.Fg2
+            )
+            Text(
+                text = "Report",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Brand500,
+                modifier = Modifier
+                    .clickable(onClick = onReport)
+                    .padding(vertical = 4.dp, horizontal = 6.dp)
+            )
         }
         IconBtn(
             icon = Icons.Outlined.Close,

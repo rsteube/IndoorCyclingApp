@@ -16,6 +16,7 @@
 package app.indoorbike.shared.ble
 
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
 import com.juul.kable.Filter
@@ -94,6 +95,16 @@ class TrainerManager {
     private val _targetPower = MutableStateFlow(0)
     val targetPower: StateFlow<Int> = _targetPower.asStateFlow()
 
+    /**
+     * Human-readable ERG-mode problem, or `null` when ERG is healthy. The UI
+     * surfaces this as a banner so the rider knows when target power isn't
+     * actually reaching the trainer (trainer can't do ERG, control couldn't be
+     * taken, a write failed, or the trainer rejected the command). Cleared on a
+     * successful target-power command and on each new connection.
+     */
+    private val _ergError = MutableStateFlow<String?>(null)
+    val ergError: StateFlow<String?> = _ergError.asStateFlow()
+
     private val _isMockTrainer = MutableStateFlow(false)
     val isMockTrainer: StateFlow<Boolean> = _isMockTrainer.asStateFlow()
 
@@ -130,21 +141,42 @@ class TrainerManager {
     fun setTargetPower(watts: Int) {
         val clamped = watts.coerceAtLeast(0)
         _targetPower.value = clamped
-        ftmsControlPointWriter?.let { writer ->
-            scope.launch {
-                try {
-                    // FTMS Control Point: 0x05 = Set Target Power, int16 LE watts
-                    val payload = byteArrayOf(
-                        0x05,
-                        (clamped and 0xFF).toByte(),
-                        ((clamped shr 8) and 0xFF).toByte()
-                    )
-                    writer(payload)
-                } catch (e: Exception) {
-                    Log.w(TAG, "FTMS Set Target Power write failed: $clamped W", e)
-                }
+        val writer = ftmsControlPointWriter
+        if (writer == null) {
+            // No FTMS Control Point on this peripheral. Only a problem for a real
+            // trainer we're actually connected to — the mock path and the
+            // disconnected state legitimately have no writer.
+            if (_connectionState.value == TrainerConnectionState.Connected && !_isMockTrainer.value) {
+                _ergError.value = "This trainer doesn't support ERG mode " +
+                    "(no FTMS control point). Target power can't be set automatically."
+            }
+            return
+        }
+        scope.launch {
+            try {
+                // FTMS Control Point: 0x05 = Set Target Power, int16 LE watts
+                val payload = byteArrayOf(
+                    0x05,
+                    (clamped and 0xFF).toByte(),
+                    ((clamped shr 8) and 0xFF).toByte()
+                )
+                writer(payload)
+                // The BLE write was acknowledged. A trainer that rejects the
+                // command still reports it via the control-point indication
+                // (handled in startTelemetrySubscriptions), which will re-raise
+                // the error; for now clear any stale transient failure.
+                _ergError.value = null
+            } catch (e: Exception) {
+                Log.w(TAG, "FTMS Set Target Power write failed: $clamped W", e)
+                _ergError.value = "Couldn't send target power to the trainer. " +
+                    "ERG mode may not be working."
             }
         }
+    }
+
+    /** Dismiss the current ERG error banner. */
+    fun clearErgError() {
+        _ergError.value = null
     }
 
     fun toggleMockPedaling() {
@@ -256,7 +288,7 @@ class TrainerManager {
         // Look up the underlying advertisement; we keep it around because Kable
         // requires the Advertisement (or the specific platform handle) to peripheral().
         val ad = lastAdvertisements[candidateId] ?: run {
-            Log.w(TAG, "connectToCandidate: unknown id=$candidateId")
+            Log.w(TAG, "connectToCandidate: unknown id=${redactDeviceId(candidateId)}")
             _connectionState.value = TrainerConnectionState.Error
             return
         }
@@ -345,6 +377,7 @@ class TrainerManager {
                         is State.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
                         is State.Connected -> {
                             _connectionState.value = TrainerConnectionState.Connected
+                            _ergError.value = null
                             startTelemetrySubscriptions(peripheral)
                         }
                         is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
@@ -355,6 +388,7 @@ class TrainerManager {
                             ftmsControlPointWriter = null
                             activePeripheral = null
                             _connectedTrainerName.value = null
+                            _ergError.value = null
                         }
                     }
                 }.launchIn(scope)
@@ -430,22 +464,65 @@ class TrainerManager {
             }
         }
 
-        // FTMS Control Point — capture a writer closure so setTargetPower works.
-        // Not an observe, so doesn't go in `jobs`; the writer reference itself
-        // is invalidated on disconnect via `ftmsControlPointWriter = null`.
+        // FTMS Control Point — capture a writer closure so setTargetPower works,
+        // and observe it for the machine's Response Code indications. The writer
+        // reference is invalidated on disconnect via `ftmsControlPointWriter = null`;
+        // the observe job is tracked in `jobs` so it's cancelled on disconnect.
         try {
             val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, FTMS_CONTROL_POINT)
             if (char != null) {
                 ftmsControlPointWriter = { payload ->
                     peripheral.write(char, payload, WriteType.WithResponse)
                 }
+                // The FTMS Control Point is Write + Indicate: per spec the machine
+                // answers every command with a Response Code (0x80) indication, and
+                // strict trainers (e.g. Zwift Hub) refuse to honor any control write —
+                // including Request Control and Set Target Power — until the client has
+                // enabled indications on the CCCD. Observing the characteristic enables
+                // them and lets us report rejected commands back to the rider.
+                jobs += peripheral.observe(char)
+                    .onEach { bytes -> handleControlPointResponse(bytes) }
+                    .catch { Log.w(TAG, "FTMS control point observe failed", it) }
+                    .launchIn(scope)
                 // Request control: opcode 0x00.
                 runCatching { peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse) }
-                    .onFailure { Log.w(TAG, "FTMS request control failed", it) }
+                    .onFailure {
+                        Log.w(TAG, "FTMS request control failed", it)
+                        _ergError.value = "Couldn't take control of the trainer for " +
+                            "ERG mode. Target power may not be applied."
+                    }
             }
         } catch (e: Exception) {
             Log.w(TAG, "FTMS control point setup failed", e)
         }
+    }
+
+    /**
+     * Parse an FTMS Control Point indication. The machine answers every command
+     * with `[0x80, requestOpCode, resultCode, ...]`. A success (0x01) for a Set
+     * Target Power request clears any lingering ERG error; any other result code
+     * is surfaced to the rider so a silently-rejected command doesn't look like
+     * working ERG.
+     */
+    internal fun handleControlPointResponse(bytes: ByteArray) {
+        val hex = bytes.joinToString(" ") { b -> (b.toInt() and 0xFF).toString(16) }
+        Log.d(TAG, "FTMS control point response: $hex")
+        if (bytes.size < 3 || (bytes[0].toInt() and 0xFF) != 0x80) return
+        val requestOpCode = bytes[1].toInt() and 0xFF
+        val resultCode = bytes[2].toInt() and 0xFF
+        if (resultCode == 0x01) {
+            // Success. Clear the banner once the trainer confirms it took the
+            // Set Target Power (0x05) command.
+            if (requestOpCode == 0x05) _ergError.value = null
+            return
+        }
+        val reason = when (resultCode) {
+            0x02 -> "the command isn't supported"
+            0x03 -> "the target power was out of range"
+            0x05 -> "control wasn't granted"
+            else -> "the trainer reported an error"
+        }
+        _ergError.value = "Trainer rejected the ERG command: $reason."
     }
 
     private fun touchTelemetry() {

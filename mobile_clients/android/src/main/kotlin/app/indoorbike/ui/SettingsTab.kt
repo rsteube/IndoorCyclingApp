@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.BluetoothSearching
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MonitorHeart
@@ -62,6 +63,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
@@ -135,6 +137,11 @@ fun SettingsTab(
 
             SectionHeader("ABOUT")
             AboutCard()
+
+            Spacer(modifier = Modifier.height(Spacing.s6))
+
+            SectionHeader("FEEDBACK")
+            ReportProblemCard()
 
             Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             Spacer(modifier = Modifier.height(Spacing.s5))
@@ -890,6 +897,72 @@ private fun AboutRow(label: String, value: String) {
     ) {
         Text(text = label, style = CadenceType.body, color = CadenceColors.Fg2)
         Text(text = value, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+    }
+}
+
+// ─── Feedback · report a problem ──────────────────────────────────────────────
+
+/**
+ * Drafts a bug-report email to the developer. The card text discloses up front
+ * what's collected (device info + diagnostic logs, no personal data) and that
+ * nothing is sent automatically; the confirmation dialog repeats it before the
+ * email app actually opens.
+ */
+@Composable
+private fun ReportProblemCard() {
+    var showDialog by remember { mutableStateOf(false) }
+
+    val shape = RoundedCornerShape(Radii.md)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .padding(Spacing.s5),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.BugReport,
+                    contentDescription = null,
+                    tint = CadenceColors.Brand500,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(Modifier.width(Spacing.s3))
+            Text(text = "Report a problem", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+        }
+
+        Text(
+            text = "Found a bug? This drafts an email to the developer with your device model, " +
+                "Android and app version, and recent diagnostic logs. No personal data (no name, " +
+                "email, body metrics, or location) is included. Nothing is sent until you press " +
+                "send in your email app.",
+            style = CadenceType.small,
+            color = CadenceColors.Fg3
+        )
+
+        PrimaryBtn(
+            text = "Report a problem",
+            leadingIcon = Icons.Outlined.BugReport,
+            onClick = { showDialog = true },
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+
+    if (showDialog) {
+        ReportProblemDialog(
+            errorContext = null,
+            onDismiss = { showDialog = false }
+        )
     }
 }
 

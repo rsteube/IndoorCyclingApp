@@ -35,7 +35,7 @@ Structured workouts use Power Zones based on percentages of Functional Threshold
 Implemented in `shared/.../ble/TrainerManager.kt` using **juul/kable** (KMM-friendly, F-Droid clean). The manager is a regular `class` (not an `object`); a single instance is owned by `AppContainer`.
 
 - **Cycling Power Service** (`0x1818`) → Cycling Power Measurement (`0x2A63`) is the primary source for instantaneous power and crank-revolution-derived cadence.
-- **Fitness Machine Service** (`0x1826`) → Indoor Bike Data (`0x2AD2`) is a fallback for power/cadence on FTMS-only trainers; FTMS Control Point (`0x2AD9`) is used to write target power in ERG mode (opcode 0x05, sint16-LE watts; opcode 0x00 requests control on connect).
+- **Fitness Machine Service** (`0x1826`) → Indoor Bike Data (`0x2AD2`) is a fallback for power/cadence on FTMS-only trainers; FTMS Control Point (`0x2AD9`) is used to write target power in ERG mode (opcode 0x05, sint16-LE watts; opcode 0x00 requests control on connect). Indications on the Control Point are enabled (via `observe`) before any command is written, because the spec requires it and strict trainers such as the Zwift Hub silently reject control writes otherwise.
 - **Heart Rate Service** (`0x180D`) → Heart Rate Measurement (`0x2A37`) is subscribed if the peripheral exposes it.
 - The UI consumes a domain `TrainerCandidate(id, name, rssi)` rather than `com.juul.kable.Advertisement`, so swapping BLE libraries doesn't ripple into the UI layer.
 - `peripheral.state` listener and per-characteristic `observe` jobs are explicitly tracked and cancelled across reconnects (no leaks).
@@ -294,3 +294,11 @@ Note `deviceId` is a random UUID in DataStore, which Auto Backup **excludes** ([
 - **Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0) as a visual stand-in.
 - **Mock trainer toggle**: in-ride mock toggle is gated behind `BuildConfig.DEBUG` so release builds don't expose dev affordances.
 - **Activity export**: FIT and TCX are written by hand-rolled pure-Kotlin encoders in `shared/` (no third-party dep); the rider exports a past activity to a file via the OS share sheet, or uploads to Intervals.icu. See "Activity export (FIT / TCX) + Intervals.icu cloud sync" above.
+
+### Diagnostics & bug reports
+
+There is no remote logger or crash reporter (F-Droid posture). `Log` ([`shared/.../util/Logger.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/util/Logger.kt)) writes to Logcat in debug builds only, and mirrors every line into [`DiagnosticsLog`](../shared/src/androidMain/kotlin/app/indoorbike/shared/util/DiagnosticsLog.kt) - an in-memory ring buffer (last 300 lines) that is kept in **all** build types so release users have something to attach to a report. It is RAM-only: never persisted, never sent, surfaced only when the user explicitly drafts a report.
+
+"Report a problem" (Settings → FEEDBACK card, and a **Report** link on each in-app error banner) routes through [`BugReport`](../mobile_clients/android/src/main/kotlin/app/indoorbike/feedback/BugReport.kt), which assembles device info (model, Android version, app version) + the buffered logs and opens an `ACTION_SEND` email draft to the developer (recipient/subject/body pre-filled, logs also attached as a `.txt` via the existing `FileProvider`). Nothing is sent automatically - the user reviews and sends. A [`ReportProblemDialog`](../mobile_clients/android/src/main/kotlin/app/indoorbike/feedback/ReportProblemDialog.kt) discloses what's collected before the draft opens.
+
+**No personal data is ever logged** - this is a hard invariant, since these lines can leave the device. The app logs only technical state (BLE connection events, FTMS protocol bytes, parse failures, counts); body metrics / credentials / names are never logged, and BLE device identifiers are masked via [`redactDeviceId`](../shared/src/commonMain/kotlin/app/indoorbike/shared/util/Redaction.kt). Keep it that way when adding log calls.
