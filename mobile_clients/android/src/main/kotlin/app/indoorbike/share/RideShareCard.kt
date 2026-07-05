@@ -334,6 +334,14 @@ private fun ChartBody(
     } else 0
     val maxChartPct = maxOf(targetMaxPct, telemetryMaxPct).coerceAtLeast(60)
 
+    // When a planned workout is present, the background zone bars span the full
+    // planned duration. The actual power curve must be plotted on that same time
+    // axis (elapsed time / planned total) rather than being stretched across the
+    // whole width - otherwise a ride that ends early leaves the curve and the
+    // background on different scales.
+    val plannedTotalSec = workout?.segments?.sumOf { it.lengthInSeconds.coerceAtLeast(1) } ?: 0
+    val firstTs = telemetry.firstOrNull()?.timestampEpoch ?: 0L
+
     Box(modifier = Modifier.fillMaxSize()) {
         if (workout != null && workout.segments.isNotEmpty()) {
             Row(
@@ -381,7 +389,12 @@ private fun ChartBody(
                 val n = telemetry.size
                 val path = Path()
                 telemetry.forEachIndexed { i, p ->
-                    val x = (i.toFloat() / (n - 1)) * w
+                    val x = if (plannedTotalSec > 0) {
+                        val elapsedSec = (p.timestampEpoch - firstTs) / 1000f
+                        ((elapsedSec / plannedTotalSec) * w).coerceIn(0f, w)
+                    } else {
+                        (i.toFloat() / (n - 1)) * w
+                    }
                     val pct = (p.power.toFloat() / ftp * 100f).coerceAtLeast(0f)
                     val y = (h - (pct / maxChartPct) * h).coerceIn(0f, h)
                     if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)

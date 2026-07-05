@@ -160,6 +160,71 @@ class TrainerManager {
     private var ftmsControlGranted = false
     private var ftmsControlRetries = 0
 
+    // ── TEMP DEBUG BUILD: verbose connectivity/ERG diagnostics ────────────────
+    // Throwaway instrumentation to chase a Zwift Hub "ERG ACKs but doesn't apply"
+    // report. Everything tagged DIAG_TAG is mirrored into DiagnosticsLog and rides
+    // out via the normal "Report a problem" export. Remove this whole block (and
+    // its call sites) on rollback.
+    private var lastPeripheralState: String = "n/a"
+    private var firstCpsLogged = false
+    private var firstIbdLogged = false
+    private var firstHrLogged = false
+    private var firstCpLogged = false
+    private var setTargetCount = 0
+    private var ergWriteCount = 0
+
+    private fun diag(message: String) = Log.i(DIAG_TAG, message)
+
+    private fun connectivitySnapshot(prefix: String): String {
+        val ageMs = if (_lastTelemetryEpochMs.value == 0L) -1 else nowMs() - _lastTelemetryEpochMs.value
+        return "$prefix | state=${_connectionState.value} periph=$lastPeripheralState " +
+            "name=${_connectedTrainerName.value} mock=${_isMockTrainer.value} " +
+            "writer=${ftmsControlPointWriter != null} ctrlGranted=$ftmsControlGranted " +
+            "retries=$ftmsControlRetries target=${_targetPower.value}W power=${_power.value}W " +
+            "cadence=${_cadence.value} hr=${_heartRate.value} telemetryAgeMs=$ageMs " +
+            "ergError=${_ergError.value} wantReconnect=${wantReconnect.value} " +
+            "scanAllowed=${scanningAllowed.value} setTargetCalls=$setTargetCount ergWrites=$ergWriteCount"
+    }
+
+    /**
+     * TEMP DEBUG BUILD: periodic connectivity/ERG heartbeat. Logs a full snapshot
+     * every few seconds and flags the smoking gun for this bug — rider pedaling
+     * with a target set, control granted + ACKed, yet actual power stays well
+     * below target (resistance never applied despite the trainer's success
+     * indications). Started from [init]; cancelled with the scope on [dispose].
+     */
+    private suspend fun healthMonitor() {
+        var tick = 0
+        while (true) {
+            delay(HEALTH_INTERVAL_MS)
+            tick++
+            diag(connectivitySnapshot("health#$tick"))
+            if (_connectionState.value == TrainerConnectionState.Connected &&
+                !_isMockTrainer.value &&
+                _targetPower.value > 0 &&
+                _cadence.value > 0 &&
+                _power.value < _targetPower.value / 2
+            ) {
+                diag(
+                    "HEALTH WARNING: pedaling (cad=${_cadence.value}) with target=${_targetPower.value}W " +
+                        "but power=${_power.value}W (<50% of target). Trainer may be ACKing ERG without " +
+                        "applying resistance. ctrlGranted=$ftmsControlGranted writer=${ftmsControlPointWriter != null} " +
+                        "ergError=${_ergError.value}"
+                )
+            }
+            if (_connectionState.value == TrainerConnectionState.Connected &&
+                !_isMockTrainer.value &&
+                _lastTelemetryEpochMs.value > 0L &&
+                nowMs() - _lastTelemetryEpochMs.value > 5_000
+            ) {
+                diag(
+                    "HEALTH WARNING: connected but no telemetry for " +
+                        "${nowMs() - _lastTelemetryEpochMs.value}ms — notifications may have stalled."
+                )
+            }
+        }
+    }
+
     private var isMockPedaling = false
     // Cadence math from CPS uses crank revolution timestamps to derive RPM.
     private var lastCrankRevs: Int? = null
@@ -179,13 +244,22 @@ class TrainerManager {
     fun setTargetPower(watts: Int) {
         val clamped = watts.coerceAtLeast(0)
         _targetPower.value = clamped
+        setTargetCount++
+        diag(
+            "setTargetPower(req=$watts clamped=$clamped) #$setTargetCount | " +
+                "state=${_connectionState.value} writer=${ftmsControlPointWriter != null} " +
+                "ctrlGranted=$ftmsControlGranted mock=${_isMockTrainer.value}"
+        )
         if (ftmsControlPointWriter == null) {
             // No FTMS Control Point on this peripheral. Only a problem for a real
             // trainer we're actually connected to — the mock path and the
             // disconnected state legitimately have no writer.
             if (_connectionState.value == TrainerConnectionState.Connected && !_isMockTrainer.value) {
+                diag("setTargetPower: SILENT-FAIL GUARD — connected real trainer but writer is null (no FTMS control point captured)")
                 _ergError.value = "This trainer doesn't support ERG mode " +
                     "(no FTMS control point). Target power can't be set automatically."
+            } else {
+                diag("setTargetPower: no writer (mock or not connected) — ignoring, this is expected")
             }
             return
         }
@@ -203,26 +277,34 @@ class TrainerManager {
      * replying "Control Not Permitted". Also used by the rejection-recovery path.
      */
     private fun writeTargetPower(watts: Int) {
-        val writer = ftmsControlPointWriter ?: return
+        val writer = ftmsControlPointWriter ?: run {
+            diag("writeTargetPower($watts): SILENT-FAIL GUARD — writer became null, dropping write")
+            return
+        }
         val clamped = watts.coerceAtLeast(0)
         scope.launch {
+            ergWriteCount++
             try {
                 if (!ftmsControlGranted) {
+                    diag("writeTargetPower: control not yet granted — sending Request Control (0x00) first")
                     writer(byteArrayOf(0x00)) // Request Control
+                    diag("writeTargetPower: Request Control (0x00) write returned (BLE-acked)")
                 }
-                writer(
-                    byteArrayOf(
-                        0x05,
-                        (clamped and 0xFF).toByte(),
-                        ((clamped shr 8) and 0xFF).toByte()
-                    )
+                val payload = byteArrayOf(
+                    0x05,
+                    (clamped and 0xFF).toByte(),
+                    ((clamped shr 8) and 0xFF).toByte()
                 )
+                diag("writeTargetPower: writing Set Target Power (0x05) ${payload.toHex()} = ${clamped}W (ergWrite#$ergWriteCount)")
+                writer(payload)
+                diag("writeTargetPower: Set Target Power (0x05) write returned (BLE-acked); awaiting control-point indication")
                 // The BLE write was acknowledged. A trainer that rejects the
                 // command still reports it via the control-point indication
                 // (handleControlPointResponse), which drives recovery / errors;
                 // for now clear any stale transient failure.
                 _ergError.value = null
             } catch (e: Exception) {
+                diag("writeTargetPower: WRITE FAILED for ${clamped}W: ${e::class.simpleName}: ${e.message}")
                 Log.w(TAG, "FTMS Set Target Power write failed: $clamped W", e)
                 _ergError.value = "Couldn't send target power to the trainer. " +
                     "ERG mode may not be working."
@@ -466,7 +548,12 @@ class TrainerManager {
 
     // Declared after all state the supervisor touches, so they're initialised
     // before its coroutine body runs.
-    init { scope.launch { reconnectSupervisor() } }
+    init {
+        scope.launch { reconnectSupervisor() }
+        // TEMP DEBUG BUILD: periodic connectivity/ERG heartbeat.
+        scope.launch { healthMonitor() }
+        diag("TrainerManager init — verbose diagnostics build active")
+    }
 
     private fun addDiscovered(ad: Advertisement) {
         lastAdvertisements[ad.identifier] = ad
@@ -481,6 +568,10 @@ class TrainerManager {
     }
 
     private fun connectInternal(advertisement: Advertisement) {
+        diag(
+            "connectInternal: id=${redactDeviceId(advertisement.identifier)} " +
+                "name=${advertisement.name} rssi=${advertisement.rssi}"
+        )
         stopScan()
         _connectionState.value = TrainerConnectionState.Connecting
         _pairedTrainerId.value = advertisement.identifier
@@ -518,9 +609,12 @@ class TrainerManager {
                 activePeripheral = peripheral
 
                 stateListenerJob = peripheral.state.onEach { state ->
+                    lastPeripheralState = state::class.simpleName ?: state.toString()
+                    diag("peripheral.state -> $lastPeripheralState")
                     when (state) {
                         is State.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
                         is State.Connected -> {
+                            diag("peripheral CONNECTED — starting telemetry subscriptions")
                             _connectionState.value = TrainerConnectionState.Connected
                             _ergError.value = null
                             _justConnected.tryEmit(_connectedTrainerName.value ?: "Trainer")
@@ -528,6 +622,10 @@ class TrainerManager {
                         }
                         is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
                         is State.Disconnected -> {
+                            diag(
+                                "peripheral DISCONNECTED (status=${runCatching { state.status?.toString() }.getOrNull()}) " +
+                                    "— tearing down telemetry + control writer"
+                            )
                             _connectionState.value = TrainerConnectionState.Disconnected
                             telemetryJobs.forEach { it.cancel() }
                             telemetryJobs = emptyList()
@@ -540,8 +638,11 @@ class TrainerManager {
                     }
                 }.launchIn(scope)
 
+                diag("connectInternal: calling peripheral.connect()")
                 peripheral.connect()
+                diag("connectInternal: peripheral.connect() returned")
             } catch (e: Exception) {
+                diag("connectInternal: CONNECT FAILED: ${e::class.simpleName}: ${e.message}")
                 Log.e(TAG, "Connect failed", e)
                 _connectionState.value = TrainerConnectionState.Error
                 activePeripheral = null
@@ -573,38 +674,69 @@ class TrainerManager {
         val jobs = mutableListOf<Job>()
         telemetryJobs = jobs
 
+        // TEMP DEBUG BUILD: dump every discovered service + characteristic so we
+        // can see exactly what the trainer exposes (and whether the FTMS Control
+        // Point and its properties are actually present).
+        val services = peripheral.services
+        diag("GATT services discovered: ${services?.size ?: "null"}")
+        services?.forEach { svc ->
+            diag("  service ${svc.serviceUuid}")
+            svc.characteristics.forEach { c ->
+                diag("    char ${c.characteristicUuid}")
+            }
+        }
+
         suspend fun trySubscribe(
             label: String,
             service: String,
             characteristic: String,
+            onFirst: () -> Unit,
             onBytes: (ByteArray) -> Unit,
         ) {
             try {
-                val char = peripheral.findCharacteristic(service, characteristic) ?: return
+                val char = peripheral.findCharacteristic(service, characteristic)
+                if (char == null) {
+                    diag("subscribe[$label]: characteristic NOT FOUND (service=$service char=$characteristic)")
+                    return
+                }
+                diag("subscribe[$label]: found, starting observe")
                 jobs += peripheral.observe(char)
-                    .onEach { onBytes(it) }
-                    .catch { Log.w(TAG, "$label observe failed", it) }
+                    .onEach {
+                        onFirst()
+                        onBytes(it)
+                    }
+                    .catch {
+                        diag("subscribe[$label]: OBSERVE FAILED: ${it::class.simpleName}: ${it.message}")
+                        Log.w(TAG, "$label observe failed", it)
+                    }
                     .launchIn(scope)
             } catch (e: Exception) {
+                diag("subscribe[$label]: SUBSCRIBE EXCEPTION: ${e::class.simpleName}: ${e.message}")
                 Log.w(TAG, "$label subscribe failed", e)
             }
         }
 
-        trySubscribe("CPS", CYCLING_POWER_SERVICE, CYCLING_POWER_MEASUREMENT) { bytes ->
+        trySubscribe("CPS", CYCLING_POWER_SERVICE, CYCLING_POWER_MEASUREMENT, onFirst = {
+            if (!firstCpsLogged) { firstCpsLogged = true; diag("CPS: first notification received") }
+        }) { bytes ->
             parseCyclingPowerMeasurement(bytes)?.let { reading ->
                 _power.value = reading.powerWatts
                 reading.cadenceRpm?.let { _cadence.value = it }
                 touchTelemetry()
             }
         }
-        trySubscribe("Indoor Bike Data", FITNESS_MACHINE_SERVICE, INDOOR_BIKE_DATA) { bytes ->
+        trySubscribe("Indoor Bike Data", FITNESS_MACHINE_SERVICE, INDOOR_BIKE_DATA, onFirst = {
+            if (!firstIbdLogged) { firstIbdLogged = true; diag("IBD: first notification received") }
+        }) { bytes ->
             parseIndoorBikeData(bytes)?.let { reading ->
                 if (_power.value == 0) reading.powerWatts?.let { _power.value = it }
                 if (_cadence.value == 0) reading.cadenceRpm?.let { _cadence.value = it }
                 touchTelemetry()
             }
         }
-        trySubscribe("HR", HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT) { bytes ->
+        trySubscribe("HR", HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT, onFirst = {
+            if (!firstHrLogged) { firstHrLogged = true; diag("HR: first notification received") }
+        }) { bytes ->
             parseHeartRateMeasurement(bytes)?.let { hr ->
                 _heartRate.value = hr
                 touchTelemetry()
@@ -617,7 +749,11 @@ class TrainerManager {
         // the observe job is tracked in `jobs` so it's cancelled on disconnect.
         try {
             val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, FTMS_CONTROL_POINT)
+            if (char == null) {
+                diag("FTMS Control Point (0x2AD9) NOT FOUND — ERG will be impossible, writer stays null")
+            }
             if (char != null) {
+                diag("FTMS Control Point found — capturing writer")
                 // Fresh connection: control hasn't been granted yet.
                 ftmsControlGranted = false
                 ftmsControlRetries = 0
@@ -630,9 +766,16 @@ class TrainerManager {
                 // including Request Control and Set Target Power — until the client has
                 // enabled indications on the CCCD. Observing the characteristic enables
                 // them and lets us report rejected commands back to the rider.
+                diag("FTMS Control Point: starting observe (enables CCCD indications)")
                 jobs += peripheral.observe(char)
-                    .onEach { bytes -> handleControlPointResponse(bytes) }
-                    .catch { Log.w(TAG, "FTMS control point observe failed", it) }
+                    .onEach { bytes ->
+                        if (!firstCpLogged) { firstCpLogged = true; diag("FTMS Control Point: first indication received") }
+                        handleControlPointResponse(bytes)
+                    }
+                    .catch {
+                        diag("FTMS Control Point: OBSERVE FAILED: ${it::class.simpleName}: ${it.message}")
+                        Log.w(TAG, "FTMS control point observe failed", it)
+                    }
                     .launchIn(scope)
                 // Best-effort early Request Control (0x00). If it lands and the
                 // trainer grants control, the success indication sets
@@ -641,10 +784,16 @@ class TrainerManager {
                 // before indications are fully enabled), it's not fatal:
                 // setTargetPower pairs a fresh Request Control with the target
                 // write and recovers from any "Control Not Permitted" reply.
+                diag("FTMS Control Point: sending early Request Control (0x00)")
                 runCatching { peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse) }
-                    .onFailure { Log.w(TAG, "FTMS early request-control failed (will retry on target write)", it) }
+                    .onSuccess { diag("FTMS early Request Control write returned (BLE-acked)") }
+                    .onFailure {
+                        diag("FTMS early Request Control FAILED (benign, retries on target write): ${it::class.simpleName}: ${it.message}")
+                        Log.w(TAG, "FTMS early request-control failed (will retry on target write)", it)
+                    }
             }
         } catch (e: Exception) {
+            diag("FTMS control point setup EXCEPTION: ${e::class.simpleName}: ${e.message}")
             Log.w(TAG, "FTMS control point setup failed", e)
         }
     }
@@ -664,9 +813,27 @@ class TrainerManager {
     internal fun handleControlPointResponse(bytes: ByteArray) {
         val hex = bytes.joinToString(" ") { b -> (b.toInt() and 0xFF).toString(16) }
         Log.d(TAG, "FTMS control point response: $hex")
-        if (bytes.size < 3 || (bytes[0].toInt() and 0xFF) != 0x80) return
+        if (bytes.size < 3 || (bytes[0].toInt() and 0xFF) != 0x80) {
+            diag("control-point indication ignored (not a 0x80 response code): $hex")
+            return
+        }
         val requestOpCode = bytes[1].toInt() and 0xFF
         val resultCode = bytes[2].toInt() and 0xFF
+        val opName = when (requestOpCode) {
+            0x00 -> "RequestControl"
+            0x05 -> "SetTargetPower"
+            0x07 -> "Start/Resume"
+            else -> "op0x${requestOpCode.toString(16)}"
+        }
+        val resName = when (resultCode) {
+            0x01 -> "Success"
+            0x02 -> "OpNotSupported"
+            0x03 -> "InvalidParameter"
+            0x04 -> "OperationFailed"
+            0x05 -> "ControlNotPermitted"
+            else -> "result0x${resultCode.toString(16)}"
+        }
+        diag("control-point indication: $opName -> $resName (raw $hex) ctrlGranted=$ftmsControlGranted target=${_targetPower.value}W")
 
         if (resultCode == 0x01) { // Success
             when (requestOpCode) {
@@ -852,6 +1019,10 @@ class TrainerManager {
     companion object {
         private const val TAG = "TrainerManager"
 
+        // TEMP DEBUG BUILD: verbose diagnostics tag + heartbeat interval.
+        private const val DIAG_TAG = "TrainerDiag"
+        private const val HEALTH_INTERVAL_MS = 3_000L
+
         /**
          * How many times a "Control Not Permitted" rejection triggers an
          * automatic re-request of control + target re-apply before we stop and
@@ -880,3 +1051,7 @@ class TrainerManager {
 
 // nowMs() is provided by util.TimeUtils — re-exported for readability inside this file.
 private fun nowMs(): Long = app.indoorbike.shared.util.getCurrentEpochMillis()
+
+// TEMP DEBUG BUILD: hex formatter for FTMS payload tracing.
+private fun ByteArray.toHex(): String =
+    joinToString(" ") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }

@@ -743,17 +743,14 @@ private fun RideHeader(
     ) {
         IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
 
+        // The ride name is intentionally omitted in the wide layout: with the back
+        // button, clock and controls on a single row there isn't room for it, and a
+        // growing elapsed clock would otherwise wrap to two lines and flicker. Only
+        // the live state (STANDBY / PAUSED) is kept here.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.weight(1f).padding(horizontal = Spacing.s4)
         ) {
-            Text(
-                text = workoutName,
-                style = CadenceType.h3,
-                color = CadenceColors.Fg1,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-            )
             if (stateText != null) {
                 Text(stateText, style = CadenceType.tick, color = stateColor, maxLines = 1)
             }
@@ -763,13 +760,20 @@ private fun RideHeader(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Fixed width so the elapsed clock ticking from "0:00" → "31:00" doesn't
-            // resize the time block and shove the buttons around.
+            // Fixed width so the elapsed clock ticking from "0:00" → "1:23:45" doesn't
+            // resize the time block and shove the buttons around. softWrap = false +
+            // maxLines = 1 guarantee the clock stays on one line (no wrap flicker).
             Box(
-                modifier = Modifier.width(180.dp),
+                modifier = Modifier.width(220.dp),
                 contentAlignment = Alignment.CenterEnd
             ) {
-                Text(text = timeText, style = CadenceType.h3, color = CadenceColors.Fg1)
+                Text(
+                    text = timeText,
+                    style = CadenceType.h3,
+                    color = CadenceColors.Fg1,
+                    maxLines = 1,
+                    softWrap = false
+                )
             }
             RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle)
         }
