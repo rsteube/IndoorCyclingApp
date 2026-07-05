@@ -35,10 +35,7 @@ import java.util.Locale
  * could identify a person, since these lines can leave the device via a report.
  */
 object DiagnosticsLog {
-    // TEMP DEBUG BUILD: bumped from 300 so the verbose connectivity/ERG tracing
-    // and the periodic health monitor don't evict the early connection timeline
-    // before the user exports a report. Revert to 300 when rolling this back.
-    private const val MAX_ENTRIES = 8000
+    private const val MAX_ENTRIES = 300
 
     // Single formatter reused under the lock (SimpleDateFormat isn't thread-safe;
     // every access here is inside a @Synchronized method, so this is fine).

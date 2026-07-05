@@ -4,6 +4,55 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [1.3] (6) - 2026-07-05
+
+### Added
+
+- **End & save a paused ride.** When a ride is paused - either you paused it, or
+  it auto-paused because you stopped pedaling - you can now tap **End & save** to
+  finish and keep it in your history, instead of having to pedal all the way to
+  the end. A short confirmation spells out that the ride so far is saved and
+  can't be resumed.
+- **Redesigned home screen.** The "Ride" screen now leads with an **Up next**
+  hero that proposes one workout to do next (an unfinished ride, else your
+  last-ridden workout, else a newest favourite), and starts it in a single tap
+  when the trainer is connected. Below it, a **Quick picks** shelf surfaces your
+  starred and most-ridden workouts.
+- **Search and duration filters.** Find a workout by name or tag, and filter the
+  library by length (up to 30 min, 30-60, or 60+) alongside the existing
+  Favourites and tag filters.
+- **Favourite from the list.** Star or unstar a workout straight from the library
+  row, without opening it first.
+- **Ride again from history.** Each past session now has a **Ride again** button
+  that jumps straight back to that workout (shown only when the workout is still
+  in your library).
+- **Trainer status chip and QR scan in the top bar.** The home top bar now shows
+  a single trainer-status chip (device name / pair / connecting) that opens
+  pairing, plus a dedicated button to scan a workout QR code from the web editor.
+
+### Changed
+
+- **"Get workouts" screen reorganised.** Scanning a workout from the web editor
+  is now the headline action, with Import file and Paste URL as secondary tiles;
+  imported-workout management is tucked behind an expandable row and hidden
+  entirely when you have none.
+- **Cleaner ride header.** The landscape header drops the workout title so the
+  live state and clock have room, and an auto-paused ride now reads
+  "AUTO-PAUSED · PEDAL TO RESUME".
+
+### Fixed
+
+- **Shared ride card chart.** For a ride that ended early, the power curve is now
+  plotted on the planned time axis so it lines up with the workout's zone bars
+  instead of stretching across the whole width.
+- **Filter no longer strands the list.** If the active filter disappears (you
+  unstar your last favourite, or delete a workout), the list falls back to "All"
+  instead of showing nothing.
+
+### Notes
+
+- `versionCode 6`, signed with the project's release key.
+
 ## [1.2.2] (5) - 2026-06-16
 
 ### Changed
