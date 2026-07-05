@@ -327,12 +327,19 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 entries = entries,
                 eyebrow = eyebrow,
                 onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
+                onStartWorkout = { workout ->
+                    // One-tap start from the Up next hero: same prepare + route
+                    // as the detail screen's Start CTA. The hero only offers
+                    // this when the trainer is live, so no gating needed here.
+                    container.sessionManager.prepareWorkout(
+                        workout = workout,
+                        ftp = container.userSettings.ftp.value
+                    )
+                    navigator.navigate(RouteRideScreen(workout.id))
+                },
                 onOpenLibrary = { navigator.navigate(RouteLibrary) },
-                activeTab = "rides",
-                onTabSelected = { tabId ->
-                    val targetTab = TOP_LEVEL_ROUTES.entries.find { (_, v) -> v.id == tabId }?.key
-                    targetTab?.let { navigator.navigate(it) }
-                }
+                onScanQr = { navigator.navigate(RouteQrScanner) },
+                onOpenTrainerPairing = { navigator.navigate(RouteTrainerPairing) },
             )
         }
         entry<RouteLibrary> { _ ->
@@ -400,7 +407,10 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 onNavigateToOverview = { sessionId ->
                     navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = false))
                 },
-                onNavigateToRides = { navigator.navigate(TabRides) }
+                onNavigateToRides = { navigator.navigate(TabRides) },
+                onRideAgain = { workoutId ->
+                    navigator.navigate(RouteWorkoutDetail(workoutId))
+                }
             )
         }
         entry<TabProgress> { _ ->

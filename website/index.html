@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Indoor Bike - Structured workouts on your smart trainer</title>
-  <meta name="description" content="Open-source, offline-first indoor cycling app for Wahoo Kickr Core and other smart trainers. Power-zone workouts in ERG mode. No accounts, no Google services, F-Droid friendly.">
+  <title>Indoor Bike - Free, open-source structured training for your smart trainer</title>
+  <meta name="description" content="Free, open-source indoor cycling app for Android. Build workouts in your browser, beam them to your phone with a QR code, ride them in ERG mode. No account, no subscription, no tracking.">
   <meta name="theme-color" content="#0F0C09">
   <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
 
-  <meta property="og:title" content="Indoor Bike - Structured workouts on your smart trainer">
-  <meta property="og:description" content="Open-source, offline-first indoor cycling app. Power-zone workouts in ERG mode.">
+  <meta property="og:title" content="Indoor Bike - Free, open-source structured training">
+  <meta property="og:description" content="Build workouts in your browser, beam them to your phone, ride them in ERG mode. No account, no subscription, no tracking.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://indoorbike.app/">
 
@@ -23,11 +23,11 @@
         <img src="assets/logo-wordmark.svg" alt="Indoor Bike">
       </a>
       <nav class="nav" aria-label="Primary">
-        <a href="#features">Features</a>
-        <a href="#how">How it works</a>
-        <a href="#privacy">Privacy</a>
+        <a href="#flow">How it flows</a>
         <a href="editor/index.html">Editor</a>
-        <a href="community/index.html">Community</a>
+        <a href="#libraries">Libraries</a>
+        <a href="#api">API</a>
+        <a href="#privacy">Free &amp; private</a>
         <a href="#faq">FAQ</a>
       </nav>
       <a class="btn btn-primary" href="#download">
@@ -42,41 +42,180 @@
     <section class="hero">
       <div class="container">
         <div class="hero-copy">
-          <p class="eyebrow">Indoor cycling · Android · Open source</p>
-          <h1>Train by <span class="accent">power.</span><br>Ride by feel.</h1>
+          <p class="eyebrow">Indoor cycling · Android · GPLv3</p>
+          <h1>Train by <span class="accent">power.</span><br>Owe nobody <span class="accent">anything.</span></h1>
           <p class="lead">
-            Structured ERG workouts for your smart trainer, defined as plain JSON,
-            ridden against your FTP, and saved to your phone. No subscriptions,
-            no accounts, no cloud required.
+            Structured ERG workouts for your smart trainer. Build them in your
+            browser, beam them to your phone with a QR code, ride them against
+            your FTP. Everything stays on your device.
           </p>
           <div class="hero-cta">
             <a class="btn btn-primary" href="https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://codeberg.org/juhanilehtimaki/IndoorCyclingApp">
-              Get it on Obtainium
+              Get the app
             </a>
-            <a class="btn btn-secondary" href="#how">
-              See how it works <span class="arrow">→</span>
+            <a class="btn btn-secondary" href="editor/index.html">
+              Try the editor - no install <span class="arrow">→</span>
             </a>
           </div>
-          <div class="hero-meta">
-            <span class="dot" aria-hidden="true"></span>
-            <span>Wahoo Kickr Core ready</span>
-            <span aria-hidden="true">·</span>
-            <span>BLE FTMS</span>
-            <span aria-hidden="true">·</span>
-            <span>Local-first</span>
-          </div>
+          <ul class="stance-strip" aria-label="What this app never asks of you">
+            <li>Free forever</li>
+            <li>No account</li>
+            <li>No tracking</li>
+            <li>No subscription</li>
+            <li>Open source</li>
+          </ul>
         </div>
 
-        <!-- Phone screenshot -->
+        <!-- Phone mock: the new "Ride" home screen, rendered live in CSS -->
         <div class="device" aria-hidden="true">
-          <div class="device-screen">
-            <img src="assets/app-screenshot-workout.png" alt="">
+          <div class="device-screen mock">
+            <div class="m-appbar">
+              <span class="m-logo"><img src="assets/logo-mark.svg" alt=""></span>
+              <span class="m-title">Ride</span>
+              <span class="m-chip"><span class="m-dot"></span>KICKR CORE</span>
+              <span class="m-qr">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14h1M14 20h1M20 20h1"/></svg>
+              </span>
+            </div>
+            <div class="m-hero">
+              <span class="m-eyebrow">Up next · Ride again</span>
+              <span class="m-name">Sweet Spot 3×12</span>
+              <span class="m-sub">Last ridden Tuesday</span>
+              <div class="m-zonebar">
+                <i style="flex:14;background:var(--zone-1)"></i>
+                <i style="flex:24;background:var(--zone-3)"></i>
+                <i style="flex:8;background:var(--zone-1)"></i>
+                <i style="flex:24;background:var(--zone-4)"></i>
+                <i style="flex:8;background:var(--zone-1)"></i>
+                <i style="flex:14;background:var(--zone-3)"></i>
+                <i style="flex:8;background:var(--zone-1)"></i>
+              </div>
+              <div class="m-pills"><span>58 MIN</span><span>TSS 74</span><span>IF 0.88</span></div>
+              <span class="m-start">▶ Start workout</span>
+            </div>
+            <div class="m-shelf-label"><span>QUICK PICKS</span><span class="m-hint">starred + most ridden</span></div>
+            <div class="m-shelf">
+              <div class="m-mini"><span class="m-tag">★ STARRED</span><b>Threshold 2×20</b><span class="m-mt">75 MIN · TSS 92</span></div>
+              <div class="m-mini"><span class="m-tag">↻ RIDDEN 12×</span><b>Recovery Spin</b><span class="m-mt">30 MIN · TSS 21</span></div>
+            </div>
+            <div class="m-row">
+              <div class="m-row-l"><b>Endurance Builder</b>
+                <div class="m-zonebar thin">
+                  <i style="flex:20;background:var(--zone-1)"></i>
+                  <i style="flex:60;background:var(--zone-2)"></i>
+                  <i style="flex:20;background:var(--zone-1)"></i>
+                </div>
+              </div>
+              <span class="m-row-r">90 MIN<br>TSS 85</span>
+            </div>
+            <div class="m-row">
+              <div class="m-row-l"><b>VO2 Max Bursts</b>
+                <div class="m-zonebar thin">
+                  <i style="flex:20;background:var(--zone-1)"></i>
+                  <i style="flex:10;background:var(--zone-5)"></i>
+                  <i style="flex:10;background:var(--zone-1)"></i>
+                  <i style="flex:10;background:var(--zone-5)"></i>
+                  <i style="flex:10;background:var(--zone-1)"></i>
+                  <i style="flex:10;background:var(--zone-5)"></i>
+                  <i style="flex:20;background:var(--zone-1)"></i>
+                </div>
+              </div>
+              <span class="m-row-r">19 MIN<br>TSS 17</span>
+            </div>
+            <div class="m-row">
+              <div class="m-row-l"><b>Over-Under Cruisers</b>
+                <div class="m-zonebar thin">
+                  <i style="flex:15;background:var(--zone-1)"></i>
+                  <i style="flex:14;background:var(--zone-4)"></i>
+                  <i style="flex:14;background:var(--zone-3)"></i>
+                  <i style="flex:14;background:var(--zone-4)"></i>
+                  <i style="flex:14;background:var(--zone-3)"></i>
+                  <i style="flex:14;background:var(--zone-4)"></i>
+                  <i style="flex:15;background:var(--zone-1)"></i>
+                </div>
+              </div>
+              <span class="m-row-r">20 MIN<br>TSS 22</span>
+            </div>
+            <div class="m-tabbar">
+              <span class="on">Ride</span>
+              <span>History</span>
+              <span>Progress</span>
+              <span>Settings</span>
+            </div>
           </div>
         </div>
       </div>
     </section>
 
     <div class="topo-divider" aria-hidden="true"></div>
+
+    <!-- THE FLOW -->
+    <section id="flow">
+      <div class="container">
+        <p class="eyebrow">The whole idea</p>
+        <h2 class="section-title">Browser to sweat in fifteen seconds.</h2>
+        <p class="section-lead">
+          The workout editor runs right here on this site - no install, no
+          sign-up. Draw your intervals, point your phone at a QR code, and the
+          app takes over your trainer. That's the entire pipeline.
+        </p>
+
+        <div class="flow">
+          <div class="flow-step">
+            <div class="flow-stage">
+              <div class="mini-editor" aria-hidden="true">
+                <div class="mini-editor-bar">
+                  <i style="flex:2;background:var(--zone-1)"></i>
+                  <i style="flex:3;background:var(--zone-4)"></i>
+                  <i style="flex:1;background:var(--zone-1)"></i>
+                  <i style="flex:3;background:var(--zone-4)"></i>
+                  <i style="flex:1;background:var(--zone-1)"></i>
+                  <i style="flex:3;background:var(--zone-4)"></i>
+                  <i style="flex:2;background:var(--zone-1)"></i>
+                </div>
+                <span class="mini-editor-caption">Threshold 3×8 · 42 min</span>
+              </div>
+            </div>
+            <p class="flow-k">01 · In your browser</p>
+            <h3>Build</h3>
+            <p>Lay out intervals as coloured blocks in the <a href="editor/index.html">editor</a>. Durations, %FTP, repeats - tweak until the shape feels right. Works on any laptop or tablet.</p>
+          </div>
+
+          <div class="flow-step">
+            <div class="flow-stage">
+              <div class="qr-mock" aria-hidden="true">
+                <div class="qr-grid">
+                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
+                  <i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i>
+                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
+                  <i class="o"></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i>
+                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
+                  <i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i>
+                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
+                </div>
+                <div class="scanline"></div>
+              </div>
+            </div>
+            <p class="flow-k">02 · One tap in the app</p>
+            <h3>Beam</h3>
+            <p>Tap "Send to phone" in the editor, scan the QR straight from the app's home screen. The workout lands in your library and opens, ready to start. No cloud in between.</p>
+          </div>
+
+          <div class="flow-step">
+            <div class="flow-stage">
+              <div class="hud-mock" aria-hidden="true">
+                <span class="hud-w">243<em>W</em></span>
+                <span class="hud-target">TARGET 245</span>
+                <span class="hud-zone">Z4 · THRESHOLD</span>
+              </div>
+            </div>
+            <p class="flow-k">03 · On the trainer</p>
+            <h3>Ride</h3>
+            <p>ERG mode drives the trainer to each interval's wattage. You hold the cadence, it holds the watts. The finished ride saves to your phone as a file - export FIT any time.</p>
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- FEATURES -->
     <section id="features">
@@ -209,38 +348,6 @@
           </article>
         </div>
 
-        <div class="library-paths">
-          <article class="library-path">
-            <p class="eyebrow">Build your own</p>
-            <h3>Visual workout editor</h3>
-            <p>
-              Lay out intervals as coloured blocks in your browser, tweak the
-              durations and percentages until the shape feels right, and send
-              the result to your phone. No account, no upload - the workout
-              file is yours to keep, ride, or hand around.
-            </p>
-            <a class="btn btn-primary" href="editor/index.html">
-              Open the editor <span class="arrow">→</span>
-            </a>
-          </article>
-
-          <article class="library-path">
-            <p class="eyebrow">Browse community</p>
-            <h3>Workouts shared by other riders</h3>
-            <p>
-              Coaches and other riders publish packs of structured workouts
-              that anyone can browse. Open a pack, scroll through the rides
-              it contains, and tap to add the ones you want. Each workout
-              becomes a local copy on your phone the moment you add it -
-              yours to ride or edit, and not affected if the original pack
-              changes later.
-            </p>
-            <a class="btn btn-secondary" href="community/index.html">
-              Browse community <span class="arrow">→</span>
-            </a>
-          </article>
-        </div>
-
         <div class="zone-legend" aria-label="Power zones">
           <span class="zone-badge" style="background:rgba(107,138,168,0.16);color:#9DB1C6"><span class="swatch" style="background:#6B8AA8"></span>Z1 Recovery</span>
           <span class="zone-badge" style="background:rgba(46,123,255,0.18);color:#7BA8FF"><span class="swatch" style="background:#2E7BFF"></span>Z2 Endurance</span>
@@ -250,6 +357,125 @@
           <span class="zone-badge" style="background:rgba(235,59,59,0.20);color:#F47272"><span class="swatch" style="background:#EB3B3B"></span>Z6 Anaerobic</span>
           <span class="zone-badge" style="background:rgba(197,59,255,0.20);color:#D777FF"><span class="swatch" style="background:#C53BFF"></span>Z7 Neuro</span>
         </div>
+      </div>
+    </section>
+
+    <!-- COMMUNITY LIBRARIES -->
+    <section id="libraries" class="libraries">
+      <div class="container">
+        <p class="eyebrow">Community libraries</p>
+        <h2 class="section-title">Anyone can publish a library.<br>Including you.</h2>
+        <p class="section-lead">
+          A workout library is just static files: a small <code>manifest.json</code>
+          plus the workouts it points at. Host it on any web space - a Codeberg
+          or GitHub Pages site, your blog, a folder on your NAS. No server code,
+          no gatekeeper, no permission needed.
+        </p>
+
+        <div class="lib-grid">
+          <div class="lib-diagram" aria-label="How a community library reaches a rider">
+            <div class="lib-node">
+              <p class="lib-node-k">You publish</p>
+              <pre class="code-block"><code>{
+  "schemaVersion": 2,
+  "id": "gravel-base",
+  "name": "Gravel Base Builder",
+  "author": "Your Name",
+  "bundles": [
+    { "id": "base",
+      "version": 3,
+      "url": "base.json" }
+  ]
+}</code></pre>
+              <p class="lib-node-caption">manifest.json · anywhere HTTPS</p>
+            </div>
+            <div class="lib-arrow" aria-hidden="true">→</div>
+            <div class="lib-node">
+              <p class="lib-node-k">Riders add it</p>
+              <ul class="lib-ways">
+                <li>Paste the URL in the app</li>
+                <li>Share it as a QR code</li>
+                <li>Get listed in the in-app registry</li>
+              </ul>
+              <p class="lib-node-caption">browse the pack, pick workouts</p>
+            </div>
+            <div class="lib-arrow" aria-hidden="true">→</div>
+            <div class="lib-node">
+              <p class="lib-node-k">They own their copy</p>
+              <p class="lib-node-body">
+                Every workout a rider adds becomes a local file on their phone -
+                theirs to ride, rename, or edit. If your library changes later,
+                nothing breaks and nothing is silently swapped underneath them.
+              </p>
+              <p class="lib-node-caption">local-first, always</p>
+            </div>
+          </div>
+
+          <div class="lib-copy">
+            <h3>Coaches, clubs, tinkerers</h3>
+            <p>
+              Publish your winter plan for the whole club. Ship a pack alongside
+              your coaching. Curate the intervals you swear by. The in-app
+              <b>Browse community</b> screen lists public libraries from the
+              registry at <code>indoorbike.app/registry.json</code> - open a pull
+              request to get yours listed, or share your manifest URL directly
+              and skip the registry entirely.
+            </p>
+            <div class="hero-cta">
+              <a class="btn btn-primary" href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/ARCHITECTURE.md#workout-library--sources-import-repositories">
+                Publishing guide <span class="arrow">→</span>
+              </a>
+              <a class="btn btn-secondary" href="community/index.html">
+                Browse community
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- OPEN API -->
+    <section id="api" class="api">
+      <div class="container">
+        <p class="eyebrow">Open API</p>
+        <h2 class="section-title">An API with no API keys.</h2>
+        <p class="section-lead">
+          Third-party tools - training planners, AI coaches, analytics apps -
+          can generate a workout and hand it to a rider as a plain URL. The
+          link opens the editor pre-loaded; the rider tweaks it and beams it
+          to their phone. No backend, no OAuth, no callback. No user data ever
+          crosses a wire.
+        </p>
+
+        <div class="api-demo">
+          <p class="api-demo-label">One URL is the whole integration:</p>
+          <pre class="code-block code-url"><code>https://indoorbike.app/editor/?name=Threshold+3x8&amp;ftp=250
+       &amp;s=10m@50,<b>3x(8m@100;4m@55)</b>,5m@50</code></pre>
+          <p class="api-demo-caption">
+            Durations, %FTP targets, and repeat groups in a compact text form.
+            <a href="editor/index.html?name=Threshold+3x8&amp;ftp=250&amp;s=10m@50,3x(8m@100;4m@55),5m@50">Open this example in the editor →</a>
+          </p>
+        </div>
+
+        <div class="api-points">
+          <article class="api-point">
+            <h3>Stateless by design</h3>
+            <p>The workout travels inside the URL itself. Your tool never talks to our servers, and we never see your users.</p>
+          </article>
+          <article class="api-point">
+            <h3>Human in the loop</h3>
+            <p>Links open the editor, not the phone. The rider reviews the shape, adjusts if they like, then sends it on - nothing lands on a device unseen.</p>
+          </article>
+          <article class="api-point">
+            <h3>Machine-readable spec</h3>
+            <p>A compact <a href="editor/llms.txt">llms.txt</a> spec makes the format trivial for LLMs and codegen. Free <a href="badges/index.html">"Open in Indoor Bike" badges</a> if you want an on-brand button.</p>
+          </article>
+        </div>
+
+        <p class="api-links">
+          <a class="btn btn-secondary" href="api/index.html">API quick start <span class="arrow">→</span></a>
+          <a class="btn btn-secondary" href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md">Full reference</a>
+        </p>
       </div>
     </section>
 
@@ -266,15 +492,15 @@
         <div class="steps">
           <div class="step">
             <h3>Install</h3>
-            <p>Get the app from F-Droid (or sideload the APK from a release). Open it. The first screen asks for your FTP and weight. That's it.</p>
+            <p>Get the app via Obtainium (or sideload the APK from a release). Open it. The first screen asks for your FTP and weight. That's it.</p>
           </div>
           <div class="step">
             <h3>Pair</h3>
-            <p>Tap the trainer icon. Power on your Kickr Core, the app discovers it over BLE, and remembers it. Optionally pair a HRM and a Zwift Click.</p>
+            <p>Tap the trainer chip. Power on your Kickr Core, the app discovers it over BLE, and remembers it. Optionally pair a HRM and a Zwift Click.</p>
           </div>
           <div class="step">
             <h3>Pick</h3>
-            <p>Browse the workout library. Each card shows the zone profile, duration, TSS, and IF. Pick one that fits your session and your legs.</p>
+            <p>The home screen proposes your next ride - resume, ride again, or a starred favourite. Or search the library by how much time you have.</p>
           </div>
           <div class="step">
             <h3>Ride</h3>
@@ -284,16 +510,18 @@
       </div>
     </section>
 
-    <!-- PRIVACY -->
+    <!-- PRIVACY / FREE -->
     <section id="privacy" class="privacy">
       <div class="container">
         <div>
-          <p class="eyebrow">F-Droid native</p>
-          <h2 class="section-title">No tracking. No accounts. No exceptions.</h2>
+          <p class="eyebrow">The deal</p>
+          <h2 class="section-title">Free. No asterisk.</h2>
           <p class="section-lead">
-            Indoor Bike was designed from day one to ship through F-Droid. That
-            means no proprietary blobs, no Google Play Services, no analytics
-            SDKs, no crash reporters phoning home.
+            No price, no premium tier, no ads, no "free trial". And because it
+            ships through F-Droid, that promise is structural: no proprietary
+            blobs, no Google Play Services, no analytics SDKs, no crash
+            reporters phoning home. Even this page loads zero third-party
+            resources - the fonts are self-hosted.
           </p>
         </div>
         <ul class="privacy-list">
@@ -303,19 +531,19 @@
           </li>
           <li>
             <span class="check" aria-hidden="true">✓</span>
+            <span><b>No account, ever.</b> The app is fully functional offline with zero sign-up. Optional sync exists, off by default.</span>
+          </li>
+          <li>
+            <span class="check" aria-hidden="true">✓</span>
             <span><b>No Google services.</b> Standard Android BLE APIs. No FCM, no Firebase, no Crashlytics.</span>
           </li>
           <li>
             <span class="check" aria-hidden="true">✓</span>
-            <span><b>Open source.</b> Kotlin Multiplatform core and Jetpack Compose UI. Read it, fork it, build it yourself.</span>
+            <span><b>Open source, GPLv3.</b> Kotlin Multiplatform core and Jetpack Compose UI. Read it, fork it, build it yourself.</span>
           </li>
           <li>
             <span class="check" aria-hidden="true">✓</span>
-            <span><b>Optional, opt-in sync.</b> Account login (Auth0) and cloud backup (CleverCloud) are off by default and lazily loaded only if you enable them.</span>
-          </li>
-          <li>
-            <span class="check" aria-hidden="true">✓</span>
-            <span><b>Open file formats.</b> Workouts are JSON. Saved rides are files you can copy off the device any time.</span>
+            <span><b>Open file formats.</b> Workouts are JSON. Saved rides are files you can copy off the device any time - FIT export included.</span>
           </li>
         </ul>
         <p style="margin-top:var(--s-5);font-size:14px;">
@@ -341,11 +569,19 @@
           </details>
           <details class="faq-item">
             <summary>Where do I get the app?</summary>
-            <p>The app is being prepared for F-Droid. Once published, the install link will appear here. Until then, you can build the Android project from source.</p>
+            <p>Install via <a href="https://github.com/ImranR98/Obtainium">Obtainium</a> to get signed APKs and automatic updates straight from the Codeberg releases. An F-Droid listing is in preparation. You can also build from source.</p>
           </details>
           <details class="faq-item">
             <summary>Can I use my own workouts?</summary>
-            <p>Yes. Workouts are plain JSON files describing a sequence of intervals (duration + power as % of FTP). Drop them into the workouts directory and they show up in the library, or build them visually in the <a href="editor/index.html">browser editor</a> and send them to the app.</p>
+            <p>Yes. Workouts are plain JSON files describing a sequence of intervals (duration + power as % of FTP). Build them visually in the <a href="editor/index.html">browser editor</a> and QR them to the app, import a file, or paste a URL.</p>
+          </details>
+          <details class="faq-item">
+            <summary>How do I publish my own workout library?</summary>
+            <p>Write a small <code>manifest.json</code> pointing at your workout files and host both on any HTTPS web space - static hosting is enough. Riders add your library by URL or QR, and you can open a pull request to appear in the in-app Browse list. See the <a href="https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/ARCHITECTURE.md#workout-library--sources-import-repositories">publishing guide</a>.</p>
+          </details>
+          <details class="faq-item">
+            <summary>Can my app or tool integrate with Indoor Bike?</summary>
+            <p>Yes - generate an editor URL with the workout encoded in its parameters and show it to your user. No registration, no keys, no server-to-server calls. Start with the <a href="api/index.html">API quick start</a> or the <a href="editor/llms.txt">machine-readable spec</a>.</p>
           </details>
           <details class="faq-item">
             <summary>Is iOS supported?</summary>
@@ -391,8 +627,9 @@
         </span>
       </div>
       <div class="footer-links">
-        <a href="#features">Features</a>
+        <a href="editor/index.html">Editor</a>
         <a href="community/index.html">Community</a>
+        <a href="api/index.html">API</a>
         <a href="privacy.html">Privacy</a>
         <a href="#faq">FAQ</a>
       </div>

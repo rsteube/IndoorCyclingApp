@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.progression.durationLabelLong
@@ -56,9 +58,14 @@ import java.util.Locale
 fun HistoryTab(
     onNavigateToOverview: (Long) -> Unit,
     onNavigateToRides: () -> Unit = {},
+    onRideAgain: (workoutId: String) -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val sessions by container.sessions.collectAsState()
+    // Workout ids that still exist in the library - a session whose workout
+    // was deleted can't offer "Ride again".
+    val workouts = app.indoorbike.LocalWorkouts.current
+    val libraryIds = remember(workouts) { workouts.map { it.id }.toSet() }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -129,7 +136,13 @@ fun HistoryTab(
                         )
                     }
                     items(list, key = { it.id }) { session ->
-                        SessionRow(session = session, onClick = { onNavigateToOverview(session.id) })
+                        SessionRow(
+                            session = session,
+                            onClick = { onNavigateToOverview(session.id) },
+                            onRideAgain = if (session.workoutId in libraryIds) {
+                                { onRideAgain(session.workoutId) }
+                            } else null
+                        )
                     }
                 }
                 item { Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets(0))) }
@@ -166,7 +179,11 @@ private fun TotalCell(label: String, value: String) {
 }
 
 @Composable
-private fun SessionRow(session: WorkoutSession, onClick: () -> Unit) {
+private fun SessionRow(
+    session: WorkoutSession,
+    onClick: () -> Unit,
+    onRideAgain: (() -> Unit)? = null,
+) {
     val fmt = remember { SimpleDateFormat("EEE d MMM · h:mm a", Locale.getDefault()) }
     val dateStr = fmt.format(Date(session.startTimeEpoch))
     Column(
@@ -182,7 +199,11 @@ private fun SessionRow(session: WorkoutSession, onClick: () -> Unit) {
         Spacer(modifier = Modifier.height(4.dp))
         Text(text = session.workoutName, style = CadenceType.h3, color = CadenceColors.Fg1)
         Spacer(modifier = Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 text = durationLabelLong(session.durationSeconds),
                 style = CadenceType.bodyStrong,
@@ -192,9 +213,43 @@ private fun SessionRow(session: WorkoutSession, onClick: () -> Unit) {
             Text(
                 text = "${(session.avgPower * session.durationSeconds) / 1000L} kJ",
                 style = CadenceType.bodyStrong,
-                color = CadenceColors.Fg2
+                color = CadenceColors.Fg2,
+                modifier = Modifier.weight(1f)
             )
+            if (onRideAgain != null) {
+                RideAgainPill(onClick = onRideAgain)
+            }
         }
+    }
+}
+
+/**
+ * Habit shortcut: jumps from a past session straight to that workout's
+ * detail screen (not directly into a ride - the rider still confirms via
+ * the Start CTA there, which also owns trainer gating).
+ */
+@Composable
+private fun RideAgainPill(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(Radii.pill))
+            .background(CadenceColors.Brand500.copy(alpha = 0.16f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.s4, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Replay,
+            contentDescription = null,
+            tint = CadenceColors.Brand500,
+            modifier = Modifier.size(14.dp)
+        )
+        Text(
+            text = "Ride again",
+            style = CadenceType.bodyStrong.copy(fontSize = 12.sp),
+            color = CadenceColors.Brand500
+        )
     }
 }
 

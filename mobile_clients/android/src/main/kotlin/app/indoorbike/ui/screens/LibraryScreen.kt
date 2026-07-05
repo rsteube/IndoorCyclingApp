@@ -84,19 +84,23 @@ import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
 
 /**
- * "More workouts" screen — the entry point for adding workouts to the rider's
+ * "Get workouts" screen — the entry point for adding workouts to the rider's
  * library, regardless of where they come from.
  *
  *   ┌─────────────────────────────────┐
- *   │  Action row                     │  Import file · Scan QR · By URL
+ *   │  Scan from web editor           │  hero: the most common path is
+ *   │                                 │  "built it in the browser, ride
+ *   │                                 │  it now" — the card teaches it.
+ *   ├─────────────────────────────────┤
+ *   │  Import file · Paste URL        │  secondary acquisition tiles.
  *   ├─────────────────────────────────┤
  *   │  Browse community               │  registry-driven repo cards;
  *   │                                 │  tapping a card opens the
  *   │                                 │  remote-repo browser to pick
  *   │                                 │  individual workouts to add.
  *   ├─────────────────────────────────┤
- *   │  Your imported workouts         │  delete-only management of the
- *   │                                 │  workouts the user has added.
+ *   │  Manage imported workouts › N   │  collapsed row; expands to the
+ *   │                                 │  delete-only management list.
  *   └─────────────────────────────────┘
  *
  * Subscriptions were removed in favour of an explicit-add model: the rider
@@ -124,6 +128,7 @@ fun LibraryScreen(
 
     var refreshingRegistry by remember { mutableStateOf(false) }
     var showAddUrlSheet by remember { mutableStateOf(false) }
+    var manageExpanded by remember { mutableStateOf(false) }
 
     // Kick off the first registry fetch when the screen opens. Subsequent
     // opens reuse the cache and the user can pull-to-refresh manually.
@@ -148,7 +153,7 @@ fun LibraryScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         AppBar(
-            title = "More workouts",
+            title = "Get workouts",
             eyebrow = "ADD TO YOUR LIBRARY",
             leading = {
                 IconBtn(
@@ -178,13 +183,15 @@ fun LibraryScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
             item {
+                ScanHeroCard(onClick = onScanQr)
+            }
+            item {
                 ActionRow(
                     onImportFile = {
                         // OpenDocument auto-mimes; we accept JSON, but accept
                         // any too because some file managers mis-type JSONs.
                         filePickerLauncher.launch(arrayOf("application/json", "*/*"))
                     },
-                    onScanQr = onScanQr,
                     onAddByUrl = { showAddUrlSheet = true }
                 )
             }
@@ -204,33 +211,39 @@ fun LibraryScreen(
             )
 
             // ── Imported workouts (manage) ───────────────────────────────────
-            item {
-                Spacer(Modifier.height(Spacing.s2))
-                SectionHeader(
-                    title = "Your imported workouts",
-                    subtitle = if (importedWorkouts.isEmpty())
-                        "Workouts you've added show up here."
-                    else
-                        "${importedWorkouts.size} workout${if (importedWorkouts.size == 1) "" else "s"}"
-                )
-            }
-            items(importedWorkouts, key = { "imp-${it.id}" }) { workout ->
-                ImportedWorkoutRow(
-                    name = workout.name,
-                    onDelete = {
-                        scope.launch {
-                            val ok = container.workoutImporter.deleteUserWorkout(workout.id)
-                            container.workoutLibrary.refreshImportsAwait()
-                            if (!ok) {
-                                Toast.makeText(
-                                    context,
-                                    "Couldn't delete \"${workout.name}\"",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+            // Rare maintenance, so it stays out of the way: one collapsed row
+            // that expands in place. Hidden entirely while nothing has been
+            // imported — an empty management section is noise on a screen
+            // whose job is acquisition.
+            if (importedWorkouts.isNotEmpty()) {
+                item {
+                    Spacer(Modifier.height(Spacing.s2))
+                    ManageImportedRow(
+                        count = importedWorkouts.size,
+                        expanded = manageExpanded,
+                        onToggle = { manageExpanded = !manageExpanded }
+                    )
+                }
+                if (manageExpanded) {
+                    items(importedWorkouts, key = { "imp-${it.id}" }) { workout ->
+                        ImportedWorkoutRow(
+                            name = workout.name,
+                            onDelete = {
+                                scope.launch {
+                                    val ok = container.workoutImporter.deleteUserWorkout(workout.id)
+                                    container.workoutLibrary.refreshImportsAwait()
+                                    if (!ok) {
+                                        Toast.makeText(
+                                            context,
+                                            "Couldn't delete \"${workout.name}\"",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
                             }
-                        }
+                        )
                     }
-                )
+                }
             }
         }
     }
@@ -265,13 +278,63 @@ fun LibraryScreen(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Action row
+//  Acquisition actions
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Hero slot: the web-editor handoff. Named and subtitled after the actual
+ * workflow ("built it in the browser, ride it now") so the screen teaches
+ * the path, not just offers a generic "Scan QR".
+ */
+@Composable
+private fun ScanHeroCard(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(Radii.lg)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .background(CadenceColors.Brand500.copy(alpha = 0.05f))
+            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.55f), shape)
+            .clickable(onClick = onClick)
+            .padding(Spacing.s4),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(52.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.QrCodeScanner,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Scan from web editor",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "Point at the QR on indoorbike.app/editor",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3
+            )
+        }
+        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
+    }
+}
 
 @Composable
 private fun ActionRow(
     onImportFile: () -> Unit,
-    onScanQr: () -> Unit,
     onAddByUrl: () -> Unit
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
@@ -282,14 +345,8 @@ private fun ActionRow(
             modifier = Modifier.weight(1f)
         )
         ActionTile(
-            icon = Icons.Outlined.QrCodeScanner,
-            label = "Scan QR",
-            onClick = onScanQr,
-            modifier = Modifier.weight(1f)
-        )
-        ActionTile(
             icon = Icons.Outlined.Link,
-            label = "By URL",
+            label = "Paste URL",
             onClick = onAddByUrl,
             modifier = Modifier.weight(1f)
         )
@@ -303,12 +360,14 @@ private fun ActionTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    // Line2 border (not brand) so these read as secondary next to the
+    // scan hero above them.
     val shape = RoundedCornerShape(Radii.md)
     Column(
         modifier = modifier
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.4f), shape)
+            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onClick)
             .padding(vertical = Spacing.s4),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -327,12 +386,51 @@ private fun ActionTile(
 private fun SectionHeader(title: String, subtitle: String?) {
     Column(modifier = Modifier.padding(top = Spacing.s4)) {
         Text(text = title.uppercase(), style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-        Spacer(Modifier.height(2.dp))
-        Text(text = title, style = CadenceType.h3, color = CadenceColors.Fg1)
         if (!subtitle.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
             Text(text = subtitle, style = CadenceType.small, color = CadenceColors.Fg3)
         }
+    }
+}
+
+/**
+ * Collapsed entry point for import management. Chevron rotates text-free
+ * ("›" vs "⌄" glyphs) to keep the row dependency-light.
+ */
+@Composable
+private fun ManageImportedRow(
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = onToggle)
+            .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Manage imported workouts",
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Fg2,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "$count",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg3
+        )
+        Spacer(Modifier.size(Spacing.s2))
+        Text(
+            text = if (expanded) "⌄" else "›",
+            style = CadenceType.h3,
+            color = CadenceColors.Fg3
+        )
     }
 }
 
