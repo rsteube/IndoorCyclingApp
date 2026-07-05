@@ -10,7 +10,25 @@
    Body:    "Inter" - neutral, dense numerics, legible at distance.
    Mono:    "JetBrains Mono" - telemetry, units, file names.
    ------------------------------------------------------------- */
-@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
+/* Self-hosted fonts (OFL) - same files the app ships, no CDN. */
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("../fonts/bebas_neue_regular.ttf") format("truetype");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/inter_variable.ttf") format("truetype-variations");
+  font-weight: 400 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("../fonts/jetbrains_mono_variable.ttf") format("truetype-variations");
+  font-weight: 400 700;
+  font-display: swap;
+}
 
 :root {
   /* ---------- TYPOGRAPHY ---------- */
