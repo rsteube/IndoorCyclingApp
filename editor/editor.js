@@ -208,7 +208,7 @@
 
     if (state.segments.length === 0) {
       wrap.appendChild(el('div', { class: 'timeline-empty' },
-        'Drag a tile from the palette above, or tap one to append.'
+        'Tap a zone above to add your first block, or drag one in.'
       ));
       return;
     }
@@ -632,20 +632,26 @@
     root.innerHTML = '';
     const sel = selectedSegments();
 
-    // Empty state
+    // Empty state: one calm, situation-aware hint. The full shortcut list
+    // lives in the #kbd-panel and only appears on request - eight key combos
+    // at once is exactly the wall of text we're trying not to be.
     if (sel.length === 0) {
+      const hint = state.segments.length === 0
+        ? 'Add your first block: tap a zone above, or drag one onto the canvas.'
+        : 'Click a block to edit it. Drag to move · drag its edges to resize.';
+      const kbdPanel = $('#kbd-panel');
       root.appendChild(el('div', { class: 'inspector-empty' },
-        el('span', {}, 'Click a clip to edit. Drag empty space to box-select. Alt-drag to duplicate.'),
-        el('span', {},
-          el('kbd', {}, 'Click'), ' select · ',
-          el('kbd', {}, 'Ctrl/⌘+Click'), ' toggle · ',
-          el('kbd', {}, 'Shift+Click'), ' range · ',
-          el('kbd', {}, 'Del'), ' delete · ',
-          el('kbd', {}, 'Ctrl+D'), ' duplicate · ',
-          el('kbd', {}, '↑↓'), ' nudge power · ',
-          el('kbd', {}, '←→'), ' nudge duration · ',
-          el('kbd', {}, 'Esc'), ' deselect'
-        )
+        el('span', {}, hint),
+        el('button', {
+          class: 'inspector-btn',
+          type: 'button',
+          'aria-expanded': String(!kbdPanel.hidden),
+          'aria-controls': 'kbd-panel',
+          onClick: (e) => {
+            kbdPanel.hidden = !kbdPanel.hidden;
+            e.target.setAttribute('aria-expanded', String(!kbdPanel.hidden));
+          },
+        }, '⌨ Shortcuts')
       ));
       return;
     }
@@ -1030,7 +1036,7 @@
       // uneven pixel widths and breaks camera scanners.
       stage.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
     } catch (_) {
-      stage.innerHTML = '<p style="padding:24px;color:#444;text-align:center;font-family:Inter;">Workout too large for a QR code.<br>Use <b>Download</b> or <b>Share to phone</b> instead.</p>';
+      stage.innerHTML = '<p style="padding:24px;color:#444;text-align:center;font-family:Inter;">Workout too large for a QR code.<br>Use <b>Download .json</b> or the copy-link below instead.</p>';
     }
     const sizeKb = (new Blob([JSON.stringify(w)]).size / 1024).toFixed(2);
     $('#qr-size-hint').textContent = `Workout size: ${sizeKb} KB · URL length: ${url.length} chars`;

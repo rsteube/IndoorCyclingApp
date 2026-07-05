@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="../styles.css">
   <!-- Bump ?v= on every editor.css / editor.js change so returning visitors
        don't get stale cached assets (Codeberg Pages has no header control). -->
-  <link rel="stylesheet" href="editor.css?v=2026-06-15">
+  <link rel="stylesheet" href="editor.css?v=2026-07-05">
 </head>
 <body class="editor-body">
 
@@ -64,53 +64,79 @@
 
       <!-- Inspector strip: content swaps based on selection -->
       <div class="inspector" id="inspector"></div>
+
+      <!-- Keyboard shortcuts: collapsed by default, toggled from the
+           inspector's empty state so first-timers see one calm hint
+           instead of eight key combos. -->
+      <div id="kbd-panel" class="kbd-panel" hidden aria-label="Keyboard shortcuts">
+        <span class="kbd-item"><kbd>Click</kbd> select</span>
+        <span class="kbd-item"><kbd>Ctrl/⌘+Click</kbd> toggle</span>
+        <span class="kbd-item"><kbd>Shift+Click</kbd> range</span>
+        <span class="kbd-item"><kbd>Drag empty space</kbd> box-select</span>
+        <span class="kbd-item"><kbd>Alt-drag</kbd> duplicate</span>
+        <span class="kbd-item"><kbd>Ctrl+D</kbd> duplicate</span>
+        <span class="kbd-item"><kbd>Del</kbd> delete</span>
+        <span class="kbd-item"><kbd>↑↓</kbd> power</span>
+        <span class="kbd-item"><kbd>←→</kbd> duration</span>
+        <span class="kbd-item"><kbd>Esc</kbd> deselect</span>
+      </div>
     </section>
 
-    <!-- META -->
-    <section class="meta-section" aria-label="Workout details">
-      <h2 class="section-h">Workout details</h2>
-      <div class="meta-grid">
-        <label class="field">
-          <span class="t-eyebrow-inline">NAME</span>
-          <input id="workout-name" type="text" maxlength="80" placeholder="Threshold 3×8" autocomplete="off">
-        </label>
-        <label class="field">
-          <span class="t-eyebrow-inline">DESCRIPTION</span>
-          <textarea id="workout-description" rows="3" maxlength="600" placeholder="Three sets at threshold to push your hour-long power higher."></textarea>
-        </label>
-        <div class="field">
-          <span class="t-eyebrow-inline">TAGS</span>
-          <div class="tag-grid" id="tag-grid"></div>
+    <!-- FINISH: name it, send it -->
+    <div class="finish-row">
+      <section class="meta-section" aria-label="Workout details">
+        <h2 class="section-h">Workout details</h2>
+        <div class="meta-grid">
+          <label class="field">
+            <span class="t-eyebrow-inline">NAME</span>
+            <input id="workout-name" type="text" maxlength="80" placeholder="Threshold 3×8" autocomplete="off">
+          </label>
+          <label class="field">
+            <span class="t-eyebrow-inline">DESCRIPTION</span>
+            <textarea id="workout-description" rows="3" maxlength="600" placeholder="Three sets at threshold to push your hour-long power higher."></textarea>
+          </label>
+          <div class="field">
+            <span class="t-eyebrow-inline">TAGS</span>
+            <div class="tag-grid" id="tag-grid"></div>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- EXPORT -->
-    <section class="export-section" aria-label="Export">
-      <h2 class="section-h">Export</h2>
-      <div class="export-row">
-        <button id="btn-download" class="btn btn-primary" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download .json
-        </button>
-        <button id="btn-share" class="btn btn-secondary" type="button" hidden>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-          Share to phone
-        </button>
-        <button id="btn-qr" class="btn btn-secondary" type="button">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="17"/></svg>
-          Show QR &amp; link
-        </button>
-        <button id="btn-copy" class="btn btn-ghost" type="button">Copy JSON</button>
-        <span class="export-spacer"></span>
-        <button id="btn-load" class="btn btn-ghost" type="button">Load .json</button>
-        <button id="btn-reset" class="btn btn-ghost btn-danger" type="button">Reset</button>
-      </div>
-      <p class="export-hint">
-        On a phone, tap <b>Share to phone</b> and pick <b>Indoor Bike</b> from the share sheet.
-        On desktop, <b>Download .json</b> and AirDrop / email it to your phone, or <b>Show QR &amp; link</b> to scan from inside the app.
-      </p>
-    </section>
+      <section class="export-section" aria-label="Export">
+        <h2 class="section-h">Send to your phone</h2>
+        <p class="export-sub">
+          In the Indoor Bike app, tap the QR button on the home screen and
+          point the camera at this screen.
+        </p>
+        <div class="export-row">
+          <button id="btn-qr" class="btn btn-primary" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="17"/></svg>
+            Send to phone
+          </button>
+          <button id="btn-share" class="btn btn-secondary" type="button" hidden>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+            Share…
+          </button>
+        </div>
+
+        <div class="export-divider" role="presentation"></div>
+
+        <h3 class="export-h3">Or keep the file</h3>
+        <p class="export-sub">
+          A workout is a plain JSON file - download it, mail it, edit it by hand.
+        </p>
+        <div class="export-row">
+          <button id="btn-download" class="btn btn-secondary" type="button">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download .json
+          </button>
+          <button id="btn-copy" class="btn btn-ghost" type="button">Copy JSON</button>
+          <button id="btn-load" class="btn btn-ghost" type="button">Open .json</button>
+          <span class="export-spacer"></span>
+          <button id="btn-reset" class="btn btn-ghost btn-danger" type="button">Start over</button>
+        </div>
+      </section>
+    </div>
 
     <footer class="editor-footer">
       <span>Workouts live entirely in your browser. No account, no upload, no tracking.</span>
@@ -131,12 +157,13 @@
     <div class="modal-scrim" data-modal-close></div>
     <div class="modal-card">
       <div class="modal-head">
-        <h3 id="qr-title">Share with Indoor Bike</h3>
+        <h3 id="qr-title">Send to your phone</h3>
         <button class="icon-close" type="button" data-modal-close aria-label="Close">×</button>
       </div>
       <div class="modal-body">
         <p class="modal-lead">
-          Scan from <b>Library → Scan QR</b> in the app, or open the link on your phone.
+          In the app, tap the <b>QR button</b> on the home screen and scan -
+          or open the link below on your phone.
         </p>
         <div class="qr-stage" id="qr-stage"></div>
         <label class="field">
@@ -198,6 +225,6 @@
        for QR / share-to-phone and decode them when arriving from the
        community browser via "Open in editor". -->
   <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-  <script src="editor.js?v=2026-06-15"></script>
+  <script src="editor.js?v=2026-07-05"></script>
 </body>
 </html>
