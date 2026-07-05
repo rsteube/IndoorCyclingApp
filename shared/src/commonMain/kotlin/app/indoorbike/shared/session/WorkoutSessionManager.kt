@@ -343,6 +343,24 @@ class WorkoutSessionManager(
     }
 
     /**
+     * End the ride now and mark it [WorkoutState.Completed] so the accumulated
+     * telemetry can be saved to history, exactly like a naturally-finished
+     * workout. Invoked when the rider explicitly chooses "End & save" from a
+     * paused ride — either a manual [WorkoutState.Paused] or the stop-pedaling
+     * auto-pause ([WorkoutState.Standby]).
+     *
+     * No-op if the ride never actually started (nothing worth saving) or is
+     * already finished/torn down.
+     */
+    fun endWorkoutEarly() {
+        val state = _state.value
+        if (state == WorkoutState.Idle || state == WorkoutState.Completed) return
+        // Never got past the initial "pedal to start" standby — no ride to save.
+        if (sessionStartTimeEpoch == 0L) return
+        completeWorkout()
+    }
+
+    /**
      * Discard the persisted snapshot — invoked when the user explicitly taps
      * "Abandon" on the unfinished-ride banner.
      */

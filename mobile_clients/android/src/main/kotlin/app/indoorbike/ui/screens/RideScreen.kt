@@ -55,6 +55,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -74,6 +75,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -154,6 +157,7 @@ fun RideScreen(
     val state by sessionManager.state.collectAsState()
     val workout by sessionManager.activeWorkout.collectAsState()
     val elapsed by sessionManager.elapsedSeconds.collectAsState()
+    val actualRide by sessionManager.actualRideSeconds.collectAsState()
     val elapsedInSeg by sessionManager.elapsedInSegment.collectAsState()
     val currentSegIdx by sessionManager.currentSegmentIndex.collectAsState()
     val countdown by sessionManager.countdownSeconds.collectAsState()
@@ -182,6 +186,15 @@ fun RideScreen(
     }
 
     var continueRequested by remember { mutableStateOf(false) }
+    // Non-null (well, true) while the "End ride now?" confirmation is showing.
+    // Ending is committal — the accumulated ride is saved and can't be resumed —
+    // so we gate it behind an explicit confirm.
+    var confirmingEnd by remember { mutableStateOf(false) }
+    // A paused ride (manual Paused, or the stop-pedaling auto-pause that lands in
+    // Standby) that has actually started can be ended and saved. The initial
+    // "pedal to start" Standby has no ride time, so it's excluded.
+    val canEndAndSave = (state == WorkoutState.Paused ||
+        (state == WorkoutState.Standby && actualRide > 0))
     // Idempotency guard for the post-completion save+navigate path. The
     // LaunchedEffect that watches `state` + `continueRequested` would otherwise
     // re-run if its keys re-emit, racing the in-flight insert and producing a
@@ -288,6 +301,21 @@ fun RideScreen(
 
     BackHandler { handleBack() }
 
+    if (confirmingEnd) {
+        EndRideConfirmDialog(
+            elapsed = actualRide,
+            onCancel = { confirmingEnd = false },
+            onConfirm = {
+                confirmingEnd = false
+                // Route through the same save+navigate path as a naturally
+                // finished ride: mark it complete, then flag the continue so the
+                // save LaunchedEffect fires and takes the rider to the summary.
+                continueRequested = true
+                sessionManager.endWorkoutEarly()
+            }
+        )
+    }
+
     val showStaleHr = currentHr <= 0
     val showStalePower = currentPower <= 0 && (state == WorkoutState.Active)
     val weightKg by container.userSettings.weightKg.collectAsState()
@@ -370,6 +398,8 @@ fun RideScreen(
                 },
                 onSkipStep = { sessionManager.skipSegment() },
                 onMockToggle = { trainerManager.toggleMockPedaling() },
+                canEndAndSave = canEndAndSave,
+                onEndAndSave = { confirmingEnd = true },
                 // Narrow widths (portrait) get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
                 compact = LocalConfiguration.current.screenWidthDp < 600
@@ -678,15 +708,20 @@ private fun RideHeader(
     onPauseToggle: () -> Unit,
     onSkipStep: () -> Unit,
     onMockToggle: () -> Unit,
+    canEndAndSave: Boolean,
+    onEndAndSave: () -> Unit,
     compact: Boolean,
 ) {
     val timeText = "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}"
     val stateText: String? = when (state) {
-        WorkoutState.Standby -> "STANDBY · PEDAL TO START"
+        // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
+        // a ride in progress, not the initial "pedal to start" standby.
+        WorkoutState.Standby ->
+            if (canEndAndSave) "AUTO-PAUSED · PEDAL TO RESUME" else "STANDBY · PEDAL TO START"
         WorkoutState.Paused -> "PAUSED · TRAINER AT 0 W"
         else -> null
     }
-    val stateColor = if (state == WorkoutState.Paused) CadenceColors.Warning else CadenceColors.Brand500
+    val stateColor = if (state == WorkoutState.Paused || canEndAndSave) CadenceColors.Warning else CadenceColors.Brand500
 
     if (compact) {
         // Portrait: two rows so nothing has to share a single narrow line.
@@ -712,7 +747,7 @@ private fun RideHeader(
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle)
+                RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle, canEndAndSave, onEndAndSave)
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -775,7 +810,7 @@ private fun RideHeader(
                     softWrap = false
                 )
             }
-            RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle)
+            RideControls(state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle, canEndAndSave, onEndAndSave)
         }
     }
 }
@@ -787,6 +822,8 @@ private fun RideControls(
     onMockToggle: () -> Unit,
     onSkipStep: () -> Unit,
     onPauseToggle: () -> Unit,
+    canEndAndSave: Boolean,
+    onEndAndSave: () -> Unit,
 ) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
@@ -802,6 +839,77 @@ private fun RideControls(
             SecondaryBtn(text = "Pause", onClick = onPauseToggle)
         } else if (state == WorkoutState.Paused) {
             SecondaryBtn(text = "Resume", onClick = onPauseToggle)
+        }
+        // Explicit way to finish a paused/auto-paused ride and keep the data —
+        // otherwise the only save path is riding all the way to completion.
+        if (canEndAndSave) {
+            SecondaryBtn(text = "End & save", leadingIcon = Icons.Outlined.Stop, onClick = onEndAndSave)
+        }
+    }
+}
+
+/**
+ * Confirmation shown when the rider taps "End & save" on a paused ride. Ending
+ * is committal — the ride can't be resumed afterwards — so we spell out that the
+ * ride so far *is* saved (unlike "Abandon" on the unfinished-ride banner, which
+ * discards it). Confirm routes into the normal finish-and-save flow.
+ */
+@Composable
+private fun EndRideConfirmDialog(
+    elapsed: Int,
+    onCancel: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Dialog(
+        onDismissRequest = onCancel,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth(0.85f)
+                .clip(RoundedCornerShape(Radii.lg))
+                .background(CadenceColors.Bg1)
+                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
+                .padding(Spacing.s5),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s4)
+        ) {
+            Text(
+                text = "End ride now?",
+                style = CadenceType.h3,
+                color = CadenceColors.Fg1
+            )
+            Text(
+                text = "Your ride so far (${formatClock(elapsed)}) will be saved to your history. " +
+                    "You won't be able to resume it.",
+                style = CadenceType.body,
+                color = CadenceColors.Fg2
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(shape)
+                        .background(CadenceColors.Bg2)
+                        .border(1.dp, CadenceColors.Line2, shape)
+                        .clickable(onClick = onCancel),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "Keep riding", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp)
+                        .clip(shape)
+                        .background(CadenceColors.Brand500)
+                        .clickable(onClick = onConfirm),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "End & save", style = CadenceType.bodyStrong, color = CadenceColors.OnBrand)
+                }
+            }
         }
     }
 }
