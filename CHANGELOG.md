@@ -4,6 +4,42 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [1.4] (7) - 2026-07-06
+
+A UI polish release. The Progress, History, and Settings screens are reworked
+and the ride screen gains a few quiet celebration cues. Nothing changes what a
+ride is worth or how the trainer is driven.
+
+### Changed
+
+- **Progress screen comes alive.** Rider level, XP, and the weekly streak now
+  animate in on entry - the XP bar fills, the XP number counts up, and the
+  streak flame breathes. A new **badges** section shows what you have unlocked,
+  with locked badges hinting at what is next. All of it is decoration on top of
+  the same pure progression functions in `shared/progression`.
+- **Redesigned ride history.** Each session leads with a calendar date tile
+  (weekday + day number) instead of a date-as-text line, with the workout name
+  and one compact stats line beside it. Each week group header now carries that
+  week's own totals - rides, time, and kilojoules - so you can see how much you
+  did that week without opening any ride.
+- **Reorganised Settings.** Related fields are grouped into single cards instead
+  of floating as three separate boxes, and the **Report a problem** block is now
+  one tappable row, with the what-gets-collected disclosure moved into the
+  confirmation dialog right before anything is sent.
+- **Ride-screen cues.** Holding the ERG target now shows a soft "ON TARGET" glow
+  behind the power number, the screen edges flash once in the new zone's colour
+  as each interval begins, and completing a workout gets an animated trophy.
+
+### Editor (web)
+
+- **Keyboard shortcuts panel** listing the editor's shortcuts (select, toggle,
+  range, box-select, duplicate, delete, nudge power/duration).
+- **Cleaner workout-details section** for the name and description fields.
+
+### Notes
+
+- `versionCode 7`, signed with the project's release key.
+
 ## [1.3] (6) - 2026-07-05
 
 ### Added
