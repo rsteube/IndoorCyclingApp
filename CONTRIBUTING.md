@@ -9,6 +9,7 @@ Thanks for your interest. This is a spare-time project, so issues and small PRs 
 - `cadence-design-system/` - design tokens and component documentation.
 - `website/` - static marketing site for indoorbike.app and the in-browser workout editor.
 - `docs/ARCHITECTURE.md` - architecture overview, kept in step with the code.
+- `docs/RELEASE.md` - step-by-step process for cutting a signed release.
 - `scripts/smoke_test.ps1` - end-to-end smoke test (Windows / PowerShell).
 
 ## Building and running on Android
@@ -47,6 +48,8 @@ Both can sit side-by-side on the same device. They have separate DataStore + SQL
 ## Versioning
 
 Bump `versionCode` and `versionName` in [mobile_clients/android/build.gradle.kts](mobile_clients/android/build.gradle.kts). The debug build inherits the `-debug` suffix on its version name automatically.
+
+For the full release flow (build, sign, changelog, tag, and publish the Codeberg release that Obtainium tracks), see [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Architecture changes
 
