@@ -17,7 +17,12 @@ package app.indoorbike.ui.screens
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -286,6 +291,28 @@ fun HeroPowerReadout(
         label = "wkg"
     )
 
+    // "On target" is the rider doing their one job right - reward it. Within
+    // ±3 % (min ±5 W) of the ERG target, a soft zone-colored halo breathes
+    // behind the number and the eyebrow flips to ON TARGET. Purely additive:
+    // the glow renders behind the fixed-width frame, so nothing moves.
+    val onTarget = ergLocked && !isStale && targetWatts > 0 &&
+        abs(powerWatts - targetWatts) <= maxOf(5, targetWatts * 3 / 100)
+    val glowAlpha by animateFloatAsState(
+        targetValue = if (onTarget) 1f else 0f,
+        animationSpec = tween(durationMillis = 700),
+        label = "targetGlow"
+    )
+    val breath = rememberInfiniteTransition(label = "glowBreath")
+    val breathPulse by breath.animateFloat(
+        initialValue = 0.75f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowBreathPulse"
+    )
+
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
@@ -302,7 +329,11 @@ fun HeroPowerReadout(
                     .background(if (ergLocked) zoneColor else CadenceColors.Fg4)
             )
             Text(
-                text = "POWER · ${if (ergLocked) "ERG LOCKED" else "ERG IDLE"}",
+                text = when {
+                    onTarget -> "POWER · ON TARGET"
+                    ergLocked -> "POWER · ERG LOCKED"
+                    else -> "POWER · ERG IDLE"
+                },
                 style = CadenceType.eyebrow,
                 color = if (ergLocked) zoneColor else CadenceColors.Fg3
             )
@@ -314,6 +345,20 @@ fun HeroPowerReadout(
             modifier = Modifier.width(numberWidth),
             contentAlignment = Alignment.Center
         ) {
+            if (glowAlpha > 0.01f) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(
+                            Brush.radialGradient(
+                                listOf(
+                                    zoneColor.copy(alpha = 0.16f * glowAlpha * breathPulse),
+                                    Color.Transparent
+                                )
+                            )
+                        )
+                )
+            }
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = if (isStale) "--" else animatedPower.toString(),

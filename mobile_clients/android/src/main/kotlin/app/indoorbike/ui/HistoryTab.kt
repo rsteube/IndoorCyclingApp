@@ -35,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
@@ -128,12 +129,7 @@ fun HistoryTab(
 
                 grouped.forEach { (label, list) ->
                     item(key = "h-$label") {
-                        Text(
-                            text = label.uppercase(),
-                            style = CadenceType.eyebrow,
-                            color = CadenceColors.Fg3,
-                            modifier = Modifier.padding(top = Spacing.s2, bottom = Spacing.s1)
-                        )
+                        WeekHeader(label = label, sessions = list)
                     }
                     items(list, key = { it.id }) { session ->
                         SessionRow(
@@ -178,48 +174,114 @@ private fun TotalCell(label: String, value: String) {
     }
 }
 
+/**
+ * Week group header: label on the left, that week's own totals on the right,
+ * so each group answers "how much did I do that week?" without opening rides.
+ */
+@Composable
+private fun WeekHeader(label: String, sessions: List<WorkoutSession>) {
+    val rides = sessions.size
+    val secs = sessions.sumOf { it.durationSeconds }
+    val kj = sessions.sumOf { (it.avgPower * it.durationSeconds) / 1000L }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = Spacing.s3, bottom = Spacing.s1),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label.uppercase(),
+            style = CadenceType.eyebrow,
+            color = CadenceColors.Fg3,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "$rides ride${if (rides == 1) "" else "s"} · ${durationLabelLong(secs)} · $kj kJ",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg4
+        )
+    }
+}
+
+/**
+ * Session row with a calendar tile anchoring the eye: weekday + day number
+ * on the left, name + one compact meta line, "Ride again" when the workout
+ * still exists. The date tile replaces the old date-as-text-line, which made
+ * every row start with the least distinguishing information.
+ */
 @Composable
 private fun SessionRow(
     session: WorkoutSession,
     onClick: () -> Unit,
     onRideAgain: (() -> Unit)? = null,
 ) {
-    val fmt = remember { SimpleDateFormat("EEE d MMM · h:mm a", Locale.getDefault()) }
-    val dateStr = fmt.format(Date(session.startTimeEpoch))
-    Column(
+    val cal = remember(session.startTimeEpoch) {
+        Calendar.getInstance().apply { timeInMillis = session.startTimeEpoch }
+    }
+    val weekday = remember(session.startTimeEpoch) {
+        SimpleDateFormat("EEE", Locale.getDefault()).format(Date(session.startTimeEpoch))
+    }
+    val timeStr = remember(session.startTimeEpoch) {
+        SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(session.startTimeEpoch))
+    }
+    val kj = (session.avgPower * session.durationSeconds) / 1000L
+
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.md))
             .background(CadenceColors.Bg1)
             .border(1.dp, CadenceColors.Line1, RoundedCornerShape(Radii.md))
             .clickable(onClick = onClick)
-            .padding(16.dp)
+            .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
-        Text(text = dateStr, style = CadenceType.small, color = CadenceColors.Brand500)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(text = session.workoutName, style = CadenceType.h3, color = CadenceColors.Fg1)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        DateTile(weekday = weekday, day = cal.get(Calendar.DAY_OF_MONTH))
+        Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = durationLabelLong(session.durationSeconds),
+                text = session.workoutName,
                 style = CadenceType.bodyStrong,
-                color = CadenceColors.Fg2
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            Text(text = "${session.avgPower} W", style = CadenceType.bodyStrong, color = CadenceColors.Fg2)
+            Spacer(modifier = Modifier.height(3.dp))
             Text(
-                text = "${(session.avgPower * session.durationSeconds) / 1000L} kJ",
-                style = CadenceType.bodyStrong,
-                color = CadenceColors.Fg2,
-                modifier = Modifier.weight(1f)
+                text = "$timeStr · ${durationLabelLong(session.durationSeconds)} · " +
+                    "${session.avgPower} W · $kj kJ",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
-            if (onRideAgain != null) {
-                RideAgainPill(onClick = onRideAgain)
-            }
         }
+        if (onRideAgain != null) {
+            RideAgainPill(onClick = onRideAgain)
+        }
+    }
+}
+
+@Composable
+private fun DateTile(weekday: String, day: Int) {
+    Column(
+        modifier = Modifier
+            .size(width = 46.dp, height = 48.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(CadenceColors.Bg2),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = weekday.uppercase(),
+            style = CadenceType.tick.copy(fontSize = 9.sp),
+            color = CadenceColors.Brand500
+        )
+        Text(
+            text = day.toString(),
+            style = CadenceType.h3,
+            color = CadenceColors.Fg1
+        )
     }
 }
 
@@ -235,18 +297,18 @@ private fun RideAgainPill(onClick: () -> Unit) {
             .clip(RoundedCornerShape(Radii.pill))
             .background(CadenceColors.Brand500.copy(alpha = 0.16f))
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.s4, vertical = 8.dp),
+            .padding(horizontal = Spacing.s3, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Icon(
             imageVector = Icons.Outlined.Replay,
-            contentDescription = null,
+            contentDescription = "Ride again",
             tint = CadenceColors.Brand500,
             modifier = Modifier.size(14.dp)
         )
         Text(
-            text = "Ride again",
+            text = "Again",
             style = CadenceType.bodyStrong.copy(fontSize = 12.sp),
             color = CadenceColors.Brand500
         )

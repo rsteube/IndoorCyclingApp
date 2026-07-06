@@ -43,11 +43,13 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -108,11 +110,21 @@ fun SettingsTab(
             Spacer(modifier = Modifier.height(Spacing.s5))
 
             SectionHeader("PROFILE")
-            FtpRow()
-            Spacer(modifier = Modifier.height(Spacing.s3))
-            WeightRow()
-            Spacer(modifier = Modifier.height(Spacing.s3))
-            MaxHrRow()
+            // One card, three rows: the fields form a single logical unit, so
+            // they share chrome instead of floating as three separate boxes.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.md))
+                    .background(CadenceColors.Bg1)
+                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
+            ) {
+                FtpRow()
+                HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+                WeightRow()
+                HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+                MaxHrRow()
+            }
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
@@ -174,6 +186,84 @@ private fun SectionHeader(text: String) {
         color = CadenceColors.Fg3,
         modifier = Modifier.padding(bottom = Spacing.s3)
     )
+}
+
+/**
+ * Card with a permanent summary row and disclosure body. Settings used to
+ * show every card fully expanded - two credential fields, four paragraphs of
+ * sync prose - whether or not the rider ever uses those features. The
+ * summary row keeps the status visible ("Configured", "Synced 3 min ago");
+ * everything else waits behind a tap.
+ */
+@Composable
+private fun ExpandableCard(
+    icon: ImageVector,
+    iconTint: Color,
+    title: String,
+    statusText: String,
+    statusColor: Color,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    val chevron by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        label = "chevron"
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onToggle)
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconTint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Text(text = statusText, style = CadenceType.small, color = statusColor)
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = if (expanded) "Collapse" else "Expand",
+                tint = CadenceColors.Fg4,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer { rotationZ = chevron }
+            )
+        }
+        androidx.compose.animation.AnimatedVisibility(visible = expanded) {
+            Column(
+                modifier = Modifier.padding(
+                    start = Spacing.s4, end = Spacing.s4,
+                    bottom = Spacing.s4
+                ),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+                content = content
+            )
+        }
+    }
 }
 
 // ─── Devices card + rows ──────────────────────────────────────────────────────
@@ -637,9 +727,6 @@ private fun WeightRow() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
             .padding(16.dp)
     ) {
         Row(
@@ -727,9 +814,6 @@ private fun FtpRow() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
             .padding(16.dp)
     ) {
         Row(
@@ -804,9 +888,6 @@ private fun MaxHrRow() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
             .padding(16.dp)
     ) {
         Row(
@@ -912,49 +993,49 @@ private fun AboutRow(label: String, value: String) {
 private fun ReportProblemCard() {
     var showDialog by remember { mutableStateOf(false) }
 
+    // One tappable row. The what-gets-collected disclosure lives in the
+    // confirmation dialog, right before anything happens - which is where a
+    // rider actually reads it. A three-paragraph card plus a full-width
+    // button was Settings' single biggest block of text.
     val shape = RoundedCornerShape(Radii.md)
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
             .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s5),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+            .clickable { showDialog = true }
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.BugReport,
-                    contentDescription = null,
-                    tint = CadenceColors.Brand500,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.width(Spacing.s3))
-            Text(text = "Report a problem", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.BugReport,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(18.dp)
+            )
         }
-
-        Text(
-            text = "Found a bug? This drafts an email to the developer with your device model, " +
-                "Android and app version, and recent diagnostic logs. No personal data (no name, " +
-                "email, body metrics, or location) is included. Nothing is sent until you press " +
-                "send in your email app.",
-            style = CadenceType.small,
-            color = CadenceColors.Fg3
-        )
-
-        PrimaryBtn(
-            text = "Report a problem",
-            leadingIcon = Icons.Outlined.BugReport,
-            onClick = { showDialog = true },
-            modifier = Modifier.fillMaxWidth()
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Report a problem", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(
+                text = "Drafts an email with diagnostics · no personal data",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3
+            )
+        }
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = CadenceColors.Fg4,
+            modifier = Modifier.size(20.dp)
         )
     }
 
@@ -988,43 +1069,21 @@ private fun IntervalsIcuCard() {
     val configured = !athleteId.isNullOrBlank() && !apiKey.isNullOrBlank()
 
     var showKey by remember { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(false) }
 
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s5),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ExpandableCard(
+        icon = Icons.Outlined.CloudUpload,
+        iconTint = CadenceColors.Brand500,
+        title = "Intervals.icu",
+        statusText = when {
+            configured && autoUpload -> "Configured · auto-upload on"
+            configured -> "Configured · manual upload"
+            else -> "Not configured · optional"
+        },
+        statusColor = if (configured) CadenceColors.Success else CadenceColors.Fg3,
+        expanded = expanded,
+        onToggle = { expanded = !expanded }
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.CloudUpload,
-                    contentDescription = null,
-                    tint = CadenceColors.Brand500,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.width(Spacing.s3))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Intervals.icu", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                Text(
-                    text = if (configured) "Configured" else "Not configured",
-                    style = CadenceType.tick,
-                    color = if (configured) CadenceColors.Success else CadenceColors.Fg3
-                )
-            }
-        }
-
         Text(
             text = "Sync your finished rides to intervals.icu. Off by default - your athlete id " +
                 "and API key live only on this phone, and the app only contacts intervals.icu " +
@@ -1189,42 +1248,35 @@ private fun BackupSyncCard() {
         scope.launch { engine.syncNow() }
     }
 
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s5),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Folder,
-                    contentDescription = null,
-                    tint = CadenceColors.Brand500,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-            Spacer(Modifier.width(Spacing.s3))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Backup & sync", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                Text(
-                    text = if (configured) "Configured" else "Not configured",
-                    style = CadenceType.tick,
-                    color = if (configured) CadenceColors.Success else CadenceColors.Fg3
-                )
-            }
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    // A paused / failed sync needs the rider's attention - surface the body
+    // instead of hiding the review controls behind a collapsed row.
+    LaunchedEffect(paused, status) {
+        if (paused || status is SyncStatus.NeedsReview || status is SyncStatus.Failed) {
+            expanded = true
         }
+    }
+    val statusNow = status
+    val (headerStatus, headerColor) = when {
+        !configured -> "Not configured · optional" to CadenceColors.Fg3
+        paused || statusNow is SyncStatus.NeedsReview ->
+            "Paused · needs review" to CadenceColors.Warning
+        statusNow is SyncStatus.Syncing -> "Syncing…" to CadenceColors.Brand500
+        statusNow is SyncStatus.Failed -> "Couldn't sync" to CadenceColors.Danger
+        statusNow is SyncStatus.Success ->
+            "Synced ${formatRelativeTime(statusNow.syncedAtEpoch)}" to CadenceColors.Success
+        else -> "Configured" to CadenceColors.Success
+    }
 
+    ExpandableCard(
+        icon = Icons.Outlined.Folder,
+        iconTint = CadenceColors.Brand500,
+        title = "Backup & sync",
+        statusText = headerStatus,
+        statusColor = headerColor,
+        expanded = expanded,
+        onToggle = { expanded = !expanded }
+    ) {
         Text(
             text = "Pick any folder on your device or in cloud storage - Drive, Dropbox, " +
                 "Nextcloud, Syncthing, OneDrive, anything that exposes itself as a folder. " +

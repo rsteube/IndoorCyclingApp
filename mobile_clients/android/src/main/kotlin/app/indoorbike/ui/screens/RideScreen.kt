@@ -31,12 +31,14 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.scale
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -341,12 +343,44 @@ fun RideScreen(
         label = "hr"
     )
 
+    // Interval-complete flash: when the segment index advances mid-ride, the
+    // screen edges pulse once in the NEW zone's color - a half-second "next
+    // effort" cue the rider catches without reading anything. Skipped on the
+    // first composition so restoring a ride doesn't open with a flash.
+    val segFlash = remember { Animatable(0f) }
+    var lastFlashedSeg by remember { mutableStateOf(currentSegIdx) }
+    LaunchedEffect(currentSegIdx) {
+        if (currentSegIdx != lastFlashedSeg && state == WorkoutState.Active) {
+            lastFlashedSeg = currentSegIdx
+            segFlash.snapTo(1f)
+            segFlash.animateTo(0f, tween(durationMillis = 850, easing = FastOutSlowInEasing))
+        } else {
+            lastFlashedSeg = currentSegIdx
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         HorizonRidgeBackdrop(
             workout = workout!!,
             tintColor = animatedZoneColor,
             modifier = Modifier.fillMaxSize()
         )
+
+        if (segFlash.value > 0.01f) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                currentZone.color.copy(alpha = 0.28f * segFlash.value),
+                                Color.Transparent,
+                                currentZone.color.copy(alpha = 0.28f * segFlash.value)
+                            )
+                        )
+                    )
+            )
+        }
 
         // Layer 2: foreground content
         // Non-null while the "Report a problem" disclosure dialog is open; holds
@@ -656,17 +690,46 @@ fun RideScreen(
             exit = fadeOut(tween(500)),
             modifier = Modifier.align(Alignment.Center)
         ) {
+            // Trophy springs in with an overshoot while a single ring expands
+            // and fades behind it - one celebratory beat, then calm so the
+            // rider can breathe and hit View Summary.
+            val trophyPop = remember { Animatable(0f) }
+            LaunchedEffect(state) {
+                if (state == WorkoutState.Completed) {
+                    trophyPop.snapTo(0f)
+                    trophyPop.animateTo(
+                        1f,
+                        spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                    )
+                }
+            }
             Box(
                 modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0.copy(alpha = 0.92f)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Outlined.EmojiEvents,
-                        contentDescription = "Finished",
-                        tint = CadenceColors.Brand500,
-                        modifier = Modifier.size(120.dp)
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        val ring = (trophyPop.value * 2f).coerceIn(0f, 1f)
+                        if (ring > 0.01f && ring < 1f) {
+                            Box(
+                                modifier = Modifier
+                                    .size(120.dp + 140.dp * ring)
+                                    .border(
+                                        2.dp,
+                                        CadenceColors.Brand500.copy(alpha = (1f - ring) * 0.5f),
+                                        CircleShape
+                                    )
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.Outlined.EmojiEvents,
+                            contentDescription = "Finished",
+                            tint = CadenceColors.Brand500,
+                            modifier = Modifier
+                                .size(120.dp)
+                                .scale(0.4f + 0.6f * trophyPop.value)
+                        )
+                    }
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
                         text = "FINISHED!",
@@ -988,12 +1051,24 @@ private fun SegmentAndTimeline(
 
 @Composable
 private fun SegmentTimerChip(remainingSeconds: Int, zoneColor: Color) {
+    // Final five seconds of a segment: the chip beats once per tick and the
+    // fill brightens - anticipation the rider feels in peripheral vision
+    // before the interval flips. Scale only, so the row never re-lays-out.
+    val urgent = remainingSeconds in 1..5
+    val beat = remember { Animatable(1f) }
+    LaunchedEffect(remainingSeconds) {
+        if (urgent) {
+            beat.snapTo(1.16f)
+            beat.animateTo(1f, tween(durationMillis = 380, easing = FastOutSlowInEasing))
+        }
+    }
     Box(
         modifier = Modifier
             .widthIn(min = 76.dp)
+            .scale(beat.value)
             .clip(RoundedCornerShape(50))
-            .background(zoneColor.copy(alpha = 0.18f))
-            .border(1.dp, zoneColor.copy(alpha = 0.4f), RoundedCornerShape(50))
+            .background(zoneColor.copy(alpha = if (urgent) 0.30f else 0.18f))
+            .border(1.dp, zoneColor.copy(alpha = if (urgent) 0.75f else 0.4f), RoundedCornerShape(50))
             .padding(horizontal = 10.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
