@@ -33,7 +33,11 @@
     name: '',
     description: '',
     tags: [],
-    /** Each segment: { id, lengthInSeconds:int, powerPercentFTP:int } */
+    /**
+     * Each segment: { id, lengthInSeconds:int, powerPercentFTP:int,
+     *                 cadenceMinRpm:int|null, cadenceMaxRpm:int|null }
+     * The cadence pair is optional per segment - see CADENCE_RPM_MIN/MAX.
+     */
     segments: [],
     /** Multi-select: ordered Set so we can grab the "last" for insertion. */
     selectedIds: new Set(),
@@ -50,9 +54,38 @@
   const SNAP_SECONDS = 5;
   const SNAP_PCT = 5;
 
+  // Cadence targets are optional per segment. These bounds match
+  // CadenceTarget.VALID_RPM in the shared Kotlin model - anything outside is
+  // treated as "no target" by the app, so don't let the editor author one.
+  const CADENCE_RPM_MIN = 20;
+  const CADENCE_RPM_MAX = 200;
+
   function nextId() { return 's' + Math.random().toString(36).slice(2, 9); }
   function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
   function snap(value, step) { return Math.round(value / step) * step; }
+
+  /** Parse a cadence bound from storage / a link / an input. Null when absent or junk. */
+  function readRpm(value) {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n < CADENCE_RPM_MIN || n > CADENCE_RPM_MAX) return null;
+    return n;
+  }
+  /** True when the segment carries a cadence target at all. */
+  function hasCadence(seg) {
+    return seg.cadenceMinRpm != null || seg.cadenceMaxRpm != null;
+  }
+  /**
+   * "85-95" / "90" for display, or '' when there's no target. Mirrors
+   * CadenceTarget.label: either bound alone reads as a single value, and a
+   * reversed pair is shown the way the author obviously meant it.
+   */
+  function cadenceLabel(seg) {
+    const lo = seg.cadenceMinRpm, hi = seg.cadenceMaxRpm;
+    if (lo == null && hi == null) return '';
+    if (lo == null) return String(hi);
+    if (hi == null || hi === lo) return String(lo);
+    return `${Math.min(lo, hi)}-${Math.max(lo, hi)}`;
+  }
 
   function defaultSegment(zone) {
     return {
@@ -124,6 +157,8 @@
               id: s.id || nextId(),
               lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10) || 0, 0, 60 * 60 * 4),
               powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10) || 0, 0, 300),
+              cadenceMinRpm: readRpm(s.cadenceMinRpm),
+              cadenceMaxRpm: readRpm(s.cadenceMaxRpm),
             }))
           : [];
       }
@@ -222,6 +257,7 @@
       cumSec += seg.lengthInSeconds;
 
       const isSelected = state.selectedIds.has(seg.id);
+      const rpm = cadenceLabel(seg);
 
       const clip = el('div', {
         class: 'clip' + (isSelected ? ' is-selected' : ''),
@@ -233,11 +269,15 @@
           height: heightPct + '%',
           '--zone-fill': z.color,
         },
-        title: `Z${z.num} ${z.name} · ${fmtClock(seg.lengthInSeconds)} · ${seg.powerPercentFTP}% FTP`,
+        title: `Z${z.num} ${z.name} · ${fmtClock(seg.lengthInSeconds)} · ${seg.powerPercentFTP}% FTP`
+          + (rpm ? ` · ${rpm} rpm` : ''),
       },
         el('div', { class: 'clip-handle clip-handle--top', dataset: { resize: 'top' } }),
         el('div', { class: 'clip-handle clip-handle--right', dataset: { resize: 'right' } }),
         widthPct > 6 ? el('span', { class: 'clip-label' }, `Z${z.num} · ${seg.powerPercentFTP}%`) : null,
+        // A quiet corner marker, only wide enough to be worth drawing. Lets you
+        // spot which intervals carry a cadence ask without opening each one.
+        (rpm && widthPct > 9) ? el('span', { class: 'clip-rpm' }, `${rpm} rpm`) : null,
       );
 
       attachClipInteractions(clip, seg, idx);
@@ -733,6 +773,7 @@
       pctInput,
       el('span', { class: 'unit' }, '% FTP')
     ));
+    root.appendChild(buildCadenceField(seg));
     root.appendChild(el('span', { class: 'inspector-spacer' }));
     root.appendChild(el('button', {
       class: 'inspector-btn',
@@ -744,6 +785,76 @@
       type: 'button',
       onClick: () => deleteMany([seg.id]),
     }, 'Delete'));
+  }
+
+  /**
+   * The optional cadence target control for a single selected segment.
+   *
+   * Opt-in behind a checkbox because most intervals don't want a cadence ask,
+   * and a segment with no target must serialise exactly as it always has. Once
+   * enabled it's a min/max pair: fill both for a range ("85-95", how coaches
+   * write it), fill only the first for a single target. Power stays the thing
+   * the trainer holds; this only tells the rider how to spin while it does.
+   */
+  function buildCadenceField(seg) {
+    const on = hasCadence(seg);
+
+    const toggle = el('input', {
+      type: 'checkbox',
+      id: 'cadence-toggle',
+      checked: on ? 'checked' : undefined,
+      onChange: (e) => {
+        if (e.target.checked) {
+          // Seed a sensible range rather than an empty one, so enabling the
+          // target immediately means something and can just be nudged.
+          seg.cadenceMinRpm = 85;
+          seg.cadenceMaxRpm = 95;
+        } else {
+          seg.cadenceMinRpm = null;
+          seg.cadenceMaxRpm = null;
+        }
+        afterChange([seg.id]);
+      }
+    });
+    if (on) toggle.checked = true;
+
+    const field = el('div', { class: 'inspector-field inspector-field--cadence' },
+      el('label', { for: 'cadence-toggle' }, 'CADENCE'),
+      toggle
+    );
+
+    if (!on) {
+      field.appendChild(el('span', { class: 'unit' }, 'any'));
+      return field;
+    }
+
+    const minInputRpm = el('input', {
+      type: 'number', min: String(CADENCE_RPM_MIN), max: String(CADENCE_RPM_MAX),
+      value: seg.cadenceMinRpm == null ? '' : String(seg.cadenceMinRpm),
+      inputmode: 'numeric', placeholder: 'min',
+      'aria-label': 'Cadence target minimum, rpm',
+      onInput: (e) => {
+        seg.cadenceMinRpm = readRpm(e.target.value);
+        afterChange([seg.id], /*skipInspector*/ true);
+      }
+    });
+    const maxInputRpm = el('input', {
+      type: 'number', min: String(CADENCE_RPM_MIN), max: String(CADENCE_RPM_MAX),
+      value: seg.cadenceMaxRpm == null ? '' : String(seg.cadenceMaxRpm),
+      inputmode: 'numeric', placeholder: 'max',
+      'aria-label': 'Cadence target maximum, rpm - leave blank for a single target',
+      onInput: (e) => {
+        seg.cadenceMaxRpm = readRpm(e.target.value);
+        afterChange([seg.id], true);
+      }
+    });
+
+    field.appendChild(minInputRpm);
+    field.appendChild(el('span', { class: 'unit' }, '–'));
+    field.appendChild(maxInputRpm);
+    field.appendChild(el('span', { class: 'unit' }, 'rpm'));
+    field.appendChild(el('span', { class: 'inspector-hint' }, 'blank max = single target'));
+    return field;
   }
 
   // ── Mutations ───────────────────────────────────────────────────────────
@@ -812,16 +923,29 @@
       .slice(0, 60) || 'workout';
   }
   function buildWorkoutObject() {
+    const anyCadence = state.segments.some(hasCadence);
     return {
+      // Only claim v2 when a cadence target is actually present. A v1 workout
+      // loads in every build ever shipped; a v2 one is skipped wholesale by
+      // apps older than cadence targets, and there's no reason to lock a plain
+      // power workout out of an app that could ride it perfectly well.
+      schemaVersion: anyCadence ? 2 : 1,
       id: `editor-${slug(state.name || 'workout')}-${Date.now().toString(36)}`,
       name: (state.name || 'Untitled workout').trim(),
       description: state.description.trim() || null,
       tags: state.tags.length ? state.tags : undefined,
-      segments: state.segments.map(s => ({
-        lengthInSeconds: s.lengthInSeconds,
-        powerPercentFTP: s.powerPercentFTP,
-        intervalType: 'CONSTANT',
-      })),
+      segments: state.segments.map(s => {
+        const seg = {
+          lengthInSeconds: s.lengthInSeconds,
+          powerPercentFTP: s.powerPercentFTP,
+          intervalType: 'CONSTANT',
+        };
+        // Omitted entirely rather than written as null, so a workout without
+        // cadence targets serialises byte-identically to how it always did.
+        if (s.cadenceMinRpm != null) seg.cadenceMinRpm = s.cadenceMinRpm;
+        if (s.cadenceMaxRpm != null) seg.cadenceMaxRpm = s.cadenceMaxRpm;
+        return seg;
+      }),
     };
   }
   function downloadJson() {
@@ -936,14 +1060,32 @@
     return clamp(Math.round(n), 1, 60 * 60 * 4);
   }
 
-  /** "DUR@PCT" → a segment object, or null when unparseable. */
+  /**
+   * "DUR@PCT" → a segment object, or null when unparseable.
+   *
+   * An optional `r` suffix carries a cadence target: `5m@76r90` for a single
+   * value, `5m@76r85-95` for a range. Power is still read with a lenient
+   * parseInt so every link that worked before this existed still works - the
+   * suffix is only looked for afterwards, and a malformed one is ignored
+   * rather than failing the whole segment.
+   */
   function parseSegmentToken(tok) {
-    const at = String(tok).indexOf('@');
+    const s = String(tok).trim();
+    const at = s.indexOf('@');
     if (at < 0) return null;
-    const secs = parseDurationToken(tok.slice(0, at));
-    const pct = parseInt(tok.slice(at + 1), 10);
+    const secs = parseDurationToken(s.slice(0, at));
+    const rest = s.slice(at + 1);
+    const pct = parseInt(rest, 10);
     if (secs == null || !Number.isFinite(pct)) return null;
-    return { id: nextId(), lengthInSeconds: secs, powerPercentFTP: clamp(pct, 0, 300) };
+    const seg = { id: nextId(), lengthInSeconds: secs, powerPercentFTP: clamp(pct, 0, 300) };
+    const rpm = rest.match(/r\s*(\d+)(?:\s*-\s*(\d+))?\s*$/i);
+    if (rpm) {
+      const lo = readRpm(rpm[1]);
+      const hi = readRpm(rpm[2]);
+      if (lo != null) seg.cadenceMinRpm = lo;
+      if (hi != null) seg.cadenceMaxRpm = hi;
+    }
+    return seg;
   }
 
   /**

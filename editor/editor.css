@@ -322,6 +322,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Cadence target marker, pinned to the clip's bottom-left. Sits opposite the
+   zone label so the two never collide on a narrow clip. */
+.clip-rpm {
+  position: absolute;
+  bottom: 3px;
+  left: 4px;
+  right: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: rgba(15, 12, 9, 0.7);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 /* Resize handles */
 .clip-handle {
   position: absolute;
@@ -486,6 +502,24 @@
 .inspector-field input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .inspector-field input:focus { outline: none; border-color: var(--brand-500); }
 .inspector-field .unit { color: var(--fg-3); font-family: var(--font-mono); font-size: 12px; }
+
+/* Cadence target: an opt-in checkbox that reveals a min/max pair. */
+.inspector-field--cadence input[type="checkbox"] {
+  width: auto;
+  padding: 0;
+  margin: 0;
+  accent-color: var(--brand-500);
+  align-self: center;
+  cursor: pointer;
+}
+.inspector-field--cadence label { cursor: pointer; }
+.inspector-hint {
+  font-family: var(--font-body);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--fg-4, var(--fg-3));
+  white-space: nowrap;
+}
 
 .inspector-spacer { flex: 1; }
 

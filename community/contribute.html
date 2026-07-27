@@ -171,7 +171,7 @@
         </div>
         <div class="schema-row">
           <span><code>schemaVersion</code></span><span>integer</span><span>no</span>
-          <span>Workout format version. Defaults to <code>1</code>. Workouts with versions higher than the app understands are skipped, so future formats can land in an existing bundle without breaking older clients.</span>
+          <span>Workout format version. Defaults to <code>1</code>. Workouts with versions higher than the app understands are skipped, so future formats can land in an existing bundle without breaking older clients. Use <code>2</code> only if a segment carries a cadence target: a <code>1</code> workout loads everywhere, so don't claim <code>2</code> without needing it.</span>
         </div>
         <div class="schema-row">
           <span><code>id</code></span><span>string</span><span>yes</span>
@@ -192,6 +192,10 @@
         <div class="schema-row">
           <span><code>segments</code></span><span>array</span><span>yes</span>
           <span>Sequential intervals. Each has <code>lengthInSeconds</code> (1–14400), <code>powerPercentFTP</code> (0–300), and <code>intervalType: "CONSTANT"</code>.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>cadenceMinRpm</code><br><code>cadenceMaxRpm</code></span><span>integer</span><span>no</span>
+          <span>Optional cadence target on a segment, 20–200 rpm. Both for a range (<code>70</code>–<code>80</code>), <code>cadenceMinRpm</code> alone for a single target. The trainer holds the power either way; this tells the rider how to spin while it does, so use it for climbing-cadence or leg-speed work. Requires <code>schemaVersion: 2</code>.</span>
         </div>
       </div>
 
