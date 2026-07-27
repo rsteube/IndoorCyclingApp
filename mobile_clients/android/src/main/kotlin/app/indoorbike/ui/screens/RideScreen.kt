@@ -71,6 +71,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -90,6 +92,7 @@ import app.indoorbike.service.RideSessionService
 import androidx.compose.ui.platform.LocalConfiguration
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.session.WorkoutState
+import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.SecondaryBtn
@@ -277,6 +280,9 @@ fun RideScreen(
 
     val currentSeg = workout!!.segments.getOrNull(currentSegIdx)
     val nextSeg = workout!!.segments.getOrNull(currentSegIdx + 1)
+    // Null for the overwhelming majority of segments — cadence targets are
+    // opt-in per interval, so the readout stays exactly as it was without one.
+    val cadenceTarget = currentSeg?.cadenceTarget
     val remainingInSeg = maxOf(0, (currentSeg?.lengthInSeconds ?: 0) - elapsedInSeg)
     val currentZone = currentSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) } ?: PowerZone.Z1
     val nextZone = nextSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) }
@@ -491,11 +497,9 @@ fun RideScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            FlankMetric(
-                                label = "CADENCE",
-                                value = animatedCadence.toString(),
-                                unit = "RPM",
-                                valueColor = CadenceColors.Fg1,
+                            CadenceFlankMetric(
+                                rpm = animatedCadence,
+                                target = cadenceTarget,
                                 cardWidth = flankWidth,
                                 valueFontSize = flankFont
                             )
@@ -580,19 +584,24 @@ fun RideScreen(
                                 numberWidth = heroNumberWidth,
                                 wkgBarWidth = heroWkgBarWidth
                             )
+                            // Intrinsic-max height so the two cards stay the
+                            // same size when only one of them has a cadence
+                            // target bar to show. Side by side, a card that's
+                            // a few dp taller than its neighbour reads as a
+                            // layout bug rather than as extra information.
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .height(IntrinsicSize.Max)
                                     .padding(horizontal = sidePad),
                                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
                             ) {
-                                FlankMetric(
-                                    label = "CADENCE",
-                                    value = animatedCadence.toString(),
-                                    unit = "RPM",
-                                    valueColor = CadenceColors.Fg1,
+                                CadenceFlankMetric(
+                                    rpm = animatedCadence,
+                                    target = cadenceTarget,
                                     cardWidth = flankWidth,
-                                    valueFontSize = 30.sp
+                                    valueFontSize = 30.sp,
+                                    modifier = Modifier.fillMaxHeight()
                                 )
                                 FlankMetric(
                                     label = "HEART RATE",
@@ -603,7 +612,8 @@ fun RideScreen(
                                     sublabel = if (showStaleHr) null
                                         else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
                                     cardWidth = flankWidth,
-                                    valueFontSize = 30.sp
+                                    valueFontSize = 30.sp,
+                                    modifier = Modifier.fillMaxHeight()
                                 )
                             }
                         }
@@ -1073,14 +1083,24 @@ private fun SegmentTimerChip(remainingSeconds: Int, zoneColor: Color) {
 }
 
 @Composable
-private fun FlankMetric(
+internal fun FlankMetric(
     label: String,
     value: String,
     unit: String,
     valueColor: Color,
+    modifier: Modifier = Modifier,
     isStale: Boolean = false,
     /** Small caption under the number — e.g. "Z3 · AEROBIC" for the HR zone. */
     sublabel: String? = null,
+    /** Sublabel tint; defaults to [valueColor], which is what the HR zone wants. */
+    sublabelColor: Color? = null,
+    /**
+     * Replaces the whole card's spoken text. Set it when the visual shorthand
+     * (an arrow, a bar) wouldn't survive being read out field by field.
+     */
+    contentDescription: String? = null,
+    /** Optional extra row under the sublabel — e.g. the cadence target bar. */
+    footer: (@Composable () -> Unit)? = null,
     // Default to the phone HUD; the ride screen passes larger values on
     // expanded-width screens so the flanking metrics stay legible.
     cardWidth: Dp = 150.dp,
@@ -1089,12 +1109,21 @@ private fun FlankMetric(
     // Fixed width so 2-digit ↔ 3-digit transitions don't reflow the row.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
+        modifier = modifier
             .width(cardWidth)
             .clip(RoundedCornerShape(12.dp))
             .background(CadenceColors.Bg1.copy(alpha = 0.35f))
             .border(1.dp, CadenceColors.Line2.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp, vertical = 12.dp)
+            .then(
+                if (contentDescription != null) {
+                    Modifier.semantics(mergeDescendants = true) {
+                        this.contentDescription = contentDescription
+                    }
+                } else {
+                    Modifier
+                }
+            )
     ) {
         Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Box(
@@ -1120,10 +1149,11 @@ private fun FlankMetric(
             Text(
                 text = sublabel,
                 style = CadenceType.tick,
-                color = valueColor,
+                color = sublabelColor ?: valueColor,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
+        footer?.invoke()
     }
 }
 

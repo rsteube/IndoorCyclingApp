@@ -19,12 +19,26 @@ import kotlinx.serialization.Serializable
 
 /**
  * Represents a single segment/power zone within a workout.
+ *
+ * Cadence is an *optional* second dimension. Power is what the trainer holds in
+ * ERG mode, so the rider's cadence is theirs to choose; a segment can ask for a
+ * particular spin (grinding low-rpm climbs, high-rpm leg speed work) without
+ * changing the effort. Both fields default to null, which means "any cadence"
+ * and is what every workout written before this existed says.
  */
 @Serializable
 data class PowerZone(
     val lengthInSeconds: Int,
     val powerPercentFTP: Int,
-    val intervalType: String
+    val intervalType: String,
+    /** Bottom of the cadence target in rpm, or null for no target. */
+    val cadenceMinRpm: Int? = null,
+    /**
+     * Top of the cadence target in rpm. Null alongside a [cadenceMinRpm] means
+     * a single target rather than a range - see [CadenceTarget], which is how
+     * callers should read this pair.
+     */
+    val cadenceMaxRpm: Int? = null,
 )
 
 /**
@@ -54,7 +68,25 @@ data class Workout(
     val segments: List<PowerZone>
 )
 
-/** Format version emitted for workouts the app writes today. */
-const val WORKOUT_SCHEMA_VERSION_CURRENT = 1
+/**
+ * Format version emitted for workouts the app writes today.
+ *
+ * v2 added the optional cadence target on [PowerZone]. Writers should only
+ * stamp 2 on workouts that actually carry one: a v1 workout still parses
+ * everywhere, whereas a v2 workout is skipped wholesale by older builds. There
+ * is no reason to lock a plain power workout out of an app that could ride it.
+ * See [workoutSchemaVersionFor].
+ */
+const val WORKOUT_SCHEMA_VERSION_CURRENT = 2
 /** Highest format version this build can parse — entries above are skipped. */
-const val WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED = 1
+const val WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED = 2
+
+/**
+ * The lowest schema version that can faithfully represent [segments].
+ *
+ * Stamping the minimum keeps reach as wide as the content allows: a workout
+ * only claims v2 once dropping a field would change what the rider is asked
+ * to do.
+ */
+fun workoutSchemaVersionFor(segments: List<PowerZone>): Int =
+    if (segments.any { it.cadenceMinRpm != null || it.cadenceMaxRpm != null }) 2 else 1

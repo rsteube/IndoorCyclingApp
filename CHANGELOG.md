@@ -6,6 +6,28 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Cadence targets on intervals.** An interval can now ask for a cadence as
+  well as a power - a single value or a range - so a workout can call for
+  grinding a climb at 70-80 rpm or spinning leg speed at 105. The trainer holds
+  the power in ERG mode exactly as before; the target only tells you how to
+  spin while it does, and it is entirely optional. Set one per interval in the
+  **workout editor** (tick CADENCE on a selected block, then give it a min and,
+  if you want a range, a max).
+
+  While riding, the CADENCE card shows your target with an arrow for which way
+  to move - **▲** to spin up, **▼** to ease off, **✓** when you're there. The
+  number turns green on target and amber off it, and a small bar under it shows
+  how far off you are, because being 2 rpm under and 30 rpm under call for
+  different responses. If your trainer isn't reporting cadence, the target is
+  shown without a verdict rather than nagging you about a miss it can't see.
+
+  Workouts carrying a cadence target are format v2. Ones without stay v1, so
+  they still load in older versions of the app. Third-party links can set
+  targets too, via a new `r` suffix in the editor's URL API
+  (`45m@78r70-80`) - see [docs/EDITOR_URL_API.md](docs/EDITOR_URL_API.md).
+
 ### Fixed
 
 - **Resuming a ride after a crash no longer throws away everything you rode

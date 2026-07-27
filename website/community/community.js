@@ -138,7 +138,10 @@
   // to render an unknown shape.
   const MAX_MANIFEST_SCHEMA = 2;
   const MAX_BUNDLE_SCHEMA = 1;
-  const MAX_WORKOUT_SCHEMA = 1;
+  // v2 added the optional cadence target on a segment. The browser renders
+  // duration and power, so an unrendered cadence field costs a visitor nothing
+  // - leaving this at 1 would hide otherwise-perfectly-browsable workouts.
+  const MAX_WORKOUT_SCHEMA = 2;
 
   /**
    * Load a repo: fetch the small manifest, then fetch each referenced bundle

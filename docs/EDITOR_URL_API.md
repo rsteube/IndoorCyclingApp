@@ -55,14 +55,24 @@ or `%` that appear *inside* a value. The structural characters of the segment sy
 
 The `s` parameter is a **comma-separated list**. Each item is one of:
 
-### 1. A single segment - `DURATION@POWER`
+### 1. A single segment - `DURATION@POWER[rCADENCE]`
 
 - **`DURATION`** - a number with an optional unit:
   - bare number or `s` suffix → **seconds**: `300`, `300s`, `90s`
   - `m` suffix → **minutes**, decimals allowed: `5m`, `2.5m`
 - **`POWER`** - target as an integer **percentage of FTP** (`0`–`300`). `100` = FTP.
+- **`rCADENCE`** *(optional)* - a cadence target in rpm, introduced by `r`:
+  - `r90` → a **single** target of 90 rpm
+  - `r85-95` → a **range**, 85 to 95 rpm
 
-Examples: `300@50` (5 min at 50% FTP), `5m@50` (same), `30s@120`.
+Examples: `300@50` (5 min at 50% FTP), `5m@50` (same), `30s@120`,
+`45m@78r70-80` (45 min at 78% FTP spinning 70-80 rpm), `10m@60r95`.
+
+Cadence is optional and independent of power. The trainer holds the power in ERG mode either
+way; a cadence target just tells the rider how to spin while it does, which is how you express
+low-cadence climbing work or high-cadence leg speed. Values must land in **20–200 rpm**;
+anything outside is ignored rather than clamped, because a cadence nobody can hold is more
+likely a typo than an intention.
 
 ### 2. A repeat group - `Nx(SEG;SEG;…)`
 
@@ -113,10 +123,19 @@ https://indoorbike.app/editor/?name=VO2+6x3&tags=VO2+Max&s=12m@55,6x(3m@115;3m@5
 https://indoorbike.app/editor/?name=Pyramid&s=300@50,300@70,300@90,300@105,300@90,300@70,300@50
 ```
 
+**Cadence work** - a climbing simulation at grinder cadence, then leg speed at 100+ rpm:
+
+```
+https://indoorbike.app/editor/?name=Climb+%2B+Spin&ftp=230&s=10m@55,45m@78r70-80,5m@45,4x(2m@70r105;2m@50),5m@45
+```
+
 ## Behaviour & limits
 
 - **Segments cap:** 200. Anything beyond is dropped.
 - **Clamping:** duration `1s`–`4h`, power `0%`–`300%`, repeat count `1`–`40`.
+- **Cadence:** `20`–`200` rpm. Out-of-range or malformed values drop the cadence target and
+  keep the segment, rather than discarding the whole segment. A reversed range (`r95-85`) is
+  read as the range that was obviously meant.
 - **Garbage tolerance:** unparseable items are skipped, not fatal. If `s` is present but
   yields *zero* valid segments, the editor shows an error toast and opens normally.
 - **No per-segment labels:** the editor's segment model is duration + power only; it always

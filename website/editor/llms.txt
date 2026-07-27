@@ -33,25 +33,36 @@ The segment syntax characters @ , ; ( ) x are URL-safe - do NOT encode them.
 
 s            := item ("," item)*
 item         := segment | repeat
-segment      := DURATION "@" POWER
+segment      := DURATION "@" POWER [CADENCE]
 repeat       := COUNT "x" "(" segment (";" segment)* ")"   ; group repeat
               | COUNT "x" segment                          ; single-segment repeat
 DURATION     := NUMBER          ; seconds  (e.g. 300)
               | NUMBER "s"       ; seconds  (e.g. 90s)
               | NUMBER "m"       ; minutes, decimals ok (e.g. 5m, 2.5m)
 POWER        := integer percent of FTP, 0..300   ; 100 = FTP
+CADENCE      := "r" RPM              ; single target   (e.g. r90)
+              | "r" RPM "-" RPM      ; range           (e.g. r85-95)
+RPM          := integer 20..200
 COUNT        := integer 1..40
 
 Top-level items are comma-separated. Segments INSIDE a repeat group are
 semicolon-separated (commas are reserved for the top level).
 
+CADENCE is optional and independent of POWER. The trainer holds the power in
+ERG mode regardless; a cadence target only tells the rider how to spin while it
+does (low-cadence climbing work, high-cadence leg speed). Omit it unless the
+workout genuinely calls for a particular cadence.
+
 ## LIMITS / VALIDATION (applied by the editor)
 
 - max 200 segments (extra dropped)
 - duration clamped 1s..4h, power clamped 0..300, count clamped 1..40
+- cadence must be 20..200 rpm; out-of-range or malformed cadence drops the
+  cadence target but KEEPS the segment. A reversed range (r95-85) is read as
+  85-95.
 - unparseable items are skipped silently; if `s` yields 0 valid segments the
   editor shows an error and opens empty - so emit valid syntax.
-- no per-segment labels in v1 (editor stores duration+power only).
+- no per-segment labels (editor stores duration + power + optional cadence).
 
 ## EXAMPLES
 
@@ -70,10 +81,23 @@ semicolon-separated (commas are reserved for the top level).
 Flat list, seconds, no repeats:
   https://indoorbike.app/editor/?name=Pyramid&s=300@50,300@70,300@90,300@105,300@90,300@70,300@50
 
+Cadence targets - 45min climbing block at 70-80 rpm, then leg speed at 105 rpm:
+  https://indoorbike.app/editor/?name=Climb+%2B+Spin&ftp=230&s=10m@55,45m@78r70-80,5m@45,4x(2m@70r105;2m@50),5m@45
+
 ## RESULT MODEL (what the link decodes to)
 
-{ "name": "...", "description": "...", "tags": ["..."],
+{ "schemaVersion": 1, "name": "...", "description": "...", "tags": ["..."],
   "segments": [ { "lengthInSeconds": 600, "powerPercentFTP": 50, "intervalType": "CONSTANT" } ] }
+
+With cadence targets, schemaVersion becomes 2 and the segments that carry one
+gain cadenceMinRpm / cadenceMaxRpm (a single target sets only cadenceMinRpm):
+
+{ "schemaVersion": 2, "name": "...",
+  "segments": [ { "lengthInSeconds": 2700, "powerPercentFTP": 78, "intervalType": "CONSTANT",
+                  "cadenceMinRpm": 70, "cadenceMaxRpm": 80 } ] }
+
+schemaVersion is 1 whenever no segment carries a cadence target, so plain power
+workouts stay loadable by app builds that predate cadence targets.
 
 ## DOWNSTREAM FLOW (for context, not needed to build the link)
 

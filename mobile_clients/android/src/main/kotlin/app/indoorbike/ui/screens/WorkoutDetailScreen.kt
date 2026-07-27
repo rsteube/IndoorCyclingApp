@@ -82,6 +82,7 @@ import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.workout.WorkoutSummary
+import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
@@ -510,6 +511,20 @@ private fun StepRow(segment: PowerZone, ftp: Int) {
                 .background(zone.color, RoundedCornerShape(2.dp))
         )
         ZoneBadge(zone = zone)
+        // Cadence is the segment's second ask, so it earns its own chip rather
+        // than being appended to the power line — a rider scanning the list
+        // before starting wants to spot which intervals have one.
+        segment.cadenceTarget?.let { target ->
+            Text(
+                text = "${target.label} rpm",
+                style = CadenceType.tick.copy(fontSize = 11.sp),
+                color = CadenceColors.Fg2,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(CadenceColors.Bg2)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
         Text(
             text = "$durLabel · $watts W",
             style = CadenceType.tick.copy(fontSize = 12.sp),
