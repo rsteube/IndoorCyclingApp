@@ -173,12 +173,14 @@
 
     <div class="api-grammar">
       <code>DURATION@POWER</code><span>One segment - e.g. <code>5m@90</code>, <code>300@90</code>, <code>30s@120</code>.</span>
+      <code>DURATION@POWER[rRPM]</code><span>Same, with an optional cadence target - e.g. <code>45m@78r70-80</code>, <code>10m@60r95</code>.</span>
       <code>Nx(SEG;SEG)</code><span>Repeat a group N times - e.g. <code>3x(8m@100;4m@55)</code>.</span>
       <code>NxSEG</code><span>Repeat one segment N times - e.g. <code>8x30s@120</code>.</span>
     </div>
     <ul>
       <li><strong>Duration</strong> - a number in <strong>seconds</strong> (<code>300</code>, <code>90s</code>), or <strong>minutes</strong> with an <code>m</code> (<code>5m</code>, <code>2.5m</code>).</li>
       <li><strong>Power</strong> - a percentage of FTP (<code>100</code> = your threshold).</li>
+      <li><strong>Cadence</strong> <em>(optional)</em> - an <code>r</code> then either one value (<code>r90</code>) or a range (<code>r85-95</code>), in rpm. Valid range is 20-200; anything else is ignored and the segment keeps its power. The trainer holds the power either way, so this is how you ask for a low-cadence climb or high-cadence leg speed.</li>
       <li>Inside a repeat group, separate segments with <code>;</code> (commas separate the top-level list).</li>
     </ul>
 
@@ -195,6 +197,10 @@
     <div class="api-eg">
       <p class="api-eg-label">Sprints - 8×30 s @ 130%</p>
       <a class="api-url" href="https://indoorbike.app/editor/?name=Sprints&amp;s=10m@50,8x30s@130,5m@50">https://indoorbike.app/editor/?name=Sprints&amp;s=10m@50,8x30s@130,5m@50</a>
+    </div>
+    <div class="api-eg">
+      <p class="api-eg-label">Cadence work - 45 min climbing at 70-80 rpm, then leg speed at 105</p>
+      <a class="api-url" href="https://indoorbike.app/editor/?name=Climb+%2B+Spin&amp;ftp=230&amp;s=10m@55,45m@78r70-80,5m@45,4x(2m@70r105;2m@50),5m@45">https://indoorbike.app/editor/?name=Climb+%2B+Spin&amp;ftp=230&amp;s=10m@55,45m@78r70-80,5m@45,4x(2m@70r105;2m@50),5m@45</a>
     </div>
 
     <h2>Badges (optional)</h2>

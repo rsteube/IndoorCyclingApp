@@ -4,7 +4,10 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
-## [Unreleased]
+## [1.5] (8) - 2026-07-28
+
+Cadence targets for intervals, and two fixes for rides that could be lost
+before they reached your history.
 
 ### Added
 
