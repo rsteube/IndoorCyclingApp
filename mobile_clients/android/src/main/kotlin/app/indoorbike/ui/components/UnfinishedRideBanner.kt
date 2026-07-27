@@ -21,8 +21,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.PauseCircleOutline
 import androidx.compose.material.icons.outlined.PlayArrow
+import androidx.compose.material.icons.outlined.Save
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,6 +44,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.LocalRideResumer
 import app.indoorbike.LocalWorkouts
+import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -49,12 +52,17 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 
 /**
- * Persistent banner shown on every top-level tab while an unfinished ride is
- * stored on disk. Drives the "you crashed mid-ride; continue or abandon?" UX.
+ * Persistent banner shown on every top-level tab while a ride is stored on disk
+ * without having reached history. Two shapes, depending on how far the ride got:
+ *
+ *  - **Mid-ride** (the app died while riding): continue or abandon.
+ *  - **Finished but unsaved** (the app died, or the rider walked away, between
+ *    the completion screen and the summary): save it to history, or discard.
  *
  * Returns nothing (renders nothing) when:
- *  - no snapshot exists, or
- *  - the snapshot's workout is no longer in the loaded workout list (deleted JSON, etc.)
+ *  - no snapshot exists,
+ *  - the snapshot's workout is no longer in the loaded workout list (deleted JSON, etc.), or
+ *  - the ride is finished but has no telemetry to save.
  */
 @Composable
 fun UnfinishedRideBanner(
@@ -68,14 +76,19 @@ fun UnfinishedRideBanner(
     val current = snapshot ?: return
     val workout = workouts.find { it.id == current.workoutId } ?: return
 
-    // Self-heal: a snapshot can land on disk for a *finished* ride if the
-    // process was killed in the half-second between the final tick and the
-    // completion clear (race fixed in WorkoutSessionManager — this guard
-    // catches old files written before the fix). When that happens, just
-    // discard the snapshot and don't render the banner at all.
-    val isAlreadyFinished = current.currentSegmentIndex >= workout.segments.size ||
+    // A finished ride that never reached history: either the app died between
+    // the trophy screen and the summary, or the rider backed out of it. The
+    // samples are the whole value here, so offer to save rather than resume.
+    val isFinished = current.state == WorkoutState.Completed ||
+        current.currentSegmentIndex >= workout.segments.size ||
         current.elapsedSeconds >= workout.segments.sumOf { it.lengthInSeconds }
-    if (isAlreadyFinished) {
+    val recovered = remember(current) { container.sessionManager.pendingRideTelemetry(current) }
+
+    if (isFinished && recovered.isEmpty()) {
+        // Finished with nothing to show for it. Pre-fix snapshots land here:
+        // they were written for a completed ride by the periodic tick, and no
+        // telemetry log exists to go with them, so saving would only add an
+        // empty session to history. Discard silently, as before.
         LaunchedEffect(current.workoutId, current.elapsedSeconds) {
             container.sessionManager.abandonUnfinishedRide()
         }
@@ -87,6 +100,9 @@ fun UnfinishedRideBanner(
     val total = workout.segments.sumOf { it.lengthInSeconds }.coerceAtLeast(1)
     val progress = (current.elapsedSeconds.toFloat() / total).coerceIn(0f, 1f)
     val pct = (progress * 100).toInt()
+    // Time actually pedalled, which is what a saved ride reports. Older
+    // snapshots default it to 0, so fall back to the planned elapsed.
+    val rideSeconds = current.actualRideSeconds.takeIf { it > 0 } ?: current.elapsedSeconds
 
     val shape = RoundedCornerShape(Radii.md)
     Column(
@@ -102,13 +118,17 @@ fun UnfinishedRideBanner(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Icon(
-                imageVector = Icons.Outlined.PauseCircleOutline,
+                imageVector = if (isFinished) {
+                    Icons.Outlined.EmojiEvents
+                } else {
+                    Icons.Outlined.PauseCircleOutline
+                },
                 contentDescription = null,
                 tint = CadenceColors.Brand500,
                 modifier = Modifier.size(18.dp)
             )
             Text(
-                text = "UNFINISHED RIDE",
+                text = if (isFinished) "RIDE NOT SAVED" else "UNFINISHED RIDE",
                 style = CadenceType.eyebrow,
                 color = CadenceColors.Brand500
             )
@@ -140,7 +160,11 @@ fun UnfinishedRideBanner(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = "${formatClock(current.elapsedSeconds)} / ${formatClock(total)} · $pct% complete",
+            text = if (isFinished) {
+                "${formatClock(rideSeconds)} ridden · not yet in your history"
+            } else {
+                "${formatClock(current.elapsedSeconds)} / ${formatClock(total)} · $pct% complete"
+            },
             style = CadenceType.tick,
             color = CadenceColors.Fg2
         )
@@ -148,10 +172,17 @@ fun UnfinishedRideBanner(
         Spacer(Modifier.height(Spacing.s3))
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-            ContinueButton(
-                onClick = { resumer.continueRide(workout, current) },
-                modifier = Modifier.weight(1f)
-            )
+            if (isFinished) {
+                SaveButton(
+                    onClick = { resumer.saveFinishedRide(workout, current) },
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                ContinueButton(
+                    onClick = { resumer.continueRide(workout, current) },
+                    modifier = Modifier.weight(1f)
+                )
+            }
             AbandonButton(
                 onClick = { confirmingAbandon = true },
                 modifier = Modifier.weight(1f)
@@ -162,8 +193,9 @@ fun UnfinishedRideBanner(
     if (confirmingAbandon) {
         AbandonConfirmDialog(
             workoutName = workout.name,
-            elapsed = current.elapsedSeconds,
+            elapsed = if (isFinished) rideSeconds else current.elapsedSeconds,
             total = total,
+            isFinished = isFinished,
             onCancel = { confirmingAbandon = false },
             onConfirm = {
                 confirmingAbandon = false
@@ -203,6 +235,32 @@ private fun ContinueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun SaveButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .height(BannerButtonHeight)
+            .clip(BannerButtonShape)
+            .background(CadenceColors.Brand500)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Save,
+            contentDescription = null,
+            tint = CadenceColors.OnBrand,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = "Save ride",
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.OnBrand
+        )
+    }
+}
+
+@Composable
 private fun AbandonButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
@@ -228,6 +286,7 @@ private fun AbandonConfirmDialog(
     workoutName: String,
     elapsed: Int,
     total: Int,
+    isFinished: Boolean,
     onCancel: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -245,13 +304,18 @@ private fun AbandonConfirmDialog(
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
             Text(
-                text = "Abandon this ride?",
+                text = if (isFinished) "Discard this ride?" else "Abandon this ride?",
                 style = CadenceType.h3,
                 color = CadenceColors.Fg1
             )
             Text(
-                text = "$workoutName - ${formatClock(elapsed)} of ${formatClock(total)} won't be saved. " +
-                        "This can't be undone.",
+                text = if (isFinished) {
+                    "$workoutName - ${formatClock(elapsed)} you already rode. Discarding " +
+                        "means it never reaches your history. This can't be undone."
+                } else {
+                    "$workoutName - ${formatClock(elapsed)} of ${formatClock(total)} won't be saved. " +
+                        "This can't be undone."
+                },
                 style = CadenceType.body,
                 color = CadenceColors.Fg2
             )
@@ -282,7 +346,7 @@ private fun AbandonConfirmDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Abandon",
+                        text = if (isFinished) "Discard" else "Abandon",
                         style = CadenceType.bodyStrong,
                         color = CadenceColors.Fg1
                     )

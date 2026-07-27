@@ -51,11 +51,20 @@ enum class WorkoutState {
  *
  * Telemetry is captured by sampling power/cadence/HR once per second from the
  * injected [TrainerManager]; samples are buffered in memory until the session
- * completes, at which point they are persisted via [HistoryRepository].
+ * completes, at which point they are persisted via [HistoryRepository]. They
+ * are *also* streamed to [ActiveTelemetryStore] as the ride runs, so a process
+ * death doesn't take the ride's power curve with it.
  */
 class WorkoutSessionManager(
     private val trainerManager: TrainerManager,
     private val activeSessionStore: ActiveSessionStore? = null,
+    /**
+     * Durable log of samples captured so far. Paired with [activeSessionStore]:
+     * that one remembers *where* the rider was, this one remembers *what they
+     * did* to get there. Null disables crash-safe telemetry (tests, and any
+     * platform that hasn't wired a store yet).
+     */
+    private val activeTelemetryStore: ActiveTelemetryStore? = null,
     /**
      * How to get the user's current heart rate at sample time. The default
      * reads from the trainer's HR characteristic; a [HeartRateMonitor]-aware
@@ -130,6 +139,39 @@ class WorkoutSessionManager(
      */
     fun telemetrySnapshot(): List<TelemetryPoint> = _telemetry.toList()
 
+    /**
+     * How many entries of [_telemetry] have already been written to
+     * [activeTelemetryStore]. Everything past this index is pending. Seeded to
+     * the restored sample count on resume so replayed samples aren't appended
+     * to the log a second time.
+     */
+    private var flushedTelemetryCount = 0
+
+    /**
+     * Samples recovered from the durable log at startup, held until the rider
+     * decides whether to resume. Loaded in [loadPersistedSnapshot] rather than
+     * in [restoreFromSnapshot] because the resume entry point is a plain
+     * (non-suspend) UI callback: doing the read up front means the samples are
+     * already in hand when the rider taps Continue, so the timer can never
+     * start racing an in-flight disk read.
+     */
+    private var recoveredTelemetry: List<TelemetryPoint> = emptyList()
+
+    /**
+     * Samples belonging to the ride [persistedSnapshot] describes.
+     *
+     * Two sources, because a finished-but-unsaved ride can be offered back to
+     * the rider either in the process that rode it (they backed out of the
+     * completion screen without tapping through) or in a fresh one (the app
+     * died first). In-process the live buffer is authoritative; otherwise it's
+     * whatever [loadPersistedSnapshot] recovered from the durable log.
+     */
+    fun pendingRideTelemetry(snapshot: ActiveSessionSnapshot): List<TelemetryPoint> {
+        val rideIsStillLoaded = _activeWorkout.value?.id == snapshot.workoutId &&
+            _state.value == WorkoutState.Completed
+        return if (rideIsStillLoaded) _telemetry.toList() else recoveredTelemetry
+    }
+
     var sessionStartTimeEpoch: Long = 0
         private set
 
@@ -158,9 +200,17 @@ class WorkoutSessionManager(
         if (_state.value != WorkoutState.Idle && _state.value != WorkoutState.Completed) {
             stopWorkout()
         }
-        // Starting a fresh workout — discard any stale unfinished snapshot. The
+        // Drop the outgoing ride's samples *before* wiping its persisted log.
+        // The stopped timer's exit handler may still be racing us on another
+        // thread; ordering it this way means it either finds an empty buffer
+        // and does nothing, or enqueues an append that the clear below is
+        // guaranteed to land after (both go through snapshotDispatcher in FIFO
+        // order). Either way the previous ride can't bleed into this one.
+        _telemetry.clear()
+        flushedTelemetryCount = 0
+        // Starting a fresh workout — discard any stale unfinished ride. The
         // user implicitly abandons the prior ride by starting a new one.
-        clearPersistedSnapshot()
+        clearPersistedRide()
         _activeWorkout.value = workout
         ftpWatts = ftp
         _state.value = WorkoutState.Standby
@@ -169,16 +219,20 @@ class WorkoutSessionManager(
         _currentSegmentIndex.value = 0
         _elapsedInSegment.value = 0
         _targetBiasPercent.value = 0
-        _telemetry.clear()
         sessionStartTimeEpoch = 0
         startPedalingDetection()
     }
 
     /**
      * Restore a previously persisted snapshot. Sets state to Standby so the
-     * rider has to pedal to resume, mirroring the start-of-ride flow. Existing
-     * in-memory telemetry from this process is discarded — only post-resume
-     * samples will contribute to the saved session's averages.
+     * rider has to pedal to resume, mirroring the start-of-ride flow.
+     *
+     * Telemetry recovered from the durable log ([loadPersistedSnapshot]) is
+     * replayed into the in-memory buffer, so the ride the rider eventually
+     * saves covers the whole session and not just the part after the crash.
+     * Any in-memory samples from *this* process are dropped: the snapshot we're
+     * restoring is the authoritative position, and the log already holds
+     * everything recorded up to it.
      */
     fun restoreFromSnapshot(snapshot: ActiveSessionSnapshot, workout: Workout) {
         if (snapshot.workoutId != workout.id) return
@@ -195,6 +249,9 @@ class WorkoutSessionManager(
         _elapsedInSegment.value = snapshot.elapsedInSegment
         _targetBiasPercent.value = snapshot.targetBiasPercent
         _telemetry.clear()
+        _telemetry.addAll(recoveredTelemetry)
+        // Already on disk — the next flush must only append what comes after.
+        flushedTelemetryCount = _telemetry.size
         sessionStartTimeEpoch = snapshot.sessionStartTimeEpochMs
         _state.value = WorkoutState.Standby
         startPedalingDetection()
@@ -261,6 +318,7 @@ class WorkoutSessionManager(
         timerJob?.cancel()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Standby
+        // The timer's exit handler flushes the tail to the durable log.
     }
 
     fun adjustDifficulty(deltaPercent: Int) {
@@ -295,6 +353,9 @@ class WorkoutSessionManager(
         if (_state.value != WorkoutState.Active) return
         _state.value = WorkoutState.Paused
         trainerManager.setTargetPower(0)
+        // Cancelling the loop runs its exit handler, which flushes the tail —
+        // a paused ride can sit backgrounded for a long time and is a prime
+        // candidate for being killed.
         timerJob?.cancel()
     }
 
@@ -366,13 +427,31 @@ class WorkoutSessionManager(
      */
     fun abandonUnfinishedRide() {
         if (_state.value != WorkoutState.Idle) stopWorkout()
-        clearPersistedSnapshot()
+        clearPersistedRide()
     }
 
-    /** One-time loader, called from app startup so the banner lights up if we crashed mid-ride. */
+    /**
+     * One-time loader, called from app startup so the banner lights up if we
+     * crashed mid-ride. Also recovers the durable telemetry log up front so
+     * [restoreFromSnapshot] has the samples in hand the moment the rider taps
+     * Continue.
+     */
     suspend fun loadPersistedSnapshot() {
         val store = activeSessionStore ?: return
-        _persistedSnapshot.value = store.read()
+        val snapshot = store.read()
+        recoveredTelemetry = if (snapshot != null) {
+            activeTelemetryStore?.readAll().orEmpty()
+        } else {
+            // No unfinished ride to resume, so any log left on disk belongs to a
+            // session that already ended. Reap it now rather than let it bleed
+            // into the next ride that gets resumed.
+            activeTelemetryStore?.clear()
+            emptyList()
+        }
+        // Published last, once the samples are in place: the banner reads them
+        // via [pendingRideTelemetry] the moment a snapshot appears, and uses
+        // whether they exist to decide what to offer.
+        _persistedSnapshot.value = snapshot
     }
 
     fun dispose() {
@@ -418,17 +497,52 @@ class WorkoutSessionManager(
     private fun startTimerLoop() {
         timerJob?.cancel()
         timerJob = scope.launch {
-            while (_state.value == WorkoutState.Active) {
-                tick()
-                delay(1000)
+            try {
+                while (_state.value == WorkoutState.Active) {
+                    tick()
+                    delay(1000)
+                }
+            } finally {
+                // The loop owns [_telemetry] — every add happens here — so this
+                // is the only place a flush can copy the buffer without racing
+                // a writer. Running it on the way out covers every path that
+                // stops the timer (manual pause, stop-pedaling auto-pause,
+                // backing out of a ride, completion) so the last few seconds
+                // don't sit unflushed while the app is a kill candidate.
+                //
+                // Safe under cancellation: flushTelemetry only copies the slice
+                // and hands it to the manager's own scope, which is a sibling of
+                // this job rather than a child, so it isn't cancelled with us.
+                flushTelemetry()
             }
         }
     }
 
     private var lastSnapshotEpoch: Long = 0
 
+    /**
+     * Hand every not-yet-written sample to the durable log.
+     *
+     * The pending slice is copied on the caller's thread (the timer coroutine,
+     * the only writer to [_telemetry]) and the immutable copy is what crosses
+     * onto [snapshotDispatcher], so the appending coroutine never reads a list
+     * that's being mutated underneath it.
+     */
+    private fun flushTelemetry() {
+        val store = activeTelemetryStore ?: return
+        if (flushedTelemetryCount >= _telemetry.size) return
+        val pending = _telemetry.subList(flushedTelemetryCount, _telemetry.size).toList()
+        flushedTelemetryCount += pending.size
+        scope.launch(snapshotDispatcher) {
+            try {
+                store.append(pending)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to append active telemetry", e)
+            }
+        }
+    }
+
     private fun maybePersistSnapshot(now: Long) {
-        val store = activeSessionStore ?: return
         if (now - lastSnapshotEpoch < SNAPSHOT_INTERVAL_MS) return
         // Don't persist for finished or not-yet-started states. Without this
         // guard, a final tick could write a snapshot for a ride that's already
@@ -436,6 +550,13 @@ class WorkoutSessionManager(
         val state = _state.value
         if (state == WorkoutState.Idle || state == WorkoutState.Completed) return
         lastSnapshotEpoch = now
+        // Telemetry first, position second, both FIFO on snapshotDispatcher. A
+        // crash between the two therefore leaves samples slightly *ahead* of the
+        // restored position rather than behind it, which loses nothing: the
+        // extra samples are real riding, and the snapshot only decides which
+        // interval we drop the rider back into.
+        flushTelemetry()
+        val store = activeSessionStore ?: return
         val workout = _activeWorkout.value ?: return
         val snapshot = ActiveSessionSnapshot(
             workoutId = workout.id,
@@ -459,13 +580,32 @@ class WorkoutSessionManager(
         }
     }
 
-    private fun clearPersistedSnapshot() {
+    /**
+     * Drop everything persisted for the ride: position *and* telemetry.
+     *
+     * Only for paths where the ride is genuinely going away - the rider
+     * abandoned it, replaced it by starting another, or it reached history and
+     * no longer needs a recovery copy. Completion deliberately does *not* come
+     * through here; see [persistCompletedRide].
+     */
+    private fun clearPersistedRide() {
         _persistedSnapshot.value = null
-        val store = activeSessionStore ?: return
-        // FIFO with the writes above — if any are still queued, they're
-        // skipped by the state guard inside their lambda, then this clear
-        // runs and removes whatever's on disk.
-        scope.launch(snapshotDispatcher) { store.clear() }
+        recoveredTelemetry = emptyList()
+        // FIFO with the writes above — any still queued are skipped by the
+        // state guard inside their lambda, then these clears run and remove
+        // whatever's on disk.
+        activeSessionStore?.let { store ->
+            scope.launch(snapshotDispatcher) { store.clear() }
+        }
+        activeTelemetryStore?.let { store ->
+            scope.launch(snapshotDispatcher) {
+                try {
+                    store.clear()
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to clear active telemetry", e)
+                }
+            }
+        }
     }
 
     /**
@@ -527,11 +667,61 @@ class WorkoutSessionManager(
     }
 
     private fun completeWorkout() {
+        // Flip state first so the timer loop's while-condition fails and it
+        // unwinds through its exit handler, flushing the ride's last samples.
+        _state.value = WorkoutState.Completed
         timerJob?.cancel()
         pedalingDetectionJob?.cancel()
         trainerManager.setTargetPower(0)
-        _state.value = WorkoutState.Completed
-        clearPersistedSnapshot()
+        persistCompletedRide()
+    }
+
+    /**
+     * Record the finished ride as still-pending-save rather than dropping it.
+     *
+     * Completion used to clear the snapshot outright, which left the ride
+     * living only in this process's memory from the moment the trophy appeared
+     * until the rider tapped through to the summary and the UI wrote it to
+     * history. That gap is as long as the rider takes to catch their breath,
+     * and anything that killed the app inside it took the whole session with
+     * it. Backing out of the completion screen lost it just as silently.
+     *
+     * The snapshot goes down with [WorkoutState.Completed] so recovery knows to
+     * offer a save rather than putting the rider back on the bike. Both copies
+     * are dropped by [markRideSaved] once the ride is durable in history.
+     */
+    private fun persistCompletedRide() {
+        // Never actually started: no ride time, nothing worth recovering.
+        if (sessionStartTimeEpoch == 0L) {
+            clearPersistedRide()
+            return
+        }
+        val workout = _activeWorkout.value ?: return
+        val snapshot = ActiveSessionSnapshot(
+            workoutId = workout.id,
+            sessionStartTimeEpochMs = sessionStartTimeEpoch,
+            ftp = ftpWatts,
+            targetBiasPercent = _targetBiasPercent.value,
+            elapsedSeconds = _elapsedSeconds.value,
+            currentSegmentIndex = _currentSegmentIndex.value,
+            elapsedInSegment = _elapsedInSegment.value,
+            state = WorkoutState.Completed,
+            actualRideSeconds = _actualRideSeconds.value,
+        )
+        _persistedSnapshot.value = snapshot
+        val store = activeSessionStore ?: return
+        // FIFO behind any periodic write still queued from the final ticks, so
+        // this Completed snapshot is what ends up on disk.
+        scope.launch(snapshotDispatcher) { store.write(snapshot) }
+    }
+
+    /**
+     * The finished ride is now in history, so the crash-recovery copies can go.
+     * Called by the UI once the insert has returned, which is the first moment
+     * the ride is durable somewhere other than these two files.
+     */
+    fun markRideSaved() {
+        clearPersistedRide()
     }
 
     companion object {

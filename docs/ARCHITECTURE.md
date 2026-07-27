@@ -49,14 +49,16 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 
 ### `IndoorBikeApp` and `AppContainer`
 - `IndoorBikeApp : Application` is declared in the manifest (`android:name=".IndoorBikeApp"`) and constructs an [`AppContainer`](../mobile_clients/android/src/main/kotlin/app/indoorbike/IndoorBikeApp.kt) once.
-- The container owns the long-lived singletons: `TrainerManager`, `WorkoutSessionManager`, `HistoryRepository`, `UserSettings`, `ActiveSessionStore`. Each has a `dispose()` that cancels its `SupervisorJob + Dispatchers.Default` scope.
+- The container owns the long-lived singletons: `TrainerManager`, `WorkoutSessionManager`, `HistoryRepository`, `UserSettings`, `ActiveSessionStore`, `ActiveTelemetryStore`. Each has a `dispose()` that cancels its `SupervisorJob + Dispatchers.Default` scope.
 - Composables read the container via `LocalAppContainer.current`. `MainActivity.setContent { CompositionLocalProvider(LocalAppContainer provides container) { … } }` installs it.
 - This replaces the previous `object`-singleton pattern. Tests instantiate the same classes directly with fakes.
 
 ### Persistence
 - **SQLite via SqlDelight**: `HistoryDatabase` (`schema in shared/.../db/History.sq`). Foreign keys are enabled in the Android driver via `setForeignKeyConstraintsEnabled(true)`; `WorkoutTelemetry` cascades on session delete.
 - **DataStore Preferences** for `UserSettings` (FTP, paired trainer id) - replaces the legacy `SharedPreferences` singleton.
-- **Active-session snapshot** (`ActiveSessionStore`): a small JSON file in `filesDir` written every 5 s during an active ride. Atomic write via tmp + rename. Used for process-death recovery (the snapshot is cleared on `stopWorkout()` / `completeWorkout()`).
+- **Active-session snapshot** (`ActiveSessionStore`): a small JSON file in `filesDir` written every 5 s during an active ride. Atomic write via tmp + rename. Records the ride's *position* (elapsed, segment index, FTP, bias) for process-death recovery. Deliberately kept by `stopWorkout()` so the unfinished-ride banner can offer a resume, and rewritten with `state = Completed` by `completeWorkout()` so a ride that finished but hasn't reached history yet is still recoverable.
+- **Active-telemetry log** (`ActiveTelemetryStore`): an append-only CSV of the per-second samples, in `filesDir`, flushed on the same 5 s tick plus whenever the ride's timer stops. Records what the rider actually *did*, which the position snapshot cannot. Without it, resuming after a crash saved a full-length ride with a power curve covering only the post-resume minutes. Append-only rather than rewrite-in-place so a flush stays O(1) and a torn write can only damage the final record, which `ActiveTelemetryCodec.decode` drops. Reaped when a ride is abandoned or replaced, and at startup if no snapshot accompanies it.
+- **Ride handover to history**: both recovery copies live until `WorkoutSessionManager.markRideSaved()`, which the UI calls only after `insertWorkoutSession` returns - the first moment the ride is durable anywhere else. Both save paths (tapping through the completion screen, and the banner's *Save ride* for a recovered one) go through `saveRideToHistory`, so a recovered ride is stored identically to one that finished normally and neither path can forget to release the copies.
 
 ### Foreground Service for active rides
 [`RideSessionService`](../mobile_clients/android/src/main/kotlin/app/indoorbike/service/RideSessionService.kt) runs while a workout is active. It:

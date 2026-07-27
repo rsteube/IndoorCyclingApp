@@ -71,6 +71,7 @@ import app.indoorbike.navigation.RouteRideScreen
 import app.indoorbike.navigation.RouteTrainerPairing
 import app.indoorbike.navigation.RouteWorkoutDetail
 import app.indoorbike.navigation.RouteWorkoutOverview
+import app.indoorbike.ride.saveRideToHistory
 import app.indoorbike.navigation.TabHistory
 import app.indoorbike.navigation.TabProgress
 import app.indoorbike.navigation.TabRides
@@ -311,13 +312,29 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
     )
     val navigator = remember { Navigator(navigationState) }
 
-    val resumer = remember(navigator) {
+    val resumerScope = rememberCoroutineScope()
+    val resumer = remember(navigator, resumerScope) {
         RideResumer(
             continueRide = { workout, snapshot ->
                 container.sessionManager.restoreFromSnapshot(snapshot, workout)
                 navigator.continueRide(workout.id)
             },
-            abandonRide = { container.sessionManager.abandonUnfinishedRide() }
+            abandonRide = { container.sessionManager.abandonUnfinishedRide() },
+            saveFinishedRide = { workout, snapshot ->
+                resumerScope.launch {
+                    val sessionId = saveRideToHistory(
+                        container = container,
+                        workout = workout,
+                        startTimeEpoch = snapshot.sessionStartTimeEpochMs,
+                        // Older snapshots predate actualRideSeconds and default
+                        // it to 0; the planned elapsed is the best stand-in.
+                        durationSeconds = snapshot.actualRideSeconds
+                            .takeIf { it > 0 } ?: snapshot.elapsedSeconds,
+                        telemetry = container.sessionManager.pendingRideTelemetry(snapshot),
+                    )
+                    navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = true))
+                }
+            },
         )
     }
 

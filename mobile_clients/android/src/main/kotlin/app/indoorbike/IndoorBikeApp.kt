@@ -24,6 +24,7 @@ import app.indoorbike.library.WorkoutImporter
 import app.indoorbike.library.WorkoutLibrary
 import app.indoorbike.service.RideSessionService
 import app.indoorbike.session.AndroidActiveSessionStore
+import app.indoorbike.session.AndroidActiveTelemetryStore
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.sync.IntervalsIcuUploader
 import app.indoorbike.sync.SafSyncStorage
@@ -107,9 +108,11 @@ class AppContainer(
             val heartRateMonitor = HeartRateMonitor()
             val controllerManager = ControllerManager()
             val activeSessionStore = AndroidActiveSessionStore(application)
+            val activeTelemetryStore = AndroidActiveTelemetryStore(application)
             val sessionManager = WorkoutSessionManager(
                 trainerManager = trainerManager,
                 activeSessionStore = activeSessionStore,
+                activeTelemetryStore = activeTelemetryStore,
                 // Prefer the dedicated HRM when one is connected and emitting samples;
                 // fall back to whatever the trainer reports (often 0 for trainer-only).
                 effectiveHeartRate = {
@@ -308,6 +311,12 @@ val LocalWorkouts = staticCompositionLocalOf<List<app.indoorbike.shared.Workout>
 data class RideResumer(
     val continueRide: (app.indoorbike.shared.Workout, app.indoorbike.shared.session.ActiveSessionSnapshot) -> Unit,
     val abandonRide: () -> Unit,
+    /**
+     * Write a ride that finished but never reached history - the app died (or
+     * the rider backed out) between the trophy screen and the summary. Saves it
+     * exactly as the completion screen would have, then opens that summary.
+     */
+    val saveFinishedRide: (app.indoorbike.shared.Workout, app.indoorbike.shared.session.ActiveSessionSnapshot) -> Unit,
 )
 
 val LocalRideResumer = staticCompositionLocalOf<RideResumer> {

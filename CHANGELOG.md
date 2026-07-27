@@ -4,6 +4,25 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [Unreleased]
+
+### Fixed
+
+- **Resuming a ride after a crash no longer throws away everything you rode
+  before it.** The app remembered *where* you were in the workout but not what
+  you had done to get there, so a session interrupted an hour in and resumed was
+  saved with the full duration against a power curve covering only the minutes
+  after the resume - and the exported `.fit` was that short too. Samples are now
+  streamed to an append-only log as you ride and replayed into the session when
+  you tap Continue, so a crash costs at most the last few seconds instead of the
+  whole ride.
+- **A finished ride can no longer be lost before it reaches your history.**
+  Between the trophy screen appearing and you tapping View Summary, the ride
+  existed only in memory - so anything that killed the app in that window took
+  it with it, as did simply backing out of the completion screen. The ride is
+  now held on disk until the save actually lands, and if it never did you get a
+  **Ride not saved** banner offering to put it in your history.
+
 ## [1.4] (7) - 2026-07-06
 
 A UI polish release. The Progress, History, and Settings screens are reworked

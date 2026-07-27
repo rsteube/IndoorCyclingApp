@@ -85,6 +85,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.feedback.ReportProblemDialog
+import app.indoorbike.ride.saveRideToHistory
 import app.indoorbike.service.RideSessionService
 import androidx.compose.ui.platform.LocalConfiguration
 import app.indoorbike.shared.Workout
@@ -253,32 +254,16 @@ fun RideScreen(
         // `continueRequested`, but the LaunchedEffect's keys are independent
         // of that gate.
         saved = true
-        val telemetry = sessionManager.telemetrySnapshot()
-        val startEpoch = sessionManager.sessionStartTimeEpoch
         // Persist actual time spent riding, not the planned timeline:
         // skipping a segment fast-forwards `elapsed` so it would inflate the
         // saved duration. `actualRideSeconds` only counts wall-clock time
         // spent in the Active state.
-        val actualRide = sessionManager.actualRideSeconds.value
-
-        val avgPower = if (telemetry.isNotEmpty()) telemetry.map { it.power }.average().toLong() else 0L
-        val avgCadence = if (telemetry.isNotEmpty()) telemetry.map { it.cadence }.average().toLong() else 0L
-        val avgHr = if (telemetry.isNotEmpty()) telemetry.map { it.heartRate }.average().toLong() else 0L
-
-        val newSessionId = historyRepository.insertWorkoutSession(
-            workoutId = workout!!.id,
-            workoutName = workout!!.name,
-            startTimeEpoch = startEpoch,
-            durationSeconds = actualRide.toLong(),
-            avgPower = avgPower,
-            avgCadence = avgCadence,
-            avgHeartRate = avgHr,
-            // Globally-unique stable id for the backup-sync layer. The
-            // device-id namespace + a fresh UUID per session means two
-            // phones can never collide on a session id without any
-            // cross-device coordination.
-            externalId = "${container.userSettings.deviceId}:${java.util.UUID.randomUUID()}",
-            telemetry = telemetry
+        val newSessionId = saveRideToHistory(
+            container = container,
+            workout = workout!!,
+            startTimeEpoch = sessionManager.sessionStartTimeEpoch,
+            durationSeconds = sessionManager.actualRideSeconds.value,
+            telemetry = sessionManager.telemetrySnapshot(),
         )
         onNavigateToOverview(newSessionId)
     }
