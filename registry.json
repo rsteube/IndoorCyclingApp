@@ -19,6 +19,15 @@
       "manifestUrl": "https://raw.codeberg.page/juhanilehtimaki/community_indoor_cycling_workouts/manifest.json",
       "tags": ["Recovery", "Endurance", "Tempo", "Threshold", "VO2 Max", "Anaerobic", "Sprint"],
       "homepage": "https://codeberg.org/juhanilehtimaki/community_indoor_cycling_workouts"
+    },
+    {
+      "id": "user-ghose",
+      "name": "ghose's workouts",
+      "description": "Health and overall Fitness oriented workouts.",
+      "author": "José M.",
+      "manifestUrl": "https://xmgz.eu/hometrainer/manifest.json",
+      "tags": ["Health", "Endurance", "Recovery", "VO2 Max"],
+      "homepage": "https://xmgz.eu"
     }
   ]
 }
