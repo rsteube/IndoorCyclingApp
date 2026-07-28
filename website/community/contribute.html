@@ -54,8 +54,8 @@
       <ol class="numbered-list">
         <li>
           <strong>You write a <code>manifest.json</code></strong> describing your
-          repository (name, author, homepage) with all your workouts embedded
-          inline.
+          repository (name, author, homepage) plus one or more bundle files
+          holding the workouts themselves.
         </li>
         <li>
           <strong>You host it</strong> over HTTPS, anywhere that serves a JSON
@@ -128,7 +128,7 @@
         </div>
         <div class="schema-row">
           <span><code>updatedEpoch</code></span><span>integer (ms)</span><span>no</span>
-          <span>Unix epoch in milliseconds. Lets the app show "updated 3 days ago".</span>
+          <span>Unix epoch in <strong>milliseconds</strong>, not seconds. Lets the app show "updated 3 days ago". Most epoch converters hand you seconds by default, which is 10 digits; this field wants 13. A seconds value here renders as "updated 56 years ago", so if in doubt, count the digits or leave the field out.</span>
         </div>
         <div class="schema-row">
           <span><code>bundles</code></span><span>array</span><span>yes</span>
@@ -269,13 +269,53 @@
           <code>fetch()</code> can read your manifest. Without this, your
           repo will work in the Android app but won't preview on the website.
           GitHub Pages, Codeberg Pages, and Cloudflare Pages all set this
-          header by default for static files.
+          header by default for static files. A self-hosted nginx or Apache
+          does <em>not</em>: you have to add it yourself (see below).
         </li>
       </ul>
+
+      <h3>Checking CORS properly</h3>
+      <p>
+        <strong>Opening the URL in a browser tab does not test this.</strong>
+        That's a same-origin request and it will happily show your JSON even
+        when CORS is missing. The header only matters when
+        <code>indoorbike.app</code> fetches your file, so the test has to run
+        from there.
+      </p>
+      <p>Pick whichever is easier:</p>
+      <ul class="bullet-list">
+        <li>
+          <strong>In a browser.</strong> Open
+          <a href="index.html">indoorbike.app/community</a>, press
+          <kbd>F12</kbd> for developer tools, click the <em>Console</em> tab,
+          paste this (with your own URL) and press Enter:
+          <pre class="code-block code-inline-block"><code>fetch('https://your-site.example/manifest.json')
+  .then(r =&gt; r.json())
+  .then(j =&gt; console.log('CORS OK -', j.name))
+  .catch(e =&gt; console.log('CORS FAILED -', e.message))</code></pre>
+          You want <code>CORS OK</code>. Anything else means the header is
+          missing.
+        </li>
+        <li>
+          <strong>On the command line.</strong>
+          <code>curl -sI https://your-site.example/manifest.json | grep -i access-control</code>
+          should print an <code>access-control-allow-origin</code> line. No
+          output means no CORS.
+        </li>
+      </ul>
+      <p>
+        Self-hosting on <strong>nginx</strong>? Add one line to the
+        <code>server</code> or <code>location</code> block that serves your
+        JSON, then reload:
+      </p>
+      <pre class="code-block code-inline-block"><code>add_header Access-Control-Allow-Origin "*";</code></pre>
+      <p>On <strong>Apache</strong>, the equivalent in <code>.htaccess</code>:</p>
+      <pre class="code-block code-inline-block"><code>Header set Access-Control-Allow-Origin "*"</code></pre>
       <p class="muted">
-        Test your URL by opening it directly in a browser. If you see your
-        JSON, you're good. If you see "blocked by CORS" in the devtools
-        console, fix your host's headers.
+        If your host doesn't let you set headers at all, the simplest fix is
+        to move the two JSON files to Codeberg Pages or GitHub Pages, which
+        set the header for you, and point <code>manifestUrl</code> there. Your
+        homepage link can still point at your own site.
       </p>
     </section>
 
@@ -310,6 +350,31 @@
           pack covers.
         </li>
       </ol>
+
+      <h3>Before you open the pull request</h3>
+      <p>Five things worth a minute each. They cover almost every round of review feedback:</p>
+      <ul class="bullet-list">
+        <li>Your manifest URL is <code>https://</code> and loads in a browser tab.</li>
+        <li>CORS passes the console test above, not just the browser-tab test.</li>
+        <li><code>updatedEpoch</code> is 13 digits (milliseconds), or absent.</li>
+        <li>
+          You've replaced the example workout from this page with your own.
+          The <code>alpine-warmup-2min</code> id and its "Two-minute pre-effort
+          opener." description are copy-paste starting points, not content to
+          publish.
+        </li>
+        <li>
+          The <code>id</code>, <code>name</code>, and <code>author</code> in
+          your registry entry match your manifest. The list card shows the
+          registry values, the repo screen shows the manifest values, and a
+          mismatch looks like a bug to riders.
+        </li>
+      </ul>
+      <p class="muted">
+        If you have Node installed, <code>node scripts/validate_repo.mjs
+        https://your-site.example/manifest.json</code> from a checkout of the
+        app repository checks all of the above and more in one command.
+      </p>
       <p>
         On merge, your repo appears in the community list within minutes (just
         a static-site rebuild). No backend, no account, no review queue beyond
