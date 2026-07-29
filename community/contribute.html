@@ -128,7 +128,7 @@
         </div>
         <div class="schema-row">
           <span><code>updatedEpoch</code></span><span>integer (ms)</span><span>no</span>
-          <span>Unix epoch in <strong>milliseconds</strong>, not seconds. Lets the app show "updated 3 days ago". Most epoch converters hand you seconds by default, which is 10 digits; this field wants 13. A seconds value here renders as "updated 56 years ago", so if in doubt, count the digits or leave the field out.</span>
+          <span>Unix epoch in <strong>milliseconds</strong>, not seconds. Shown on your repo card in the community browser as "updated 3 days ago". The Android app parses it but doesn't display it, so a wrong value only ever shows on the website. Getting the unit wrong is the most common mistake contributors make: see <a href="#epoch">Getting updatedEpoch right</a>.</span>
         </div>
         <div class="schema-row">
           <span><code>bundles</code></span><span>array</span><span>yes</span>
@@ -239,6 +239,46 @@
         and its
         <a href="indoorbike-starter/main.json" target="_blank">main bundle</a>:
         six workouts spanning warm-up through VO2.
+      </p>
+
+      <h3 id="epoch">Getting <code>updatedEpoch</code> right</h3>
+      <p>
+        Unix time comes in two flavours that look almost identical, and every
+        contributor so far has picked the wrong one:
+      </p>
+      <pre class="code-block code-inline-block"><code>seconds:      1785297508      &lt;- 10 digits, what most converters give you
+milliseconds: 1785297508000   &lt;- 13 digits, what this field wants</code></pre>
+      <p>
+        A seconds value isn't rejected, it's just read as a date in January
+        1970, so your repo card says <em>"updated 56 years ago"</em>. If that's
+        what you're seeing, this is why. <strong>Count the digits: you want
+        13.</strong>
+      </p>
+      <p>Any of these gives you a correct value:</p>
+      <ul class="bullet-list">
+        <li>
+          <strong>In a browser.</strong> Press <kbd>F12</kbd>, open the
+          <em>Console</em> tab, type <code>Date.now()</code> and press Enter.
+          Nothing to install.
+        </li>
+        <li>
+          <strong>Linux or macOS terminal.</strong>
+          <code>date +%s000</code>
+        </li>
+        <li>
+          <strong>Python.</strong>
+          <code>python3 -c "import time; print(int(time.time()*1000))"</code>
+        </li>
+        <li>
+          <strong>An online converter.</strong> Take the ordinary 10-digit
+          number it gives you and type <code>000</code> on the end. That is
+          genuinely all the conversion needed.
+        </li>
+      </ul>
+      <p class="muted">
+        The field is optional. If you'd rather not think about it, leave it out
+        entirely and your card simply won't carry an "updated" line, which
+        looks tidier than a wrong date.
       </p>
 
       <h3>Splitting workouts across multiple bundles</h3>
@@ -426,8 +466,9 @@
         </li>
         <li>
           <strong>Bumping <code>updatedEpoch</code>:</strong> optional, but
-          worth setting on each release so users see "updated 2 days ago"
-          rather than a stale timestamp.
+          worth setting on each release so your repo card reads "updated 2 days
+          ago" rather than carrying a stale timestamp. Milliseconds, 13 digits
+          (see <a href="#epoch">above</a>). Only the website shows it.
         </li>
       </ul>
     </section>
