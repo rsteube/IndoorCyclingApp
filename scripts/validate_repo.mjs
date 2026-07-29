@@ -284,8 +284,10 @@ function checkWorkout(w, index, seenIds, reservedIds, repoId) {
       warn(`${label}: bare id. Prefixing with "${repoId}-" avoids collisions with other repos.`);
     }
   }
-  if (w.name && /\btest\b/i.test(w.name)) {
-    warn(`${label}: name "${w.name}" still says "test".`);
+  // "FTP Test" and "Ramp Test" are real session names, so a bare "test" match
+  // is useless here. Look for placeholder-shaped names instead.
+  if (w.name && /\btest[- ]?(repo|repository|bundle|workout)\b|\bplaceholder\b|\bdummy\b|\buntitled\b|^\s*test\s*\d*\s*$/i.test(w.name)) {
+    warn(`${label}: name "${w.name}" looks like a placeholder.`);
   }
   const total = checkSegments(w, label);
   if (total > 0) {
@@ -330,6 +332,14 @@ async function validateRepo(manifestUrl, registryEntry, reservedIds) {
       if (a && b && a !== b) {
         warn(`Registry ${field} "${a}" differs from manifest ${field} "${b}". Riders see both.`);
       }
+    }
+    // The repo page links manifest.homepage, so a homepage that exists only in
+    // the registry silently renders nothing.
+    if (registryEntry.homepage && !manifest.homepage) {
+      warn(
+        `Registry entry has homepage "${registryEntry.homepage}" but the manifest has none, ` +
+        `so no link renders. Add it to the manifest, or drop it from the registry entry.`
+      );
     }
   }
 
