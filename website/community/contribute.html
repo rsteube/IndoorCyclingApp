@@ -124,7 +124,7 @@
         </div>
         <div class="schema-row">
           <span><code>homepage</code></span><span>string (URL)</span><span>no</span>
-          <span>Optional link from the repo card to your site.</span>
+          <span>Adds a "Homepage" link to your repo page. <strong>Leave it out and no link is shown</strong>, which is the right answer if you don't run a site: a repository is just two JSON files and needs no page behind it. This is the value the link uses, so you can change or remove it any time without touching the registry.</span>
         </div>
         <div class="schema-row">
           <span><code>updatedEpoch</code></span><span>integer (ms)</span><span>no</span>
@@ -383,7 +383,10 @@ milliseconds: 1785297508000   &lt;- 13 digits, what this field wants</code></pre
 }</code></pre>
           The <code>id</code> here must match the <code>id</code> in your
           manifest. <code>tags</code> here are repo-level (shown on the card);
-          they're independent from per-workout tags.
+          they're independent from per-workout tags. <code>homepage</code> is
+          optional here and optional in your manifest: the "Homepage" link on
+          your repo page comes from the <em>manifest</em>, so omit it there if
+          you don't want one.
         </li>
         <li>
           Open a pull request with a short note about who you are and what the

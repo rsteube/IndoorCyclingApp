@@ -321,9 +321,6 @@
     $('#repo-description').textContent = entry.description || '';
     const meta = $('#repo-meta');
     clear(meta);
-    if (entry.homepage) {
-      meta.appendChild(el('a', { href: entry.homepage, target: '_blank', rel: 'noopener' }, 'Homepage'));
-    }
     renderCrumbs({ repo: entry.id, repoName: entry.name });
 
     let manifest;
@@ -340,6 +337,14 @@
     }
 
     clear(stage);
+    // Homepage comes from the manifest, not the registry entry. It's the
+    // contributor's own file, so they can add, change, or drop the link
+    // without opening a registry pull request. Absent means no link is
+    // rendered at all: a repo is two JSON files, and plenty of people have no
+    // site to point at.
+    if (manifest.homepage) {
+      meta.appendChild(el('a', { href: manifest.homepage, target: '_blank', rel: 'noopener' }, 'Homepage'));
+    }
     const workouts = Array.isArray(manifest.workouts) ? manifest.workouts : [];
     if (workouts.length === 0) {
       stage.appendChild(el('div', { class: 'status' }, 'This repository has no workouts yet.'));
