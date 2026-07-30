@@ -25,7 +25,7 @@
       "name": "ghose's workouts",
       "description": "Health and overall Fitness oriented workouts.",
       "author": "José M.",
-      "manifestUrl": "https://xmgz.eu/hometrainer/manifest.json",
+      "manifestUrl": "https://raw.codeberg.page/ghose/indoorbike-ghose/manifest.json",
       "tags": ["Health", "Endurance", "Recovery", "VO2 Max"],
       "homepage": "https://xmgz.eu"
     }
