@@ -19,6 +19,7 @@ import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
+import com.juul.kable.BluetoothDisabledException
 import com.juul.kable.Filter
 import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
@@ -47,6 +48,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.math.min
 
 enum class TrainerConnectionState {
@@ -347,6 +349,15 @@ class TrainerManager {
                 continue
             }
 
+            // Park while the radio is off rather than scanning into it, and
+            // treat that time as not having looked: a backoff grown while we
+            // could not scan would otherwise delay the reconnect by up to a
+            // minute after the rider turns Bluetooth back on.
+            if (awaitBluetoothAvailable { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                Log.i(TAG, "Bluetooth available; resuming trainer scans")
+            }
+
             _connectionState.value = TrainerConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
@@ -355,9 +366,22 @@ class TrainerManager {
                             Filter.Service(uuidFrom(CYCLING_POWER_SERVICE)),
                             Filter.Service(uuidFrom(FITNESS_MACHINE_SERVICE))
                         )
+                        logging(scannerLogging())
                     }.advertisements
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.identifier == id }
+                } catch (e: CancellationException) {
+                    // Routine: either the scan window timed out or the lifecycle
+                    // gate closed under us. Reporting those as "scan failed" put
+                    // a red herring at the top of every bug report drafted after
+                    // a launch. Rethrow so `withTimeoutOrNull` sees its timeout.
+                    throw e
+                } catch (e: BluetoothDisabledException) {
+                    // The radio went off mid-window. Expected, self-explanatory,
+                    // and the next pass parks on the adapter, so record the fact
+                    // without the stack trace that used to bury a bug report.
+                    Log.i(TAG, "Trainer scan stopped: Bluetooth turned off")
+                    null
                 } catch (e: Exception) {
                     Log.w(TAG, "auto-reconnect scan failed", e)
                     null
@@ -400,6 +424,7 @@ class TrainerManager {
                 Filter.Service(uuidFrom(CYCLING_POWER_SERVICE)),
                 Filter.Service(uuidFrom(FITNESS_MACHINE_SERVICE))
             )
+            logging(scannerLogging())
         }.advertisements
             .onEach { advertisement -> addDiscovered(advertisement) }
             .catch { e ->
@@ -514,7 +539,21 @@ class TrainerManager {
 
         connectionJob = scope.launch {
             try {
-                val peripheral = scope.peripheral(advertisement)
+                val peripheral = scope.peripheral(advertisement) {
+                    logging(peripheralLogging(advertisement.identifier))
+                    // With a handler registered, Kable sends observation
+                    // failures here rather than through the observe flow. Log
+                    // with device context, then rethrow to keep the existing
+                    // behaviour of terminating the flow.
+                    observationExceptionHandler { cause ->
+                        Log.w(
+                            TAG,
+                            "Trainer observation failed on ${redactDeviceId(advertisement.identifier)}",
+                            cause,
+                        )
+                        throw cause
+                    }
+                }
                 activePeripheral = peripheral
 
                 stateListenerJob = peripheral.state.onEach { state ->
@@ -541,6 +580,8 @@ class TrainerManager {
                 }.launchIn(scope)
 
                 peripheral.connect()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Connect failed", e)
                 _connectionState.value = TrainerConnectionState.Error

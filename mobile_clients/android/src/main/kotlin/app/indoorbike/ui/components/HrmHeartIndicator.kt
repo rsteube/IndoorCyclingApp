@@ -39,6 +39,10 @@ import app.indoorbike.ui.theme.CadenceColors
  *  - Connected: solid filled heart in danger-red.
  *  - Connecting / Scanning: outline heart pulsing alpha.
  *  - Disconnected / Error: dim outline heart.
+ *  - Connected but silent: dim outline heart, same as no connection. A link
+ *    that carries no samples is worth exactly as much as no link, and showing
+ *    a confident red heart for one sent riders looking at the strap when the
+ *    fault was in the phone. See `HeartRateMonitor.sensorSilent`.
  *
  * Pure visual indicator — no click handling here. Wrap in a clickable parent
  * if the user should be able to tap through to pairing.
@@ -47,9 +51,10 @@ import app.indoorbike.ui.theme.CadenceColors
 fun HrmHeartIndicator(
     state: HrmConnectionState,
     modifier: Modifier = Modifier,
+    sensorSilent: Boolean = false,
 ) {
     val isConnecting = state == HrmConnectionState.Connecting || state == HrmConnectionState.Scanning
-    val isConnected = state == HrmConnectionState.Connected
+    val isConnected = state == HrmConnectionState.Connected && !sensorSilent
 
     val pulseAlpha = if (isConnecting) {
         val transition = rememberInfiniteTransition(label = "hrmPulse")

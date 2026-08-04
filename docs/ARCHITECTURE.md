@@ -88,6 +88,28 @@ When making changes, always ensure that KMM logic stays in the `shared` module a
 
 - **Scan filter quirk**: scans **without** a service-UUID filter and post-filters by either (a) the 0x180D Heart Rate Service appearing in the advertisement payload, or (b) the device name matching one of `HRM`, `Polar`, `TICKR`, `Coros`, `Suunto`, `Magene`, `Verity`, `Heart`. Garmin HRM-Pro / HRM-Pro Plus omit 0x180D from their advertisement (they only expose it after GATT connect), so a service-UUID filter would never match them.
 - Auto-reconnect on app launch via `autoConnectIfPaired(pairedHrmId)`.
+- **First-sample watchdog**: a connected strap that never sends anything is a real and otherwise-invisible failure mode, so `armFirstSampleWatchdog` gives each connection `FIRST_SAMPLE_TIMEOUT_MS` (15 s) to move `lastSampleEpochMs`. If nothing arrives it drops the link and lets the reconnect supervisor rebuild the peripheral; after `MAX_SILENT_CONNECTS` (3) attempts it stops cycling and raises `sensorSilent`, which the UI turns into "restart Bluetooth" rather than an endless "waiting for first sample". The decision logic (`awaitFirstSample`, `firstSampleOutcome`) is lifted out of the class and unit-tested in [HrmFirstSampleWatchdogTest.kt](../shared/src/commonTest/kotlin/app/indoorbike/shared/ble/HrmFirstSampleWatchdogTest.kt).
+  - **Why the app has to notice at all**: the underlying cause is on the phone. When the Bluetooth stack refuses to enable notifications, Kable 0.29 catches that refusal in an internal "suppress connection exceptions" block, so no exception reaches the app and the observation flow simply never emits. Every layer above believes the connection is healthy. Restarting the app does not help either, because the wedged state lives in the system Bluetooth process, not ours. Watching for the absence of data is the only signal available.
+
+### Bluetooth availability gate
+
+All three reconnect loops call `awaitBluetoothAvailable` (in [BleReconnectPolicy.kt](../shared/src/commonMain/kotlin/app/indoorbike/shared/ble/BleReconnectPolicy.kt)) before opening a scan window, parking on Kable's `Bluetooth.availability` rather than scanning into a disabled radio. It returns whether it had to wait, and a caller that waited resets its backoff to `INITIAL_BACKOFF_MS`.
+
+This exists because the windowed-scan backoff alone cannot serve both requirements. With the adapter off a scan throws immediately instead of running its window, so retrying on the normal cadence spins and writes a failure line each time, which is what the growing backoff was protecting against. But that same growth is charged against the sensor: measured on a Fairphone 4, the loop waited about 45 s after Bluetooth returned before scanning again. Since the silent-strap UI now tells riders to restart Bluetooth, that delay read as the advice failing. Parking on the adapter fixes both ends, and the same measurement after the change was 95 ms from adapter-on to resumed scanning.
+
+- Time spent unable to scan is not evidence the device is absent, which is why the wait resets the backoff rather than extending it.
+- The reason is logged once per park, so a report shows *why* nothing was happening. Below API 31 this covers location services being disabled too, where a BLE scan returns nothing rather than failing, so the previous behaviour was to search forever and find nothing with no trace anywhere.
+- A `BluetoothDisabledException` thrown mid-window is logged at info without its stack: it is expected, self-explanatory, and the stack alone ran to about fifteen lines of a 300-line buffer.
+
+### Kable logging bridge
+
+[`KableLogging.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/ble/KableLogging.kt) routes Kable's internal logging into `Log`, and so into the diagnostics buffer a bug report attaches. Without it, the failure described above leaves no trace anywhere: Kable's verbose `Suppressed failure` line is the only record it exists.
+
+- Peripherals log at `Logging.Level.Events`, which is the lowest level at which Kable emits its verbose lines. Scans log at `Warnings`, because each scan window would otherwise add a start and a stop line every few seconds.
+- `debug` is dropped by the engine. Every per-operation GATT callback logs at that level, and at one notification per second per characteristic it would flush the 300-line ring buffer within minutes of riding.
+- Payload bytes never reach the log: Kable only renders them at `Level.Data`, which is never requested. This is deliberate, since heart rate is a body metric and these lines can leave the device in a report.
+- Device identifiers are redacted via `redactDeviceId`. Kable defaults its log prefix to the platform identifier, which on Android is the hardware address, so `peripheralLogging` always passes an explicit redacted one.
+
 ### First-run onboarding (soft, non-gating)
 
 Implemented inside [`WorkoutListScreen.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutListScreen.kt):

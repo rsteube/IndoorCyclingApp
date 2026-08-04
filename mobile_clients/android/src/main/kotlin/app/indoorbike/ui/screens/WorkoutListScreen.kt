@@ -201,6 +201,7 @@ fun WorkoutListScreen(
     val isTrainerLive = connectionState == TrainerConnectionState.Connected || isMockTrainer
 
     val hrmState by container.heartRateMonitor.connectionState.collectAsState()
+    val hrmSilent by container.heartRateMonitor.sensorSilent.collectAsState()
 
     // The unfinished-ride banner IS the up-next proposal while it's showing,
     // so the hero yields to it. The banner component itself decides its final
@@ -278,7 +279,7 @@ fun WorkoutListScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
                 ) {
-                    HrmHeartIndicator(state = hrmState)
+                    HrmHeartIndicator(state = hrmState, sensorSilent = hrmSilent)
                     TrainerChip(
                         isLive = isTrainerLive,
                         isPaired = pairedTrainerId != null,

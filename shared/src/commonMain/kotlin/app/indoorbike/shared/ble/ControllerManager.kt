@@ -19,6 +19,7 @@ import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
+import com.juul.kable.BluetoothDisabledException
 import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
 import com.juul.kable.State
@@ -46,6 +47,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Reuse the trainer's connection-state shape — same lifecycle. */
 typealias ControllerConnectionState = TrainerConnectionState
@@ -190,12 +192,28 @@ class ControllerManager {
                 continue
             }
 
+            // See TrainerManager: wait out a disabled radio instead of scanning
+            // into it, and do not let that wait push the retry cadence back.
+            if (awaitBluetoothAvailable { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                Log.i(TAG, "Bluetooth available; resuming controller scans")
+            }
+
             _connectionState.value = ControllerConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
-                    Scanner().advertisements
+                    Scanner { logging(scannerLogging()) }.advertisements
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.identifier == id }
+                } catch (e: CancellationException) {
+                    // Scan-window timeout or lifecycle gate close: routine, and
+                    // not something a bug report should be led with. Rethrow so
+                    // `withTimeoutOrNull` sees its own timeout.
+                    throw e
+                } catch (e: BluetoothDisabledException) {
+                    // See TrainerManager: expected, and the stack adds nothing.
+                    Log.i(TAG, "Controller scan stopped: Bluetooth turned off")
+                    null
                 } catch (e: Exception) {
                     Log.w(TAG, "Controller auto-reconnect scan failed", e)
                     null
@@ -234,7 +252,7 @@ class ControllerManager {
         // service from the advertisement payload (it's only visible after
         // GATT connect), so a service-UUID filter would never match. Same
         // trick we use for Garmin HRM-Pro.
-        scanJob = Scanner().advertisements
+        scanJob = Scanner { logging(scannerLogging()) }.advertisements
             .onEach { ad -> addDiscovered(ad) }
             .catch { e ->
                 Log.e(TAG, "Controller scan failed", e)
@@ -328,7 +346,21 @@ class ControllerManager {
 
         connectionJob = scope.launch {
             try {
-                val peripheral = scope.peripheral(advertisement)
+                val peripheral = scope.peripheral(advertisement) {
+                    logging(peripheralLogging(advertisement.identifier))
+                    // With a handler registered, Kable sends observation
+                    // failures here rather than through the observe flow. Log
+                    // with device context, then rethrow to keep the existing
+                    // behaviour of terminating the flow.
+                    observationExceptionHandler { cause ->
+                        Log.w(
+                            TAG,
+                            "Controller observation failed on ${redactDeviceId(advertisement.identifier)}",
+                            cause,
+                        )
+                        throw cause
+                    }
+                }
                 activePeripheral = peripheral
 
                 stateListenerJob = peripheral.state.onEach { state ->
@@ -350,6 +382,8 @@ class ControllerManager {
                 }.launchIn(scope)
 
                 peripheral.connect()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Controller connect failed", e)
                 _connectionState.value = ControllerConnectionState.Error

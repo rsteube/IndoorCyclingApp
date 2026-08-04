@@ -15,6 +15,11 @@
  */
 package app.indoorbike.shared.ble
 
+import com.juul.kable.Bluetooth
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+
 /**
  * Shared tuning for the persistent auto-reconnect loops in [TrainerManager],
  * [HeartRateMonitor], and [ControllerManager].
@@ -39,4 +44,53 @@ internal object BleReconnectPolicy {
 
     /** Brief settle after a drop before scanning to reconnect. */
     const val POST_DROP_DELAY_MS = 2_000L
+}
+
+/**
+ * Suspends until the platform is actually able to scan, returning whether it
+ * had to wait.
+ *
+ * The reconnect loops call this before opening a scan window, which fixes two
+ * problems at once that neither the backoff nor a naive retry could solve
+ * alone:
+ *
+ *  - **Scanning with the adapter off is pure waste.** The scan throws
+ *    immediately rather than running its window, so retrying on the normal
+ *    cadence would spin, and every attempt would write a failure line. A short
+ *    retry would flush the diagnostics buffer within a minute; that is exactly
+ *    why the growing backoff was there, and why it cannot be the whole answer.
+ *  - **Backoff makes recovery feel broken.** Measured on a Fairphone 4: after
+ *    the adapter came back the loop waited about 45 seconds before its next
+ *    scan, because the backoff had already grown while Bluetooth was off. Since
+ *    the UI now tells riders with a silent strap to restart Bluetooth, a minute
+ *    of nothing happening reads as "that did not work".
+ *
+ * Parking on the adapter's own state signal solves both. Nothing is attempted
+ * and nothing is logged while Bluetooth is off, and the moment it returns the
+ * caller resets its backoff and scans immediately, because time spent unable to
+ * scan is not evidence that the device is missing.
+ *
+ * [onWait] is invoked once per park, with the reason, so a bug report drafted
+ * later shows *why* nothing was happening. That matters most below API 31,
+ * where this also covers location services being off: BLE scans there return
+ * nothing at all rather than failing, so the old behaviour was to scan forever
+ * and find nothing with no explanation anywhere.
+ *
+ * [availability] is injectable so the decision can be unit-tested without a
+ * Bluetooth adapter; production always uses Kable's platform-backed flow.
+ */
+internal suspend fun awaitBluetoothAvailable(
+    availability: Flow<Bluetooth.Availability> = Bluetooth.availability,
+    onWait: (String) -> Unit = {},
+): Boolean {
+    var waited = false
+    availability
+        .onEach { state ->
+            if (state is Bluetooth.Availability.Unavailable && !waited) {
+                waited = true
+                onWait(state.reason?.toString() ?: "unknown")
+            }
+        }
+        .first { it is Bluetooth.Availability.Available }
+    return waited
 }

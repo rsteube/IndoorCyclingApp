@@ -93,6 +93,13 @@ Each numbered scenario is independent - start each from a clean state by either 
 | 4.2 | Wake the strap (snap on / tap sensor); tap **Scan for HRMs** | Strap appears as `HRM-Pro:NNNNNN` (Garmin) or by name (Polar / TICKR / etc). |
 | 4.3 | Tap the strap | "Connecting…" then auto-back to Settings; HRM row shows live BPM after first sample |
 | 4.4 | Disconnect / Forget from the HRM sheet | Same as trainer (state collapses, sheet behaves correctly) |
+| 4.5 | Connect the strap, then take it off and let the contacts dry so it stops sending | Row keeps the last BPM, then the strap's own idle timeout drops the link and the reconnect loop takes over. This is the *healthy* path: it must not be reported as a fault |
+| 4.6 | Silent-strap fault (see below for how to provoke it) | Row cycles Connected → Scanning → Connected up to three times over roughly a minute, then settles on **"Connected but sending nothing · restart Bluetooth"** with a red dot; the heart icon on the Rides tab goes dim rather than solid red |
+| 4.7 | With 4.6 showing, toggle Bluetooth off and on | Strap reconnects and live BPM returns; the warning clears on its own without reopening the app |
+| 4.7b | With any sensor paired, turn Bluetooth off, wait a minute, turn it back on | While off: one `Waiting for Bluetooth (Off)` line and nothing further, no repeated scan failures. On return: scanning resumes within a fraction of a second, not after a backoff. Measured on a Fairphone 4 at 95 ms |
+| 4.8 | Draft a bug report while 4.6 is showing (Settings → Report a problem) | "Recent logs" contains `HeartRateMonitor` lines about the silent connects, plus `Kable/` lines covering connect and observation setup. No line contains a full device address, and none contains a heart rate value |
+
+**Provoking the silent-strap fault (4.6).** It reproduces on its own on a phone whose Bluetooth stack has wedged, which is not something you can arrange on demand. To test the handling deliberately, either comment out the `_lastSampleEpochMs.value = ...` assignment in `HeartRateMonitor.startHeartRateObserve` (the app then behaves exactly as if notifications were never delivered), or point `FIRST_SAMPLE_TIMEOUT_MS` at a value shorter than your strap's notification interval. The fault this simulates is a refused notification-enable inside Android's Bluetooth service; killing and reopening the app does not clear it, which is why the message tells the rider to restart Bluetooth instead.
 
 ### 5. Start gating (no-trainer guard)
 

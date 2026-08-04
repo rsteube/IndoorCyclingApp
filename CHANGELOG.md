@@ -18,6 +18,56 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **A heart rate monitor stuck on "waiting for first sample" now recovers, or
+  tells you what to do.** The strap connected, the app said so, and no reading
+  ever appeared - for every strap tried, across app restarts, until the phone
+  was rebooted. The cause is on the phone rather than the strap: when the
+  Bluetooth stack declines to switch a sensor's notifications on, that refusal
+  was being swallowed one layer below the app, so the app had a connection it
+  believed was healthy and a data stream that would never carry anything.
+  Nothing recovered because, as far as either side was concerned, nothing had
+  failed. The app now watches for the first reading after connecting, rebuilds
+  the connection from scratch if none arrives within fifteen seconds, and after
+  three silent attempts stops retrying and says the strap is connected but
+  sending nothing, with the fix that actually works: turn Bluetooth off and on,
+  or restart the phone. Closing the app never helped, because the stuck state
+  lives in Android's Bluetooth service and not in the app.
+
+- **Turning Bluetooth back on now reconnects straight away.** Sensors used to
+  take up to a minute to come back, because every failed attempt while
+  Bluetooth was off pushed the next retry further out, and the app kept
+  counting that against the sensor once the radio returned. Since the advice
+  for a stuck heart rate monitor is now to restart Bluetooth, a minute of
+  nothing happening looked like the advice had not worked. The app waits for
+  the radio instead of retrying into it, and starts looking the moment it comes
+  back: measured on a Fairphone 4, reconnecting went from about 45 seconds to
+  under a tenth of a second. Nothing is attempted and nothing fills the
+  diagnostic log while Bluetooth is off, and a report drafted afterwards says
+  why the app was waiting, which on older phones also covers location services
+  being switched off (below Android 12 a sensor search silently finds nothing
+  without them).
+
+- **Bug reports about sensors are no longer blank.** The diagnostic log carried
+  nothing at all from the Bluetooth library, which is how a report about a
+  silent heart rate monitor could arrive without one line about the heart rate
+  monitor in it. The library's own account of connecting, discovering services,
+  switching notifications on, and quietly giving up on them now goes into the
+  log with the rest. Per-reading traffic is left out so a long ride cannot push
+  everything else out of the buffer, and sensor readings themselves are never
+  recorded - only that one arrived. Device addresses stay masked.
+
+- **"Auto-reconnect scan failed" no longer leads every bug report.** Two
+  routine events, a scan window ending and scanning pausing when the app goes
+  to the background, were being written down as failures. That put an alarming
+  line at the top of reports about unrelated problems, one that had reliably
+  sent people looking in the wrong place. Real scan failures are still
+  reported.
+
+- **A dropped heart rate connection could leave its reader running.** The
+  subscription to the strap was started on one thread and recorded on another,
+  so a disconnect arriving in between tidied up the wrong one and left the old
+  reader alive. Same fix the trainer received earlier.
+
 - **Bug reports sent after a crash are no longer empty.** The diagnostic log
   only ever lived in memory, so it died with the app: a report drafted after a
   crash could only show the launch that came after it, which is why reports

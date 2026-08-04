@@ -281,6 +281,7 @@ private fun DevicesCard(
     val hrmState by container.heartRateMonitor.connectionState.collectAsState()
     val hrmName by container.heartRateMonitor.connectedDeviceName.collectAsState()
     val hrmHeartRate by container.heartRateMonitor.heartRate.collectAsState()
+    val hrmSilent by container.heartRateMonitor.sensorSilent.collectAsState()
     val controllerState by container.controllerManager.connectionState.collectAsState()
     val controllerName by container.controllerManager.connectedDeviceName.collectAsState()
 
@@ -304,8 +305,8 @@ private fun DevicesCard(
             icon = Icons.Outlined.MonitorHeart,
             iconTint = CadenceColors.Danger,
             title = hrmTitle(hrmState, hrmName),
-            statusLine = hrmStatusLine(hrmState, hrmHeartRate),
-            statusColor = hrmStatusColor(hrmState),
+            statusLine = hrmStatusLine(hrmState, hrmHeartRate, hrmSilent),
+            statusColor = hrmStatusColor(hrmState, hrmSilent),
             onClick = onHrmClick
         )
         HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
@@ -477,14 +478,22 @@ private fun HrmSheetContent(
     val name by hrm.connectedDeviceName.collectAsState()
     val pairedId by hrm.pairedDeviceId.collectAsState()
     val heartRate by hrm.heartRate.collectAsState()
+    val sensorSilent by hrm.sensorSilent.collectAsState()
 
     SheetBody(
         icon = Icons.Outlined.MonitorHeart,
         iconTint = CadenceColors.Danger,
         title = hrmTitle(state, name),
-        statusLine = hrmStatusLine(state, heartRate),
-        helper = "Bluetooth chest strap (Polar H10, Wahoo TICKR, Garmin HRM-Pro/Dual, etc.). " +
-                "Wake the strap by snapping it on or moistening the contacts before scanning.",
+        statusLine = hrmStatusLine(state, heartRate, sensorSilent),
+        helper = if (sensorSilent) {
+            "The strap is connected but this phone isn't receiving anything from it, and " +
+                "reconnecting hasn't helped. This is usually the phone's Bluetooth rather than " +
+                "the strap: turn Bluetooth off and on again, or restart the phone. Closing and " +
+                "reopening the app will not clear it."
+        } else {
+            "Bluetooth chest strap (Polar H10, Wahoo TICKR, Garmin HRM-Pro/Dual, etc.). " +
+                "Wake the strap by snapping it on or moistening the contacts before scanning."
+        },
     ) {
         when (state) {
             HrmConnectionState.Connected,
@@ -665,17 +674,28 @@ private fun trainerStatusColor(state: TrainerConnectionState): Color = when (sta
 private fun hrmTitle(state: HrmConnectionState, name: String?): String =
     if (state == HrmConnectionState.Connected && name != null) name else "Heart Rate Monitor"
 
-private fun hrmStatusLine(state: HrmConnectionState, heartRate: Int): String = when (state) {
+private fun hrmStatusLine(
+    state: HrmConnectionState,
+    heartRate: Int,
+    sensorSilent: Boolean,
+): String = when (state) {
     HrmConnectionState.Scanning -> "Scanning…"
     HrmConnectionState.Connecting -> "Connecting…"
-    HrmConnectionState.Connected -> if (heartRate > 0) "$heartRate BPM" else "Connected · waiting for first sample"
+    HrmConnectionState.Connected -> when {
+        heartRate > 0 -> "$heartRate BPM"
+        // "Waiting" implies patience will fix it. Once the monitor has given up
+        // retrying, it won't, and the rider needs to act. See
+        // HeartRateMonitor.sensorSilent.
+        sensorSilent -> "Connected but sending nothing · restart Bluetooth"
+        else -> "Connected · waiting for first sample"
+    }
     HrmConnectionState.Disconnecting -> "Disconnecting…"
     HrmConnectionState.Disconnected -> "Not paired"
     HrmConnectionState.Error -> "Connection error · tap to retry"
 }
 
-private fun hrmStatusColor(state: HrmConnectionState): Color = when (state) {
-    HrmConnectionState.Connected -> CadenceColors.Success
+private fun hrmStatusColor(state: HrmConnectionState, sensorSilent: Boolean): Color = when (state) {
+    HrmConnectionState.Connected -> if (sensorSilent) CadenceColors.Danger else CadenceColors.Success
     HrmConnectionState.Scanning,
     HrmConnectionState.Connecting,
     HrmConnectionState.Disconnecting -> CadenceColors.Warning

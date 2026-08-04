@@ -21,3 +21,6 @@ mobile_clients/android/src/main/assets/workouts_private*.json
 keystore.properties
 *.jks
 *.keystore
+# Scratch git worktrees created by Claude Code for isolated work. The rest of
+# .claude/ (launch.json, settings.json) is deliberately tracked.
+/.claude/worktrees/

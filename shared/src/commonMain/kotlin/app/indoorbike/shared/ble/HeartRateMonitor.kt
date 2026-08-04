@@ -20,6 +20,7 @@ import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
 import com.juul.kable.Advertisement
+import com.juul.kable.BluetoothDisabledException
 import com.juul.kable.Peripheral
 import com.juul.kable.Scanner
 import com.juul.kable.State
@@ -46,6 +47,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Reuse the trainer's connection-state shape — same lifecycle. */
 typealias HrmConnectionState = TrainerConnectionState
@@ -90,6 +92,17 @@ class HeartRateMonitor {
     private val _lastSampleEpochMs = MutableStateFlow(0L)
     val lastSampleEpochMs: StateFlow<Long> = _lastSampleEpochMs.asStateFlow()
 
+    /**
+     * True once the strap has connected and stayed silent through
+     * [MAX_SILENT_CONNECTS] attempts. This is a phone-side fault, not a strap
+     * one: the link is up, the app is subscribed, and no notification ever
+     * arrives. The UI uses it to stop saying "waiting for first sample" - a
+     * message that implies patience will help - and tell the rider to cycle
+     * Bluetooth instead. See [armFirstSampleWatchdog].
+     */
+    private val _sensorSilent = MutableStateFlow(false)
+    val sensorSilent: StateFlow<Boolean> = _sensorSilent.asStateFlow()
+
     /** Emits the device name on each (re)connect; drives the UI "connected" toast. */
     private val _justConnected = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val justConnected: SharedFlow<String> = _justConnected.asSharedFlow()
@@ -98,8 +111,12 @@ class HeartRateMonitor {
     private var connectionJob: Job? = null
     private var stateListenerJob: Job? = null
     private var observeJob: Job? = null
+    private var watchdogJob: Job? = null
     private var activePeripheral: Peripheral? = null
     private val advertisementById = mutableMapOf<String, Advertisement>()
+
+    /** Consecutive connections that produced no sample. Reset by the first one. */
+    private var silentConnects = 0
 
     // Persistent auto-reconnect supervisor (see TrainerManager for the model).
     private val wantReconnect = MutableStateFlow(false)
@@ -162,12 +179,28 @@ class HeartRateMonitor {
                 continue
             }
 
+            // See TrainerManager: wait out a disabled radio instead of scanning
+            // into it, and do not let that wait push the retry cadence back.
+            if (awaitBluetoothAvailable { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
+                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                Log.i(TAG, "Bluetooth available; resuming HRM scans")
+            }
+
             _connectionState.value = HrmConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
-                    Scanner().advertisements
+                    Scanner { logging(scannerLogging()) }.advertisements
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.identifier == id }
+                } catch (e: CancellationException) {
+                    // The scan window timing out, or the lifecycle gate closing,
+                    // is routine - not a failure worth a line in a bug report.
+                    // Let it through so `withTimeoutOrNull` sees its own timeout.
+                    throw e
+                } catch (e: BluetoothDisabledException) {
+                    // See TrainerManager: expected, and the stack adds nothing.
+                    Log.i(TAG, "HRM scan stopped: Bluetooth turned off")
+                    null
                 } catch (e: Exception) {
                     Log.w(TAG, "HRM auto-reconnect scan failed", e)
                     null
@@ -195,6 +228,11 @@ class HeartRateMonitor {
         // Manual pairing takes over from background auto-reconnect.
         wantReconnect.value = false
 
+        // A rider who taps "pair" is retrying by hand, so give the next connect
+        // a clean slate rather than judging it by earlier silent ones.
+        silentConnects = 0
+        _sensorSilent.value = false
+
         if (_connectionState.value == HrmConnectionState.Connected) return
 
         _connectionState.value = HrmConnectionState.Scanning
@@ -202,7 +240,7 @@ class HeartRateMonitor {
         advertisementById.clear()
 
         scanJob?.cancel()
-        scanJob = Scanner().advertisements
+        scanJob = Scanner { logging(scannerLogging()) }.advertisements
             .onEach { ad -> addDiscovered(ad) }
             .catch { e ->
                 Log.e(TAG, "HRM scan failed", e)
@@ -246,6 +284,10 @@ class HeartRateMonitor {
         _connectedDeviceName.value = null
         _connectionState.value = HrmConnectionState.Disconnected
         _heartRate.value = 0
+        watchdogJob?.cancel()
+        watchdogJob = null
+        silentConnects = 0
+        _sensorSilent.value = false
     }
 
     fun dispose() {
@@ -288,11 +330,26 @@ class HeartRateMonitor {
 
         stateListenerJob?.cancel()
         observeJob?.cancel()
+        watchdogJob?.cancel()
         connectionJob?.cancel()
 
         connectionJob = scope.launch {
             try {
-                val peripheral = scope.peripheral(advertisement)
+                val peripheral = scope.peripheral(advertisement) {
+                    logging(peripheralLogging(advertisement.identifier))
+                    // Kable normally routes observation failures through the
+                    // observe flow; with a handler registered they come here
+                    // instead. Log with device context, then rethrow so the
+                    // flow still terminates and the watchdog rebuilds the link.
+                    observationExceptionHandler { cause ->
+                        Log.w(
+                            TAG,
+                            "HRM observation failed on ${redactDeviceId(advertisement.identifier)}",
+                            cause,
+                        )
+                        throw cause
+                    }
+                }
                 activePeripheral = peripheral
 
                 stateListenerJob = peripheral.state.onEach { state ->
@@ -302,12 +359,15 @@ class HeartRateMonitor {
                             _connectionState.value = HrmConnectionState.Connected
                             _justConnected.tryEmit(_connectedDeviceName.value ?: "Heart rate monitor")
                             startHeartRateObserve(peripheral)
+                            armFirstSampleWatchdog(peripheral)
                         }
                         is State.Disconnecting -> _connectionState.value = HrmConnectionState.Disconnecting
                         is State.Disconnected -> {
                             _connectionState.value = HrmConnectionState.Disconnected
                             observeJob?.cancel()
                             observeJob = null
+                            watchdogJob?.cancel()
+                            watchdogJob = null
                             _heartRate.value = 0
                             activePeripheral = null
                         }
@@ -315,6 +375,8 @@ class HeartRateMonitor {
                 }.launchIn(scope)
 
                 peripheral.connect()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "HRM connect failed", e)
                 _connectionState.value = HrmConnectionState.Error
@@ -323,35 +385,139 @@ class HeartRateMonitor {
         }
     }
 
-    private fun startHeartRateObserve(peripheral: Peripheral) {
-        observeJob?.cancel()
+    /**
+     * Watch for the first sample after a connect, and cycle the link if it
+     * never arrives.
+     *
+     * A strap that connects but never notifies is the failure this exists for.
+     * It happens when the phone's Bluetooth stack refuses to enable
+     * notifications: Kable suppresses that refusal (see [KableLogEngine]), so
+     * the observation flow stays subscribed to a stream that will never emit,
+     * and the app has a connection it believes is healthy. Nothing recovers on
+     * its own, because nothing has failed as far as either side is concerned -
+     * killing and reopening the app does not help either, since the wedged
+     * state lives in the system Bluetooth process rather than in ours.
+     *
+     * So: give the strap [FIRST_SAMPLE_TIMEOUT_MS] to say something, and if it
+     * doesn't, drop the link and let the reconnect supervisor build a fresh
+     * peripheral. After [MAX_SILENT_CONNECTS] attempts stop cycling and raise
+     * [sensorSilent] instead - by then the fault is clearly not going to clear
+     * by itself, and a reconnect loop that runs for the rest of the ride costs
+     * battery without ever fixing anything. Recovery from there needs the rider
+     * to toggle Bluetooth, which tears the link down and re-arms all of this.
+     */
+    private fun armFirstSampleWatchdog(peripheral: Peripheral) {
+        watchdogJob?.cancel()
+        watchdogJob = scope.launch {
+            val gotSample = awaitFirstSample(_lastSampleEpochMs, FIRST_SAMPLE_TIMEOUT_MS)
+            if (!gotSample) silentConnects += 1
+
+            when (firstSampleOutcome(gotSample, silentConnects, MAX_SILENT_CONNECTS)) {
+                FirstSampleOutcome.Delivering -> {
+                    if (silentConnects > 0) {
+                        Log.i(TAG, "HRM delivering samples again after $silentConnects silent connect(s)")
+                    }
+                    silentConnects = 0
+                    _sensorSilent.value = false
+                }
+
+                FirstSampleOutcome.Cycle -> {
+                    Log.w(
+                        TAG,
+                        "No HR sample within $FIRST_SAMPLE_TIMEOUT_MS ms of connect " +
+                            "(attempt $silentConnects of $MAX_SILENT_CONNECTS); cycling the link",
+                    )
+                    cycleLink(peripheral)
+                }
+
+                FirstSampleOutcome.GiveUp -> {
+                    _sensorSilent.value = true
+                    Log.e(
+                        TAG,
+                        "HRM connected but silent through $silentConnects attempts - the Bluetooth " +
+                            "stack is not delivering notifications; leaving the link up",
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Drop the link while keeping the reconnect intent, so the supervisor picks
+     * the strap back up with a fresh peripheral. Deliberately launched on its
+     * own coroutine rather than run inline in the watchdog: the disconnect it
+     * asks for is what cancels the watchdog job, so doing it inline would
+     * cancel the call halfway through.
+     */
+    private fun cycleLink(peripheral: Peripheral) {
         scope.launch {
             try {
-                val sUuid = uuidFrom(HEART_RATE_SERVICE_UUID)
-                val cUuid = uuidFrom(HEART_RATE_MEASUREMENT_UUID)
-                val service = peripheral.services?.firstOrNull { it.serviceUuid == sUuid }
-                val char = service?.characteristics?.firstOrNull { it.characteristicUuid == cUuid }
-                if (char == null) {
-                    Log.w(TAG, "Heart Rate Measurement characteristic not found")
-                    return@launch
-                }
-                observeJob = peripheral.observe(char)
-                    .onEach { bytes ->
-                        parseHeartRateMeasurement(bytes)?.let { bpm ->
-                            _heartRate.value = bpm
-                            _lastSampleEpochMs.value = getCurrentEpochMillis()
-                        }
-                    }
-                    .catch { Log.w(TAG, "HRM observe failed", it) }
-                    .launchIn(scope)
+                peripheral.disconnect()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.w(TAG, "HRM subscribe failed", e)
+                Log.w(TAG, "HRM watchdog disconnect failed", e)
             }
+        }
+    }
+
+    /**
+     * Suspending and sequential, for the same reason
+     * [TrainerManager.startTelemetrySubscriptions] is: the previous version did
+     * the lookup and subscribe inside a `scope.launch { ... }` and assigned
+     * [observeJob] from within it, so a disconnect arriving in that window ran
+     * `observeJob?.cancel()` against the *previous* connection's job (or null)
+     * and leaked this one. Assigning the job on the same coroutine that starts
+     * it removes the window entirely.
+     */
+    private suspend fun startHeartRateObserve(peripheral: Peripheral) {
+        observeJob?.cancel()
+        observeJob = null
+        try {
+            val sUuid = uuidFrom(HEART_RATE_SERVICE_UUID)
+            val cUuid = uuidFrom(HEART_RATE_MEASUREMENT_UUID)
+            val service = peripheral.services?.firstOrNull { it.serviceUuid == sUuid }
+            val char = service?.characteristics?.firstOrNull { it.characteristicUuid == cUuid }
+            if (char == null) {
+                Log.w(TAG, "Heart Rate Measurement characteristic not found")
+                return
+            }
+            observeJob = peripheral.observe(char)
+                .onEach { bytes ->
+                    parseHeartRateMeasurement(bytes)?.let { bpm ->
+                        _heartRate.value = bpm
+                        _lastSampleEpochMs.value = getCurrentEpochMillis()
+                        // Data is the only proof that matters, so clear the
+                        // fault here rather than only where the watchdog
+                        // happens to look. Without this, a link that recovers
+                        // after the watchdog gave up would keep showing the
+                        // "sending nothing" warning while samples arrive.
+                        _sensorSilent.value = false
+                    }
+                }
+                .catch { Log.w(TAG, "HRM observe failed", it) }
+                .launchIn(scope)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "HRM subscribe failed", e)
         }
     }
 
     companion object {
         private const val TAG = "HeartRateMonitor"
+
+        /**
+         * How long a freshly connected strap gets to produce its first sample.
+         * HRMs notify at roughly 1 Hz from the moment the link is up, so this
+         * is generous by an order of magnitude - deliberately, since a strap
+         * being woken by skin contact can take a few seconds to get going and
+         * a false trip costs a reconnect.
+         */
+        internal const val FIRST_SAMPLE_TIMEOUT_MS = 15_000L
+
+        /** Silent connects tolerated before [sensorSilent] is raised. */
+        internal const val MAX_SILENT_CONNECTS = 3
 
         // Substrings (case-insensitive) used to recognise HRMs that omit the
         // 0x180D service from their advertisement payload — most notably
@@ -367,4 +533,52 @@ class HeartRateMonitor {
             "Heart",
         )
     }
+}
+
+// ─── Watchdog logic, lifted out of the class so it's unit-testable ──────────
+
+/** What to do with a connection that has just been judged for its first sample. */
+internal enum class FirstSampleOutcome {
+    /** A sample arrived: the link is healthy, clear any fault state. */
+    Delivering,
+
+    /** Nothing arrived and retries remain: drop the link so it can be rebuilt. */
+    Cycle,
+
+    /**
+     * Nothing arrived and the retries are spent. Keep the link and raise the
+     * fault instead of reconnecting forever: three fresh peripherals in a row
+     * producing nothing is a wedged Bluetooth stack, and no number of further
+     * attempts will unwedge it. Cycling for the rest of a ride would only cost
+     * battery, and the rider needs to be told to act rather than watched over.
+     */
+    GiveUp,
+}
+
+internal fun firstSampleOutcome(
+    gotSample: Boolean,
+    silentConnects: Int,
+    maxSilentConnects: Int,
+): FirstSampleOutcome = when {
+    gotSample -> FirstSampleOutcome.Delivering
+    silentConnects >= maxSilentConnects -> FirstSampleOutcome.GiveUp
+    else -> FirstSampleOutcome.Cycle
+}
+
+/**
+ * Waits up to [timeoutMs] for [lastSampleEpochMs] to move, returning whether it
+ * did.
+ *
+ * Compares against a snapshot taken on entry rather than against zero, because
+ * the flow carries the timestamp of the last sample from *any* connection. A
+ * reconnect that follows a session which did deliver samples would otherwise
+ * see a non-zero value and count as healthy immediately, which is precisely the
+ * case where the silent-strap fault tends to appear.
+ */
+internal suspend fun awaitFirstSample(
+    lastSampleEpochMs: StateFlow<Long>,
+    timeoutMs: Long,
+): Boolean {
+    val before = lastSampleEpochMs.value
+    return withTimeoutOrNull(timeoutMs) { lastSampleEpochMs.first { it != before } } != null
 }
