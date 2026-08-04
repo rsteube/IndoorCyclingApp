@@ -257,18 +257,55 @@ class RideSessionService : Service() {
         const val ACTION_START = "app.indoorbike.action.START_RIDE"
         const val ACTION_STOP = "app.indoorbike.action.STOP_RIDE"
 
+        /**
+         * Both helpers guard against Android 12+ refusing a service start from
+         * the background. That refusal is an [IllegalStateException] thrown at
+         * the *caller*, and both are called from a bare `launch` on the
+         * application scope, so an uncaught one takes the process down.
+         *
+         * The path that matters is a restart after a kill: the service is
+         * START_STICKY, so Android brings the process back in the background,
+         * `Application.onCreate` collects the session StateFlow, and its current
+         * value (Idle, before the snapshot has loaded) routes straight to
+         * [stop] - a background service start, moments after the app died.
+         * Crashing there would turn one kill into a loop of them.
+         */
         fun start(context: Context) {
             val intent = Intent(context, RideSessionService::class.java).apply { action = ACTION_START }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: IllegalStateException) {
+                // ForegroundServiceStartNotAllowedException and friends. The
+                // ride is now unprotected from background kills, which the
+                // rider needs to know about, so route it to the same banner
+                // the in-service failure path uses.
+                val msg = "Couldn't keep the ride running in the background: Android refused " +
+                    "the request. Reopen the app to continue the ride."
+                Log.w("RideService", "$msg ($e)", e)
+                (context.applicationContext as? IndoorBikeApp)?.container
+                    ?.sessionManager?.notifyForegroundServiceFailure(msg)
             }
         }
 
         fun stop(context: Context) {
             val intent = Intent(context, RideSessionService::class.java).apply { action = ACTION_STOP }
-            context.startService(intent)
+            try {
+                context.startService(intent)
+            } catch (e: IllegalStateException) {
+                // Refused because we're in the background. Nothing is riding in
+                // that case anyway, and stopService carries no such restriction,
+                // so tear the service down directly instead of dying over it.
+                Log.w("RideService", "Background start refused for stop; stopping directly ($e)", e)
+                try {
+                    context.stopService(intent)
+                } catch (inner: Exception) {
+                    Log.w("RideService", "stopService also failed", inner)
+                }
+            }
         }
     }
 }

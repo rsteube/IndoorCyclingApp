@@ -87,11 +87,25 @@ class FitWriter {
      * 0..15 slot future data messages will reference. `fields` is the ordered
      * list of (fieldDefNum, sizeBytes, baseTypeCode) tuples — must match the
      * fields you'll write in subsequent data messages on this slot.
+     *
+     * `developerFields` declares custom fields appended after the standard ones,
+     * as (fieldDefNum, sizeBytes, developerDataIndex) tuples. Each must have been
+     * described by a `field_description` message earlier in the file, and data
+     * messages on this slot must write their values after the standard fields, in
+     * this same order. Empty (the default) produces a plain definition message
+     * with no developer-data flag, byte-for-byte as before.
      */
-    fun writeDefinition(localType: Int, globalMessageNum: Int, fields: List<Triple<Int, Int, Int>>) {
+    fun writeDefinition(
+        localType: Int,
+        globalMessageNum: Int,
+        fields: List<Triple<Int, Int, Int>>,
+        developerFields: List<Triple<Int, Int, Int>> = emptyList(),
+    ) {
         require(localType in 0..15) { "localType must be 0..15" }
-        // Header byte: bit6 set = definition; low 4 bits = local type.
-        u8(0x40 or localType)
+        // Header byte: bit6 set = definition; bit5 set = carries developer
+        // fields; low 4 bits = local type.
+        val developerBit = if (developerFields.isEmpty()) 0x00 else 0x20
+        u8(0x40 or developerBit or localType)
         u8(0)                       // reserved
         u8(0)                       // architecture: 0 = little endian
         u16(globalMessageNum)       // global msg num (LE)
@@ -100,6 +114,13 @@ class FitWriter {
             u8(fieldNum)
             u8(sizeBytes)
             u8(baseType)
+        }
+        if (developerFields.isEmpty()) return
+        u8(developerFields.size)
+        for ((fieldNum, sizeBytes, developerDataIndex) in developerFields) {
+            u8(fieldNum)
+            u8(sizeBytes)
+            u8(developerDataIndex)
         }
     }
 
@@ -202,6 +223,20 @@ object FitMessage {
     const val LAP          = 19
     const val SESSION      = 18
     const val ACTIVITY     = 34
+    /** Declares a developer-data namespace that custom fields belong to. */
+    const val DEVELOPER_DATA_ID = 207
+    /** Names and types one custom field within a developer-data namespace. */
+    const val FIELD_DESCRIPTION = 206
+}
+
+/**
+ * The "no value here" sentinels the FIT spec reserves per base type. A reader
+ * that sees one treats the field as absent for that message, which is how an
+ * interval with no cadence ask is distinguished from one asking for 0 rpm.
+ */
+object FitInvalid {
+    const val UINT8  = 0xFF
+    const val UINT16 = 0xFFFF
 }
 
 /**

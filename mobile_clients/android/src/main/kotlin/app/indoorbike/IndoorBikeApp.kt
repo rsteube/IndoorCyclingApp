@@ -48,7 +48,10 @@ import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.settings.UserSettings
+import app.indoorbike.shared.util.CrashHandler
+import app.indoorbike.shared.util.DiagnosticsLog
 import app.indoorbike.shared.util.Log
+import java.io.File
 
 /**
  * Holds all long-lived singletons. The pattern:
@@ -173,6 +176,11 @@ class IndoorBikeApp : Application() {
     lateinit var container: AppContainer
         private set
 
+    private companion object {
+        /** App-private subdirectory holding the durable diagnostic log files. */
+        const val DIAGNOSTICS_DIR = "diagnostics"
+    }
+
     private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     // Device auto-reconnect scanning is gated to "app in use": scan while the UI
@@ -198,6 +206,12 @@ class IndoorBikeApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Before the first log line, so "App start" itself is captured, and so
+        // the previous run's log is rotated aside where a bug report can find
+        // it. A crash report drafted after a restart is only worth anything if
+        // the lines from before the restart survived.
+        DiagnosticsLog.attachStorage(File(filesDir, DIAGNOSTICS_DIR))
+        CrashHandler.install()
         Log.i("IndoorBikeApp", "App start")
         container = AppContainer.create(this)
         container.workoutLibrary.start()

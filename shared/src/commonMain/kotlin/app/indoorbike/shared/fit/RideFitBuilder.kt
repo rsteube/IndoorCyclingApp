@@ -15,10 +15,12 @@
  */
 package app.indoorbike.shared.fit
 
+import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.progression.computeRideStats
+import app.indoorbike.shared.workout.CadenceTarget
 import kotlin.math.max
 import kotlin.math.min
 
@@ -28,9 +30,13 @@ import kotlin.math.min
  * Output layout:
  *   - file_id            (file type = activity, manufacturer = development)
  *   - file_creator       (Indoor Bike app version)
+ *   - developer_data_id  (namespace for the custom target fields)
+ *   - field_description × 4  (names/types for those fields)
  *   - event              (timer start)
  *   - record × N         (one per 1Hz telemetry sample)
- *   - lap × M            (one per workout segment, partitioning the records)
+ *   - lap × M            (one per workout segment, partitioning the records,
+ *                         carrying the segment's power and cadence targets as
+ *                         developer fields)
  *   - event              (timer stop)
  *   - session            (summary stats + sport = cycling, sub_sport = indoor)
  *   - activity           (single-session wrapper)
@@ -52,12 +58,42 @@ object RideFitBuilder {
     private const val LOCAL_LAP          = 4
     private const val LOCAL_SESSION      = 5
     private const val LOCAL_ACTIVITY     = 6
+    private const val LOCAL_DEVELOPER_ID = 7
+    private const val LOCAL_FIELD_DESC   = 8
+
+    // ── Developer (custom) fields carried on each lap ────────────────────
+    // A lap is one workout segment, so these say what the segment *asked* for,
+    // alongside the standard avg/max fields that say what the rider did. The
+    // activity profile has no native place for a target, and dropping them
+    // meant a structured session exported as an anonymous power trace.
+    private const val DEV_DATA_INDEX = 0
+    private const val DEV_FIELD_TARGET_POWER    = 0
+    private const val DEV_FIELD_TARGET_POWER_PCT = 1
+    private const val DEV_FIELD_TARGET_CAD_LOW  = 2
+    private const val DEV_FIELD_TARGET_CAD_HIGH = 3
+
+    /**
+     * Width of every field_description string, null-padded. Must stay clear of
+     * the longest name we emit ("target_cadence_high", 19) with room for the
+     * terminator, since [FitWriter.ascii] truncates silently.
+     */
+    private const val DEV_STRING_LEN = 24
+
+    /**
+     * Namespace for our developer fields. Any fixed 16 bytes work as long as
+     * they stay fixed: a reader keys custom fields on this plus the field
+     * number, so changing it would orphan every file already exported.
+     */
+    private val APPLICATION_ID = byteArrayOf(
+        0x69, 0x6E, 0x64, 0x6F, 0x6F, 0x72, 0x62, 0x69,   // "indoorbi"
+        0x6B, 0x65, 0x2E, 0x61, 0x70, 0x70, 0x00, 0x01,   // "ke.app" + version tag
+    )
 
     // Identity. We're not Garmin and not Wahoo — manufacturer 255 is the
     // FIT-spec "development" slot, intended for non-commercial / hobby apps.
     private const val MANUFACTURER_DEVELOPMENT = 255
     private const val PRODUCT_INDOORBIKE = 1
-    private const val SOFTWARE_VERSION = 100   // 1.00 — bumps with shipped FIT changes
+    private const val SOFTWARE_VERSION = 110   // 1.10 — bumps with shipped FIT changes
 
     // sport / sub_sport enum values from the FIT profile.
     private const val SPORT_CYCLING = 2
@@ -101,6 +137,11 @@ object RideFitBuilder {
         w.u16(SOFTWARE_VERSION)
         w.u8(0)
 
+        // ── developer field declarations ─────────────────────────────────
+        // Must precede the lap definition that references them: a reader
+        // hitting an undeclared developer field has no type or name for it.
+        writeDeveloperFieldDeclarations(w)
+
         // ── event: timer START ───────────────────────────────────────────
         w.writeDefinition(LOCAL_EVENT, FitMessage.EVENT, listOf(
             Triple(253, 4, FitBaseType.UINT32), // timestamp
@@ -122,8 +163,9 @@ object RideFitBuilder {
         // Partition telemetry by workout segment (or whole-ride lap if none).
         val segmentsSec = workout?.segments?.map { it.lengthInSeconds.coerceAtLeast(1) }
             ?: listOf(totalSeconds)
-        val segmentTargets = workout?.segments?.map { it.powerPercentFTP }
-            ?: listOf<Int>()
+        // Kept as the segments themselves rather than just their power target:
+        // each lap now also exports the segment's cadence ask.
+        val segments = workout?.segments
 
         var segIdx = 0
         var segStartOffset = 0
@@ -134,23 +176,33 @@ object RideFitBuilder {
         // Captured by the local `emitLap` closure below so we don't need
         // mutable state on the object itself.
         var lapDefWritten = false
-        fun emitLap(elapsedSec: Int, accum: LapAccum, plannedPct: Int?, lapIndex: Int) {
+        fun emitLap(elapsedSec: Int, accum: LapAccum, segment: PowerZone?, lapIndex: Int) {
             if (!lapDefWritten) {
-                w.writeDefinition(LOCAL_LAP, FitMessage.LAP, listOf(
-                    Triple(253, 4, FitBaseType.UINT32), // timestamp (= lap end)
-                    Triple(2, 4, FitBaseType.UINT32),   // start_time
-                    Triple(7, 4, FitBaseType.UINT32),   // total_elapsed_time (1/1000 s)
-                    Triple(8, 4, FitBaseType.UINT32),   // total_timer_time (1/1000 s)
-                    Triple(19, 2, FitBaseType.UINT16),  // avg_power
-                    Triple(20, 2, FitBaseType.UINT16),  // max_power
-                    Triple(13, 1, FitBaseType.UINT8),   // avg_heart_rate
-                    Triple(14, 1, FitBaseType.UINT8),   // max_heart_rate
-                    Triple(17, 1, FitBaseType.UINT8),   // avg_cadence
-                    Triple(18, 1, FitBaseType.UINT8),   // max_cadence
-                    Triple(0, 1, FitBaseType.ENUM),     // event
-                    Triple(1, 1, FitBaseType.ENUM),     // event_type
-                    Triple(25, 2, FitBaseType.UINT16),  // message_index
-                ))
+                w.writeDefinition(
+                    localType = LOCAL_LAP,
+                    globalMessageNum = FitMessage.LAP,
+                    fields = listOf(
+                        Triple(253, 4, FitBaseType.UINT32), // timestamp (= lap end)
+                        Triple(2, 4, FitBaseType.UINT32),   // start_time
+                        Triple(7, 4, FitBaseType.UINT32),   // total_elapsed_time (1/1000 s)
+                        Triple(8, 4, FitBaseType.UINT32),   // total_timer_time (1/1000 s)
+                        Triple(19, 2, FitBaseType.UINT16),  // avg_power
+                        Triple(20, 2, FitBaseType.UINT16),  // max_power
+                        Triple(13, 1, FitBaseType.UINT8),   // avg_heart_rate
+                        Triple(14, 1, FitBaseType.UINT8),   // max_heart_rate
+                        Triple(17, 1, FitBaseType.UINT8),   // avg_cadence
+                        Triple(18, 1, FitBaseType.UINT8),   // max_cadence
+                        Triple(0, 1, FitBaseType.ENUM),     // event
+                        Triple(1, 1, FitBaseType.ENUM),     // event_type
+                        Triple(25, 2, FitBaseType.UINT16),  // message_index
+                    ),
+                    developerFields = listOf(
+                        Triple(DEV_FIELD_TARGET_POWER, 2, DEV_DATA_INDEX),
+                        Triple(DEV_FIELD_TARGET_POWER_PCT, 2, DEV_DATA_INDEX),
+                        Triple(DEV_FIELD_TARGET_CAD_LOW, 1, DEV_DATA_INDEX),
+                        Triple(DEV_FIELD_TARGET_CAD_HIGH, 1, DEV_DATA_INDEX),
+                    ),
+                )
                 lapDefWritten = true
             }
             val safeElapsed = elapsedSec.coerceAtLeast(1)
@@ -169,6 +221,16 @@ object RideFitBuilder {
             w.u8(9)                              // event = lap
             w.u8(1)                              // event_type = stop
             w.u16(lapIndex)
+
+            // Developer fields, in the order declared above. A ride with no
+            // workout behind it (or a segment with no cadence ask) writes the
+            // spec's invalid sentinel so readers show nothing rather than zero.
+            val pct = segment?.powerPercentFTP
+            w.u16(if (pct == null) FitInvalid.UINT16 else (pct * ftp / 100).coerceIn(0, 65534))
+            w.u16(pct?.coerceIn(0, 65534) ?: FitInvalid.UINT16)
+            val cadence = CadenceTarget.of(segment?.cadenceMinRpm, segment?.cadenceMaxRpm)
+            w.u8(cadence?.minRpm?.coerceIn(0, 254) ?: FitInvalid.UINT8)
+            w.u8(cadence?.maxRpm?.coerceIn(0, 254) ?: FitInvalid.UINT8)
         }
 
         // We deliberately enforce one record per integer-second sample. The
@@ -185,7 +247,7 @@ object RideFitBuilder {
                 emitLap(
                     elapsedSec = segEndOffset - segStartOffset,
                     accum = lapStatsAccum,
-                    plannedPct = segmentTargets.getOrNull(segIdx),
+                    segment = segments?.getOrNull(segIdx),
                     lapIndex = segIdx,
                 )
                 segIdx += 1
@@ -208,7 +270,7 @@ object RideFitBuilder {
         emitLap(
             elapsedSec = totalSeconds - segStartOffset,
             accum = lapStatsAccum,
-            plannedPct = segmentTargets.getOrNull(segIdx),
+            segment = segments?.getOrNull(segIdx),
             lapIndex = segIdx,
         )
 
@@ -286,6 +348,45 @@ object RideFitBuilder {
 
         w.finalizeAndCrc()
         return w.bytes()
+    }
+
+    /**
+     * Declares the developer-data namespace and names each custom field, so a
+     * reader can label them instead of showing four anonymous numbers.
+     *
+     * `native_mesg_num` points at `lap`, which tells a reader these belong on
+     * lap messages even though they have no native field number there.
+     */
+    private fun writeDeveloperFieldDeclarations(w: FitWriter) {
+        w.writeDefinition(LOCAL_DEVELOPER_ID, FitMessage.DEVELOPER_DATA_ID, listOf(
+            Triple(1, APPLICATION_ID.size, FitBaseType.BYTE),  // application_id
+            Triple(3, 1, FitBaseType.UINT8),                   // developer_data_index
+        ))
+        w.writeDataHeader(LOCAL_DEVELOPER_ID)
+        for (b in APPLICATION_ID) w.u8(b.toInt())
+        w.u8(DEV_DATA_INDEX)
+
+        w.writeDefinition(LOCAL_FIELD_DESC, FitMessage.FIELD_DESCRIPTION, listOf(
+            Triple(0, 1, FitBaseType.UINT8),                 // developer_data_index
+            Triple(1, 1, FitBaseType.UINT8),                 // field_definition_number
+            Triple(2, 1, FitBaseType.UINT8),                 // fit_base_type_id
+            Triple(3, DEV_STRING_LEN, FitBaseType.STRING),   // field_name
+            Triple(8, DEV_STRING_LEN, FitBaseType.STRING),   // units
+            Triple(14, 2, FitBaseType.UINT16),               // native_mesg_num
+        ))
+        fun describe(fieldNum: Int, baseType: Int, name: String, units: String) {
+            w.writeDataHeader(LOCAL_FIELD_DESC)
+            w.u8(DEV_DATA_INDEX)
+            w.u8(fieldNum)
+            w.u8(baseType)
+            w.ascii(name, DEV_STRING_LEN)
+            w.ascii(units, DEV_STRING_LEN)
+            w.u16(FitMessage.LAP)
+        }
+        describe(DEV_FIELD_TARGET_POWER, FitBaseType.UINT16, "target_power", "watts")
+        describe(DEV_FIELD_TARGET_POWER_PCT, FitBaseType.UINT16, "target_power_pct", "%FTP")
+        describe(DEV_FIELD_TARGET_CAD_LOW, FitBaseType.UINT8, "target_cadence_low", "rpm")
+        describe(DEV_FIELD_TARGET_CAD_HIGH, FitBaseType.UINT8, "target_cadence_high", "rpm")
     }
 
     private class LapAccum {

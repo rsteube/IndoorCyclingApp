@@ -142,6 +142,117 @@ class FitWriterTest {
     }
 
     @Test
+    fun lapsCarrySegmentPowerAndCadenceTargets() {
+        val startEpoch = 1_700_000_000_000L
+        val workout = Workout(
+            id = "test", name = "Test", description = null,
+            segments = listOf(
+                // A stated range, a single value, and no ask at all.
+                PowerZone(600, 50, "CONSTANT", cadenceMinRpm = 85, cadenceMaxRpm = 95),
+                PowerZone(600, 100, "CONSTANT", cadenceMinRpm = 90),
+                PowerZone(600, 60, "CONSTANT"),
+            )
+        )
+        val telemetry = (0 until 1800).map { i ->
+            WorkoutTelemetry(
+                id = i.toLong(), sessionId = 1,
+                timestampEpoch = startEpoch + i * 1000L,
+                power = 150L, cadence = 90L, heartRate = 140L,
+            )
+        }
+        val session = WorkoutSession(
+            id = 1, workoutId = "test", workoutName = "Test",
+            startTimeEpoch = startEpoch, durationSeconds = 1800,
+            avgPower = 150L, avgCadence = 90L, avgHeartRate = 140L,
+            externalId = "test:1",
+        )
+
+        val laps = lapDeveloperFields(RideFitBuilder.build(session, telemetry, workout, ftp = 200))
+
+        assertEquals(3, laps.size, "one lap per segment")
+        // 50% of a 200 W FTP = 100 W, and the range is exported as authored.
+        assertEquals(listOf(100, 50, 85, 95), laps[0])
+        // A lone cadenceMinRpm is a single-value target: low and high match.
+        assertEquals(listOf(200, 100, 90, 90), laps[1])
+        // No cadence ask, so both bounds are the spec's uint8 invalid sentinel.
+        assertEquals(listOf(120, 60, 0xFF, 0xFF), laps[2])
+    }
+
+    @Test
+    fun unstructuredRideWritesInvalidTargets() {
+        val session = WorkoutSession(
+            id = 7, workoutId = "freeride", workoutName = "Free Ride",
+            startTimeEpoch = 1_700_000_000_000L, durationSeconds = 60,
+            avgPower = 150L, avgCadence = 85L, avgHeartRate = 140L,
+            externalId = "test:7",
+        )
+        val telemetry = (0 until 60).map { i ->
+            WorkoutTelemetry(
+                id = i.toLong(), sessionId = 7,
+                timestampEpoch = session.startTimeEpoch + i * 1000L,
+                power = 150L, cadence = 85L, heartRate = 140L,
+            )
+        }
+
+        val laps = lapDeveloperFields(RideFitBuilder.build(session, telemetry, workout = null, ftp = 200))
+
+        assertEquals(1, laps.size)
+        // Nothing was planned, so no target may claim to have been.
+        assertEquals(listOf(0xFFFF, 0xFFFF, 0xFF, 0xFF), laps[0])
+    }
+
+    // ── Minimal FIT reader, enough to verify our own output ──────────────
+    // Decoding the file is the only way to catch a malformed developer-field
+    // section: the CRC assertions above pass on any self-consistent garbage.
+
+    private class Definition(
+        val globalMessageNum: Int,
+        val fieldSizes: List<Int>,
+        val developerFieldSizes: List<Int>,
+    )
+
+    /**
+     * The four developer values on each lap, in declared order:
+     * target_power, target_power_pct, target_cadence_low, target_cadence_high.
+     */
+    private fun lapDeveloperFields(bytes: ByteArray): List<List<Int>> {
+        val definitions = HashMap<Int, Definition>()
+        val laps = mutableListOf<List<Int>>()
+        fun u8At(i: Int) = bytes[i].toInt() and 0xFF
+        var pos = 14                       // skip the file header
+        val end = bytes.size - 2           // stop before the trailing file CRC
+        while (pos < end) {
+            val header = u8At(pos); pos += 1
+            val localType = header and 0x0F
+            if (header and 0x40 != 0) {
+                pos += 2                   // reserved + architecture
+                val globalMessageNum = u8At(pos) or (u8At(pos + 1) shl 8); pos += 2
+                val fieldCount = u8At(pos); pos += 1
+                val fieldSizes = (0 until fieldCount).map { i -> u8At(pos + i * 3 + 1) }
+                pos += fieldCount * 3
+                val developerFieldSizes = if (header and 0x20 == 0) emptyList() else {
+                    val devCount = u8At(pos); pos += 1
+                    (0 until devCount).map { i -> u8At(pos + i * 3 + 1) }
+                        .also { pos += devCount * 3 }
+                }
+                definitions[localType] = Definition(globalMessageNum, fieldSizes, developerFieldSizes)
+            } else {
+                val def = definitions[localType] ?: error("data message for undefined local type $localType")
+                pos += def.fieldSizes.sum()
+                val developerValues = def.developerFieldSizes.map { size ->
+                    var value = 0
+                    for (b in 0 until size) value = value or (u8At(pos + b) shl (8 * b))
+                    pos += size
+                    value
+                }
+                if (def.globalMessageNum == FitMessage.LAP) laps.add(developerValues)
+            }
+        }
+        assertEquals(end, pos, "reader must consume the body exactly")
+        return laps
+    }
+
+    @Test
     fun rideFitBuilderHandlesNoWorkout() {
         // Unstructured ride — single lap should cover the whole thing.
         val session = WorkoutSession(

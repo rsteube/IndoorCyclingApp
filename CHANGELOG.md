@@ -4,6 +4,41 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [Unreleased]
+
+### Added
+
+- **Interval targets in exported FIT files.** A lap in an exported ride now
+  carries what the interval asked for, not just what you did: target power in
+  watts, the same target as a percentage of FTP, and the cadence range where
+  the interval sets one. Analysis platforms that read FIT custom fields will
+  show these alongside your actuals, so a structured session no longer exports
+  as an anonymous power trace. Rides with no workout behind them, and intervals
+  with no cadence ask, mark the target as absent rather than reporting zero.
+
+### Fixed
+
+- **Bug reports sent after a crash are no longer empty.** The diagnostic log
+  only ever lived in memory, so it died with the app: a report drafted after a
+  crash could only show the launch that came after it, which is why reports
+  arrived containing nothing but `App start`. The log is now also written to
+  private storage as you ride, and a report includes the previous run's log
+  alongside the current one. A crash costs at most the last five seconds of
+  lines.
+
+- **Reports now say why the app stopped.** Android keeps its own record of how
+  each process ended, and the app never read it. A report now includes the last
+  three, which distinguishes an app crash from the system reclaiming memory
+  from a rider force-stopping the app - none of which the app's own logs can
+  tell apart. Where Android captured a stack trace, that comes along too.
+  Requires Android 11 or newer; below that the section says so.
+
+- **A crash after a crash.** If the app was killed mid-ride, Android restarted
+  its ride service in the background, and the app's attempt to stand that
+  service down was refused - which threw, and killed the freshly started
+  process. One kill could become a run of them. Both the start and stop paths
+  now handle the refusal instead of dying on it.
+
 ## [1.5] (8) - 2026-07-28
 
 Cadence targets for intervals, and two fixes for rides that could be lost
