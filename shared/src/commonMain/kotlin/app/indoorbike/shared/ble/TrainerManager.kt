@@ -358,6 +358,7 @@ class TrainerManager {
                 Log.i(TAG, "Bluetooth available; resuming trainer scans")
             }
 
+            resetDiscoveryCaches()
             _connectionState.value = TrainerConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
@@ -416,7 +417,10 @@ class TrainerManager {
         if (_connectionState.value == TrainerConnectionState.Connected) return
 
         _connectionState.value = TrainerConnectionState.Scanning
-        _discoveredDevices.value = emptyList()
+        // Clears the advertisement map alongside the list. It used to clear
+        // only the list, so every manual scan added to a map that nothing ever
+        // emptied.
+        resetDiscoveryCaches()
 
         scanJob?.cancel()
         scanJob = Scanner {
@@ -492,6 +496,27 @@ class TrainerManager {
     // Declared after all state the supervisor touches, so they're initialised
     // before its coroutine body runs.
     init { scope.launch { reconnectSupervisor() } }
+
+    /**
+     * Forget what the previous scan window saw.
+     *
+     * [lastAdvertisements] had nothing that ever emptied it - not even
+     * [startScan], which cleared only the visible list - so it accumulated for
+     * the life of the process. This scan is service-filtered to trainers, so
+     * the growth is far slower than the HRM's and the controller's unfiltered
+     * ones, but a rider whose trainer is asleep still scans in windows for a
+     * whole session and every window's advertisements stayed behind it.
+     *
+     * Clearing both together preserves the invariant the pairing screen relies
+     * on: everything listed in [_discoveredDevices] has an advertisement in
+     * [lastAdvertisements] for the tap to connect with. The window that follows
+     * repopulates both within a second or two of live advertisements, which is
+     * fresher than what it replaces.
+     */
+    private fun resetDiscoveryCaches() {
+        lastAdvertisements.clear()
+        _discoveredDevices.value = emptyList()
+    }
 
     private fun addDiscovered(ad: Advertisement) {
         lastAdvertisements[ad.identifier] = ad

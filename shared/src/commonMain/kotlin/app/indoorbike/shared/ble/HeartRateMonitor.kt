@@ -186,6 +186,7 @@ class HeartRateMonitor {
                 Log.i(TAG, "Bluetooth available; resuming HRM scans")
             }
 
+            resetDiscoveryCaches()
             _connectionState.value = HrmConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
@@ -236,8 +237,7 @@ class HeartRateMonitor {
         if (_connectionState.value == HrmConnectionState.Connected) return
 
         _connectionState.value = HrmConnectionState.Scanning
-        _discoveredDevices.value = emptyList()
-        advertisementById.clear()
+        resetDiscoveryCaches()
 
         scanJob?.cancel()
         scanJob = Scanner { logging(scannerLogging()) }.advertisements
@@ -296,11 +296,38 @@ class HeartRateMonitor {
 
     // ─── internals ───────────────────────────────────────────────────────
 
+    /**
+     * Forget what the previous scan window saw.
+     *
+     * The auto-reconnect scan runs in windows for as long as the device is
+     * missing, which on a ride with a paired-but-absent sensor means the whole
+     * session. Every advertisement it saw was being retained for the life of
+     * the process, and BLE privacy addresses rotate every few minutes, so the
+     * same nearby phone or pair of earbuds arrives under a fresh key each time
+     * and none of the old ones is ever reachable again. Left alone that grows
+     * without bound for exactly as long as the rider keeps riding.
+     *
+     * Clearing both together preserves the invariant the pairing screen relies
+     * on: everything listed in [_discoveredDevices] has an advertisement in
+     * [advertisementById] for the tap to connect with. The window that follows
+     * repopulates both within a second or two of live advertisements, which is
+     * fresher than what it replaces.
+     */
+    private fun resetDiscoveryCaches() {
+        advertisementById.clear()
+        _discoveredDevices.value = emptyList()
+    }
+
     private fun addDiscovered(ad: Advertisement) {
-        // Always remember the advertisement so auto-connect can match by identifier,
-        // even if the heuristic below would hide it from the UI list.
-        advertisementById[ad.identifier] = ad
         if (!looksLikeHrm(ad)) return
+        // Only what the list shows is worth keeping. This used to be stored
+        // above the filter, on the grounds that auto-connect needed every
+        // advertisement to match its target by identifier - but it doesn't:
+        // the reconnect worker matches on the live scan flow and hands that
+        // advertisement straight to connectInternal. A tap on a listed device
+        // is the only thing that reads this map, so the unfiltered scan was
+        // retaining every radio in range on behalf of no one.
+        advertisementById[ad.identifier] = ad
         val current = _discoveredDevices.value
         if (current.none { it.id == ad.identifier }) {
             _discoveredDevices.value = current + HrmCandidate(

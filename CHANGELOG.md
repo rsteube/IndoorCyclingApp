@@ -18,6 +18,19 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **Riding with a sensor switched off no longer grows the app's memory for the
+  whole session.** Searching for a paired-but-absent heart rate strap or
+  controller means scanning in windows for as long as the ride lasts, and every
+  Bluetooth device that answered was being kept in memory afterwards. Neither
+  search can filter by service - a Garmin strap doesn't advertise one, and a
+  Zwift Click sometimes omits its own - so what was kept was every radio in
+  range, not just the sensors, and since Bluetooth addresses are rotated for
+  privacy the same neighbouring phone came back as a new one every few minutes.
+  Nothing ever read any of it. A search now keeps only the devices it actually
+  offers you, and starts each window from a clean slate, so an hour of looking
+  costs the same as a minute of it. The trainer search, which can filter and so
+  grew far more slowly, had the same missing cleanup and gets it too.
+
 - **A heart rate monitor stuck on "waiting for first sample" now recovers, or
   tells you what to do.** The strap connected, the app said so, and no reading
   ever appeared - for every strap tried, across app restarts, until the phone
