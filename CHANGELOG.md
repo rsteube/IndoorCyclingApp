@@ -6,6 +6,11 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6] (9) - 2026-08-25
+
+A ride you don't have to plan, and a run of fixes for sensors that
+connect but say nothing.
+
 ### Added
 
 - **Just ride.** A ride you don't have to plan. The Rides tab has a **Just

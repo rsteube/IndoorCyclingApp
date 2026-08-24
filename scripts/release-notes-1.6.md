@@ -1,0 +1,22 @@
+Indoor Bike 1.6
+
+A ride you don't have to plan, and a run of fixes for sensors that connect but say nothing.
+
+Added
+- **Just ride**: no workout, no plan. Start it from the Rides tab and the trainer opens at 40% of your FTP, the timer counts up, and the ride runs until you end it. The +/- buttons move the target ten watts at a time rather than nudging an interval's difficulty, so you set the effort as you go and change it whenever you like. The wattage you pick shows before you start pedalling, and a paired Zwift Click steps it the same way. There is nothing to skip ahead to, so the interval label, the up-next line and the timeline are gone. Everything else works as it does on a structured ride: it is recorded, it survives the app being killed and offers to resume on the wattage you were holding, and it saves to your history and exports like any other ride.
+- **Interval targets in exported FIT files**: a lap now carries what the interval asked for, not just what you did. Target power in watts, the same target as a percentage of FTP, and the cadence range where the interval sets one. Analysis platforms that read FIT custom fields show these alongside your actuals, so a structured session no longer exports as an anonymous power trace.
+
+Fixed
+- **A heart rate monitor stuck on "waiting for first sample" now recovers, or tells you what to do.** The strap connected, the app said so, and no reading ever appeared, for every strap tried, across app restarts, until the phone was rebooted. The cause is on the phone rather than the strap: when the Bluetooth stack declines to switch a sensor's notifications on, that refusal was being swallowed one layer below the app, leaving a connection the app believed was healthy and a data stream that would never carry anything. Nothing recovered because as far as either side was concerned nothing had failed. The app now watches for the first reading, rebuilds the connection if none arrives within fifteen seconds, and after three silent attempts stops retrying and says the strap is connected but sending nothing, with the fix that actually works: turn Bluetooth off and on, or restart the phone. Closing the app never helped, because the stuck state lives in Android's Bluetooth service and not in the app.
+- **Turning Bluetooth back on now reconnects straight away.** Sensors used to take up to a minute to come back, because every failed attempt while Bluetooth was off pushed the next retry further out and the app kept counting that against the sensor once the radio returned. Measured on a Fairphone 4, reconnecting went from about 45 seconds to under a tenth of a second.
+- **Riding with a sensor switched off no longer grows the app's memory for the whole session.** Searching for a paired but absent strap or controller means scanning for as long as the ride lasts, and every Bluetooth device that answered was being kept in memory afterwards. Neither search can filter by service, so what was kept was every radio in range rather than just the sensors, and since Bluetooth addresses are rotated for privacy the same neighbouring phone came back as a new one every few minutes. A search now keeps only the devices it actually offers you.
+- **Bug reports are no longer blank when you most need them.** A report drafted after a crash could only show the launch that came after it, so reports arrived containing nothing but `App start`. The log is now written to private storage as you ride and a report carries the previous run's log alongside the current one. Reports also include Android's own record of how the app last stopped, which distinguishes a crash from the system reclaiming memory from a force-stop, and the Bluetooth library's own account of connecting and subscribing, which is the only place a swallowed sensor failure is recorded at all. Sensor readings are never logged and device addresses stay masked.
+- **A crash after a crash.** If the app was killed mid-ride, Android restarted its ride service in the background, and the app's attempt to stand that service down was refused, which threw and killed the freshly started process. One kill could become a run of them.
+
+Notes
+- If you have been seeing a heart rate strap connect and then sit at "waiting for first sample", this release is the one to try. If it still happens, the report you send now carries enough to find it.
+
+Install
+- Add this repo to [Obtainium](https://github.com/ImranR98/Obtainium) for automatic updates, or grab the APK below.
+
+Signed with the project's release key; `versionCode 9`.
