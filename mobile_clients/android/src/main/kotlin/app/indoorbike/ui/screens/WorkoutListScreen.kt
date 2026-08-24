@@ -56,6 +56,7 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.outlined.QrCodeScanner
+import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -90,8 +91,11 @@ import app.indoorbike.shared.settings.MAX_WEIGHT_KG
 import app.indoorbike.shared.settings.MIN_FTP
 import app.indoorbike.shared.settings.MIN_WEIGHT_KG
 import app.indoorbike.shared.settings.UNKNOWN_FTP_DEFAULT
+import app.indoorbike.shared.workout.FREE_RIDE_START_PERCENT_FTP
+import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.shared.workout.WorkoutSummary
 import app.indoorbike.shared.workout.formatDurationPretty
+import app.indoorbike.shared.workout.freeRideStartWatts
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
@@ -175,6 +179,7 @@ fun WorkoutListScreen(
     eyebrow: String,
     onPick: (Workout) -> Unit,
     onStartWorkout: (Workout) -> Unit = {},
+    onStartFreeRide: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     onScanQr: () -> Unit = {},
     onOpenTrainerPairing: () -> Unit = {},
@@ -208,7 +213,9 @@ fun WorkoutListScreen(
     // visibility (it also validates the snapshot); this only needs to know
     // whether a snapshot for a still-existing workout is on disk.
     val hasUnfinishedRide = persistedSnapshot?.let { snap ->
-        summaryById.containsKey(snap.workoutId)
+        // A free ride's workout is synthesised per ride rather than kept in
+        // the library, so it never appears here; the banner rebuilds it.
+        snap.workoutId == FREE_RIDE_WORKOUT_ID || summaryById.containsKey(snap.workoutId)
     } ?: false
 
     val upNext = remember(summaryById, sessions, favouriteIds, hasUnfinishedRide) {
@@ -337,6 +344,15 @@ fun WorkoutListScreen(
                             onStart = { onStartWorkout(upNext.summary.workout) },
                         )
                     }
+                }
+
+                item(key = "just-ride", span = { GridItemSpan(maxLineSpan) }) {
+                    JustRideCard(
+                        startWatts = freeRideStartWatts(ftp),
+                        isTrainerLive = isTrainerLive,
+                        onStart = onStartFreeRide,
+                        onPairTrainer = onOpenTrainerPairing,
+                    )
                 }
 
                 if (quickPicks.isNotEmpty()) {
@@ -672,6 +688,75 @@ private fun UpNextHero(
             onClick = if (isTrainerLive) onStart else onOpen,
             modifier = Modifier.fillMaxWidth()
         )
+    }
+}
+
+/**
+ * Entry point to "just ride": no workout, no plan. Sits under the Up next hero
+ * because it's the answer to the same question ("what am I riding today?") for
+ * riders who don't want a plan today, and it needs to be findable without
+ * scrolling the library to the bottom.
+ *
+ * Trainer-gated the same way the hero is: ERG is the entire mode, so starting
+ * one without a trainer would leave the rider on a HUD that can't do anything.
+ */
+@Composable
+private fun JustRideCard(
+    startWatts: Int,
+    isTrainerLive: Boolean,
+    onStart: () -> Unit,
+    onPairTrainer: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = if (isTrainerLive) onStart else onPairTrainer)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Speed,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "JUST RIDE",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Brand500
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "No workout, no plan",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Text(
+                text = if (isTrainerLive) {
+                    "Starts at $startWatts W ($FREE_RIDE_START_PERCENT_FTP% FTP). " +
+                        "Set your own power, ride until you stop."
+                } else {
+                    "Pair a trainer to ride freely at your own power."
+                },
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
+        }
+        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
     }
 }
 

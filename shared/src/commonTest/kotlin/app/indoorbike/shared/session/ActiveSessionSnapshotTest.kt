@@ -18,6 +18,7 @@ package app.indoorbike.shared.session
 import kotlinx.serialization.json.Json
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class ActiveSessionSnapshotTest {
 
@@ -85,5 +86,48 @@ class ActiveSessionSnapshotTest {
             val back = json.decodeFromString(ActiveSessionSnapshot.serializer(), text)
             assertEquals(state, back.state, "state $state did not round-trip")
         }
+    }
+
+    @Test
+    fun aFreeRidesWattageRoundTrips() {
+        // The free-ride target is the position for a ride with no plan behind
+        // it: lose it and the rider resumes at the opening 40 % of FTP.
+        val snapshot = ActiveSessionSnapshot(
+            workoutId = "free-ride",
+            sessionStartTimeEpochMs = 1_700_000_000_000L,
+            ftp = 250,
+            targetBiasPercent = 0,
+            elapsedSeconds = 900,
+            currentSegmentIndex = 0,
+            elapsedInSegment = 900,
+            state = WorkoutState.Active,
+            actualRideSeconds = 900,
+            freeRideTargetWatts = 185,
+        )
+        val encoded = json.encodeToString(ActiveSessionSnapshot.serializer(), snapshot)
+        val decoded = json.decodeFromString(ActiveSessionSnapshot.serializer(), encoded)
+        assertEquals(185, decoded.freeRideTargetWatts)
+        assertEquals(snapshot, decoded)
+    }
+
+    @Test
+    fun olderSnapshotWithoutTheFreeRideWattageDecodesWithDefault() {
+        // Written before "just ride" existed, so it can only be a structured
+        // ride - and those carry no wattage of their own.
+        val legacy = """
+            {
+              "workoutId": "legacy",
+              "sessionStartTimeEpochMs": 1700000000000,
+              "ftp": 200,
+              "targetBiasPercent": 0,
+              "elapsedSeconds": 60,
+              "currentSegmentIndex": 1,
+              "elapsedInSegment": 10,
+              "state": "Active",
+              "actualRideSeconds": 60
+            }
+        """.trimIndent()
+        val decoded = json.decodeFromString(ActiveSessionSnapshot.serializer(), legacy)
+        assertNull(decoded.freeRideTargetWatts)
     }
 }

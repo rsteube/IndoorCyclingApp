@@ -8,6 +8,20 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Added
 
+- **Just ride.** A ride you don't have to plan. The Rides tab has a **Just
+  ride** card that starts a session with no workout behind it: the trainer
+  opens at 40 % of your FTP, the timer counts up, and the ride runs until you
+  end it. The HUD's ± buttons move the target ten watts at a time instead of
+  nudging an interval's difficulty, so you set the effort as you go and change
+  it whenever you feel like it - the pill above them shows the wattage you've
+  chosen even before you start pedalling, and a paired Zwift Click steps it the
+  same way. There's nothing to skip ahead to, so the interval label, the
+  up-next line and the timeline are simply gone. Everything else works exactly
+  as it does on a structured ride: the ride is recorded, survives the app being
+  killed and offers to resume on the wattage you were holding, saves to your
+  history, and exports to FIT or TCX (as one lap, since there was no plan to
+  break it into).
+
 - **Interval targets in exported FIT files.** A lap in an exported ride now
   carries what the interval asked for, not just what you did: target power in
   watts, the same target as a percentage of FTP, and the cadence range where

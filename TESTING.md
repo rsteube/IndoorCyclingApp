@@ -120,6 +120,20 @@ Each numbered scenario is independent - start each from a clean state by either 
 | 6.5 | Background the app (home / lock screen) for ~30 s, return | Ride state continues uninterrupted; foreground-service notification was visible while backgrounded |
 | 6.6 | Reach the end of all segments | Auto-navigates to the workout overview; new entry appears in History |
 
+### 6b. Just ride (free ride, mock trainer)
+
+| Step | Action | Expected |
+|------|--------|----------|
+| 6b.1 | With no trainer connected, look at the Rides tab | **Just ride** card reads "Pair a trainer to ride freely at your own power"; tapping it opens trainer pairing |
+| 6b.2 | Pair the mock trainer, return to Rides | Card now reads "Starts at N W (40% FTP)", where N is 40 % of the FTP in Settings |
+| 6b.3 | Tap the card | Ride HUD opens titled **Just Ride**; clock shows elapsed only (no `/ total`); TARGET pill already shows the opening wattage; no segment label, up-next or timeline; no Skip button |
+| 6b.4 | Tap **+** / **−** before pedalling | Target moves 10 W per tap and the pill updates immediately; it stops at 30 W and 1000 W |
+| 6b.5 | Toggle mock pedaling on | Countdown, then Active; trainer holds the chosen wattage; power reads ON TARGET; timer counts up with no end in sight |
+| 6b.6 | Tap **+** a few times mid-ride | Trainer target follows within a second; the HUD's zone colour follows the new wattage |
+| 6b.7 | Tap **End** → **End & save** | Overview screen; **no** Power Adherence section (there was no plan); Time in Zone and Export are present |
+| 6b.8 | Open History | Session listed as **Just Ride** with no **Again** pill |
+| 6b.9 | Start another free ride, step the target up, then kill the app (`adb shell am force-stop app.indoorbike.debug`) and relaunch | Rides tab shows an **UNFINISHED RIDE · Just Ride** banner reading "M:SS ridden · no set finish", with no progress bar. **Continue** resumes on the wattage you had set, not the opening 40 % |
+
 ### 7. Workout overview & history persistence
 
 | Step | Action | Expected |

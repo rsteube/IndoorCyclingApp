@@ -20,6 +20,11 @@ import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.db.TelemetryPoint
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
+import app.indoorbike.shared.workout.clampFreeRideWatts
+import app.indoorbike.shared.workout.freeRideStartWatts
+import app.indoorbike.shared.workout.freeRideWorkout
+import app.indoorbike.shared.workout.isFreeRide
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -179,6 +184,17 @@ class WorkoutSessionManager(
     val targetBiasPercent: StateFlow<Int> = _targetBiasPercent.asStateFlow()
 
     /**
+     * The ERG target a "just ride" session is holding, in watts.
+     *
+     * A free ride has no plan to bias, so the rider's ± taps move an absolute
+     * wattage rather than a percentage of a segment that doesn't exist. Zero
+     * while a structured workout is loaded; that path keeps using
+     * [targetBiasPercent] and the segment's own FTP percentage.
+     */
+    private val _freeRideTargetWatts = MutableStateFlow(0)
+    val freeRideTargetWatts: StateFlow<Int> = _freeRideTargetWatts.asStateFlow()
+
+    /**
      * The most recently persisted snapshot of an in-flight ride, or null if
      * nothing is unfinished. Updated whenever we write or clear the on-disk
      * snapshot. UI observes this to render the "unfinished ride" banner.
@@ -219,8 +235,26 @@ class WorkoutSessionManager(
         _currentSegmentIndex.value = 0
         _elapsedInSegment.value = 0
         _targetBiasPercent.value = 0
+        // Meaningful only for a free ride; [prepareFreeRide] sets it right
+        // after this returns. Cleared here so a structured workout started
+        // after one can't inherit a stale target.
+        _freeRideTargetWatts.value = 0
         sessionStartTimeEpoch = 0
         startPedalingDetection()
+    }
+
+    /**
+     * Start an open-ended "just ride" session: no workout, no plan, no end.
+     *
+     * Runs against the synthetic [freeRideWorkout] so the timer, telemetry,
+     * crash recovery and save-to-history paths are exactly the ones a
+     * structured ride uses. The trainer opens at [freeRideStartWatts] of [ftp]
+     * and holds whatever [adjustFreeRideTarget] moves it to until the rider
+     * ends the ride.
+     */
+    fun prepareFreeRide(ftp: Int) {
+        prepareWorkout(workout = freeRideWorkout(), ftp = ftp)
+        _freeRideTargetWatts.value = freeRideStartWatts(ftp)
     }
 
     /**
@@ -248,6 +282,14 @@ class WorkoutSessionManager(
         _currentSegmentIndex.value = snapshot.currentSegmentIndex
         _elapsedInSegment.value = snapshot.elapsedInSegment
         _targetBiasPercent.value = snapshot.targetBiasPercent
+        // A free ride resumes on the wattage it was holding. Snapshots written
+        // before the mode existed - and every structured ride - carry null, in
+        // which case the field stays unused at 0.
+        _freeRideTargetWatts.value = when {
+            !workout.isFreeRide -> 0
+            snapshot.freeRideTargetWatts != null -> clampFreeRideWatts(snapshot.freeRideTargetWatts)
+            else -> freeRideStartWatts(snapshot.ftp)
+        }
         _telemetry.clear()
         _telemetry.addAll(recoveredTelemetry)
         // Already on disk — the next flush must only append what comes after.
@@ -324,6 +366,22 @@ class WorkoutSessionManager(
     fun adjustDifficulty(deltaPercent: Int) {
         val newBias = (_targetBiasPercent.value + deltaPercent).coerceIn(-30, 30)
         _targetBiasPercent.value = newBias
+        if (_state.value == WorkoutState.Active) updateTrainerTarget()
+    }
+
+    /**
+     * Move a free ride's ERG target by [deltaWatts] (one stepper tap is
+     * [FREE_RIDE_STEP_WATTS]), clamped to the range a trainer will actually
+     * track. No-op unless a free ride is loaded.
+     *
+     * Unlike [adjustDifficulty] this takes effect in every state, not only
+     * [WorkoutState.Active]: the rider sets their opening wattage while the HUD
+     * is still in "pedal to start" standby, and the trainer picks it up when
+     * the ride goes active.
+     */
+    fun adjustFreeRideTarget(deltaWatts: Int) {
+        if (_activeWorkout.value?.isFreeRide != true) return
+        _freeRideTargetWatts.value = clampFreeRideWatts(_freeRideTargetWatts.value + deltaWatts)
         if (_state.value == WorkoutState.Active) updateTrainerTarget()
     }
 
@@ -568,6 +626,7 @@ class WorkoutSessionManager(
             elapsedInSegment = _elapsedInSegment.value,
             state = state,
             actualRideSeconds = _actualRideSeconds.value,
+            freeRideTargetWatts = _freeRideTargetWatts.value.takeIf { workout.isFreeRide },
         )
         _persistedSnapshot.value = snapshot
         scope.launch(snapshotDispatcher) {
@@ -657,6 +716,12 @@ class WorkoutSessionManager(
 
     private fun updateTrainerTarget() {
         val workout = _activeWorkout.value ?: return
+        if (workout.isFreeRide) {
+            // The synthetic segment's FTP percentage is only the opening
+            // suggestion; what the rider has dialled in is authoritative.
+            trainerManager.setTargetPower(_freeRideTargetWatts.value.coerceAtLeast(0))
+            return
+        }
         val idx = _currentSegmentIndex.value
         if (idx < workout.segments.size) {
             val seg = workout.segments[idx]
@@ -707,6 +772,7 @@ class WorkoutSessionManager(
             elapsedInSegment = _elapsedInSegment.value,
             state = WorkoutState.Completed,
             actualRideSeconds = _actualRideSeconds.value,
+            freeRideTargetWatts = _freeRideTargetWatts.value.takeIf { workout.isFreeRide },
         )
         _persistedSnapshot.value = snapshot
         val store = activeSessionStore ?: return

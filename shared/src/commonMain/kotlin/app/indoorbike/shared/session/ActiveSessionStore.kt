@@ -39,6 +39,13 @@ data class ActiveSessionSnapshot(
      * before this field existed.
      */
     val actualRideSeconds: Int = 0,
+    /**
+     * The ERG target a free ride was holding, in watts. Null for a structured
+     * workout, whose target is derived from the segment and
+     * [targetBiasPercent] instead. Defaulted so snapshots written before
+     * "just ride" existed still decode.
+     */
+    val freeRideTargetWatts: Int? = null,
 )
 
 /**

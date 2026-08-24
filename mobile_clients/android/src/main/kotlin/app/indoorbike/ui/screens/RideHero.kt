@@ -268,7 +268,17 @@ fun HeroPowerReadout(
     zoneColor: Color,
     biasPercent: Int,
     ergLocked: Boolean,
+    /**
+     * One tap of the stepper, as a direction: -1 or +1. What a step *means* is
+     * the caller's business - a percentage of the interval's target on a
+     * structured workout, a fixed number of watts on a free ride.
+     */
     onAdjust: (Int) -> Unit,
+    /**
+     * Free ride: the ± buttons move an absolute wattage rather than a
+     * difficulty bias, which is all the labelling needs to say differently.
+     */
+    freeRide: Boolean = false,
     modifier: Modifier = Modifier,
     // Sizes default to the phone HUD; the ride screen passes larger values on
     // expanded-width screens (landscape tablets / unfolded foldables) so the
@@ -386,9 +396,11 @@ fun HeroPowerReadout(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            StepperPill(label = "−", contentDescription = "Decrease difficulty", zoneColor = zoneColor) { onAdjust(-5) }
+            val decreaseLabel = if (freeRide) "Decrease target power" else "Decrease difficulty"
+            val increaseLabel = if (freeRide) "Increase target power" else "Increase difficulty"
+            StepperPill(label = "−", contentDescription = decreaseLabel, zoneColor = zoneColor) { onAdjust(-1) }
             TargetPill(targetWatts = targetWatts, biasPercent = biasPercent, ergLocked = ergLocked, zoneColor = zoneColor)
-            StepperPill(label = "+", contentDescription = "Increase difficulty", zoneColor = zoneColor) { onAdjust(5) }
+            StepperPill(label = "+", contentDescription = increaseLabel, zoneColor = zoneColor) { onAdjust(1) }
         }
     }
 }

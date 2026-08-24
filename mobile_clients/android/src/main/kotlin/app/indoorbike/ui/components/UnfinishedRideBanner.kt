@@ -46,6 +46,8 @@ import app.indoorbike.LocalRideResumer
 import app.indoorbike.LocalWorkouts
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
+import app.indoorbike.shared.workout.isFreeRide
+import app.indoorbike.shared.workout.resolveRideWorkout
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -63,6 +65,11 @@ import app.indoorbike.ui.theme.Spacing
  *  - no snapshot exists,
  *  - the snapshot's workout is no longer in the loaded workout list (deleted JSON, etc.), or
  *  - the ride is finished but has no telemetry to save.
+ *
+ * A free ride is recoverable like any other, but its workout is synthesised
+ * per ride rather than stored in the library, so it's resolved rather than
+ * looked up. Having no plan behind it, it shows time ridden instead of
+ * progress towards a finish.
  */
 @Composable
 fun UnfinishedRideBanner(
@@ -74,7 +81,8 @@ fun UnfinishedRideBanner(
     val snapshot by container.sessionManager.persistedSnapshot.collectAsState()
 
     val current = snapshot ?: return
-    val workout = workouts.find { it.id == current.workoutId } ?: return
+    val workout = resolveRideWorkout(current.workoutId, workouts) ?: return
+    val freeRide = workout.isFreeRide
 
     // A finished ride that never reached history: either the app died between
     // the trophy screen and the summary, or the rider backed out of it. The
@@ -143,27 +151,30 @@ fun UnfinishedRideBanner(
         )
         Spacer(Modifier.height(8.dp))
 
-        // Mini progress bar
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(6.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(CadenceColors.Bg0)
-        ) {
+        // Mini progress bar. A free ride has nothing to be a fraction of - its
+        // segment length is only a backstop - so it reports time instead.
+        if (!freeRide) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .fillMaxHeight()
-                    .background(CadenceColors.Brand500)
-            )
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(CadenceColors.Bg0)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(progress)
+                        .fillMaxHeight()
+                        .background(CadenceColors.Brand500)
+                )
+            }
+            Spacer(Modifier.height(6.dp))
         }
-        Spacer(Modifier.height(6.dp))
         Text(
-            text = if (isFinished) {
-                "${formatClock(rideSeconds)} ridden · not yet in your history"
-            } else {
-                "${formatClock(current.elapsedSeconds)} / ${formatClock(total)} · $pct% complete"
+            text = when {
+                isFinished -> "${formatClock(rideSeconds)} ridden · not yet in your history"
+                freeRide -> "${formatClock(current.elapsedSeconds)} ridden · no set finish"
+                else -> "${formatClock(current.elapsedSeconds)} / ${formatClock(total)} · $pct% complete"
             },
             style = CadenceType.tick,
             color = CadenceColors.Fg2
@@ -194,7 +205,7 @@ fun UnfinishedRideBanner(
         AbandonConfirmDialog(
             workoutName = workout.name,
             elapsed = if (isFinished) rideSeconds else current.elapsedSeconds,
-            total = total,
+            total = if (freeRide) null else total,
             isFinished = isFinished,
             onCancel = { confirmingAbandon = false },
             onConfirm = {
@@ -285,7 +296,8 @@ private fun AbandonButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
 private fun AbandonConfirmDialog(
     workoutName: String,
     elapsed: Int,
-    total: Int,
+    /** Planned length, or null for an open-ended ride that never had one. */
+    total: Int?,
     isFinished: Boolean,
     onCancel: () -> Unit,
     onConfirm: () -> Unit
@@ -309,12 +321,16 @@ private fun AbandonConfirmDialog(
                 color = CadenceColors.Fg1
             )
             Text(
-                text = if (isFinished) {
-                    "$workoutName - ${formatClock(elapsed)} you already rode. Discarding " +
-                        "means it never reaches your history. This can't be undone."
-                } else {
-                    "$workoutName - ${formatClock(elapsed)} of ${formatClock(total)} won't be saved. " +
-                        "This can't be undone."
+                text = when {
+                    isFinished ->
+                        "$workoutName - ${formatClock(elapsed)} you already rode. Discarding " +
+                            "means it never reaches your history. This can't be undone."
+                    total == null ->
+                        "$workoutName - the ${formatClock(elapsed)} you rode won't be saved. " +
+                            "This can't be undone."
+                    else ->
+                        "$workoutName - ${formatClock(elapsed)} of ${formatClock(total)} won't be saved. " +
+                            "This can't be undone."
                 },
                 style = CadenceType.body,
                 color = CadenceColors.Fg2

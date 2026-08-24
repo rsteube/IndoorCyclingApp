@@ -82,6 +82,7 @@ import app.indoorbike.library.WorkoutEntry
 import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.ui.ControllerPairingScreen
 import app.indoorbike.ui.screens.LibraryScreen
 import app.indoorbike.ui.screens.QrScannerScreen
@@ -353,6 +354,14 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                         ftp = container.userSettings.ftp.value
                     )
                     navigator.navigate(RouteRideScreen(workout.id))
+                },
+                onStartFreeRide = {
+                    // No workout to prepare: the session manager synthesises
+                    // one and opens the trainer at 40 % of the rider's FTP.
+                    container.sessionManager.prepareFreeRide(
+                        ftp = container.userSettings.ftp.value
+                    )
+                    navigator.navigate(RouteRideScreen(FREE_RIDE_WORKOUT_ID))
                 },
                 onOpenLibrary = { navigator.navigate(RouteLibrary) },
                 onScanQr = { navigator.navigate(RouteQrScanner) },

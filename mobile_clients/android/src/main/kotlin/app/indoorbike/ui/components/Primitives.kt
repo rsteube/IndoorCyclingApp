@@ -187,7 +187,17 @@ fun SecondaryBtn(
                 modifier = Modifier.size(16.dp)
             )
         }
-        Text(text = text, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+        // Never wrap: these sit in crowded single-line rows (the ride header
+        // most of all), where a wrapped label doesn't shrink the button, it
+        // stretches it into a one-word-per-line column and shoves the row's
+        // other content off screen.
+        Text(
+            text = text,
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Fg1,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 

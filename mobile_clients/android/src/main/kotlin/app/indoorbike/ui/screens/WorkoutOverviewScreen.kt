@@ -53,6 +53,7 @@ import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.progression.timeInZoneSeconds
 import app.indoorbike.shared.workout.formatClock
+import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -256,28 +257,34 @@ fun WorkoutOverviewScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(Spacing.s6))
+            // Adherence is a ride measured against its plan. A free ride had
+            // none, so the section is dropped rather than shown empty - an
+            // empty chart there reads as missing data instead of as an answer.
+            // A structured ride whose workout has since been deleted still
+            // gets the empty state, because there the data really is missing.
+            if (activeSession.workoutId != FREE_RIDE_WORKOUT_ID) {
+                Spacer(modifier = Modifier.height(Spacing.s6))
+                Text("Power Adherence", style = CadenceType.h3, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(Spacing.s3))
 
-            Text("Power Adherence", style = CadenceType.h3, color = CadenceColors.Fg1)
-            Spacer(modifier = Modifier.height(Spacing.s3))
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(200.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(CadenceColors.Bg1)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(12.dp))
-            ) {
-                if (targetWorkout != null && telemetry.isNotEmpty()) {
-                    ChartOverlay(
-                        workout = targetWorkout!!,
-                        telemetry = telemetry,
-                        ftp = ftp
-                    )
-                } else {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("No chart data available.", color = CadenceColors.Fg3, style = CadenceType.body)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(200.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(CadenceColors.Bg1)
+                        .border(1.dp, CadenceColors.Line2, RoundedCornerShape(12.dp))
+                ) {
+                    if (targetWorkout != null && telemetry.isNotEmpty()) {
+                        ChartOverlay(
+                            workout = targetWorkout!!,
+                            telemetry = telemetry,
+                            ftp = ftp
+                        )
+                    } else {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("No chart data available.", color = CadenceColors.Fg3, style = CadenceType.body)
+                        }
                     }
                 }
             }

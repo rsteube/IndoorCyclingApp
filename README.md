@@ -14,6 +14,7 @@ The companion website lives at [indoorbike.app](https://indoorbike.app), with an
 
 - **BLE smart-trainer control** - Wahoo Kickr Core is the first-class target; any FTMS-compatible trainer should work. Optionally pair a Bluetooth heart-rate monitor and a Zwift Click v1 controller.
 - **ERG mode** - the app drives the trainer to each interval's target wattage automatically. You hold cadence, it holds watts.
+- **Just ride** - no workout, no plan. Starts at 40% of your FTP, counts up, and holds whatever power you dial in with the +/- buttons until you stop. Saved, exported and counted towards your progression like any other ride.
 - **Plain-text JSON workouts** - readable, hand-editable, and shareable. Use the bundled library, drop in your own, fetch a community pack from a URL or QR code, or build them visually in the [browser editor](https://indoorbike.app/editor/).
 - **Local progression** - streaks, rider levels, badges, week-grouped history, and time-in-zone - all computed on-device from saved rides.
 - **FIT export and optional Intervals.icu sync** - strict opt-in. Manual upload from the post-ride screen or auto-upload after a ride; nothing leaves the device unless you configure credentials.
