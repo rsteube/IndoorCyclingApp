@@ -6,6 +6,23 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Zwift Click that connects and then does nothing now works.** The
+  handshake that opens the controller's pipe and the subscriptions that listen
+  to its buttons were started as independent coroutines that raced each other.
+  Losing that race left the Click talking into a channel the phone had not
+  switched on yet: it paired, reported itself connected, and every button press
+  went nowhere, with no error on either side because from each one's point of
+  view nothing had failed. The subscriptions are now established first and the
+  handshake waits for them before writing, retrying a few rounds for a
+  controller that isn't ready at once. A connect also logs the controller's
+  GATT profile and what its Device Information service says about itself, so
+  the next report of a Click that stays silent says which of the several
+  devices sold under that name it is. The serial number is deliberately not
+  read: it identifies the unit, and these lines can leave the phone in a bug
+  report.
+
 ## [1.6] (9) - 2026-08-25
 
 A ride you don't have to plan, and a run of fixes for sensors that

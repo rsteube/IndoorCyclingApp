@@ -121,6 +121,13 @@ class ControllerManager {
     private var connectionJob: Job? = null
     private var stateListenerJob: Job? = null
     private var observeJobs: List<Job> = emptyList()
+
+    /**
+     * The retried RideOn handshake. Tracked so a disconnect or a fresh
+     * connect cancels it rather than leaving it writing to a peripheral
+     * that has gone away.
+     */
+    private var handshakeJob: Job? = null
     private var activePeripheral: Peripheral? = null
     private val advertisementById = mutableMapOf<String, Advertisement>()
 
@@ -132,6 +139,18 @@ class ControllerManager {
     init { scope.launch { reconnectSupervisor() } }
 
     // Edge-tracking for press detection — only emit on released → pressed.
+    /**
+     * Whether anything at all has arrived from the controller since this
+     * connect. Read by the handshake watchdog to decide whether the pipe ever
+     * opened, and written by the observe coroutines, so it is a StateFlow
+     * rather than a plain flag: the same reason [HeartRateMonitor] tracks its
+     * last sample that way.
+     */
+    private val sawKeypadTraffic = MutableStateFlow(false)
+
+    /** How many of the controller's channels have a live subscription. */
+    private val subscriptionsReady = MutableStateFlow(0)
+
     private var plusPressed = false
     private var minusPressed = false
 
@@ -367,6 +386,8 @@ class ControllerManager {
         stateListenerJob?.cancel()
         observeJobs.forEach { it.cancel() }
         observeJobs = emptyList()
+        handshakeJob?.cancel()
+        handshakeJob = null
         connectionJob?.cancel()
         plusPressed = false
         minusPressed = false
@@ -403,6 +424,11 @@ class ControllerManager {
                             _connectionState.value = ControllerConnectionState.Disconnected
                             observeJobs.forEach { it.cancel() }
                             observeJobs = emptyList()
+                            // Otherwise a handshake still in its confirm wait
+                            // keeps writing RideOn to a peripheral that has
+                            // gone away, once every eight seconds.
+                            handshakeJob?.cancel()
+                            handshakeJob = null
                             activePeripheral = null
                         }
                     }
@@ -419,60 +445,204 @@ class ControllerManager {
         }
     }
 
-    private fun startKeypadObserve(peripheral: Peripheral) {
+    /**
+     * Write the controller's GATT profile to the log, once per connect.
+     *
+     * Zwift's controllers are a family, not a device: Click, Play and Ride all
+     * advertise the same custom service, newer units add an encrypted handshake
+     * this app does not implement, and a rider reporting "it connects but the
+     * buttons do nothing" has no way to tell us which one they are holding.
+     * The UUIDs it exposes do. Cheap enough at one connect, and it turns the
+     * next report of this into something answerable instead of a guess.
+     */
+    private fun logGattProfile(peripheral: Peripheral) {
+        val services = peripheral.services
+        if (services.isNullOrEmpty()) {
+            Log.w(TAG, "Controller exposed no services")
+            return
+        }
+        Log.i(TAG, "Controller GATT profile: ${services.size} service(s)")
+        services.forEach { service ->
+            Log.i(TAG, "  service ${service.serviceUuid}")
+            service.characteristics.forEach { c ->
+                // Properties are what actually assign the roles: whichever
+                // characteristic is writable is the control point, whichever
+                // notifies is the data path. Assuming that mapping from the
+                // UUID's last digit is how this ended up talking to the wrong
+                // one for however long.
+                Log.i(TAG, "    ${c.characteristicUuid} props=${describeProperties(c.properties.value)}")
+            }
+        }
+    }
+
+    /**
+     * Read the standard Device Information service and log what it says.
+     *
+     * "Zwift Click" covers more than one piece of hardware and more than one
+     * firmware, and the protocol differs between them. A rider cannot be
+     * expected to know which one is in their hand; the device will say.
+     *
+     * The serial number is deliberately not read: it identifies the unit, and
+     * these lines can leave the phone in a bug report.
+     */
+    private suspend fun logDeviceInfo(peripheral: Peripheral) {
+        suspend fun readString(label: String, uuid: String) {
+            try {
+                val char = peripheral.findCharacteristic(DEVICE_INFO_SERVICE, uuid) ?: return
+                val text = peripheral.read(char).decodeToString().trim { it <= ' ' }
+                if (text.isNotEmpty()) Log.i(TAG, "  $label: $text")
+            } catch (e: Exception) {
+                Log.w(TAG, "  $label unreadable", e)
+            }
+        }
+        Log.i(TAG, "Controller device information:")
+        readString("manufacturer", DEVICE_INFO_MANUFACTURER)
+        readString("hardware", DEVICE_INFO_HARDWARE_REV)
+        readString("firmware", DEVICE_INFO_FIRMWARE_REV)
+    }
+
+    /**
+     * Subscribe to the Click's keypad, then open its pipe.
+     *
+     * Order matters, and this used to have none: the handshake write and the
+     * two subscriptions were launched as three independent coroutines that
+     * raced. "RideOn" is what makes the device start notifying, so losing that
+     * race means it starts talking into a characteristic whose notifications
+     * the phone has not switched on yet, and the reply to the handshake lands
+     * on an indication nobody is listening for. The controller connects, says
+     * it is connected, and every button press goes nowhere - with no error
+     * anywhere, because from the app's side nothing failed.
+     *
+     * This is the third time this shape of bug has appeared here. The FTMS
+     * control point needs its indications enabled before any command is
+     * written, or strict trainers reject the write; TrainerManager's telemetry
+     * subscriptions were made sequential because launching them concurrently
+     * raced the job bookkeeping. Same fix both times, and the same one here:
+     * suspend, and do it in order.
+     *
+     * [observeJobs] is bound to the list up front rather than at the end, so a
+     * disconnect arriving midway cancels the subscriptions made so far instead
+     * of seeing an empty list and leaking them.
+     */
+    private suspend fun startKeypadObserve(peripheral: Peripheral) {
         observeJobs.forEach { it.cancel() }
         val jobs = mutableListOf<Job>()
-
-        // Send the unencrypted "RideOn" handshake on the Sync-RX characteristic
-        // — this opens the pipe so the device starts notifying keypad state.
-        scope.launch {
-            try {
-                val syncRx = peripheral.findCharacteristic(ZWIFT_CUSTOM_SERVICE, ZWIFT_SYNC_RX_CHAR)
-                if (syncRx == null) {
-                    Log.w(TAG, "Zwift sync-RX characteristic not found - not a Click?")
-                    return@launch
-                }
-                runCatching {
-                    peripheral.write(syncRx, RIDE_ON_BYTES, WriteType.WithResponse)
-                }.onFailure { Log.w(TAG, "RideOn handshake write failed", it) }
-            } catch (e: Exception) {
-                Log.w(TAG, "RideOn handshake failed", e)
-            }
-        }
-
-        // Async (notify) — keypad messages live here on the Click.
-        scope.launch {
-            try {
-                val async = peripheral.findCharacteristic(ZWIFT_CUSTOM_SERVICE, ZWIFT_ASYNC_CHAR)
-                if (async != null) {
-                    val job = peripheral.observe(async)
-                        .onEach { bytes -> handleControllerBytes(bytes) }
-                        .catch { Log.w(TAG, "Controller async observe failed", it) }
-                        .launchIn(scope)
-                    jobs += job
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Controller async subscribe failed", e)
-            }
-        }
-
-        // Sync TX (indicate) — handshake reply, occasional state messages.
-        scope.launch {
-            try {
-                val syncTx = peripheral.findCharacteristic(ZWIFT_CUSTOM_SERVICE, ZWIFT_SYNC_TX_CHAR)
-                if (syncTx != null) {
-                    val job = peripheral.observe(syncTx)
-                        .onEach { bytes -> handleControllerBytes(bytes) }
-                        .catch { Log.w(TAG, "Controller sync-TX observe failed", it) }
-                        .launchIn(scope)
-                    jobs += job
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Controller sync-TX subscribe failed", e)
-            }
-        }
-
         observeJobs = jobs
+        sawKeypadTraffic.value = false
+        subscriptionsReady.value = 0
+
+        logGattProfile(peripheral)
+        logDeviceInfo(peripheral)
+
+        val service = peripheral.services?.firstOrNull { it.serviceUuid == uuidFrom(ZWIFT_CUSTOM_SERVICE) }
+        if (service == null) {
+            Log.w(TAG, "Zwift service not present - not a Zwift controller?")
+            return
+        }
+
+        // Listen on every channel the device offers, rather than on the two the
+        // protocol notes happened to describe. This unit exposes four: 0002 and
+        // 0005 notify, 0004 and 0006 indicate, and only the first of each was
+        // ever subscribed. A controller answering on one of the other two would
+        // have looked exactly like a controller saying nothing at all.
+        val listenable = service.characteristics.filter {
+            it.properties.value and (PROP_NOTIFY or PROP_INDICATE) != 0
+        }
+        Log.i(TAG, "Subscribing to ${listenable.size} controller channel(s)")
+        listenable.forEach { char ->
+            val label = char.characteristicUuid.toString().substringBefore('-')
+            try {
+                jobs += peripheral
+                    .observe(char) {
+                        Log.i(TAG, "$label subscription established")
+                        subscriptionsReady.value += 1
+                    }
+                    .onEach { bytes ->
+                        if (!sawKeypadTraffic.value) {
+                            sawKeypadTraffic.value = true
+                            Log.i(TAG, "First controller traffic, on $label")
+                        }
+                        // Button state, not a body metric, and the wire format
+                        // has to be read off real hardware before it can be
+                        // parsed. Logged for that reason, unlike sensor payloads
+                        // which are deliberately never recorded.
+                        Log.i(TAG, "$label rx: ${bytes.toHex()}")
+                        handleControllerBytes(bytes)
+                    }
+                    .catch { Log.w(TAG, "Controller $label observe failed", it) }
+                    .launchIn(scope)
+            } catch (e: Exception) {
+                Log.w(TAG, "Controller $label subscribe failed", e)
+            }
+        }
+
+        // Read whatever is readable on the service once. A characteristic that
+        // holds its last message, or a protocol version, says more about what
+        // this device expects than any amount of writing at it does.
+        service.characteristics
+            .filter { it.properties.value and PROP_READ != 0 }
+            .forEach { char ->
+                val label = char.characteristicUuid.toString().substringBefore('-')
+                try {
+                    Log.i(TAG, "$label read: ${peripheral.read(char).toHex()}")
+                } catch (e: Exception) {
+                    Log.w(TAG, "$label read failed", e)
+                }
+            }
+
+        val writable = service.characteristics.filter {
+            it.properties.value and (PROP_WRITE or PROP_WRITE_NO_RESPONSE) != 0
+        }
+        if (writable.isEmpty()) {
+            Log.w(TAG, "No writable characteristic on the Zwift service; cannot open the pipe")
+            return
+        }
+
+        handshakeJob?.cancel()
+        handshakeJob = scope.launch {
+            // Kable sets subscriptions up asynchronously, so having called
+            // observe() first is not the same as being subscribed. Without this
+            // the device can answer before the phone is listening, and the
+            // answer is simply lost.
+            val ready = withTimeoutOrNull(SUBSCRIBE_WAIT_MS) {
+                subscriptionsReady.first { it >= listenable.size }
+            } != null
+            if (!ready) {
+                Log.w(TAG, "Only ${subscriptionsReady.value}/${listenable.size} subscriptions live; continuing anyway")
+            }
+
+            // Try the handshake against each writable characteristic in turn.
+            // Which one is the control point is exactly what is not known here,
+            // and the payload is the same either way, so this establishes it by
+            // observation instead of by assumption.
+            repeat(RIDE_ON_ATTEMPTS) { round ->
+                for (target in writable) {
+                    val label = target.characteristicUuid.toString().substringBefore('-')
+                    val withResponse = target.properties.value and PROP_WRITE != 0
+                    val sent = runCatching {
+                        peripheral.write(
+                            target,
+                            RIDE_ON_BYTES,
+                            if (withResponse) WriteType.WithResponse else WriteType.WithoutResponse,
+                        )
+                    }.onFailure {
+                        Log.w(TAG, "RideOn to $label failed (round ${round + 1})", it)
+                    }.isSuccess
+
+                    if (sent) Log.i(TAG, "RideOn sent to $label (round ${round + 1})")
+                    delay(RIDE_ON_CONFIRM_MS)
+                    if (sawKeypadTraffic.value) {
+                        Log.i(TAG, "Controller answered after writing to $label")
+                        return@launch
+                    }
+                }
+            }
+            Log.w(
+                TAG,
+                "Controller connected but silent after trying ${writable.size} endpoint(s); " +
+                    "buttons will do nothing. Use the in-app +/- stepper.",
+            )
+        }
     }
 
     /**
@@ -504,6 +674,30 @@ class ControllerManager {
 
     companion object {
         private const val TAG = "ControllerManager"
+
+        /** How many times to send RideOn before giving up on the pipe opening. */
+        private const val DEVICE_INFO_SERVICE = "0000180a-0000-1000-8000-00805f9b34fb"
+        private const val DEVICE_INFO_MANUFACTURER = "00002a29-0000-1000-8000-00805f9b34fb"
+        private const val DEVICE_INFO_HARDWARE_REV = "00002a27-0000-1000-8000-00805f9b34fb"
+        private const val DEVICE_INFO_FIRMWARE_REV = "00002a26-0000-1000-8000-00805f9b34fb"
+
+        private const val PROP_READ = 0x02
+        private const val PROP_WRITE_NO_RESPONSE = 0x04
+        private const val PROP_WRITE = 0x08
+        private const val PROP_NOTIFY = 0x10
+        private const val PROP_INDICATE = 0x20
+
+        /** How long to wait for the notify subscription before sending RideOn regardless. */
+        private const val SUBSCRIBE_WAIT_MS = 5_000L
+
+        private const val RIDE_ON_ATTEMPTS = 2
+
+        /**
+         * How long to wait for any controller traffic after a RideOn before
+         * assuming it did not land. Generous: the cost of resending is one
+         * write, and the cost of giving up too early is a dead controller.
+         */
+        private const val RIDE_ON_CONFIRM_MS = 6_000L
 
         // Zwift custom GATT service + characteristics (used by Click, Play, Ride
         // — newer Ride firmware also exposes a 16-bit alias `0xFC82`, not used here).
@@ -611,4 +805,31 @@ private fun readVarint(bytes: ByteArray, offset: Int): Pair<Long, Int>? {
         if (shift >= 64) return null
     }
     return null
+}
+
+/** Lowercase hex, space separated. For reading a controller's wire format off real hardware. */
+private fun ByteArray.toHex(): String =
+    joinToString(" ") { b ->
+        val v = b.toInt() and 0xFF
+        val hi = "0123456789abcdef"[v shr 4]
+        val lo = "0123456789abcdef"[v and 0x0F]
+        "$hi$lo"
+    }
+
+/**
+ * Decode a GATT characteristic property bitmask into names. Kable exposes the
+ * raw value; the bit meanings are from the Bluetooth core spec.
+ */
+private fun describeProperties(bits: Int): String {
+    val names = buildList {
+        if (bits and 0x01 != 0) add("broadcast")
+        if (bits and 0x02 != 0) add("read")
+        if (bits and 0x04 != 0) add("writeNoResponse")
+        if (bits and 0x08 != 0) add("write")
+        if (bits and 0x10 != 0) add("notify")
+        if (bits and 0x20 != 0) add("indicate")
+        if (bits and 0x40 != 0) add("signedWrite")
+        if (bits and 0x80 != 0) add("extended")
+    }
+    return if (names.isEmpty()) "none(0x${bits.toString(16)})" else names.joinToString("|")
 }
