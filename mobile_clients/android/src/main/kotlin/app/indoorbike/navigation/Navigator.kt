@@ -30,7 +30,11 @@ class Navigator(val state: NavigationState) {
     fun replace(route: NavKey) {
         val currentStack = state.backStacks[state.topLevelRoute] ?: return
         if (currentStack.isNotEmpty()) {
-            currentStack.removeLast()
+            // Not removeLast(): on a NavBackStack that binds to
+            // java.util.List.removeLast(), which Java 21 added and Android only
+            // has from API 35. Below that it's a NoSuchMethodError, which took
+            // the process down on the one screen that calls this.
+            currentStack.removeAt(currentStack.lastIndex)
         }
         currentStack.add(route)
     }

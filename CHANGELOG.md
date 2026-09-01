@@ -23,6 +23,15 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   read: it identifies the unit, and these lines can leave the phone in a bug
   report.
 
+- **Tapping "View Summary" after a ride no longer closes the app.** On every
+  Android version below 15 the tap killed the process outright. The ride
+  itself was already saved by then, so it was waiting in History when the app
+  was reopened, but the summary it was meant to open never appeared. The cause
+  was one call in the navigation code that Java 21 and Android 15 added to a
+  standard interface and older Android does not have: reaching for it on
+  Android 14 or earlier is an immediate crash. The same screen opened from
+  History always worked, because that path never made the call.
+
 ## [1.6] (9) - 2026-08-25
 
 A ride you don't have to plan, and a run of fixes for sensors that
