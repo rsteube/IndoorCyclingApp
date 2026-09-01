@@ -112,6 +112,9 @@ class AppContainer(
             val controllerManager = ControllerManager()
             val activeSessionStore = AndroidActiveSessionStore(application)
             val activeTelemetryStore = AndroidActiveTelemetryStore(application)
+            // Built before the session manager so the manager can read the
+            // rider's weight for its virtual-distance estimate.
+            val userSettings = AndroidUserSettings(application)
             val sessionManager = WorkoutSessionManager(
                 trainerManager = trainerManager,
                 activeSessionStore = activeSessionStore,
@@ -122,8 +125,8 @@ class AppContainer(
                     val hrm = heartRateMonitor.heartRate.value
                     if (hrm > 0) hrm else trainerManager.heartRate.value
                 },
+                riderMassKg = { userSettings.weightKg.value },
             )
-            val userSettings = AndroidUserSettings(application)
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)
             val repositoryManager = RepositoryManager(

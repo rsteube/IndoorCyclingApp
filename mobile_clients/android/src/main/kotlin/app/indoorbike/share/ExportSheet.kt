@@ -73,6 +73,8 @@ fun ExportSheet(
     telemetry: List<WorkoutTelemetry>,
     workout: Workout?,
     ftp: Int,
+    /** Rider body mass, for the ride's estimated speed and distance. */
+    riderKg: Float,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -112,7 +114,7 @@ fun ExportSheet(
                         scope.launch {
                             try {
                                 val export = withContext(Dispatchers.IO) {
-                                    ActivityExporter.build(format, session, telemetry, workout, ftp)
+                                    ActivityExporter.build(format, session, telemetry, workout, ftp, riderKg)
                                 }
                                 val uri = ActivityExporter.stageForShare(context, export)
                                 ActivityExporter.launchShareChooser(context, uri, export.mime)

@@ -6,6 +6,24 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Speed and distance, estimated from power.** A trainer has no road under it,
+  so there is nothing to measure - what a head unit shows instead is the speed
+  the rider's watts would carry them at outdoors, and that is what the app now
+  shows too. Given power and the mass being moved, the flat-road power equation
+  has exactly one answer for speed; the ride HUD shows it live alongside the
+  running distance, the summary adds distance and average speed, and both are
+  written into exported FIT and TCX files, so a ride uploaded to Strava,
+  Garmin Connect or intervals.icu arrives with a distance instead of a zero.
+  Distance integrates the speed second by second rather than deriving one
+  number from average power, because speed goes as roughly the cube root of
+  watts: an hour of surges covers less ground than an hour held steady at the
+  same average, and this reports the difference. The road is a modelled one
+  (flat, still air, road tyres on tarmac, a rider on the hoods) so the only
+  thing the rider supplies is their weight from Settings; without it there is
+  no mass to move, and the readouts stay away rather than showing zeroes.
+
 ### Fixed
 
 - **A Zwift Click that connects and then does nothing now works.** The
@@ -31,6 +49,13 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   standard interface and older Android does not have: reaching for it on
   Android 14 or earlier is an immediate crash. The same screen opened from
   History always worked, because that path never made the call.
+
+- **Heart rate now lands in the heart rate fields of exported FIT files.** Four
+  fields were numbered wrongly, so a ride opened in an analysis platform showed
+  its average and maximum heart rate as speeds, listed a lap's index as its
+  sport, and filed the rider's FTP as total work. Re-exporting an affected ride
+  produces a correct file; rides already uploaded need to be re-uploaded to be
+  fixed at the far end.
 
 ## [1.6] (9) - 2026-08-25
 

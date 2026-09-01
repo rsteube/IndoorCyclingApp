@@ -18,6 +18,7 @@ package app.indoorbike.shared.session
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
@@ -76,6 +77,12 @@ class WorkoutSessionManager(
      * caller (AppContainer) overrides this to prefer the external HRM.
      */
     private val effectiveHeartRate: () -> Int = { trainerManager.heartRate.value },
+    /**
+     * The rider's body mass in kg, read at sample time rather than captured at
+     * the start so a weight corrected mid-ride takes effect from there on.
+     * 0 means it isn't set, which leaves the distance estimate at zero.
+     */
+    private val riderMassKg: () -> Float = { 0f },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -110,6 +117,15 @@ class WorkoutSessionManager(
      */
     private val _actualRideSeconds = MutableStateFlow(0)
     val actualRideSeconds: StateFlow<Int> = _actualRideSeconds.asStateFlow()
+
+    /**
+     * Ground covered so far, estimated from power by [VirtualSpeed]. A trainer
+     * has no wheel on a road to measure, so this is the distance the rider's
+     * watts would have carried them on a flat one. Stays at zero until a body
+     * weight is set, since the estimate needs a mass to move.
+     */
+    private val _virtualDistanceMeters = MutableStateFlow(0.0)
+    val virtualDistanceMeters: StateFlow<Double> = _virtualDistanceMeters.asStateFlow()
 
     private val _countdownSeconds = MutableStateFlow(3)
     val countdownSeconds: StateFlow<Int> = _countdownSeconds.asStateFlow()
@@ -224,6 +240,7 @@ class WorkoutSessionManager(
         // order). Either way the previous ride can't bleed into this one.
         _telemetry.clear()
         flushedTelemetryCount = 0
+        _virtualDistanceMeters.value = 0.0
         // Starting a fresh workout — discard any stale unfinished ride. The
         // user implicitly abandons the prior ride by starting a new one.
         clearPersistedRide()
@@ -292,6 +309,11 @@ class WorkoutSessionManager(
         }
         _telemetry.clear()
         _telemetry.addAll(recoveredTelemetry)
+        // Rebuilt from the recovered samples rather than carried in the
+        // snapshot, so a ride resumed after a crash reports the same distance
+        // it would have had the app never died.
+        _virtualDistanceMeters.value =
+            VirtualSpeed.distanceMeters(_telemetry.map { it.power }, riderMassKg())
         // Already on disk — the next flush must only append what comes after.
         flushedTelemetryCount = _telemetry.size
         sessionStartTimeEpoch = snapshot.sessionStartTimeEpochMs
@@ -690,6 +712,13 @@ class WorkoutSessionManager(
             heartRate = effectiveHeartRate().toLong(),
         )
         _telemetry.add(sample)
+        // One sample is one second of riding, so the sample's speed is the
+        // metres it covered. Integrating sample by sample rather than from an
+        // average matters because speed goes as the cube root of power: a
+        // ride that alternates hard and soft covers less ground than a steady
+        // one at the same average watts, and this is what shows that.
+        _virtualDistanceMeters.value +=
+            VirtualSpeed.speedMps(sample.power.toDouble(), riderMassKg())
         maybePersistSnapshot(now)
 
         val idx = _currentSegmentIndex.value

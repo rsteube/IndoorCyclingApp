@@ -73,10 +73,13 @@ object ActivityExporter {
         telemetry: List<WorkoutTelemetry>,
         workout: Workout?,
         ftp: Int,
+        /** Rider body mass, for the ride's estimated speed and distance. */
+        riderKg: Float = 0f,
     ): Export {
         val bytes = when (format) {
-            Format.FIT -> RideFitBuilder.build(session, telemetry, workout, ftp)
-            Format.TCX -> TcxBuilder.build(session, telemetry, workout, ftp).toByteArray(Charsets.UTF_8)
+            Format.FIT -> RideFitBuilder.build(session, telemetry, workout, ftp, riderKg)
+            Format.TCX -> TcxBuilder.build(session, telemetry, workout, ftp, riderKg)
+                .toByteArray(Charsets.UTF_8)
         }
         return Export(bytes, fileName(session, format), format.mime)
     }

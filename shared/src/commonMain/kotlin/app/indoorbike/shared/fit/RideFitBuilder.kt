@@ -19,6 +19,7 @@ import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
+import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.workout.CadenceTarget
 import kotlin.math.max
@@ -93,7 +94,7 @@ object RideFitBuilder {
     // FIT-spec "development" slot, intended for non-commercial / hobby apps.
     private const val MANUFACTURER_DEVELOPMENT = 255
     private const val PRODUCT_INDOORBIKE = 1
-    private const val SOFTWARE_VERSION = 110   // 1.10 — bumps with shipped FIT changes
+    private const val SOFTWARE_VERSION = 120   // 1.20 — bumps with shipped FIT changes
 
     // sport / sub_sport enum values from the FIT profile.
     private const val SPORT_CYCLING = 2
@@ -104,7 +105,15 @@ object RideFitBuilder {
         telemetry: List<WorkoutTelemetry>,
         workout: Workout?,
         ftp: Int,
+        /**
+         * Rider body mass, for the virtual speed and distance an indoor ride
+         * has no wheel-on-road to measure. 0 = not set, in which case every
+         * speed and distance field is written as the spec's invalid sentinel
+         * so a reader shows nothing rather than a confident zero.
+         */
+        riderKg: Float = 0f,
     ): ByteArray {
+        val hasRiderMass = riderKg > 0f
         val w = FitWriter()
         w.writePlaceholderHeader()
 
@@ -154,10 +163,18 @@ object RideFitBuilder {
         // ── record definition (used by all telemetry samples) ───────────
         w.writeDefinition(LOCAL_RECORD, FitMessage.RECORD, listOf(
             Triple(253, 4, FitBaseType.UINT32),  // timestamp
+            Triple(5, 4, FitBaseType.UINT32),    // distance (1/100 m)
+            Triple(6, 2, FitBaseType.UINT16),    // speed (1/1000 m/s)
             Triple(7, 2, FitBaseType.UINT16),    // power (W)
             Triple(3, 1, FitBaseType.UINT8),     // heart_rate (bpm)
             Triple(4, 1, FitBaseType.UINT8),     // cadence (rpm)
         ))
+
+        // Running totals for the ride as a whole, accumulated as records are
+        // written so the session's distance is exactly the sum of what the
+        // records claim rather than a second, separately-rounded estimate.
+        var rideMetres = 0.0
+        var rideMaxSpeedMps = 0.0
 
         // ── records + interleaved laps per segment ──────────────────────
         // Partition telemetry by workout segment (or whole-ride lap if none).
@@ -186,15 +203,18 @@ object RideFitBuilder {
                         Triple(2, 4, FitBaseType.UINT32),   // start_time
                         Triple(7, 4, FitBaseType.UINT32),   // total_elapsed_time (1/1000 s)
                         Triple(8, 4, FitBaseType.UINT32),   // total_timer_time (1/1000 s)
+                        Triple(9, 4, FitBaseType.UINT32),   // total_distance (1/100 m)
+                        Triple(13, 2, FitBaseType.UINT16),  // avg_speed (1/1000 m/s)
+                        Triple(14, 2, FitBaseType.UINT16),  // max_speed (1/1000 m/s)
                         Triple(19, 2, FitBaseType.UINT16),  // avg_power
                         Triple(20, 2, FitBaseType.UINT16),  // max_power
-                        Triple(13, 1, FitBaseType.UINT8),   // avg_heart_rate
-                        Triple(14, 1, FitBaseType.UINT8),   // max_heart_rate
+                        Triple(15, 1, FitBaseType.UINT8),   // avg_heart_rate
+                        Triple(16, 1, FitBaseType.UINT8),   // max_heart_rate
                         Triple(17, 1, FitBaseType.UINT8),   // avg_cadence
                         Triple(18, 1, FitBaseType.UINT8),   // max_cadence
                         Triple(0, 1, FitBaseType.ENUM),     // event
                         Triple(1, 1, FitBaseType.ENUM),     // event_type
-                        Triple(25, 2, FitBaseType.UINT16),  // message_index
+                        Triple(254, 2, FitBaseType.UINT16), // message_index
                     ),
                     developerFields = listOf(
                         Triple(DEV_FIELD_TARGET_POWER, 2, DEV_DATA_INDEX),
@@ -212,6 +232,9 @@ object RideFitBuilder {
             w.u32(lapStartFit)
             w.u32((safeElapsed * 1000L))
             w.u32((safeElapsed * 1000L))
+            w.u32(fitDistance(accum.metres.takeIf { hasRiderMass }))
+            w.u16(fitSpeed(accum.avgSpeedMps(safeElapsed).takeIf { hasRiderMass }))
+            w.u16(fitSpeed(accum.maxSpeedMps.takeIf { hasRiderMass }))
             w.u16(accum.avgPower().coerceIn(0, 65534))
             w.u16(accum.maxPower.coerceIn(0, 65534))
             w.u8(accum.avgHr().coerceIn(0, 254))
@@ -257,13 +280,27 @@ object RideFitBuilder {
                 lapStatsAccum = LapAccum()
             }
 
+            // A trainer measures no ground speed, so this is the speed the
+            // sample's watts would carry the rider at on a flat road, and the
+            // distance is that speed held for the sample's one second.
+            val speedMps = VirtualSpeed.speedMps(sample.power.toDouble(), riderKg)
+            rideMetres += speedMps
+            if (speedMps > rideMaxSpeedMps) rideMaxSpeedMps = speedMps
+
             w.writeDataHeader(LOCAL_RECORD)
             w.u32(startFit + offsetSec)
+            w.u32(fitDistance(rideMetres.takeIf { hasRiderMass }))
+            w.u16(fitSpeed(speedMps.takeIf { hasRiderMass }))
             w.u16(sample.power.toInt().coerceIn(0, 65534))
             w.u8(sample.heartRate.toInt().coerceIn(0, 254))
             w.u8(sample.cadence.toInt().coerceIn(0, 254))
 
-            lapStatsAccum.add(sample.power.toInt(), sample.heartRate.toInt(), sample.cadence.toInt())
+            lapStatsAccum.add(
+                sample.power.toInt(),
+                sample.heartRate.toInt(),
+                sample.cadence.toInt(),
+                speedMps,
+            )
         }
 
         // Final lap (close out the last segment / whole ride).
@@ -290,17 +327,20 @@ object RideFitBuilder {
             Triple(2, 4, FitBaseType.UINT32),   // start_time
             Triple(7, 4, FitBaseType.UINT32),   // total_elapsed_time (1/1000 s)
             Triple(8, 4, FitBaseType.UINT32),   // total_timer_time (1/1000 s)
+            Triple(9, 4, FitBaseType.UINT32),   // total_distance (1/100 m)
+            Triple(14, 2, FitBaseType.UINT16),  // avg_speed (1/1000 m/s)
+            Triple(15, 2, FitBaseType.UINT16),  // max_speed (1/1000 m/s)
             Triple(20, 2, FitBaseType.UINT16),  // avg_power
             Triple(21, 2, FitBaseType.UINT16),  // max_power
-            Triple(15, 1, FitBaseType.UINT8),   // avg_heart_rate
-            Triple(16, 1, FitBaseType.UINT8),   // max_heart_rate
+            Triple(16, 1, FitBaseType.UINT8),   // avg_heart_rate
+            Triple(17, 1, FitBaseType.UINT8),   // max_heart_rate
             Triple(18, 1, FitBaseType.UINT8),   // avg_cadence
             Triple(19, 1, FitBaseType.UINT8),   // max_cadence
             Triple(11, 2, FitBaseType.UINT16),  // total_calories
             Triple(34, 2, FitBaseType.UINT16),  // normalized_power
             Triple(35, 2, FitBaseType.UINT16),  // training_stress_score (0.1)
             Triple(36, 2, FitBaseType.UINT16),  // intensity_factor (0.001)
-            Triple(48, 2, FitBaseType.UINT16),  // threshold_power (FTP)
+            Triple(45, 2, FitBaseType.UINT16),  // threshold_power (FTP)
             Triple(5, 1, FitBaseType.ENUM),     // sport
             Triple(6, 1, FitBaseType.ENUM),     // sub_sport
             Triple(0, 1, FitBaseType.ENUM),     // event
@@ -312,6 +352,11 @@ object RideFitBuilder {
         w.u32(startFit)
         w.u32((session.durationSeconds * 1000L).toULong().toLong())
         w.u32((session.durationSeconds * 1000L).toULong().toLong())
+        w.u32(fitDistance(rideMetres.takeIf { hasRiderMass }))
+        w.u16(fitSpeed(
+            (rideMetres / session.durationSeconds.coerceAtLeast(1)).takeIf { hasRiderMass }
+        ))
+        w.u16(fitSpeed(rideMaxSpeedMps.takeIf { hasRiderMass }))
         w.u16(session.avgPower.toInt().coerceIn(0, 65534))
         w.u16(telemetry.maxOfOrNull { it.power.toInt() }?.coerceIn(0, 65534) ?: 0)
         w.u8(session.avgHeartRate.toInt().coerceIn(0, 254))
@@ -393,14 +438,35 @@ object RideFitBuilder {
         var sumP = 0L; var sumHr = 0L; var sumCad = 0L
         var maxPower = 0; var maxHr = 0; var maxCad = 0
         var n = 0
-        fun add(p: Int, hr: Int, cad: Int) {
+        /** Metres covered in this lap: each sample's virtual speed held for its second. */
+        var metres = 0.0
+        var maxSpeedMps = 0.0
+        fun add(p: Int, hr: Int, cad: Int, speedMps: Double) {
             sumP += p; sumHr += hr; sumCad += cad; n += 1
             if (p > maxPower) maxPower = p
             if (hr > maxHr) maxHr = hr
             if (cad > maxCad) maxCad = cad
+            metres += speedMps
+            if (speedMps > maxSpeedMps) maxSpeedMps = speedMps
         }
         fun avgPower(): Int = if (n == 0) 0 else (sumP / n).toInt()
         fun avgHr(): Int = if (n == 0) 0 else (sumHr / n).toInt()
         fun avgCad(): Int = if (n == 0) 0 else (sumCad / n).toInt()
+        /**
+         * Over the lap's wall-clock length rather than its sample count, so a
+         * lap missing a few samples reports the speed it actually averaged.
+         */
+        fun avgSpeedMps(elapsedSec: Int): Double =
+            if (elapsedSec <= 0) 0.0 else metres / elapsedSec
     }
+
+    /** Metres in the FIT distance unit (1/100 m); null means "no estimate". */
+    private fun fitDistance(metres: Double?): Long =
+        if (metres == null) FitInvalid.UINT32
+        else (metres * 100.0).toLong().coerceIn(0L, FitInvalid.UINT32 - 1L)
+
+    /** m/s in the FIT speed unit (1/1000 m/s); null means "no estimate". */
+    private fun fitSpeed(metresPerSecond: Double?): Int =
+        if (metresPerSecond == null) FitInvalid.UINT16
+        else (metresPerSecond * 1000.0).toInt().coerceIn(0, FitInvalid.UINT16 - 1)
 }

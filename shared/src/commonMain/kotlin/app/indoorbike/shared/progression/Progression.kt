@@ -16,6 +16,7 @@
 package app.indoorbike.shared.progression
 
 import app.indoorbike.shared.db.WorkoutSession
+import app.indoorbike.shared.physics.VirtualSpeed
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
@@ -284,6 +285,13 @@ data class RideStats(
     val intensityFactor: Float,
     val tss: Int,
     val kilojoules: Int,
+    /**
+     * Ground covered, estimated from power by [VirtualSpeed]. Zero when the
+     * rider hasn't set a body weight, since the estimate needs a mass to move.
+     */
+    val distanceMeters: Int = 0,
+    /** [distanceMeters] over the ride's duration. Zero on the same terms. */
+    val avgSpeedKmh: Float = 0f,
 )
 
 /**
@@ -295,6 +303,8 @@ fun computeRideStats(
     telemetryWatts: List<Long>,
     durationSeconds: Long,
     ftp: Int,
+    /** Rider body mass, for the virtual speed/distance estimate. 0 = not set. */
+    riderKg: Float = 0f,
 ): RideStats {
     if (telemetryWatts.isEmpty() || ftp <= 0 || durationSeconds <= 0) {
         return RideStats(0, 0, 0f, 0, 0)
@@ -307,12 +317,19 @@ fun computeRideStats(
     val intensity = if (ftp > 0) (np / ftp).toFloat() else 0f
     val tss = ((durationSeconds / 3600.0) * intensity * intensity * 100).toInt()
     val kj = ((avg * durationSeconds) / 1000.0).toInt()
+    // Distance integrates the per-sample speed rather than deriving one number
+    // from average power: speed is a cube root of watts, so a ride that
+    // alternates 400 W and 0 W covers noticeably less ground than a steady
+    // 200 W ride of the same length, and averaging first would hide that.
+    val distance = VirtualSpeed.distanceMeters(telemetryWatts, riderKg)
     return RideStats(
         avgPowerWatts = avg.toInt(),
         normalizedPowerWatts = np.toInt(),
         intensityFactor = ((intensity * 100).toInt() / 100f),
         tss = tss,
-        kilojoules = kj
+        kilojoules = kj,
+        distanceMeters = distance.toInt(),
+        avgSpeedKmh = VirtualSpeed.averageSpeedKmh(distance, durationSeconds).toFloat(),
     )
 }
 

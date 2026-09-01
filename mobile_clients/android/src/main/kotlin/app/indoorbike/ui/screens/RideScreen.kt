@@ -88,6 +88,7 @@ import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.ride.saveRideToHistory
+import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.service.RideSessionService
 import androidx.compose.ui.platform.LocalConfiguration
 import app.indoorbike.shared.Workout
@@ -351,6 +352,14 @@ fun RideScreen(
     val showStalePower = currentPower <= 0 && (state == WorkoutState.Active)
     val weightKg by container.userSettings.weightKg.collectAsState()
     val wattsPerKg = if (weightKg > 0f && currentPower > 0) currentPower / weightKg else 0f
+    // A trainer has no road under it, so speed is what the rider's current
+    // watts would carry them at on a flat one, and distance is that integrated
+    // over the ride (the session manager keeps the running total, so it
+    // survives this screen being torn down and rebuilt). No weight set means
+    // no estimate, and the readout stays away rather than showing zeroes.
+    val virtualDistanceMeters by sessionManager.virtualDistanceMeters.collectAsState()
+    val virtualSpeedKmh = VirtualSpeed.speedKmh(currentPower, weightKg)
+    val showVirtualSpeed = weightKg > 0f
 
     // Single animated zone color — drives every zone-tinted element on the screen so
     // the crossfade across segment boundaries stays in sync.
@@ -571,6 +580,15 @@ fun RideScreen(
                             )
                         }
 
+                        if (showVirtualSpeed && state != WorkoutState.Countdown) {
+                            VirtualSpeedReadout(
+                                speedKmh = virtualSpeedKmh,
+                                distanceMeters = virtualDistanceMeters,
+                                accent = animatedZoneColor,
+                                modifier = Modifier.padding(bottom = Spacing.s3)
+                            )
+                        }
+
                         if (expanded && state != WorkoutState.Countdown) {
                             RideStatsStrip(
                                 elapsedSeconds = elapsed,
@@ -666,6 +684,13 @@ fun RideScreen(
                                     cardWidth = flankWidth,
                                     valueFontSize = 30.sp,
                                     modifier = Modifier.fillMaxHeight()
+                                )
+                            }
+                            if (showVirtualSpeed && state != WorkoutState.Countdown) {
+                                VirtualSpeedReadout(
+                                    speedKmh = virtualSpeedKmh,
+                                    distanceMeters = virtualDistanceMeters,
+                                    accent = animatedZoneColor
                                 )
                             }
                         }
@@ -1238,6 +1263,56 @@ internal fun FlankMetric(
             )
         }
         footer?.invoke()
+    }
+}
+
+/**
+ * Speed and distance for a ride that has neither to measure, estimated from
+ * power by [VirtualSpeed].
+ *
+ * Kept quiet next to the power hero on purpose. It's a modelled number, there
+ * to pace by and to give the exported ride a distance, not a target to chase -
+ * so it reads as one line under the metrics rather than as a fourth tile
+ * competing with the ones the trainer actually reports.
+ */
+@Composable
+private fun VirtualSpeedReadout(
+    speedKmh: Double,
+    distanceMeters: Double,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        InlineStat("SPEED", "%.1f".format(speedKmh), "KM/H", accent)
+        Text(
+            text = "  ·  ",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg3
+        )
+        InlineStat("DIST", "%.2f".format(distanceMeters / 1000.0), "KM", accent)
+    }
+}
+
+@Composable
+private fun InlineStat(label: String, value: String, unit: String, accent: Color) {
+    Row(verticalAlignment = Alignment.Bottom) {
+        Text(
+            text = label,
+            style = CadenceType.eyebrow,
+            color = CadenceColors.Fg3,
+            modifier = Modifier.padding(end = 6.dp, bottom = 2.dp)
+        )
+        Text(text = value, style = CadenceType.bodyStrong, color = accent)
+        Text(
+            text = " $unit",
+            style = CadenceType.tick,
+            color = CadenceColors.Fg3,
+            modifier = Modifier.padding(bottom = 1.dp)
+        )
     }
 }
 

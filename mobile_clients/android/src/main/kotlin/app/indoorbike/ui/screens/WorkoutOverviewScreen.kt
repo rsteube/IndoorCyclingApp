@@ -89,6 +89,9 @@ fun WorkoutOverviewScreen(
     var showExportSheet by remember { mutableStateOf(false) }
 
     val ftp by container.userSettings.ftp.collectAsState()
+    // Speed and distance are estimated from power and the mass being moved,
+    // so a rider who hasn't set a weight gets no estimate at all.
+    val weightKg by container.userSettings.weightKg.collectAsState()
     val intervalsAthlete by container.userSettings.intervalsAthleteId.collectAsState()
     val intervalsKey by container.userSettings.intervalsApiKey.collectAsState()
     val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
@@ -150,11 +153,12 @@ fun WorkoutOverviewScreen(
         }
 
         val activeSession = session!!
-        val stats: RideStats = remember(telemetry, ftp, activeSession.durationSeconds) {
+        val stats: RideStats = remember(telemetry, ftp, weightKg, activeSession.durationSeconds) {
             computeRideStats(
                 telemetryWatts = telemetry.map { it.power },
                 durationSeconds = activeSession.durationSeconds,
-                ftp = ftp
+                ftp = ftp,
+                riderKg = weightKg
             )
         }
         val ttz: IntArray = remember(telemetry, ftp) {
@@ -240,6 +244,38 @@ fun WorkoutOverviewScreen(
                     value = activeSession.avgHeartRate.toString(),
                     unit = "BPM",
                     valueColor = CadenceColors.Danger
+                )
+            }
+
+            // A trainer measures no ground speed, so these are estimates from
+            // power rather than readings. Absent entirely when the rider has no
+            // weight set, since there is then nothing to estimate from.
+            if (stats.distanceMeters > 0) {
+                Spacer(modifier = Modifier.height(Spacing.s4))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
+                ) {
+                    OverviewGlassCard(
+                        modifier = Modifier.weight(1f),
+                        label = "DISTANCE",
+                        value = "%.2f".format(stats.distanceMeters / 1000f),
+                        unit = "KM",
+                        valueColor = CadenceColors.Fg1
+                    )
+                    OverviewGlassCard(
+                        modifier = Modifier.weight(1f),
+                        label = "AVG SPEED",
+                        value = "%.1f".format(stats.avgSpeedKmh),
+                        unit = "KM/H",
+                        valueColor = CadenceColors.Fg1
+                    )
+                }
+                Spacer(modifier = Modifier.height(Spacing.s2))
+                Text(
+                    text = "Estimated from power on a flat virtual road.",
+                    style = CadenceType.tick,
+                    color = CadenceColors.Fg3
                 )
             }
 
@@ -356,7 +392,8 @@ fun WorkoutOverviewScreen(
                 stats = computeRideStats(
                     telemetryWatts = telemetry.map { it.power },
                     durationSeconds = sessionForSheet.durationSeconds,
-                    ftp = ftp
+                    ftp = ftp,
+                    riderKg = weightKg
                 ),
                 workout = targetWorkout,
                 telemetry = telemetry,
@@ -374,6 +411,7 @@ fun WorkoutOverviewScreen(
                 telemetry = telemetry,
                 workout = targetWorkout,
                 ftp = ftp,
+                riderKg = weightKg,
                 onDismiss = { showExportSheet = false }
             )
         }

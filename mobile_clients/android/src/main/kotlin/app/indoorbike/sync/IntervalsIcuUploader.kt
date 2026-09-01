@@ -77,7 +77,7 @@ class IntervalsIcuUploader(
         }
 
         val fitBytes = try {
-            RideFitBuilder.build(session, telemetry, workout, ftp)
+            RideFitBuilder.build(session, telemetry, workout, ftp, userSettings.weightKg.value)
         } catch (t: Throwable) {
             Log.e(TAG, "FIT encode failed", t)
             return Outcome.Failure("Couldn't encode ride: ${t.message}")

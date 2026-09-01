@@ -237,6 +237,7 @@ object FitMessage {
 object FitInvalid {
     const val UINT8  = 0xFF
     const val UINT16 = 0xFFFF
+    const val UINT32 = 0xFFFF_FFFFL
 }
 
 /**

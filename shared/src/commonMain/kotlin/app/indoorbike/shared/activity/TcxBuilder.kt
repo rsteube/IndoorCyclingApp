@@ -18,6 +18,7 @@ package app.indoorbike.shared.activity
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
+import app.indoorbike.shared.physics.VirtualSpeed
 
 /**
  * Encodes a completed indoor ride as a Garmin TCX (Training Center Database v2)
@@ -40,14 +41,26 @@ object TcxBuilder {
     private const val NS_AX = "http://www.garmin.com/xmlschemas/ActivityExtension/v2"
     private const val NS_XSI = "http://www.w3.org/2001/XMLSchema-instance"
 
-    private class Pt(val offsetSec: Int, val power: Int, val hr: Int, val cad: Int)
+    private class Pt(val offsetSec: Int, val power: Int, val hr: Int, val cad: Int) {
+        /** Virtual speed for this sample's watts, and the ride distance at it. */
+        var speedMps: Double = 0.0
+        var metres: Double = 0.0
+    }
 
     fun build(
         session: WorkoutSession,
         telemetry: List<WorkoutTelemetry>,
         workout: Workout?,
         ftp: Int,
+        /**
+         * Rider body mass, for the virtual speed and distance a trainer has no
+         * road to measure. 0 = not set, in which case the speed elements are
+         * left out entirely and distance stays at zero, as it was before there
+         * was an estimate to make.
+         */
+        riderKg: Float = 0f,
     ): String {
+        val hasRiderMass = riderKg > 0f
         val startMs = session.startTimeEpoch
         val totalSeconds = session.durationSeconds.toInt().coerceAtLeast(1)
 
@@ -70,6 +83,15 @@ object TcxBuilder {
             )
         }
         pts.sortBy { it.offsetSec }
+
+        // Distance is speed integrated in ride order, so it has to wait for the
+        // sort. Each sample stands for one second of riding.
+        var metres = 0.0
+        for (p in pts) {
+            p.speedMps = VirtualSpeed.speedMps(p.power.toDouble(), riderKg)
+            metres += p.speedMps
+            p.metres = metres
+        }
 
         // Lap partition: one per segment, or a single whole-ride lap.
         val segSec = workout?.segments?.map { it.lengthInSeconds.coerceAtLeast(1) }
@@ -103,10 +125,14 @@ object TcxBuilder {
             var sumP = 0L; var maxP = 0
             var sumHr = 0L; var nHr = 0; var maxHr = 0
             var sumCad = 0L
+            var lapMetres = 0.0
+            var lapMaxSpeed = 0.0
             for (p in lapPts) {
                 sumP += p.power; if (p.power > maxP) maxP = p.power
                 if (p.hr > 0) { sumHr += p.hr; nHr++; if (p.hr > maxHr) maxHr = p.hr }
                 sumCad += p.cad
+                lapMetres += p.speedMps
+                if (p.speedMps > lapMaxSpeed) lapMaxSpeed = p.speedMps
             }
             val n = lapPts.size.coerceAtLeast(1)
             val avgP = (sumP / n).toInt()
@@ -117,7 +143,15 @@ object TcxBuilder {
 
             sb.append("      <Lap StartTime=\"").append(isoUtc(startMs + lapStartOffset * 1000L)).append("\">\n")
             sb.append("        <TotalTimeSeconds>").append(lapDur).append("</TotalTimeSeconds>\n")
-            sb.append("        <DistanceMeters>0</DistanceMeters>\n")
+            // Schema order is fixed: DistanceMeters, then MaximumSpeed,
+            // then Calories. A reader that meets them out of order rejects
+            // the file.
+            sb.append("        <DistanceMeters>").append(decimals(lapMetres, 2))
+                .append("</DistanceMeters>\n")
+            if (hasRiderMass) {
+                sb.append("        <MaximumSpeed>").append(decimals(lapMaxSpeed, 3))
+                    .append("</MaximumSpeed>\n")
+            }
             sb.append("        <Calories>").append(kj.coerceAtLeast(0)).append("</Calories>\n")
             if (avgHr > 0) {
                 sb.append("        <AverageHeartRateBpm><Value>").append(avgHr).append("</Value></AverageHeartRateBpm>\n")
@@ -130,16 +164,30 @@ object TcxBuilder {
             for (p in lapPts) {
                 sb.append("          <Trackpoint>\n")
                 sb.append("            <Time>").append(isoUtc(startMs + p.offsetSec * 1000L)).append("</Time>\n")
+                // Trackpoint_t orders DistanceMeters ahead of HeartRateBpm.
+                sb.append("            <DistanceMeters>").append(decimals(p.metres, 2))
+                    .append("</DistanceMeters>\n")
                 if (p.hr > 0) {
                     sb.append("            <HeartRateBpm><Value>").append(p.hr).append("</Value></HeartRateBpm>\n")
                 }
                 sb.append("            <Cadence>").append(p.cad).append("</Cadence>\n")
-                sb.append("            <Extensions><ns3:TPX><ns3:Watts>").append(p.power)
+                // TPX orders Speed ahead of Watts.
+                sb.append("            <Extensions><ns3:TPX>")
+                if (hasRiderMass) {
+                    sb.append("<ns3:Speed>").append(decimals(p.speedMps, 3)).append("</ns3:Speed>")
+                }
+                sb.append("<ns3:Watts>").append(p.power)
                     .append("</ns3:Watts></ns3:TPX></Extensions>\n")
                 sb.append("          </Trackpoint>\n")
             }
             sb.append("        </Track>\n")
-            sb.append("        <Extensions><ns3:LX><ns3:AvgWatts>").append(avgP)
+            // LX orders AvgSpeed ahead of AvgWatts.
+            sb.append("        <Extensions><ns3:LX>")
+            if (hasRiderMass) {
+                sb.append("<ns3:AvgSpeed>").append(decimals(lapMetres / lapDur, 3))
+                    .append("</ns3:AvgSpeed>")
+            }
+            sb.append("<ns3:AvgWatts>").append(avgP)
                 .append("</ns3:AvgWatts><ns3:MaxWatts>").append(maxP)
                 .append("</ns3:MaxWatts></ns3:LX></Extensions>\n")
             sb.append("      </Lap>\n")
@@ -171,6 +219,24 @@ object TcxBuilder {
      * precision. Pure integer arithmetic (Howard Hinnant's civil-from-days)
      * so it works in commonMain without a date library.
      */
+    /**
+     * [value] to [places] decimal places. commonMain has no `String.format`,
+     * and TCX wants plain decimals with a dot regardless of the device locale,
+     * so the digits are assembled by hand.
+     */
+    private fun decimals(value: Double, places: Int): String {
+        var scale = 1L
+        repeat(places) { scale *= 10L }
+        val scaled = (value * scale + 0.5).toLong().coerceAtLeast(0L)
+        val fraction = (scaled % scale).toString()
+        return buildString {
+            append(scaled / scale)
+            append('.')
+            repeat(places - fraction.length) { append('0') }
+            append(fraction)
+        }
+    }
+
     internal fun isoUtc(epochMillis: Long): String {
         val totalSec = epochMillis.floorDiv(1000L)
         val days = totalSec.floorDiv(86400L)
