@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.7] (10) - 2026-09-02
+
 ### Added
 
 - **Speed and distance, estimated from power.** A trainer has no road under it,

@@ -1,0 +1,20 @@
+Indoor Bike 1.7
+
+Speed and distance for a ride that has neither, and the end of a crash that swallowed your summary.
+
+Added
+- **Speed and distance, estimated from power.** A trainer has no road under it, so there is nothing to measure. What head units and the trainer apps show instead is the speed your watts would carry you at outdoors, and that is what Indoor Bike now shows: live on the ride screen next to a running distance, as distance and average speed on the ride summary, and in the distance and speed fields of exported FIT and TCX files, so a ride uploaded to Strava, Garmin Connect or intervals.icu arrives with a distance on it instead of a zero. Given your power and the mass being moved, the flat-road power equation has exactly one answer for speed, and that is the number. The road is a modelled one, the same one every time: flat, still air, road tyres on tarmac, a rider on the hoods. The only thing you supply is your weight in Settings, so two riders holding 200 W see nearly the same speed. That is the point of it: a repeatable readout of your effort rather than a claim about a particular road. It puts 200 W at about 32 km/h for a 75 kg rider, which is where the outdoor rules of thumb sit. With no weight set there is no mass to move and no estimate to make, so the readouts stay away rather than showing zeroes. Distance is added up second by second rather than worked out from your average power, because speed goes as roughly the cube root of watts: an hour of surges genuinely covers less ground than an hour held steady at the same average, and this reports the difference.
+
+Fixed
+- **Tapping "View Summary" after a ride no longer closes the app.** On every Android version below 15 the tap killed the app outright. Your ride was already saved by then, so it was waiting in History when you opened the app again, but the summary it was meant to show never appeared. The cause was a single call in the navigation code that only exists on Android 15 and later; reaching for it on Android 14 or earlier is an immediate crash. The same screen opened from History always worked, because that path never made the call. Thanks to @ghose for the report.
+- **A Zwift Click that connects and then does nothing now works.** The handshake that opens the controller's pipe and the subscriptions that listen to its buttons were started independently and raced each other. Losing that race left the Click talking into a channel the phone had not switched on yet: it paired, said it was connected, and every button press went nowhere, with no error anywhere because from each side's point of view nothing had failed. The listening is now set up first and the handshake waits for it, retrying for a controller that is not ready at once. A connect also records what the controller says about itself, so the next report of a silent Click says which of the several devices sold under that name it is. Its serial number is deliberately not read.
+- **Heart rate now lands in the heart rate fields of exported FIT files.** Four fields were numbered wrongly, so a ride opened in an analysis platform showed its average and maximum heart rate as speeds, listed a lap's index as its sport, and filed your FTP as total work. Re-exporting a ride produces a correct file. Rides already uploaded need to be uploaded again to be fixed at the far end.
+
+Notes
+- Set your weight in Settings if you have not, otherwise the new speed and distance readouts stay hidden: there is nothing to estimate from without it.
+- If you export or auto-upload your rides, this is a good release to re-export anything you care about. Distance is now on the file, and heart rate is now in the right place on it.
+
+Install
+- Add this repo to [Obtainium](https://github.com/ImranR98/Obtainium) for automatic updates, or grab the APK below.
+
+Signed with the project's release key; `versionCode 10`.
