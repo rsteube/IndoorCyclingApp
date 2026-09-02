@@ -6,6 +6,18 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A ride you have already sent to Intervals.icu now says so.** The upload card
+  showed the same "Upload" button whether or not the ride had been sent, so the
+  only way to tell was to read the line above it, and even that only described
+  whether auto-upload was switched on. A ride that has been accepted now carries
+  a green tick and the date it went, and the button reads "Re-upload" so the
+  state is legible without reading anything. The fact lives on the ride itself
+  rather than in the screen, so it survives navigating away and restarting the
+  app, and auto-upload will no longer re-send a ride the record already says
+  went up.
+
 ## [1.7] (10) - 2026-09-02
 
 ### Added

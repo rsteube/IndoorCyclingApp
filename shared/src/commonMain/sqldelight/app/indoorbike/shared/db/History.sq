@@ -13,7 +13,12 @@ CREATE TABLE WorkoutSession (
     -- migration from v1 → v2 of this schema, until the post-upgrade
     -- backfill query in HistoryRepository fills the column. New inserts
     -- supply a non-empty value.
-    externalId TEXT NOT NULL DEFAULT ''
+    externalId TEXT NOT NULL DEFAULT '',
+    -- When Intervals.icu last accepted this ride, or 0 for never. Lives on the
+    -- ride rather than in a screen's memory so the answer survives navigating
+    -- away and restarting the app. A timestamp rather than a flag because the
+    -- upload can succeed without a parseable activity id coming back.
+    intervalsUploadedEpoch INTEGER NOT NULL DEFAULT 0
 );
 
 -- Non-unique because the v1 → v2 migration leaves multiple rows with the
@@ -61,6 +66,9 @@ SELECT * FROM WorkoutSession WHERE externalId = '';
 
 updateSessionExternalId:
 UPDATE WorkoutSession SET externalId = ? WHERE id = ?;
+
+markIntervalsUploaded:
+UPDATE WorkoutSession SET intervalsUploadedEpoch = ? WHERE id = ?;
 
 deleteTelemetryForSession:
 DELETE FROM WorkoutTelemetry WHERE sessionId = ?;

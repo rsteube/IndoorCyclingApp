@@ -125,6 +125,7 @@ class FitWriterTest {
             startTimeEpoch = startEpoch, durationSeconds = 1800,
             avgPower = 140L, avgCadence = 90L, avgHeartRate = 150L,
             externalId = "test:1",
+            intervalsUploadedEpoch = 0L,
         )
 
         val bytes = RideFitBuilder.build(session, telemetry, workout, ftp = 200)
@@ -165,6 +166,7 @@ class FitWriterTest {
             startTimeEpoch = startEpoch, durationSeconds = 1800,
             avgPower = 150L, avgCadence = 90L, avgHeartRate = 140L,
             externalId = "test:1",
+            intervalsUploadedEpoch = 0L,
         )
 
         val laps = lapDeveloperFields(RideFitBuilder.build(session, telemetry, workout, ftp = 200))
@@ -185,6 +187,7 @@ class FitWriterTest {
             startTimeEpoch = 1_700_000_000_000L, durationSeconds = 60,
             avgPower = 150L, avgCadence = 85L, avgHeartRate = 140L,
             externalId = "test:7",
+            intervalsUploadedEpoch = 0L,
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(
@@ -261,6 +264,7 @@ class FitWriterTest {
             durationSeconds = 60,
             avgPower = 150L, avgCadence = 85L, avgHeartRate = 140L,
             externalId = "test:42",
+            intervalsUploadedEpoch = 0L,
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(

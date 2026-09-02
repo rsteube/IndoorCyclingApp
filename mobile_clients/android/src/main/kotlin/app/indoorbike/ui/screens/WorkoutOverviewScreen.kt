@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.IosShare
@@ -177,6 +178,14 @@ fun WorkoutOverviewScreen(
                     workout = targetWorkout,
                     ftp = ftp,
                 )
+                if (outcome is IntervalsIcuUploader.Outcome.Success) {
+                    // Record it on the ride, then patch the copy this screen is
+                    // showing so the card flips to "Uploaded" on this frame
+                    // rather than on the next visit.
+                    val uploadedAt = System.currentTimeMillis()
+                    historyRepository.markIntervalsUploaded(activeSession.id, uploadedAt)
+                    session = session?.copy(intervalsUploadedEpoch = uploadedAt)
+                }
                 val msg = when (outcome) {
                     is IntervalsIcuUploader.Outcome.Success -> "Uploaded to Intervals.icu"
                     is IntervalsIcuUploader.Outcome.NotConfigured -> "Add credentials in Settings → Cloud sync first"
@@ -192,6 +201,7 @@ fun WorkoutOverviewScreen(
         // gates per-session-id.
         LaunchedEffect(activeSession.id, fromRide, autoUpload, intervalsConfigured) {
             if (!fromRide || !autoUpload || !intervalsConfigured) return@LaunchedEffect
+            if (activeSession.intervalsUploadedEpoch > 0L) return@LaunchedEffect
             if (uploadAttemptedForSession == activeSession.id) return@LaunchedEffect
             uploadAttemptedForSession = activeSession.id
             runIntervalsUpload()
@@ -340,6 +350,7 @@ fun WorkoutOverviewScreen(
                 IntervalsUploadCard(
                     uploading = uploading,
                     autoEnabled = autoUpload,
+                    uploadedEpoch = activeSession.intervalsUploadedEpoch,
                     onUpload = { runIntervalsUpload() }
                 )
             }
@@ -659,8 +670,11 @@ private fun formatEpochToDate(epoch: Long): String {
 private fun IntervalsUploadCard(
     uploading: Boolean,
     autoEnabled: Boolean,
+    /** When Intervals.icu last accepted this ride, or 0 for never. */
+    uploadedEpoch: Long,
     onUpload: () -> Unit
 ) {
+    val uploaded = uploadedEpoch > 0L
     val shape = RoundedCornerShape(Radii.md)
     Row(
         modifier = Modifier
@@ -688,15 +702,39 @@ private fun IntervalsUploadCard(
         Spacer(Modifier.width(Spacing.s3))
         Column(modifier = Modifier.weight(1f)) {
             Text(text = "Intervals.icu", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            Text(
-                text = if (autoEnabled) "Auto-upload is on. Tap to re-send."
-                else "Tap to upload this ride.",
-                style = CadenceType.tick,
-                color = CadenceColors.Fg3
-            )
+            if (uploaded) {
+                // The tick carries the state at a glance; the button's wording
+                // has to agree with it, or the rider is left reading the small
+                // print to find out whether they already sent this ride.
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Outlined.CheckCircle,
+                        contentDescription = null,
+                        tint = CadenceColors.Success,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "Uploaded · ${formatEpochToDate(uploadedEpoch)}",
+                        style = CadenceType.tick,
+                        color = CadenceColors.Success
+                    )
+                }
+            } else {
+                Text(
+                    text = if (autoEnabled) "Auto-upload is on. Tap to re-send."
+                    else "Tap to upload this ride.",
+                    style = CadenceType.tick,
+                    color = CadenceColors.Fg3
+                )
+            }
         }
         SecondaryBtn(
-            text = if (uploading) "Uploading…" else "Upload",
+            text = when {
+                uploading -> "Uploading…"
+                uploaded -> "Re-upload"
+                else -> "Upload"
+            },
             onClick = { if (!uploading) onUpload() }
         )
     }

@@ -42,6 +42,7 @@ private fun session(
     avgCadence = avgCadence,
     avgHeartRate = avgHr,
     externalId = "test:$id",
+    intervalsUploadedEpoch = 0L,
 )
 
 class StreakTest {

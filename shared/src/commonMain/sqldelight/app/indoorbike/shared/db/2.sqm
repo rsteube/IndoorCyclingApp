@@ -1,0 +1,8 @@
+-- Migrates HistoryDatabase v2 → v3: records when a session was accepted by
+-- Intervals.icu, so the ride's own row remembers it rather than the screen
+-- forgetting the moment the rider navigates away.
+--
+-- 0 means "never uploaded". A timestamp rather than a boolean because the
+-- upload can succeed without Intervals returning a parseable activity id, and
+-- because "uploaded" is more useful to the rider with a date attached to it.
+ALTER TABLE WorkoutSession ADD COLUMN intervalsUploadedEpoch INTEGER NOT NULL DEFAULT 0;

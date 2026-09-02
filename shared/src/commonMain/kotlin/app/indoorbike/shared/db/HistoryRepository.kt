@@ -135,6 +135,19 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
         }
     }
 
+    /**
+     * Record that Intervals.icu accepted [sessionId] at [epochMillis].
+     *
+     * Written only on a successful upload, so the ride's row is the single
+     * answer to "has this been sent?" rather than a screen remembering it for
+     * as long as it happens to be composed.
+     */
+    suspend fun markIntervalsUploaded(sessionId: Long, epochMillis: Long) {
+        withContext(Dispatchers.IO) {
+            dbQuery.markIntervalsUploaded(intervalsUploadedEpoch = epochMillis, id = sessionId)
+        }
+    }
+
     suspend fun deleteSession(sessionId: Long) {
         withContext(Dispatchers.IO) {
             database.transaction {
