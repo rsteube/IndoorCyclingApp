@@ -1,8 +1,0 @@
-# Pin LF for everything under fdroid/.
-#
-# Without this, Windows clones with `core.autocrlf=true` end up with CRLF
-# in the working tree, which leaks into the fdroiddata fork when the user
-# copies these files over and breaks F-Droid's `fdroid rewritemeta` check
-# (`^M` markers all over the YAML diff). Forcing LF here means cp from our
-# working tree always lands LF in fdroiddata.
-* text=auto eol=lf

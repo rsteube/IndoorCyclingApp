@@ -49,7 +49,7 @@ Both can sit side-by-side on the same device. They have separate DataStore + SQL
 
 Bump `versionCode` and `versionName` in [mobile_clients/android/build.gradle.kts](mobile_clients/android/build.gradle.kts). The debug build inherits the `-debug` suffix on its version name automatically.
 
-For the full release flow (build, sign, changelog, tag, and publish the Codeberg release that Obtainium tracks), see [docs/RELEASE.md](docs/RELEASE.md).
+For the full release flow (build, sign, changelog, tag, and publish the Codeberg release that ObtainX tracks), see [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Architecture changes
 

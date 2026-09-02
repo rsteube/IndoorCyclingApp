@@ -2,8 +2,9 @@
 
 This is the exact, repeatable process for cutting an **Indoor Bike** Android
 release. It is written for an agent (or a human) so the flow does not need to be
-re-investigated each time. Distribution is via **Codeberg releases + Obtainium**
-(no Google Play); F-Droid signs its own distributed copy separately.
+re-investigated each time. Distribution is via **Codeberg releases + ObtainX**
+(no Google Play, no F-Droid): the APK attached to a release is the only
+copy, and it is signed with the project's own key.
 
 > Project convention: **no em-dash characters** anywhere (commit messages,
 > changelog, notes). Use a spaced hyphen, colon, or comma instead.
@@ -11,7 +12,7 @@ re-investigated each time. Distribution is via **Codeberg releases + Obtainium**
 ## Prerequisites (verify before starting)
 
 - `keystore.properties` exists at repo root. Without it, release builds silently
-  fall back to the **debug** key and the APK is not a valid update (Obtainium
+  fall back to the **debug** key and the APK is not a valid update (ObtainX
   will reject it as a different signer). Always verify the signer after building
   (step 4).
 - `CODEBERG_TOKEN` is set in the environment (scope `write:repository`), or pass
@@ -25,7 +26,7 @@ re-investigated each time. Distribution is via **Codeberg releases + Obtainium**
 
 - `versionName` is the human string (e.g. `1.4`); `versionCode` is a strictly
   increasing integer (currently the two are one apart: name `1.4` = code `7`).
-  **Always bump `versionCode` by exactly 1**, or Obtainium/Android will not treat
+  **Always bump `versionCode` by exactly 1**, or ObtainX/Android will not treat
   the build as an update.
 - Version bump size: patch (`1.3.1`) for fixes/polish, minor (`1.4`) for
   user-facing feature or substantial UI work. When unsure, ask.
@@ -49,7 +50,7 @@ versionName = "X.Y"
 - Create `scripts/release-notes-X.Y.md`. This is the **Codeberg release body**
   (Markdown). Follow the style of the previous `scripts/release-notes-*.md`:
   a one-line intro, then `Added` / `Changed` / `Fixed` sections with
-  bold lead-ins, an `Install` block pointing at Obtainium, and a final
+  bold lead-ins, an `Install` block pointing at ObtainX, and a final
   `Signed with the project's release key; versionCode N.` line.
 - Prepend a matching section to [CHANGELOG.md](../CHANGELOG.md) using the
   Keep-a-Changelog format already in the file:
@@ -119,10 +120,10 @@ git push origin main
 git push origin vX.Y
 ```
 
-### 8. Publish the Codeberg release (this is what Obtainium tracks)
+### 8. Publish the Codeberg release (this is what ObtainX tracks)
 
 A pushed tag alone is not enough. The release object + attached APK asset are
-what Obtainium polls.
+what ObtainX polls.
 
 ```powershell
 .\scripts\codeberg_release.ps1 -Tag vX.Y `

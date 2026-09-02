@@ -14,6 +14,6 @@ Features:
 
 * FIT export and optional Intervals.icu sync. Strict opt-in — manual upload from the post-ride screen, or auto-upload after a ride. The app makes zero outbound network calls until you configure credentials.
 
-* F-Droid posture — no Google Play Services, no analytics, no crash reporters, no proprietary blobs. Bundled fonts ship as OFL TTFs.
+* No Google, no tracking — no Google Play Services, no analytics, no crash reporters, no proprietary blobs. Bundled fonts ship as OFL TTFs.
 
 The companion website at indoorbike.app hosts a browser-based workout editor that produces QR codes the in-app scanner imports locally — no backend round-trip.

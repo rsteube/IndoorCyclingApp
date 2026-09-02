@@ -18,24 +18,22 @@ The companion website lives at [indoorbike.app](https://indoorbike.app), with an
 - **Plain-text JSON workouts** - readable, hand-editable, and shareable. Use the bundled library, drop in your own, fetch a community pack from a URL or QR code, or build them visually in the [browser editor](https://indoorbike.app/editor/).
 - **Local progression** - streaks, rider levels, badges, week-grouped history, and time-in-zone - all computed on-device from saved rides.
 - **FIT export and optional Intervals.icu sync** - strict opt-in. Manual upload from the post-ride screen or auto-upload after a ride; nothing leaves the device unless you configure credentials.
-- **F-Droid posture** - no Google Play Services, no analytics, no crash reporters, no proprietary blobs. Auth0 / CleverCloud sync are entirely optional and lazily loaded.
+- **No Google, no tracking** - no Google Play Services, no analytics, no crash reporters, no proprietary blobs. Auth0 / CleverCloud sync are entirely optional and lazily loaded.
 - **Side-by-side debug + release installs** - different application IDs and a grayscale launcher icon for debug, so you can ride against production while developing.
 
 ## Status
 
-Pre-release. Currently in active development; an F-Droid listing is in preparation. iOS is on the roadmap but not started - the shared module is already KMM, so the lift should be reasonable.
+Pre-release. Currently in active development. iOS is on the roadmap but not started - the shared module is already KMM, so the lift should be reasonable.
 
 ## Install
 
-[![Get it on Obtainium](https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png)](https://apps.obtainium.imranr.dev/redirect.html?r=obtainium://add/https://codeberg.org/juhanilehtimaki/IndoorCyclingApp)
-
-The easiest way to install and stay updated is [Obtainium](https://github.com/ImranR98/Obtainium), which pulls signed APKs straight from this repo's [releases](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases) - no store account, no Google services. Tap the badge above, or in Obtainium choose **Add App** and paste:
+The easiest way to install and stay updated is [ObtainX](https://github.com/bikram-agarwal/ObtainX), which pulls signed APKs straight from this repo's [releases](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases) - no store account, no Google services. Install ObtainX, choose **Add App**, and paste:
 
 ```
 https://codeberg.org/juhanilehtimaki/IndoorCyclingApp
 ```
 
-Obtainium then notifies you whenever a new release is published. You can also grab the APK directly from the [latest release](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases/latest). An F-Droid listing is in preparation.
+ObtainX then notifies you whenever a new release is published. You can also grab the APK directly from the [latest release](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases/latest).
 
 ## Building from source
 

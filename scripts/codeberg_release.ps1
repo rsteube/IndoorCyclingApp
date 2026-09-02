@@ -1,6 +1,6 @@
 # Create a Codeberg (Forgejo) release for a tag and attach the signed APK.
 #
-# Obtainium tracks *release assets*, so a pushed tag alone isn't enough - this
+# ObtainX tracks *release assets*, so a pushed tag alone isn't enough - this
 # creates the Release object and uploads the APK to it.
 #
 # Auth: pass -Token, or set $env:CODEBERG_TOKEN. The token needs the
