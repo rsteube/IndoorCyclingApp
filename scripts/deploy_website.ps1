@@ -11,9 +11,13 @@
 # Usage:
 #   .\scripts\deploy_website.ps1
 #   .\scripts\deploy_website.ps1 -Remote codeberg
+#
+# `origin` is CodeFloe; `codeberg` is the release mirror. CodeFloe Pages serves
+# from a `pages` branch, the same convention Codeberg Pages used, so the branch
+# default survives the move.
 
 param(
-    [string]$Remote = "codefloe",
+    [string]$Remote = "origin",
     [string]$Branch = "pages"
 )
 

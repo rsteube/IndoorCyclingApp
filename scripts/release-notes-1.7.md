@@ -15,6 +15,7 @@ Notes
 - If you export or auto-upload your rides, this is a good release to re-export anything you care about. Distance is now on the file, and heart rate is now in the right place on it.
 
 Install
-- Add this repo to [Obtainium](https://github.com/ImranR98/Obtainium) for automatic updates, or grab the APK below.
+- Add this repo to [ObtainX](https://github.com/bikram-agarwal/ObtainX) for automatic updates, or grab the APK below.
+- **The project has moved to [CodeFloe](https://codefloe.com/SnappTechnology/IndoorCyclingApp).** Codeberg stays a release mirror for now, so nothing breaks today. When you get a chance, install ObtainX and point it at the CodeFloe URL: Obtainium cannot track CodeFloe, so it is a change of app as well as a change of address.
 
 Signed with the project's release key; `versionCode 10`.
