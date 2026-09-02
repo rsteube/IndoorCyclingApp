@@ -5,7 +5,7 @@
 > no auth, no SDK, no compression. Build the string, output the link.
 
 Human page:  https://indoorbike.app/api/   (concise, for people)
-Full docs:   https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md
+Full docs:   https://codefloe.com/SnappTechnology/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md
 Badges:      https://indoorbike.app/badges/ (optional, free "Open in Indoor Bike" SVG badges)
 This file is the authoritative machine spec. If it conflicts with anything, this wins.
 

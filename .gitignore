@@ -24,3 +24,9 @@ keystore.properties
 # Scratch git worktrees created by Claude Code for isolated work. The rest of
 # .claude/ (launch.json, settings.json) is deliberately tracked.
 /.claude/worktrees/
+
+# Live Ride API design notes. Unpublished planning for the real-time ride
+# API: the protocol is a public contract once it ships, so the document
+# stays local until the shape is settled rather than reading as committed
+# intent to anyone who clones the repo.
+/docs/LIVE_API.md

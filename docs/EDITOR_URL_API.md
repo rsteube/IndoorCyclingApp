@@ -213,7 +213,7 @@ uploaded to us** - we don't store any of it, anywhere.
 How that holds up technically:
 
 - **Static site, no backend.** `indoorbike.app/editor/` is plain HTML/CSS/JS served as static
-  files (Codeberg Pages). There is no application server, no database, and no endpoint that
+  files (CodeFloe Pages). There is no application server, no database, and no endpoint that
   receives your workout. The editor contains no upload code - it makes no network request that
   carries workout data.
 - **The workout rides in the URL, then stays on the device.** With this API the workout is

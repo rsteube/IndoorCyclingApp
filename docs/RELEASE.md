@@ -2,9 +2,11 @@
 
 This is the exact, repeatable process for cutting an **Indoor Bike** Android
 release. It is written for an agent (or a human) so the flow does not need to be
-re-investigated each time. Distribution is via **Codeberg releases + ObtainX**
+re-investigated each time. Distribution is via **CodeFloe releases + ObtainX**
 (no Google Play, no F-Droid): the APK attached to a release is the only
-copy, and it is signed with the project's own key.
+copy, and it is signed with the project's own key. Every release is also
+mirrored to Codeberg, which is where riders who have not yet repointed their
+ObtainX source are still watching. Publishing to both is one extra command.
 
 > Project convention: **no em-dash characters** anywhere (commit messages,
 > changelog, notes). Use a spaced hyphen, colon, or comma instead.
@@ -15,12 +17,13 @@ copy, and it is signed with the project's own key.
   fall back to the **debug** key and the APK is not a valid update (ObtainX
   will reject it as a different signer). Always verify the signer after building
   (step 4).
-- `CODEBERG_TOKEN` is set in the environment (scope `write:repository`), or pass
-  `-Token` to the publish script. Never print or commit the token.
+- `CODEFLOE_TOKEN` is set in the environment (scope `write:repository`), or pass
+  `-Token` to the publish script. `CODEBERG_TOKEN` too, for the mirror publish.
+  Never print or commit either token.
 - Working tree is clean and all the changes you intend to ship are committed to
   `main`. `git status` snapshots in the harness prompt can be stale, so confirm
   with a fresh `git status --short`.
-- Remote `origin` is the Codeberg repo over SSH.
+- Remote `origin` is the CodeFloe repo over SSH, and `codeberg` is the mirror.
 
 ## Decide the version
 
@@ -47,7 +50,7 @@ versionName = "X.Y"
 
 ### 2. Write the release notes and changelog
 
-- Create `scripts/release-notes-X.Y.md`. This is the **Codeberg release body**
+- Create `scripts/release-notes-X.Y.md`. This is the **release body**
   (Markdown). Follow the style of the previous `scripts/release-notes-*.md`:
   a one-line intro, then `Added` / `Changed` / `Fixed` sections with
   bold lead-ins, an `Install` block pointing at ObtainX, and a final
@@ -118,26 +121,29 @@ Notes:
 ```bash
 git push origin main
 git push origin vX.Y
+git push codeberg main
+git push codeberg vX.Y
 ```
 
-### 8. Publish the Codeberg release (this is what ObtainX tracks)
+### 8. Publish the release (this is what ObtainX tracks)
 
 A pushed tag alone is not enough. The release object + attached APK asset are
-what ObtainX polls.
+what ObtainX polls. Publish to CodeFloe, then mirror to Codeberg.
 
 ```powershell
-.\scripts\codeberg_release.ps1 -Tag vX.Y `
-  -Apk "mobile_clients/android/release/indoorbike-X.Y.apk" `
-  -NotesFile "scripts/release-notes-X.Y.md"
+.\scripts\publish_release.ps1 -Tag vX.Y
+.\scripts\publish_release.ps1 -Tag vX.Y -Forge codeberg
 ```
 
-The script (see [scripts/codeberg_release.ps1](../scripts/codeberg_release.ps1))
+The script (see [scripts/publish_release.ps1](../scripts/publish_release.ps1))
 creates the release for the already-pushed tag and uploads the APK as an asset
-named `indoorbike-X.Y.apk`. It prints the release URL and the asset download
-URL on success. It reads the token from `-Token` or `$env:CODEBERG_TOKEN`.
+named `indoorbike-X.Y.apk`. `-Apk` and `-NotesFile` default to the conventional
+paths for the tag, so the usual case needs nothing but `-Tag`. It prints the
+release URL and the asset download URL on success, and reads the token from
+`-Token` or the forge's own environment variable.
 
 It is written for **Windows PowerShell 5.1** and already works around two traps:
-it writes the JSON payload as UTF-8 **without a BOM** (Codeberg rejects a BOM),
+it writes the JSON payload as UTF-8 **without a BOM** (Forgejo rejects a BOM),
 and reads the notes file as a plain .NET string (so `ConvertTo-Json` does not
 wrap it in an object). Run it with the PowerShell tool, not Bash.
 
@@ -157,6 +163,6 @@ wrap it in an object). Run it with the PowerShell tool, not Bash.
 4. Verify signer is `CN=Juhani Lehtimaki`.
 5. Copy build output into `mobile_clients/android/release/` as `indoorbike-X.Y.apk`.
 6. Commit `Release X.Y: ...`, annotated tag `vX.Y`.
-7. `git push origin main` and `git push origin vX.Y`.
-8. `codeberg_release.ps1 -Tag vX.Y -Apk ... -NotesFile ...`.
+7. `git push origin main` and `git push origin vX.Y`, then the same to `codeberg`.
+8. `publish_release.ps1 -Tag vX.Y`, then again with `-Forge codeberg`.
 9. Confirm the release page and attached asset.

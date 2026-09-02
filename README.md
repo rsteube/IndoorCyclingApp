@@ -27,13 +27,13 @@ Pre-release. Currently in active development. iOS is on the roadmap but not star
 
 ## Install
 
-The easiest way to install and stay updated is [ObtainX](https://github.com/bikram-agarwal/ObtainX), which pulls signed APKs straight from this repo's [releases](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases) - no store account, no Google services. Install ObtainX, choose **Add App**, and paste:
+The easiest way to install and stay updated is [ObtainX](https://github.com/bikram-agarwal/ObtainX), which pulls signed APKs straight from this repo's [releases](https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases) - no store account, no Google services. Install ObtainX, choose **Add App**, and paste:
 
 ```
-https://codeberg.org/juhanilehtimaki/IndoorCyclingApp
+https://codefloe.com/SnappTechnology/IndoorCyclingApp
 ```
 
-ObtainX then notifies you whenever a new release is published. You can also grab the APK directly from the [latest release](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp/releases/latest).
+ObtainX then notifies you whenever a new release is published. You can also grab the APK directly from the [latest release](https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases/latest).
 
 ## Building from source
 
@@ -82,4 +82,4 @@ Third-party code and font attributions: [NOTICE.md](NOTICE.md).
 
 ## Repository
 
-Primary location: [codeberg.org/juhanilehtimaki/IndoorCyclingApp](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp).
+Primary location: [codefloe.com/SnappTechnology/IndoorCyclingApp](https://codefloe.com/SnappTechnology/IndoorCyclingApp). Releases are mirrored to [Codeberg](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp) for riders who have not repointed their ObtainX source yet.

@@ -49,7 +49,7 @@ Both can sit side-by-side on the same device. They have separate DataStore + SQL
 
 Bump `versionCode` and `versionName` in [mobile_clients/android/build.gradle.kts](mobile_clients/android/build.gradle.kts). The debug build inherits the `-debug` suffix on its version name automatically.
 
-For the full release flow (build, sign, changelog, tag, and publish the Codeberg release that ObtainX tracks), see [docs/RELEASE.md](docs/RELEASE.md).
+For the full release flow (build, sign, changelog, tag, and publish the release that ObtainX tracks), see [docs/RELEASE.md](docs/RELEASE.md).
 
 ## Architecture changes
 
@@ -71,7 +71,7 @@ The app must remain free of proprietary blobs, Google Play Services, analytics, 
 
 ## Submitting changes
 
-1. Fork the repo on Codeberg, branch off `main`.
+1. Fork the repo on CodeFloe, branch off `main`.
 2. Keep PRs focused - one topic per PR.
 3. Run `:shared:allTests` and the smoke test before opening a PR.
 4. In the PR description, mention what you tested manually (which trainer hardware, which Android version, etc).
