@@ -4,9 +4,15 @@ This is the exact, repeatable process for cutting an **Indoor Bike** Android
 release. It is written for an agent (or a human) so the flow does not need to be
 re-investigated each time. Distribution is via **CodeFloe releases + ObtainX**
 (no Google Play, no F-Droid): the APK attached to a release is the only
-copy, and it is signed with the project's own key. Every release is also
-mirrored to Codeberg, which is where riders who have not yet repointed their
-ObtainX source are still watching. Publishing to both is one extra command.
+copy, and it is signed with the project's own key.
+
+**CodeFloe is the only home for the code.** Codeberg is kept alive purely as a
+release channel for riders who have not repointed their ObtainX source yet, and
+nothing else: its `main` is frozen, its README says so, and it receives no
+further development. Do not push branches to it, do not merge anything from it.
+It gets the release tag and the APK, which is all a release asset needs to hang
+on, and nothing more. The local `codeberg` remote is configured to push tags
+only, so a bare `git push codeberg` cannot move a branch by accident.
 
 > Project convention: **no em-dash characters** anywhere (commit messages,
 > changelog, notes). Use a spaced hyphen, colon, or comma instead.
@@ -23,7 +29,8 @@ ObtainX source are still watching. Publishing to both is one extra command.
 - Working tree is clean and all the changes you intend to ship are committed to
   `main`. `git status` snapshots in the harness prompt can be stale, so confirm
   with a fresh `git status --short`.
-- Remote `origin` is the CodeFloe repo over SSH, and `codeberg` is the mirror.
+- Remote `origin` is the CodeFloe repo over SSH. `codeberg` exists only to
+  receive release tags and assets.
 
 ## Decide the version
 
@@ -121,14 +128,16 @@ Notes:
 ```bash
 git push origin main
 git push origin vX.Y
-git push codeberg main
+# Codeberg gets the tag only. Pushing the tag carries the objects it points at,
+# which is enough for a release to attach to; its `main` stays frozen.
 git push codeberg vX.Y
 ```
 
 ### 8. Publish the release (this is what ObtainX tracks)
 
 A pushed tag alone is not enough. The release object + attached APK asset are
-what ObtainX polls. Publish to CodeFloe, then mirror to Codeberg.
+what ObtainX polls. Publish to CodeFloe, then to Codeberg for the riders who
+have not moved yet.
 
 ```powershell
 .\scripts\publish_release.ps1 -Tag vX.Y
@@ -163,6 +172,7 @@ wrap it in an object). Run it with the PowerShell tool, not Bash.
 4. Verify signer is `CN=Juhani Lehtimaki`.
 5. Copy build output into `mobile_clients/android/release/` as `indoorbike-X.Y.apk`.
 6. Commit `Release X.Y: ...`, annotated tag `vX.Y`.
-7. `git push origin main` and `git push origin vX.Y`, then the same to `codeberg`.
+7. `git push origin main` and `git push origin vX.Y`, then `git push codeberg vX.Y`
+   (tag only).
 8. `publish_release.ps1 -Tag vX.Y`, then again with `-Forge codeberg`.
 9. Confirm the release page and attached asset.
