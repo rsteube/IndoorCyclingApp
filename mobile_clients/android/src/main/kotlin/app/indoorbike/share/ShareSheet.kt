@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.WindowInsets
@@ -277,7 +278,15 @@ private fun CaptureTarget(
     CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 1f)) {
         Box(
             modifier = Modifier
-                .size(SHARE_CARD_SIZE_PX.dp)
+                // requiredSize, not size: size() coerces into the incoming
+                // constraints, and the incoming constraints here are the bottom
+                // sheet's width. That clamped the card to the sheet instead of
+                // 1080, so its internal layout was squeezed (labels wrapping
+                // mid-word) and the captured bitmap was never the size the
+                // rest of this file assumes. requiredSize ignores the parent
+                // and lays out at exactly 1080; the thumbnail's graphicsLayer
+                // scale is what makes it fit on screen.
+                .requiredSize(SHARE_CARD_SIZE_PX.dp)
                 .drawWithContent {
                     graphicsLayer.record { this@drawWithContent.drawContent() }
                     drawLayer(graphicsLayer)

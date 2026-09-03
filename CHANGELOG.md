@@ -6,6 +6,30 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Settings now save whatever way you leave the screen.** FTP, weight, max
+  heart rate and the device name were only written when the field lost focus or
+  you pressed the keyboard's done key. Leaving Settings any other way - switching
+  tabs with the keyboard still up, or the system reclaiming the app mid-edit -
+  discarded the change without a word, and the old value came back on the next
+  launch. Each field now saves as soon as what you have typed is a usable value,
+  so there is no longer a right way to exit. Verified by typing a new FTP and
+  killing the app outright without touching anything else: the value was still
+  there on restart.
+
+- **The Intervals.icu auto-upload switch can always be turned off.** It was
+  greyed out unless both an athlete id and an API key were present, so anyone
+  who turned auto-upload on and later cleared their credentials was left looking
+  at a switch that said off, refused to move, and could not be turned off. It is
+  now always operable and shows the setting's real state.
+
+- **The share card is no longer squeezed into a corner.** The card is designed
+  at 1080x1080, but it was being laid out inside the share sheet's width instead,
+  so its labels wrapped mid-word and the preview showed the card shrunk into the
+  top-left of its frame. The image the card produced was never the size the rest
+  of the sharing code assumed either.
+
 ### Changed
 
 - **A ride you have already sent to Intervals.icu now says so.** The upload card

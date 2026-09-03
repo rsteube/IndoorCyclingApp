@@ -731,7 +731,15 @@ private fun WeightRow() {
     val container = LocalAppContainer.current
     val userSettings = container.userSettings
     val weight by userSettings.weightKg.collectAsState()
-    var weightInput by remember(weight) { mutableStateOf(formatWeightForInput(weight)) }
+
+    // Unkeyed on purpose. Keying the buffer on the stored value re-created it
+    // every time we wrote through, which yanks the cursor to the end mid-edit.
+    // Instead the field re-syncs from storage only while the rider isn't typing
+    // in it, which is the only time an external change (onboarding, a restore)
+    // should be allowed to move it.
+    var weightInput by remember { mutableStateOf(formatWeightForInput(weight)) }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(weight, focused) { if (!focused) weightInput = formatWeightForInput(weight) }
 
     fun commit() {
         val parsed = weightInput.replace(',', '.').toFloatOrNull()
@@ -743,6 +751,27 @@ private fun WeightRow() {
             userSettings.setWeightKg(parsed)
         }
     }
+
+    // Persist as soon as the typed value is usable, rather than waiting for a
+    // commit point. Every way of leaving this screen used to be its own chance
+    // to lose the edit: IME-Done and focus-loss were handled, switching tabs
+    // disposed the field without a focus event, and the process being killed
+    // mid-edit lost it whatever we did on the way out. Writing on the keystroke
+    // makes all of those paths the same path.
+    fun persistIfValid(text: String) {
+        val parsed = text.replace(',', '.').toFloatOrNull() ?: return
+        if (parsed in app.indoorbike.shared.settings.MIN_WEIGHT_KG..app.indoorbike.shared.settings.MAX_WEIGHT_KG && parsed != weight) {
+            userSettings.setWeightKg(parsed)
+        }
+    }
+
+    // Commit on the way out, too. onFocusChanged only fires when the field is
+    // genuinely unfocused; leaving Settings with the keyboard still up disposes
+    // this composable without any focus event, so the edit was being dropped
+    // silently. rememberUpdatedState keeps the lambda pointing at the latest
+    // draft rather than the one captured at first composition.
+    val commitOnExit by rememberUpdatedState { commit() }
+    DisposableEffect(Unit) { onDispose { commitOnExit() } }
 
     Box(
         modifier = Modifier
@@ -776,6 +805,7 @@ private fun WeightRow() {
                         }
                     }
                     weightInput = filtered
+                    persistIfValid(filtered)
                 },
                 textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -788,7 +818,10 @@ private fun WeightRow() {
                 singleLine = true,
                 modifier = Modifier
                     .width(110.dp)
-                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                    .onFocusChanged { state ->
+                        focused = state.isFocused
+                        if (!state.isFocused) commit()
+                    },
                 decorationBox = { innerTextField ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -820,7 +853,15 @@ private fun FtpRow() {
     val container = LocalAppContainer.current
     val userSettings = container.userSettings
     val ftp by userSettings.ftp.collectAsState()
-    var ftpInput by remember(ftp) { mutableStateOf(ftp.toString()) }
+
+    // Unkeyed on purpose. Keying the buffer on the stored value re-created it
+    // every time we wrote through, which yanks the cursor to the end mid-edit.
+    // Instead the field re-syncs from storage only while the rider isn't typing
+    // in it, which is the only time an external change (onboarding, a restore)
+    // should be allowed to move it.
+    var ftpInput by remember { mutableStateOf(ftp.toString()) }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(ftp, focused) { if (!focused) ftpInput = ftp.toString() }
 
     fun commit() {
         val parsed = ftpInput.toIntOrNull()
@@ -830,6 +871,22 @@ private fun FtpRow() {
             userSettings.setFtp(parsed)
         }
     }
+
+    /** See [WeightRow]: persist on the keystroke so no exit path can lose it. */
+    fun persistIfValid(text: String) {
+        val parsed = text.toIntOrNull() ?: return
+        if (parsed in app.indoorbike.shared.settings.MIN_FTP..app.indoorbike.shared.settings.MAX_FTP && parsed != ftp) {
+            userSettings.setFtp(parsed)
+        }
+    }
+
+    // Commit on the way out, too. onFocusChanged only fires when the field is
+    // genuinely unfocused; leaving Settings with the keyboard still up disposes
+    // this composable without any focus event, so the edit was being dropped
+    // silently. rememberUpdatedState keeps the lambda pointing at the latest
+    // draft rather than the one captured at first composition.
+    val commitOnExit by rememberUpdatedState { commit() }
+    DisposableEffect(Unit) { onDispose { commitOnExit() } }
 
     Box(
         modifier = Modifier
@@ -852,7 +909,9 @@ private fun FtpRow() {
             androidx.compose.foundation.text.BasicTextField(
                 value = ftpInput,
                 onValueChange = { newValue ->
-                    ftpInput = newValue.filter { it.isDigit() }.take(4)
+                    val cleaned = newValue.filter { it.isDigit() }.take(4)
+                    ftpInput = cleaned
+                    persistIfValid(cleaned)
                 },
                 textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -865,7 +924,10 @@ private fun FtpRow() {
                 singleLine = true,
                 modifier = Modifier
                     .width(110.dp)
-                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                    .onFocusChanged { state ->
+                        focused = state.isFocused
+                        if (!state.isFocused) commit()
+                    },
                 decorationBox = { innerTextField ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -894,7 +956,15 @@ private fun MaxHrRow() {
     val container = LocalAppContainer.current
     val userSettings = container.userSettings
     val maxHr by userSettings.maxHr.collectAsState()
-    var input by remember(maxHr) { mutableStateOf(maxHr.toString()) }
+
+    // Unkeyed on purpose. Keying the buffer on the stored value re-created it
+    // every time we wrote through, which yanks the cursor to the end mid-edit.
+    // Instead the field re-syncs from storage only while the rider isn't typing
+    // in it, which is the only time an external change (onboarding, a restore)
+    // should be allowed to move it.
+    var input by remember { mutableStateOf(maxHr.toString()) }
+    var focused by remember { mutableStateOf(false) }
+    LaunchedEffect(maxHr, focused) { if (!focused) input = maxHr.toString() }
 
     fun commit() {
         val parsed = input.toIntOrNull()
@@ -904,6 +974,22 @@ private fun MaxHrRow() {
             userSettings.setMaxHr(parsed)
         }
     }
+
+    /** See [WeightRow]: persist on the keystroke so no exit path can lose it. */
+    fun persistIfValid(text: String) {
+        val parsed = text.toIntOrNull() ?: return
+        if (parsed in app.indoorbike.shared.settings.MIN_MAX_HR..app.indoorbike.shared.settings.MAX_MAX_HR && parsed != maxHr) {
+            userSettings.setMaxHr(parsed)
+        }
+    }
+
+    // Commit on the way out, too. onFocusChanged only fires when the field is
+    // genuinely unfocused; leaving Settings with the keyboard still up disposes
+    // this composable without any focus event, so the edit was being dropped
+    // silently. rememberUpdatedState keeps the lambda pointing at the latest
+    // draft rather than the one captured at first composition.
+    val commitOnExit by rememberUpdatedState { commit() }
+    DisposableEffect(Unit) { onDispose { commitOnExit() } }
 
     Box(
         modifier = Modifier
@@ -929,7 +1015,11 @@ private fun MaxHrRow() {
 
             androidx.compose.foundation.text.BasicTextField(
                 value = input,
-                onValueChange = { newValue -> input = newValue.filter { it.isDigit() }.take(3) },
+                onValueChange = { newValue ->
+                    val cleaned = newValue.filter { it.isDigit() }.take(3)
+                    input = cleaned
+                    persistIfValid(cleaned)
+                },
                 textStyle = CadenceType.h2.copy(color = CadenceColors.Danger, textAlign = TextAlign.End),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Danger),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
@@ -940,7 +1030,10 @@ private fun MaxHrRow() {
                 singleLine = true,
                 modifier = Modifier
                     .width(110.dp)
-                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                    .onFocusChanged { state ->
+                        focused = state.isFocused
+                        if (!state.isFocused) commit()
+                    },
                 decorationBox = { innerTextField ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -1158,8 +1251,12 @@ private fun IntervalsIcuCard() {
                 )
             }
             Switch(
-                checked = autoUpload && configured,
-                enabled = configured,
+                // Always operable, and showing the stored value rather than one
+                // masked by `configured`. Gating this on having credentials
+                // meant a rider who had auto-upload on and then cleared (or
+                // never finished entering) their details was left with a switch
+                // that said off, was greyed out, and could not be turned off.
+                checked = autoUpload,
                 onCheckedChange = { settings.setIntervalsAutoUpload(it) },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = CadenceColors.OnBrand,
@@ -1516,6 +1613,13 @@ private fun DeviceLabelField(value: String, onValueChange: (String) -> Unit) {
     // and weight rows.
     var draft by remember(value) { mutableStateOf(value) }
 
+    // Same commit-on-dispose guard as the profile rows: a name typed and then
+    // navigated away from was being lost.
+    val commitOnExit by rememberUpdatedState {
+        if (draft.isNotBlank() && draft != value) onValueChange(draft)
+    }
+    DisposableEffect(Unit) { onDispose { commitOnExit() } }
+
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(text = "DEVICE NAME", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Row(
@@ -1529,7 +1633,12 @@ private fun DeviceLabelField(value: String, onValueChange: (String) -> Unit) {
         ) {
             androidx.compose.foundation.text.BasicTextField(
                 value = draft,
-                onValueChange = { draft = it },
+                onValueChange = {
+                    draft = it
+                    // Same reasoning as the profile rows: persist immediately
+                    // so leaving the screen can't discard the new name.
+                    if (it.isNotBlank() && it != value) onValueChange(it)
+                },
                 singleLine = true,
                 textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
                 cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Brand500),
