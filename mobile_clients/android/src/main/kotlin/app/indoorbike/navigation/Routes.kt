@@ -42,6 +42,10 @@ data object RouteHrmPairing : NavKey
 @Serializable
 data object RouteControllerPairing : NavKey
 
+/** Where finished rides can be sent: Intervals.icu, FitTrackee, and so on. */
+@Serializable
+data object RouteConnections : NavKey
+
 @Serializable
 data class RouteRideScreen(val workoutId: String) : NavKey
 

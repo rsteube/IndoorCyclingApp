@@ -57,6 +57,7 @@ class TcxBuilderTest {
             avgPower = 140L, avgCadence = 90L, avgHeartRate = 150L,
             externalId = "test:1",
             intervalsUploadedEpoch = 0L,
+            fitTrackeeUploadedEpoch = 0L,
         )
         return Triple(session, telemetry, workout)
     }

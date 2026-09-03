@@ -103,6 +103,18 @@ class AndroidUserSettings(
     private val _intervalsAutoUpload = MutableStateFlow(initialPrefs[KEY_INTERVALS_AUTO] ?: false)
     override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
 
+    private val _fitTrackeeUrl = MutableStateFlow<String?>(initialPrefs[KEY_FT_URL])
+    override val fitTrackeeUrl: StateFlow<String?> = _fitTrackeeUrl.asStateFlow()
+
+    private val _fitTrackeeToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_TOKEN])
+    override val fitTrackeeToken: StateFlow<String?> = _fitTrackeeToken.asStateFlow()
+
+    private val _fitTrackeeSportId = MutableStateFlow(initialPrefs[KEY_FT_SPORT] ?: 0)
+    override val fitTrackeeSportId: StateFlow<Int> = _fitTrackeeSportId.asStateFlow()
+
+    private val _fitTrackeeAutoUpload = MutableStateFlow(initialPrefs[KEY_FT_AUTO] ?: false)
+    override val fitTrackeeAutoUpload: StateFlow<Boolean> = _fitTrackeeAutoUpload.asStateFlow()
+
     private val _favouriteWorkoutIds = MutableStateFlow<Set<String>>(initialPrefs[KEY_FAVOURITES] ?: emptySet())
     override val favouriteWorkoutIds: StateFlow<Set<String>> = _favouriteWorkoutIds.asStateFlow()
 
@@ -186,6 +198,26 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_INTERVALS_AUTO] ?: false }.collect { value ->
                 if (value != _intervalsAutoUpload.value) _intervalsAutoUpload.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_URL] }.collect { value ->
+                if (value != _fitTrackeeUrl.value) _fitTrackeeUrl.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_TOKEN] }.collect { value ->
+                if (value != _fitTrackeeToken.value) _fitTrackeeToken.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_SPORT] ?: 0 }.collect { value ->
+                if (value != _fitTrackeeSportId.value) _fitTrackeeSportId.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_AUTO] ?: false }.collect { value ->
+                if (value != _fitTrackeeAutoUpload.value) _fitTrackeeAutoUpload.value = value
             }
         }
         scope.launch {
@@ -296,6 +328,38 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_INTERVALS_AUTO] = value } }
     }
 
+    override fun setFitTrackeeUrl(url: String?) {
+        // Normalise once, here, so every caller can concatenate paths without
+        // worrying about a trailing slash the rider may or may not have typed.
+        val cleaned = url?.trim()?.trimEnd('/')?.takeIf { it.isNotEmpty() }
+        _fitTrackeeUrl.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_FT_URL) else it[KEY_FT_URL] = cleaned
+            }
+        }
+    }
+
+    override fun setFitTrackeeToken(token: String?) {
+        val cleaned = token?.trim()?.takeIf { it.isNotEmpty() }
+        _fitTrackeeToken.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_FT_TOKEN) else it[KEY_FT_TOKEN] = cleaned
+            }
+        }
+    }
+
+    override fun setFitTrackeeSportId(id: Int) {
+        _fitTrackeeSportId.value = id
+        scope.launch { store.edit { it[KEY_FT_SPORT] = id } }
+    }
+
+    override fun setFitTrackeeAutoUpload(value: Boolean) {
+        _fitTrackeeAutoUpload.value = value
+        scope.launch { store.edit { it[KEY_FT_AUTO] = value } }
+    }
+
     override fun setSyncFolderUri(uri: String?) {
         val cleaned = uri?.trim()?.takeIf { it.isNotEmpty() }
         if (cleaned == _syncFolderUri.value) return
@@ -352,6 +416,10 @@ class AndroidUserSettings(
         private val KEY_INTERVALS_ATHLETE = stringPreferencesKey("intervals_athlete_id")
         private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
         private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
+        private val KEY_FT_URL = stringPreferencesKey("fittrackee_url")
+        private val KEY_FT_TOKEN = stringPreferencesKey("fittrackee_token")
+        private val KEY_FT_SPORT = intPreferencesKey("fittrackee_sport_id")
+        private val KEY_FT_AUTO = booleanPreferencesKey("fittrackee_auto_upload")
         private val KEY_FAVOURITES = stringSetPreferencesKey("favourite_workout_ids")
         private val KEY_DEVICE_ID = stringPreferencesKey("device_id")
         private val KEY_DEVICE_LABEL = stringPreferencesKey("device_label")

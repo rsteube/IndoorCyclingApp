@@ -86,7 +86,8 @@ private enum class DeviceSheetTarget { Trainer, Hrm, Controller }
 fun SettingsTab(
     onNavigateToPairing: () -> Unit,
     onNavigateToHrmPairing: () -> Unit,
-    onNavigateToControllerPairing: () -> Unit
+    onNavigateToControllerPairing: () -> Unit,
+    onNavigateToConnections: () -> Unit
 ) {
     var sheetTarget by remember { mutableStateOf<DeviceSheetTarget?>(null) }
 
@@ -137,8 +138,16 @@ fun SettingsTab(
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
-            SectionHeader("CLOUD SYNC")
-            IntervalsIcuCard()
+            SectionHeader("CONNECTIONS")
+            // The services a ride can be sent to live on their own page: the
+            // list only grows, and each needs enough setup that Settings would
+            // stop being readable at a glance.
+            NavRow(
+                icon = Icons.Outlined.CloudUpload,
+                title = "Connections",
+                subtitle = connectionsSummary(),
+                onClick = onNavigateToConnections
+            )
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
@@ -178,6 +187,56 @@ fun SettingsTab(
     )
 }
 
+/** One-line summary of what's configured, so Settings still says something. */
+@Composable
+private fun connectionsSummary(): String {
+    val settings = LocalAppContainer.current.userSettings
+    val athlete by settings.intervalsAthleteId.collectAsState()
+    val key by settings.intervalsApiKey.collectAsState()
+    val ftToken by settings.fitTrackeeToken.collectAsState()
+    val names = buildList {
+        if (!athlete.isNullOrBlank() && !key.isNullOrBlank()) add("Intervals.icu")
+        if (!ftToken.isNullOrBlank()) add("FitTrackee")
+    }
+    return if (names.isEmpty()) "Nothing connected" else names.joinToString(" · ")
+}
+
+@Composable
+private fun NavRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(Radii.md)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = onClick)
+            .padding(Spacing.s5),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription = null, tint = CadenceColors.Brand500, modifier = Modifier.size(18.dp))
+        }
+        Spacer(Modifier.width(Spacing.s3))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(text = subtitle, style = CadenceType.tick, color = CadenceColors.Fg3)
+        }
+        Text(text = "›", style = CadenceType.h3, color = CadenceColors.Fg3)
+    }
+}
+
 @Composable
 private fun SectionHeader(text: String) {
     Text(
@@ -196,7 +255,7 @@ private fun SectionHeader(text: String) {
  * everything else waits behind a tap.
  */
 @Composable
-private fun ExpandableCard(
+internal fun ExpandableCard(
     icon: ImageVector,
     iconTint: Color,
     title: String,
@@ -1172,7 +1231,7 @@ private fun ReportProblemCard() {
  * upload path (manual or auto) does, and both require explicit user action.
  */
 @Composable
-private fun IntervalsIcuCard() {
+internal fun IntervalsIcuCard() {
     val container = LocalAppContainer.current
     val settings = container.userSettings
 
@@ -1271,7 +1330,7 @@ private fun IntervalsIcuCard() {
 }
 
 @Composable
-private fun IntervalsTextField(
+internal fun IntervalsTextField(
     label: String,
     placeholder: String,
     value: String,

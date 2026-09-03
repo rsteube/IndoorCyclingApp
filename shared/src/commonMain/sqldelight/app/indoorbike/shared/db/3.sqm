@@ -1,0 +1,9 @@
+-- Migrates HistoryDatabase v3 → v4: records when a session was accepted by a
+-- rider's FitTrackee server, mirroring intervalsUploadedEpoch.
+--
+-- A second column rather than a generic uploads table because two services is
+-- still two, and the symmetry keeps the query and the UI obvious. If a third
+-- destination ever appears, that is the point to generalise into
+-- SessionUpload(sessionId, service, uploadedEpoch) rather than adding a column
+-- per service forever.
+ALTER TABLE WorkoutSession ADD COLUMN fitTrackeeUploadedEpoch INTEGER NOT NULL DEFAULT 0;

@@ -6,6 +6,24 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Upload rides to your own FitTrackee server.** FitTrackee is self-hosted, so
+  unlike Intervals.icu there is no service to sign up to: you point the app at
+  the address of a server you run. Rides upload as FIT files, so they arrive with
+  power, cadence, heart rate and the estimated distance, and their laps carry the
+  interval targets. Connect once with your email and password and only the token
+  is kept, never the password. Pick which sport rides are filed under from the
+  list your own instance offers, since those ids differ between servers. Upload
+  by hand from the ride summary or automatically when a ride is saved, exactly
+  like Intervals.icu, and the summary shows which services a ride has already
+  gone to. If the token expires the app says so and points at the fix, rather
+  than reporting a generic failure.
+
+- **A Connections page in Settings.** Intervals.icu and FitTrackee now live
+  together on their own page instead of stretching Settings out. Settings shows a
+  single row saying what is connected.
+
 ### Fixed
 
 - **Settings now save whatever way you leave the screen.** FTP, weight, max

@@ -26,6 +26,7 @@ import app.indoorbike.service.RideSessionService
 import app.indoorbike.session.AndroidActiveSessionStore
 import app.indoorbike.session.AndroidActiveTelemetryStore
 import app.indoorbike.shared.session.WorkoutState
+import app.indoorbike.sync.FitTrackeeUploader
 import app.indoorbike.sync.IntervalsIcuUploader
 import app.indoorbike.sync.SafSyncStorage
 import app.indoorbike.sync.SyncEngine
@@ -74,6 +75,7 @@ class AppContainer(
     val repositoryManager: RepositoryManager,
     val workoutLibrary: WorkoutLibrary,
     val intervalsIcuUploader: IntervalsIcuUploader,
+    val fitTrackeeUploader: FitTrackeeUploader,
     val syncEngine: SyncEngine,
 ) {
     private val containerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -137,6 +139,10 @@ class AppContainer(
                 context = application,
                 importer = workoutImporter,
             )
+            val fitTrackeeUploader = FitTrackeeUploader(
+                historyRepository = historyRepository,
+                userSettings = userSettings,
+            )
             val intervalsIcuUploader = IntervalsIcuUploader(
                 historyRepository = historyRepository,
                 userSettings = userSettings,
@@ -169,6 +175,7 @@ class AppContainer(
                 repositoryManager = repositoryManager,
                 workoutLibrary = workoutLibrary,
                 intervalsIcuUploader = intervalsIcuUploader,
+                fitTrackeeUploader = fitTrackeeUploader,
                 syncEngine = syncEngine,
             )
         }

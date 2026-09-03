@@ -43,6 +43,7 @@ private fun session(
     avgHeartRate = avgHr,
     externalId = "test:$id",
     intervalsUploadedEpoch = 0L,
+    fitTrackeeUploadedEpoch = 0L,
 )
 
 class StreakTest {

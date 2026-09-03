@@ -48,6 +48,7 @@ import app.indoorbike.share.ShareSheet
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
+import app.indoorbike.sync.FitTrackeeUploader
 import app.indoorbike.sync.IntervalsIcuUploader
 import android.widget.Toast
 import app.indoorbike.shared.progression.RideStats
@@ -97,10 +98,16 @@ fun WorkoutOverviewScreen(
     val intervalsKey by container.userSettings.intervalsApiKey.collectAsState()
     val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
     val intervalsConfigured = !intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank()
+    val ftToken by container.userSettings.fitTrackeeToken.collectAsState()
+    val ftSportId by container.userSettings.fitTrackeeSportId.collectAsState()
+    val ftAutoUpload by container.userSettings.fitTrackeeAutoUpload.collectAsState()
+    val ftConfigured = !ftToken.isNullOrBlank() && ftSportId > 0
     val context = androidx.compose.ui.platform.LocalContext.current
 
     var uploading by remember { mutableStateOf(false) }
     var uploadAttemptedForSession by remember { mutableStateOf<Long?>(null) }
+    var ftUploading by remember { mutableStateOf(false) }
+    var ftAttemptedForSession by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(sessionId) {
         // SQLDelight's Android driver does its query work synchronously on the
@@ -194,6 +201,43 @@ fun WorkoutOverviewScreen(
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
                 uploading = false
             }
+        }
+
+        fun runFitTrackeeUpload() {
+            if (ftUploading) return
+            ftUploading = true
+            scope.launch {
+                val outcome = container.fitTrackeeUploader.upload(
+                    session = activeSession,
+                    workout = targetWorkout,
+                    ftp = ftp,
+                )
+                if (outcome is FitTrackeeUploader.Outcome.Success) {
+                    val uploadedAt = System.currentTimeMillis()
+                    historyRepository.markFitTrackeeUploaded(activeSession.id, uploadedAt)
+                    session = session?.copy(fitTrackeeUploadedEpoch = uploadedAt)
+                }
+                val msg = when (outcome) {
+                    is FitTrackeeUploader.Outcome.Success -> "Uploaded to FitTrackee"
+                    is FitTrackeeUploader.Outcome.NotConfigured ->
+                        "Connect FitTrackee in Settings → Connections first"
+                    // Tokens expire server-side, so this is a normal thing to
+                    // happen rather than a fault, and the fix is specific.
+                    is FitTrackeeUploader.Outcome.Unauthorized ->
+                        "FitTrackee sign-in has expired. Sign in again in Settings → Connections."
+                    is FitTrackeeUploader.Outcome.Failure -> outcome.message
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                ftUploading = false
+            }
+        }
+
+        LaunchedEffect(activeSession.id, fromRide, ftAutoUpload, ftConfigured) {
+            if (!fromRide || !ftAutoUpload || !ftConfigured) return@LaunchedEffect
+            if (activeSession.fitTrackeeUploadedEpoch > 0L) return@LaunchedEffect
+            if (ftAttemptedForSession == activeSession.id) return@LaunchedEffect
+            ftAttemptedForSession = activeSession.id
+            runFitTrackeeUpload()
         }
 
         // Auto-upload exactly once when arriving from a finished ride and the
@@ -347,11 +391,23 @@ fun WorkoutOverviewScreen(
 
             if (intervalsConfigured) {
                 Spacer(modifier = Modifier.height(Spacing.s6))
-                IntervalsUploadCard(
+                UploadCard(
+                    service = "Intervals.icu",
                     uploading = uploading,
                     autoEnabled = autoUpload,
                     uploadedEpoch = activeSession.intervalsUploadedEpoch,
                     onUpload = { runIntervalsUpload() }
+                )
+            }
+
+            if (ftConfigured) {
+                Spacer(modifier = Modifier.height(Spacing.s4))
+                UploadCard(
+                    service = "FitTrackee",
+                    uploading = ftUploading,
+                    autoEnabled = ftAutoUpload,
+                    uploadedEpoch = activeSession.fitTrackeeUploadedEpoch,
+                    onUpload = { runFitTrackeeUpload() }
                 )
             }
 
@@ -667,7 +723,9 @@ private fun formatEpochToDate(epoch: Long): String {
  * silently in the background via the LaunchedEffect above.
  */
 @Composable
-private fun IntervalsUploadCard(
+private fun UploadCard(
+    /** Shown as the card's title, e.g. "Intervals.icu" or "FitTrackee". */
+    service: String,
     uploading: Boolean,
     autoEnabled: Boolean,
     /** When Intervals.icu last accepted this ride, or 0 for never. */
@@ -701,7 +759,7 @@ private fun IntervalsUploadCard(
         }
         Spacer(Modifier.width(Spacing.s3))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "Intervals.icu", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(text = service, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
             if (uploaded) {
                 // The tick carries the state at a glance; the button's wording
                 // has to agree with it, or the rider is left reading the small

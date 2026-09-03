@@ -85,6 +85,36 @@ interface UserSettings {
     val intervalsAutoUpload: StateFlow<Boolean>
     fun setIntervalsAutoUpload(value: Boolean)
 
+    // ── FitTrackee ────────────────────────────────────────────────────────
+    // Self-hosted activity tracker. Unlike Intervals.icu there is no single
+    // service to talk to: the rider supplies the address of their own server,
+    // which is the whole point of it. Sign-in trades an email and password for
+    // a token; only the token is kept, never the password.
+
+    /** Base URL of the rider's FitTrackee instance, e.g. `https://ft.example.org`. */
+    val fitTrackeeUrl: StateFlow<String?>
+    fun setFitTrackeeUrl(url: String?)
+
+    /**
+     * Bearer token from `POST /api/auth/login`. Null means not signed in.
+     * These expire server-side, so a 401 on upload means "sign in again"
+     * rather than "something went wrong".
+     */
+    val fitTrackeeToken: StateFlow<String?>
+    fun setFitTrackeeToken(token: String?)
+
+    /**
+     * Which FitTrackee sport a ride is filed under. Sport ids are per-instance
+     * rather than global, so this is resolved by asking the server and letting
+     * the rider pick. 0 = not chosen yet.
+     */
+    val fitTrackeeSportId: StateFlow<Int>
+    fun setFitTrackeeSportId(id: Int)
+
+    /** When true, finished rides upload to FitTrackee automatically. */
+    val fitTrackeeAutoUpload: StateFlow<Boolean>
+    fun setFitTrackeeAutoUpload(value: Boolean)
+
     // ── Favourite workouts ────────────────────────────────────────────────
     // The set of workout ids the rider has starred. Persisted as a flat set
     // of strings on disk so source of the workout (bundled / imported)

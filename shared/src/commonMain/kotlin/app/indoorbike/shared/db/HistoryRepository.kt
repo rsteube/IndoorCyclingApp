@@ -148,6 +148,13 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
         }
     }
 
+    /** As [markIntervalsUploaded], for the rider's FitTrackee server. */
+    suspend fun markFitTrackeeUploaded(sessionId: Long, epochMillis: Long) {
+        withContext(Dispatchers.IO) {
+            dbQuery.markFitTrackeeUploaded(fitTrackeeUploadedEpoch = epochMillis, id = sessionId)
+        }
+    }
+
     suspend fun deleteSession(sessionId: Long) {
         withContext(Dispatchers.IO) {
             database.transaction {

@@ -36,7 +36,11 @@ object HttpFetcher {
     private const val TIMEOUT_MS = 12_000
     private const val MAX_BODY_BYTES = 2 * 1024 * 1024 // 2 MB cap on remote JSON
 
-    suspend fun getString(url: String): String = withContext(Dispatchers.IO) {
+    suspend fun getString(
+        url: String,
+        /** Extra request headers, e.g. a bearer token for a rider's own server. */
+        headers: Map<String, String> = emptyMap(),
+    ): String = withContext(Dispatchers.IO) {
         val parsed = URL(url)
         require(parsed.protocol.equals("https", ignoreCase = true)) {
             // We only allow HTTPS so a malicious link in a chat message can't
@@ -56,6 +60,7 @@ object HttpFetcher {
             instanceFollowRedirects = false
             setRequestProperty("Accept", "application/json, text/plain, */*")
             setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
+            for ((k, v) in headers) setRequestProperty(k, v)
         }
         try {
             val code = connection.responseCode
@@ -90,6 +95,48 @@ object HttpFetcher {
      * Returns [PostResult] with the HTTP status code and response body so the
      * caller can surface platform-specific error text in toasts.
      */
+    /**
+     * POST a JSON body and return the raw response. Used by the FitTrackee
+     * sign-in, which trades an email and password for a token; everything
+     * after that is a multipart upload like the Intervals one.
+     *
+     * Same HTTPS-only and no-redirect posture as the rest of this object.
+     */
+    suspend fun postJson(
+        url: String,
+        json: String,
+        headers: Map<String, String> = emptyMap(),
+    ): PostResult = withContext(Dispatchers.IO) {
+        val parsed = URL(url)
+        require(parsed.protocol.equals("https", ignoreCase = true)) {
+            "Only https:// URLs are allowed (got ${parsed.protocol})"
+        }
+        val body = json.toByteArray(StandardCharsets.UTF_8)
+        val connection = parsed.openConnection() as HttpURLConnection
+        connection.apply {
+            connectTimeout = TIMEOUT_MS
+            readTimeout = TIMEOUT_MS
+            requestMethod = "POST"
+            instanceFollowRedirects = false
+            doOutput = true
+            useCaches = false
+            setRequestProperty("Content-Type", "application/json")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Length", body.size.toString())
+            setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
+            for ((k, v) in headers) setRequestProperty(k, v)
+        }
+        try {
+            connection.outputStream.use { it.write(body) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(4096))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     suspend fun postMultipartFile(
         url: String,
         fileFieldName: String,
