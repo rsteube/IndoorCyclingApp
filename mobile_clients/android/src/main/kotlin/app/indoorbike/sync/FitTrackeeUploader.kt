@@ -23,9 +23,13 @@ import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.settings.UserSettings
 import app.indoorbike.shared.util.Log
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.security.MessageDigest
 import java.security.SecureRandom
 
@@ -34,7 +38,8 @@ import java.security.SecureRandom
  *
  * Authentication is OAuth2 authorization-code with PKCE, done in the device
  * browser. **The rider's password never reaches this app.** What the app holds
- * is an access token scoped to `workouts:write profile:read`, renewable with a
+ * is an access token scoped to `profile:read workouts:read workouts:write`,
+ * renewable with a
  * refresh token and revocable from FitTrackee without touching the account.
  * That is the whole reason for the browser round trip: a password typed into a
  * third-party app grants everything forever, and cannot be taken back without
@@ -218,7 +223,19 @@ class FitTrackeeUploader(
     }
 
     /**
-     * Build the ride's FIT bytes and POST them to the configured instance.
+     * Send the ride to the configured instance.
+     *
+     * Tries the FIT file first, then falls back to a summary-only workout.
+     * FitTrackee is an outdoor tracker: its file import requires coordinates
+     * and rejects our rides with "no valid segments with GPS found in fit
+     * file", confirmed against a real 1.3.4 instance. So in practice the
+     * fallback is always the path taken today.
+     *
+     * Attempting the file anyway is deliberate rather than wasteful. It is the
+     * approach garmin-to-fittrackee settled on for the same problem, and it
+     * means the day FitTrackee accepts a GPS-less FIT, riders get the full
+     * power trace without a line of this changing. Guessing "this is indoor,
+     * skip the file" would instead hard-code today's limitation forever.
      *
      * A 401 is retried once behind a token refresh, so an expired access token
      * is invisible to the rider. [Outcome.Unauthorized] means the refresh
@@ -276,10 +293,80 @@ class FitTrackeeUploader(
 
         if (!result.isSuccess) {
             val msg = errorMessage(result) ?: "HTTP ${result.code}"
-            Log.w(TAG, "Upload rejected (HTTP ${result.code}): $msg")
+            Log.i(TAG, "FIT upload rejected (HTTP ${result.code}): $msg - falling back to summary")
+            return uploadSummaryOnly(session, telemetry.map { it.power }, sportId, base, token)
+        }
+        return Outcome.Success(firstMatch(result.body, "id"), withStreams = true)
+    }
+
+    /**
+     * Record the ride via `/api/workouts/no_gpx`, which takes figures rather
+     * than a file and so needs no coordinates.
+     *
+     * The endpoint carries sport, date, distance, duration and text only:
+     * there is nowhere to put power, cadence or heart rate as a series. Rather
+     * than drop them, the ride's numbers go into `notes`, so what the app
+     * actually measured survives as something a rider can read even though
+     * FitTrackee cannot chart it.
+     */
+    private suspend fun uploadSummaryOnly(
+        session: WorkoutSession,
+        powerSamples: List<Long>,
+        sportId: Int,
+        base: String,
+        token: String,
+    ): Outcome {
+        val stats = computeRideStats(
+            telemetryWatts = powerSamples,
+            durationSeconds = session.durationSeconds,
+            ftp = userSettings.ftp.value,
+            riderKg = userSettings.weightKg.value,
+        )
+        // FitTrackee wants local wall-clock to the minute; seconds are rejected
+        // outright with "invalid format for workout date".
+        val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+            .format(Date(session.startTimeEpoch))
+
+        val notes = buildString {
+            append("Indoor ride recorded by Indoor Bike.\n")
+            append("Average power ").append(session.avgPower).append(" W")
+            if (stats.normalizedPowerWatts > 0) append(", normalised ").append(stats.normalizedPowerWatts).append(" W")
+            append('\n')
+            if (session.avgCadence > 0) append("Average cadence ").append(session.avgCadence).append(" rpm\n")
+            if (session.avgHeartRate > 0) append("Average heart rate ").append(session.avgHeartRate).append(" bpm\n")
+            if (stats.tss > 0) append("TSS ").append(stats.tss).append(", IF ").append(stats.intensityFactor).append('\n')
+            if (stats.kilojoules > 0) append(stats.kilojoules).append(" kJ\n")
+            append("Distance and speed are estimated from power; the trainer measures neither.")
+        }
+
+        val body = buildString {
+            append('{')
+            append("\"sport_id\":").append(sportId)
+            append(",\"workout_date\":").append(jsonString(date))
+            // Kilometres, and seconds, per the endpoint's units.
+            append(",\"distance\":").append(stats.distanceMeters / 1000.0)
+            append(",\"duration\":").append(session.durationSeconds)
+            append(",\"title\":").append(jsonString(session.workoutName.ifBlank { "Indoor ride" }))
+            append(",\"notes\":").append(jsonString(notes))
+            append('}')
+        }
+
+        val result = try {
+            HttpFetcher.postJson(
+                "$base/api/workouts/no_gpx", body,
+                headers = mapOf("Authorization" to "Bearer $token"),
+            )
+        } catch (t: Throwable) {
+            Log.e(TAG, "Summary upload network error", t)
+            return Outcome.Failure(t.message ?: "Network error")
+        }
+        if (result.code == 401) return Outcome.Unauthorized
+        if (!result.isSuccess) {
+            val msg = errorMessage(result) ?: "HTTP ${result.code}"
+            Log.w(TAG, "Summary upload rejected (HTTP ${result.code}): $msg")
             return Outcome.Failure("FitTrackee: $msg")
         }
-        return Outcome.Success(firstMatch(result.body, "id"))
+        return Outcome.Success(firstMatch(result.body, "id"), withStreams = false)
     }
 
     // ── helpers ───────────────────────────────────────────────────────────
@@ -327,7 +414,12 @@ class FitTrackeeUploader(
     }
 
     sealed class Outcome {
-        data class Success(val workoutId: String?) : Outcome()
+        /**
+         * [withStreams] is false when the ride went up as a summary because
+         * FitTrackee refused the file. The rider is told, since "uploaded" and
+         * "uploaded with your power trace" are different promises.
+         */
+        data class Success(val workoutId: String?, val withStreams: Boolean) : Outcome()
         data object NotConfigured : Outcome()
         data object Unauthorized : Outcome()
         data class Failure(val message: String) : Outcome()
@@ -339,8 +431,17 @@ class FitTrackeeUploader(
         /** Must match the intent-filter in the manifest, and what the rider registers. */
         const val REDIRECT_URI = "indoorbike://oauth"
 
-        /** Enough to upload a ride and read who we're uploading as. Nothing more. */
-        const val SCOPES = "profile:read workouts:write"
+        /**
+         * Enough to upload a ride, read the sport list it has to be filed
+         * under, and know who we are uploading as. Nothing more.
+         *
+         * `workouts:read` is not optional despite this app never reading a
+         * ride back: GET /api/sports is gated behind it, and without it the
+         * sport picker is permanently empty and no ride can be filed at all.
+         * Found by running the flow against a real instance, which returned
+         * `insufficient_scope`.
+         */
+        const val SCOPES = "profile:read workouts:read workouts:write"
 
         private const val KEY_VERIFIER = "pkce_verifier"
         private const val KEY_STATE = "state"

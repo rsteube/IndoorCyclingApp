@@ -1,0 +1,59 @@
+# A throwaway FitTrackee for exercising the app's integration end to end.
+# Not for anything but local testing: the secrets below are fixed and public.
+#
+#   docker compose -f dev/fittrackee/docker-compose.yml up -d
+#
+# Then the app's server address is https://10.0.2.2 from an emulator.
+services:
+  db:
+    # PostGIS, not plain postgres: FitTrackee's migrations add a geometry
+    # column for workout segments and fail outright without the extension.
+    # This image creates it in the default database on first start.
+    image: postgis/postgis:15-3.4-alpine
+    environment:
+      POSTGRES_USER: fittrackee
+      POSTGRES_PASSWORD: fittrackee
+      POSTGRES_DB: fittrackee
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fittrackee"]
+      interval: 5s
+      retries: 20
+
+  fittrackee:
+    image: fittrackee/fittrackee:v1.3.4
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_SETTINGS: fittrackee.config.ProductionConfig
+      APP_SECRET_KEY: local-test-only-not-a-real-secret
+      APP_WORKERS: "1"
+      DATABASE_URL: postgresql://fittrackee:fittrackee@db:5432/fittrackee
+      # No EMAIL_URL: accounts are then active immediately, so a test user
+      # doesn't need a mail server to confirm anything.
+      UI_URL: https://10.0.2.2
+      # HOST/PORT, not APP_HOST/APP_PORT: FitTrackee reads these directly in
+      # __main__.py and defaults to 127.0.0.1, which Caddy cannot reach from
+      # its own container.
+      HOST: 0.0.0.0
+      PORT: "5000"
+      # gunicorn's control server wants a writable home; without this the
+      # startup log carries a permission error for /home/fittrackee.
+      HOME: /tmp
+    # The image has no default command, so the migration runs first and then
+    # the server starts. `ftcli db upgrade` is idempotent, so a restart is safe.
+    command: sh -c "ftcli db upgrade && fittrackee"
+    expose:
+      - "5000"
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on: [fittrackee]
+    ports:
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+
+volumes:
+  caddy_data:

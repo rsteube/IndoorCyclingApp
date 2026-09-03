@@ -218,7 +218,12 @@ fun WorkoutOverviewScreen(
                     session = session?.copy(fitTrackeeUploadedEpoch = uploadedAt)
                 }
                 val msg = when (outcome) {
-                    is FitTrackeeUploader.Outcome.Success -> "Uploaded to FitTrackee"
+                    // FitTrackee can't take a GPS-less file, so a ride usually
+                    // lands as a summary. Say which happened rather than imply
+                    // the power trace went with it.
+                    is FitTrackeeUploader.Outcome.Success ->
+                        if (outcome.withStreams) "Uploaded to FitTrackee"
+                        else "Uploaded to FitTrackee as a summary (it can't take indoor files)"
                     is FitTrackeeUploader.Outcome.NotConfigured ->
                         "Connect FitTrackee in Settings → Connections first"
                     // Tokens expire server-side, so this is a normal thing to

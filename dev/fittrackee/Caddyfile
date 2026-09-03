@@ -1,0 +1,18 @@
+{
+    # Clients don't send SNI when connecting to a bare IP address, and without
+    # it Caddy has no idea which certificate to present, so it aborts the
+    # handshake with an internal-error alert. Naming a default fixes that,
+    # and it matters because an Android emulator reaches the host as 10.0.2.2.
+    default_sni 10.0.2.2
+}
+
+# TLS in front of FitTrackee so the app can talk to it at all.
+#
+# HttpFetcher refuses http:// on every method, deliberately, and the
+# FitTrackee OAuth flow carries a client secret and tokens. Rather than
+# weaken that for testing, the test instance gets real TLS from Caddy's
+# internal CA. 10.0.2.2 is the host as seen from an Android emulator.
+10.0.2.2, localhost {
+    tls internal
+    reverse_proxy fittrackee:5000
+}

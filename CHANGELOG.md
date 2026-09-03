@@ -19,6 +19,15 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   like Intervals.icu, and the summary shows which services a ride has already
   gone to.
 
+  Worth knowing before you set it up: FitTrackee is built for outdoor
+  activities and its file import only accepts files containing GPS
+  coordinates, which an indoor ride has none of. Rides therefore arrive as an
+  entry carrying the date, duration and estimated distance, with the power,
+  cadence, heart rate, TSS and kJ written into the notes. There is no power
+  graph, and the app says so rather than implying otherwise. The app still
+  offers the file first every time, so the day FitTrackee accepts a GPS-less
+  file, rides start arriving in full without an update.
+
   **You approve it in your browser and your password never reaches the app.**
   Sign-in uses OAuth2 with PKCE against your own server, so what the app ends up
   holding is a token that can only upload workouts and read your profile, and

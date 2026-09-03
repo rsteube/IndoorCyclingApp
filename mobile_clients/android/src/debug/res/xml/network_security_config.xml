@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only trust for the local FitTrackee test instance.
+
+  The app refuses http:// everywhere (HttpFetcher), and the FitTrackee OAuth
+  flow carries a client secret and tokens, so the test server gets real TLS
+  from Caddy's internal CA rather than the check being weakened for testing.
+  This file teaches the debug build to trust that CA, alongside the system
+  ones, so `https://10.0.2.2` works from an emulator.
+
+  This lives in src/debug/, so the release build neither contains nor
+  references it. See dev/fittrackee/ for the server it belongs to.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/fittrackee_dev_ca" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
