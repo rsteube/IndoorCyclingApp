@@ -96,12 +96,29 @@ interface UserSettings {
     fun setFitTrackeeUrl(url: String?)
 
     /**
-     * Bearer token from `POST /api/auth/login`. Null means not signed in.
-     * These expire server-side, so a 401 on upload means "sign in again"
-     * rather than "something went wrong".
+     * OAuth2 client the rider registered on their own instance. FitTrackee
+     * won't let a client register itself (creating one needs an already
+     * authenticated request), so these are created in the rider's FitTrackee
+     * profile and entered here. They are not a password: they grant only the
+     * scopes the app asks for, and revoking them server-side doesn't touch
+     * the account.
      */
-    val fitTrackeeToken: StateFlow<String?>
-    fun setFitTrackeeToken(token: String?)
+    val fitTrackeeClientId: StateFlow<String?>
+    fun setFitTrackeeClientId(id: String?)
+
+    val fitTrackeeClientSecret: StateFlow<String?>
+    fun setFitTrackeeClientSecret(secret: String?)
+
+    /**
+     * OAuth2 access token, obtained in a browser so the rider's password never
+     * reaches this app. Short-lived; [fitTrackeeRefreshToken] renews it without
+     * asking the rider for anything.
+     */
+    val fitTrackeeAccessToken: StateFlow<String?>
+    fun setFitTrackeeAccessToken(token: String?)
+
+    val fitTrackeeRefreshToken: StateFlow<String?>
+    fun setFitTrackeeRefreshToken(token: String?)
 
     /**
      * Which FitTrackee sport a ride is filed under. Sport ids are per-instance

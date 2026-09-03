@@ -193,7 +193,7 @@ private fun connectionsSummary(): String {
     val settings = LocalAppContainer.current.userSettings
     val athlete by settings.intervalsAthleteId.collectAsState()
     val key by settings.intervalsApiKey.collectAsState()
-    val ftToken by settings.fitTrackeeToken.collectAsState()
+    val ftToken by settings.fitTrackeeAccessToken.collectAsState()
     val names = buildList {
         if (!athlete.isNullOrBlank() && !key.isNullOrBlank()) add("Intervals.icu")
         if (!ftToken.isNullOrBlank()) add("FitTrackee")

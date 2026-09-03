@@ -140,6 +140,7 @@ class AppContainer(
                 importer = workoutImporter,
             )
             val fitTrackeeUploader = FitTrackeeUploader(
+                context = application,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
             )

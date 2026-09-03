@@ -115,8 +115,13 @@ fun ConnectionsScreen(onBack: () -> Unit) {
 
 /**
  * FitTrackee is self-hosted, so unlike Intervals.icu there is no service to
- * talk to until the rider names their own server. Sign-in trades an email and
- * password for a token; only the token is kept.
+ * talk to until the rider names their own server.
+ *
+ * Sign-in happens in the browser, on the rider's own instance, and this app
+ * never sees their password. What comes back is a token scoped to uploading
+ * workouts, which they can revoke from FitTrackee without changing anything
+ * else. The client id and secret are theirs, created on their own server,
+ * because FitTrackee won't let a client register itself.
  */
 @Composable
 private fun FitTrackeeCard() {
@@ -124,28 +129,22 @@ private fun FitTrackeeCard() {
     val settings = container.userSettings
     val uploader = container.fitTrackeeUploader
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     val url by settings.fitTrackeeUrl.collectAsState()
-    val token by settings.fitTrackeeToken.collectAsState()
+    val clientId by settings.fitTrackeeClientId.collectAsState()
+    val clientSecret by settings.fitTrackeeClientSecret.collectAsState()
+    val accessToken by settings.fitTrackeeAccessToken.collectAsState()
     val sportId by settings.fitTrackeeSportId.collectAsState()
     val autoUpload by settings.fitTrackeeAutoUpload.collectAsState()
-    val signedIn = !token.isNullOrBlank()
+    val connected = !accessToken.isNullOrBlank()
 
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var urlDraft by remember(url) { mutableStateOf(url.orEmpty()) }
-    var email by remember { mutableStateOf("") }
-    // Deliberately not remembered across recomposition boundaries any longer
-    // than the card is open, and never written anywhere. It is used for one
-    // request and then cleared.
-    var password by remember { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
     var sports by remember { mutableStateOf<List<FitTrackeeUploader.Sport>>(emptyList()) }
 
-    // The sport list is per-instance, so it can only be fetched once there is
-    // an instance and a token to ask with.
-    LaunchedEffect(signedIn, url) {
-        if (signedIn) sports = uploader.sports()
+    // Fetched from the rider's own instance once there's a token to ask with.
+    // Re-run on returning from the browser, which is when a token first exists.
+    LaunchedEffect(connected, url) {
+        sports = if (connected) uploader.sports() else emptyList()
     }
 
     ExpandableCard(
@@ -153,68 +152,117 @@ private fun FitTrackeeCard() {
         iconTint = CadenceColors.Brand500,
         title = "FitTrackee",
         statusText = when {
-            signedIn && sportId > 0 && autoUpload -> "Connected · auto-upload on"
-            signedIn && sportId > 0 -> "Connected · manual upload"
-            signedIn -> "Connected · pick a sport"
+            connected && sportId > 0 && autoUpload -> "Connected · auto-upload on"
+            connected && sportId > 0 -> "Connected · manual upload"
+            connected -> "Connected · pick a sport"
             else -> "Not connected · optional"
         },
-        statusColor = if (signedIn) CadenceColors.Success else CadenceColors.Fg3,
+        statusColor = if (connected) CadenceColors.Success else CadenceColors.Fg3,
         expanded = expanded,
         onToggle = { expanded = !expanded }
     ) {
         Text(
             text = "Your own FitTrackee server. Rides upload as FIT files, so they arrive " +
-                "with power, cadence, heart rate and distance. Your password is used once " +
-                "to sign in and is never stored.",
+                "with power, cadence, heart rate and distance.",
             style = CadenceType.body,
             color = CadenceColors.Fg3
         )
         Spacer(Modifier.height(Spacing.s4))
 
-        if (!signedIn) {
+        if (!connected) {
+            Text(
+                text = "You approve this in your browser, on your own server, so the app " +
+                    "never sees your password. In FitTrackee, go to Profile → Apps → " +
+                    "Create an app, allow it to write workouts, and use this as the " +
+                    "redirect URI:",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
+            Spacer(Modifier.height(Spacing.s2))
+            // Shown so it can be typed into FitTrackee exactly. It has to match
+            // what the app sends or the server refuses the request.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radii.sm))
+                    .background(CadenceColors.Bg2)
+                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.sm))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = FitTrackeeUploader.REDIRECT_URI,
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Brand300,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "COPY",
+                    style = CadenceType.eyebrow,
+                    color = CadenceColors.Fg3,
+                    modifier = Modifier.clickable {
+                        val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                        cm?.setPrimaryClip(
+                            android.content.ClipData.newPlainText(
+                                "redirect uri", FitTrackeeUploader.REDIRECT_URI
+                            )
+                        )
+                        Toast.makeText(context, "Redirect URI copied", Toast.LENGTH_SHORT).show()
+                    }
+                )
+            }
+
+            Spacer(Modifier.height(Spacing.s4))
+            // Written through as typed rather than on a commit: opening the
+            // browser can get this app killed, and a client id that only lived
+            // in a text field would not survive to redeem the code.
             IntervalsTextField(
                 label = "SERVER ADDRESS",
                 placeholder = "https://fittrackee.example.org",
-                value = urlDraft,
-                onValueChange = { urlDraft = it },
+                value = url.orEmpty(),
+                onValueChange = { settings.setFitTrackeeUrl(it) },
                 keyboardType = KeyboardType.Uri,
                 visualTransformation = VisualTransformation.None,
             )
             IntervalsTextField(
-                label = "EMAIL",
-                placeholder = "you@example.org",
-                value = email,
-                onValueChange = { email = it },
-                keyboardType = KeyboardType.Email,
+                label = "CLIENT ID",
+                placeholder = "From your FitTrackee app",
+                value = clientId.orEmpty(),
+                onValueChange = { settings.setFitTrackeeClientId(it) },
+                keyboardType = KeyboardType.Ascii,
                 visualTransformation = VisualTransformation.None,
             )
             IntervalsTextField(
-                label = "PASSWORD",
-                placeholder = "Used once, not saved",
-                value = password,
-                onValueChange = { password = it },
-                keyboardType = KeyboardType.Password,
+                label = "CLIENT SECRET",
+                placeholder = "From your FitTrackee app",
+                value = clientSecret.orEmpty(),
+                onValueChange = { settings.setFitTrackeeClientSecret(it) },
+                keyboardType = KeyboardType.Ascii,
                 visualTransformation = PasswordVisualTransformation(),
             )
             Spacer(Modifier.height(Spacing.s3))
             PrimaryBtn(
-                text = if (busy) "Connecting…" else "Connect",
+                text = "Connect in browser",
                 leadingIcon = null,
                 onClick = {
-                    if (busy) return@PrimaryBtn
-                    busy = true
-                    scope.launch {
-                        when (val r = uploader.signIn(urlDraft, email.trim(), password)) {
-                            is FitTrackeeUploader.SignIn.Success -> {
-                                settings.setFitTrackeeUrl(urlDraft)
-                                settings.setFitTrackeeToken(r.token)
-                                password = ""
-                                Toast.makeText(context, "Connected to FitTrackee", Toast.LENGTH_SHORT).show()
-                            }
-                            is FitTrackeeUploader.SignIn.Failure ->
-                                Toast.makeText(context, r.message, Toast.LENGTH_LONG).show()
-                        }
-                        busy = false
+                    val authorize = uploader.authorizeUrl()
+                    if (authorize == null) {
+                        Toast.makeText(
+                            context,
+                            "Enter your server address and client id first",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@PrimaryBtn
+                    }
+                    try {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(authorize)
+                            )
+                        )
+                    } catch (t: Throwable) {
+                        Toast.makeText(context, "No browser to open", Toast.LENGTH_LONG).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -229,11 +277,7 @@ private fun FitTrackeeCard() {
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(
-                    text = url.orEmpty(),
-                    style = CadenceType.tick,
-                    color = CadenceColors.Success
-                )
+                Text(text = url.orEmpty(), style = CadenceType.tick, color = CadenceColors.Success)
             }
 
             Spacer(Modifier.height(Spacing.s4))
@@ -247,8 +291,8 @@ private fun FitTrackeeCard() {
                     color = CadenceColors.Fg3
                 )
             } else {
-                // Sport ids differ per instance, so the rider picks from what
-                // their own server actually offers rather than a guess.
+                // Sport ids differ between instances, so the rider picks from
+                // what their own server actually offers rather than a guess.
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
                     for (sport in sports) {
                         val selected = sport.id == sportId
@@ -286,10 +330,7 @@ private fun FitTrackeeCard() {
             }
 
             Spacer(Modifier.height(Spacing.s4))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = "Auto-upload finished rides",
@@ -320,9 +361,11 @@ private fun FitTrackeeCard() {
 
             Spacer(Modifier.height(Spacing.s3))
             SecondaryBtn(
-                text = "Sign out",
+                text = "Disconnect",
                 onClick = {
-                    settings.setFitTrackeeToken(null)
+                    // Tokens only. The client id and secret stay, so
+                    // reconnecting is one tap rather than a re-setup.
+                    uploader.signOut()
                     settings.setFitTrackeeAutoUpload(false)
                     sports = emptyList()
                 },

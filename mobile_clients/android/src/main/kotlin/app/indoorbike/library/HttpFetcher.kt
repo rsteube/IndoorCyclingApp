@@ -137,6 +137,48 @@ object HttpFetcher {
         }
     }
 
+    /**
+     * POST an `application/x-www-form-urlencoded` body. OAuth2 token endpoints
+     * take their parameters this way rather than as JSON.
+     */
+    suspend fun postForm(
+        url: String,
+        fields: Map<String, String>,
+        headers: Map<String, String> = emptyMap(),
+    ): PostResult = withContext(Dispatchers.IO) {
+        val parsed = URL(url)
+        require(parsed.protocol.equals("https", ignoreCase = true)) {
+            "Only https:// URLs are allowed (got ${parsed.protocol})"
+        }
+        val body = fields.entries.joinToString("&") { (k, v) ->
+            java.net.URLEncoder.encode(k, "UTF-8") + "=" + java.net.URLEncoder.encode(v, "UTF-8")
+        }.toByteArray(StandardCharsets.UTF_8)
+
+        val connection = parsed.openConnection() as HttpURLConnection
+        connection.apply {
+            connectTimeout = TIMEOUT_MS
+            readTimeout = TIMEOUT_MS
+            requestMethod = "POST"
+            instanceFollowRedirects = false
+            doOutput = true
+            useCaches = false
+            setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("Content-Length", body.size.toString())
+            setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
+            for ((k, v) in headers) setRequestProperty(k, v)
+        }
+        try {
+            connection.outputStream.use { it.write(body) }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(4096))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     suspend fun postMultipartFile(
         url: String,
         fileFieldName: String,

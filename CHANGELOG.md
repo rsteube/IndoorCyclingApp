@@ -17,8 +17,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   list your own instance offers, since those ids differ between servers. Upload
   by hand from the ride summary or automatically when a ride is saved, exactly
   like Intervals.icu, and the summary shows which services a ride has already
-  gone to. If the token expires the app says so and points at the fix, rather
-  than reporting a generic failure.
+  gone to.
+
+  **You approve it in your browser and your password never reaches the app.**
+  Sign-in uses OAuth2 with PKCE against your own server, so what the app ends up
+  holding is a token that can only upload workouts and read your profile, and
+  that you can revoke from FitTrackee without changing anything else. It renews
+  itself in the background, so there is no session to keep re-establishing.
+  FitTrackee won't let an app register itself, so you create one in Profile →
+  Apps and give the app its client id and secret; the page shows you the exact
+  redirect URI to paste, with a copy button.
 
 - **A Connections page in Settings.** Intervals.icu and FitTrackee now live
   together on their own page instead of stretching Settings out. Settings shows a

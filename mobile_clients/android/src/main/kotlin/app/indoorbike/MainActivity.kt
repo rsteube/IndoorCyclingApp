@@ -85,6 +85,7 @@ import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.ui.ControllerPairingScreen
+import app.indoorbike.sync.FitTrackeeUploader
 import app.indoorbike.ui.screens.ConnectionsScreen
 import app.indoorbike.ui.screens.LibraryScreen
 import app.indoorbike.ui.screens.QrScannerScreen
@@ -209,6 +210,25 @@ class MainActivity : ComponentActivity() {
         intent.data = null
 
         if (uri == null) return
+
+        // indoorbike://oauth — the browser handing back a FitTrackee
+        // authorization code. Handled here rather than in the Connections
+        // screen because the browser may well have outlived it: the app can be
+        // killed while the consent page is in front of it, and the code has to
+        // be redeemable on a cold start.
+        if (uri.scheme.equals("indoorbike", ignoreCase = true) &&
+            uri.host.equals("oauth", ignoreCase = true)
+        ) {
+            intentScope.launch {
+                val outcome = container.fitTrackeeUploader.completeAuthorization(uri)
+                val msg = when (outcome) {
+                    is FitTrackeeUploader.SignIn.Success -> "Connected to FitTrackee"
+                    is FitTrackeeUploader.SignIn.Failure -> outcome.message
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
 
         // indoorbike://import deep link.
         if (uri.scheme.equals("indoorbike", ignoreCase = true) &&

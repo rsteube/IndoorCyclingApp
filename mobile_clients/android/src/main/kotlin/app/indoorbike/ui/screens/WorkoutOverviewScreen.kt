@@ -98,7 +98,7 @@ fun WorkoutOverviewScreen(
     val intervalsKey by container.userSettings.intervalsApiKey.collectAsState()
     val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
     val intervalsConfigured = !intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank()
-    val ftToken by container.userSettings.fitTrackeeToken.collectAsState()
+    val ftToken by container.userSettings.fitTrackeeAccessToken.collectAsState()
     val ftSportId by container.userSettings.fitTrackeeSportId.collectAsState()
     val ftAutoUpload by container.userSettings.fitTrackeeAutoUpload.collectAsState()
     val ftConfigured = !ftToken.isNullOrBlank() && ftSportId > 0

@@ -106,8 +106,17 @@ class AndroidUserSettings(
     private val _fitTrackeeUrl = MutableStateFlow<String?>(initialPrefs[KEY_FT_URL])
     override val fitTrackeeUrl: StateFlow<String?> = _fitTrackeeUrl.asStateFlow()
 
-    private val _fitTrackeeToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_TOKEN])
-    override val fitTrackeeToken: StateFlow<String?> = _fitTrackeeToken.asStateFlow()
+    private val _fitTrackeeClientId = MutableStateFlow<String?>(initialPrefs[KEY_FT_CLIENT_ID])
+    override val fitTrackeeClientId: StateFlow<String?> = _fitTrackeeClientId.asStateFlow()
+
+    private val _fitTrackeeClientSecret = MutableStateFlow<String?>(initialPrefs[KEY_FT_CLIENT_SECRET])
+    override val fitTrackeeClientSecret: StateFlow<String?> = _fitTrackeeClientSecret.asStateFlow()
+
+    private val _fitTrackeeAccessToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_ACCESS])
+    override val fitTrackeeAccessToken: StateFlow<String?> = _fitTrackeeAccessToken.asStateFlow()
+
+    private val _fitTrackeeRefreshToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_REFRESH])
+    override val fitTrackeeRefreshToken: StateFlow<String?> = _fitTrackeeRefreshToken.asStateFlow()
 
     private val _fitTrackeeSportId = MutableStateFlow(initialPrefs[KEY_FT_SPORT] ?: 0)
     override val fitTrackeeSportId: StateFlow<Int> = _fitTrackeeSportId.asStateFlow()
@@ -206,8 +215,23 @@ class AndroidUserSettings(
             }
         }
         scope.launch {
-            store.data.map { it[KEY_FT_TOKEN] }.collect { value ->
-                if (value != _fitTrackeeToken.value) _fitTrackeeToken.value = value
+            store.data.map { it[KEY_FT_CLIENT_ID] }.collect { value ->
+                if (value != _fitTrackeeClientId.value) _fitTrackeeClientId.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_CLIENT_SECRET] }.collect { value ->
+                if (value != _fitTrackeeClientSecret.value) _fitTrackeeClientSecret.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_ACCESS] }.collect { value ->
+                if (value != _fitTrackeeAccessToken.value) _fitTrackeeAccessToken.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_FT_REFRESH] }.collect { value ->
+                if (value != _fitTrackeeRefreshToken.value) _fitTrackeeRefreshToken.value = value
             }
         }
         scope.launch {
@@ -340,13 +364,27 @@ class AndroidUserSettings(
         }
     }
 
-    override fun setFitTrackeeToken(token: String?) {
-        val cleaned = token?.trim()?.takeIf { it.isNotEmpty() }
-        _fitTrackeeToken.value = cleaned
+    override fun setFitTrackeeClientId(id: String?) = putFitTrackee(KEY_FT_CLIENT_ID, _fitTrackeeClientId, id)
+
+    override fun setFitTrackeeClientSecret(secret: String?) =
+        putFitTrackee(KEY_FT_CLIENT_SECRET, _fitTrackeeClientSecret, secret)
+
+    override fun setFitTrackeeAccessToken(token: String?) =
+        putFitTrackee(KEY_FT_ACCESS, _fitTrackeeAccessToken, token)
+
+    override fun setFitTrackeeRefreshToken(token: String?) =
+        putFitTrackee(KEY_FT_REFRESH, _fitTrackeeRefreshToken, token)
+
+    /** The four FitTrackee credential fields all store the same way. */
+    private fun putFitTrackee(
+        key: Preferences.Key<String>,
+        flow: MutableStateFlow<String?>,
+        raw: String?,
+    ) {
+        val cleaned = raw?.trim()?.takeIf { it.isNotEmpty() }
+        flow.value = cleaned
         scope.launch {
-            store.edit {
-                if (cleaned == null) it.remove(KEY_FT_TOKEN) else it[KEY_FT_TOKEN] = cleaned
-            }
+            store.edit { if (cleaned == null) it.remove(key) else it[key] = cleaned }
         }
     }
 
@@ -417,7 +455,10 @@ class AndroidUserSettings(
         private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
         private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
         private val KEY_FT_URL = stringPreferencesKey("fittrackee_url")
-        private val KEY_FT_TOKEN = stringPreferencesKey("fittrackee_token")
+        private val KEY_FT_CLIENT_ID = stringPreferencesKey("fittrackee_client_id")
+        private val KEY_FT_CLIENT_SECRET = stringPreferencesKey("fittrackee_client_secret")
+        private val KEY_FT_ACCESS = stringPreferencesKey("fittrackee_access_token")
+        private val KEY_FT_REFRESH = stringPreferencesKey("fittrackee_refresh_token")
         private val KEY_FT_SPORT = intPreferencesKey("fittrackee_sport_id")
         private val KEY_FT_AUTO = booleanPreferencesKey("fittrackee_auto_upload")
         private val KEY_FAVOURITES = stringSetPreferencesKey("favourite_workout_ids")
