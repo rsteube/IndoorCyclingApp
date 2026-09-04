@@ -48,6 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -796,16 +798,30 @@ private fun WeightRow() {
     // Instead the field re-syncs from storage only while the rider isn't typing
     // in it, which is the only time an external change (onboarding, a restore)
     // should be allowed to move it.
-    var weightInput by remember { mutableStateOf(formatWeightForInput(weight)) }
+    var weightField by remember { mutableStateOf(TextFieldValue(formatWeightForInput(weight))) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(weight, focused) { if (!focused) weightInput = formatWeightForInput(weight) }
+    LaunchedEffect(weight, focused) {
+        if (!focused) weightField = TextFieldValue(formatWeightForInput(weight))
+    }
+    // Select the whole value once focus has settled, so typing replaces it.
+    // Done from an effect rather than inside onFocusChanged because the IME
+    // sets its own selection immediately after focus is granted and wins the
+    // race; by the next frame it has finished and this sticks. Without it the
+    // caret lands inside the existing number, so a rider typing 250 into a
+    // field showing 265 gets 2250 - over the limit, and thrown away on commit
+    // with no explanation.
+    LaunchedEffect(focused) {
+        if (focused) {
+            weightField = weightField.copy(selection = TextRange(0, weightField.text.length))
+        }
+    }
 
     fun commit() {
-        val parsed = weightInput.replace(',', '.').toFloatOrNull()
+        val parsed = weightField.text.replace(',', '.').toFloatOrNull()
         if (parsed == null ||
             parsed !in app.indoorbike.shared.settings.MIN_WEIGHT_KG..app.indoorbike.shared.settings.MAX_WEIGHT_KG
         ) {
-            weightInput = formatWeightForInput(weight)
+            weightField = TextFieldValue(formatWeightForInput(weight))
         } else if (parsed != weight) {
             userSettings.setWeightKg(parsed)
         }
@@ -851,11 +867,11 @@ private fun WeightRow() {
             Spacer(modifier = Modifier.width(16.dp))
 
             androidx.compose.foundation.text.BasicTextField(
-                value = weightInput,
+                value = weightField,
                 onValueChange = { newValue ->
                     val filtered = buildString {
                         var seenDot = false
-                        for (c in newValue.take(6)) {
+                        for (c in newValue.text.take(6)) {
                             if (c.isDigit()) append(c)
                             else if ((c == '.' || c == ',') && !seenDot) {
                                 append('.')
@@ -863,7 +879,9 @@ private fun WeightRow() {
                             }
                         }
                     }
-                    weightInput = filtered
+                    weightField =
+                        if (filtered == newValue.text) newValue
+                        else TextFieldValue(filtered, TextRange(filtered.length))
                     persistIfValid(filtered)
                 },
                 textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
@@ -918,14 +936,26 @@ private fun FtpRow() {
     // Instead the field re-syncs from storage only while the rider isn't typing
     // in it, which is the only time an external change (onboarding, a restore)
     // should be allowed to move it.
-    var ftpInput by remember { mutableStateOf(ftp.toString()) }
+    var ftpField by remember { mutableStateOf(TextFieldValue(ftp.toString())) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(ftp, focused) { if (!focused) ftpInput = ftp.toString() }
+    LaunchedEffect(ftp, focused) { if (!focused) ftpField = TextFieldValue(ftp.toString()) }
+    // Select the whole value once focus has settled, so typing replaces it.
+    // Done from an effect rather than inside onFocusChanged because the IME
+    // sets its own selection immediately after focus is granted and wins the
+    // race; by the next frame it has finished and this sticks. Without it the
+    // caret lands inside the existing number, so a rider typing 250 into a
+    // field showing 265 gets 2250 - over the limit, and thrown away on commit
+    // with no explanation.
+    LaunchedEffect(focused) {
+        if (focused) {
+            ftpField = ftpField.copy(selection = TextRange(0, ftpField.text.length))
+        }
+    }
 
     fun commit() {
-        val parsed = ftpInput.toIntOrNull()
+        val parsed = ftpField.text.toIntOrNull()
         if (parsed == null || parsed !in app.indoorbike.shared.settings.MIN_FTP..app.indoorbike.shared.settings.MAX_FTP) {
-            ftpInput = ftp.toString()
+            ftpField = TextFieldValue(ftp.toString())
         } else if (parsed != ftp) {
             userSettings.setFtp(parsed)
         }
@@ -966,10 +996,12 @@ private fun FtpRow() {
             Spacer(modifier = Modifier.width(16.dp))
 
             androidx.compose.foundation.text.BasicTextField(
-                value = ftpInput,
+                value = ftpField,
                 onValueChange = { newValue ->
-                    val cleaned = newValue.filter { it.isDigit() }.take(4)
-                    ftpInput = cleaned
+                    val cleaned = newValue.text.filter { it.isDigit() }.take(4)
+                    ftpField =
+                        if (cleaned == newValue.text) newValue
+                        else TextFieldValue(cleaned, TextRange(cleaned.length))
                     persistIfValid(cleaned)
                 },
                 textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
@@ -1021,14 +1053,26 @@ private fun MaxHrRow() {
     // Instead the field re-syncs from storage only while the rider isn't typing
     // in it, which is the only time an external change (onboarding, a restore)
     // should be allowed to move it.
-    var input by remember { mutableStateOf(maxHr.toString()) }
+    var hrField by remember { mutableStateOf(TextFieldValue(maxHr.toString())) }
     var focused by remember { mutableStateOf(false) }
-    LaunchedEffect(maxHr, focused) { if (!focused) input = maxHr.toString() }
+    LaunchedEffect(maxHr, focused) { if (!focused) hrField = TextFieldValue(maxHr.toString()) }
+    // Select the whole value once focus has settled, so typing replaces it.
+    // Done from an effect rather than inside onFocusChanged because the IME
+    // sets its own selection immediately after focus is granted and wins the
+    // race; by the next frame it has finished and this sticks. Without it the
+    // caret lands inside the existing number, so a rider typing 250 into a
+    // field showing 265 gets 2250 - over the limit, and thrown away on commit
+    // with no explanation.
+    LaunchedEffect(focused) {
+        if (focused) {
+            hrField = hrField.copy(selection = TextRange(0, hrField.text.length))
+        }
+    }
 
     fun commit() {
-        val parsed = input.toIntOrNull()
+        val parsed = hrField.text.toIntOrNull()
         if (parsed == null || parsed !in app.indoorbike.shared.settings.MIN_MAX_HR..app.indoorbike.shared.settings.MAX_MAX_HR) {
-            input = maxHr.toString()
+            hrField = TextFieldValue(maxHr.toString())
         } else if (parsed != maxHr) {
             userSettings.setMaxHr(parsed)
         }
@@ -1073,10 +1117,12 @@ private fun MaxHrRow() {
             Spacer(modifier = Modifier.width(16.dp))
 
             androidx.compose.foundation.text.BasicTextField(
-                value = input,
+                value = hrField,
                 onValueChange = { newValue ->
-                    val cleaned = newValue.filter { it.isDigit() }.take(3)
-                    input = cleaned
+                    val cleaned = newValue.text.filter { it.isDigit() }.take(3)
+                    hrField =
+                        if (cleaned == newValue.text) newValue
+                        else TextFieldValue(cleaned, TextRange(cleaned.length))
                     persistIfValid(cleaned)
                 },
                 textStyle = CadenceType.h2.copy(color = CadenceColors.Danger, textAlign = TextAlign.End),

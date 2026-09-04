@@ -36,6 +36,7 @@ import app.indoorbike.shared.settings.MIN_FTP
 import app.indoorbike.shared.settings.MIN_MAX_HR
 import app.indoorbike.shared.settings.MIN_WEIGHT_KG
 import app.indoorbike.shared.settings.UserSettings
+import app.indoorbike.sync.FitTrackeeUploader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -118,7 +119,8 @@ class AndroidUserSettings(
     private val _fitTrackeeRefreshToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_REFRESH])
     override val fitTrackeeRefreshToken: StateFlow<String?> = _fitTrackeeRefreshToken.asStateFlow()
 
-    private val _fitTrackeeSportId = MutableStateFlow(initialPrefs[KEY_FT_SPORT] ?: 0)
+    private val _fitTrackeeSportId =
+        MutableStateFlow(initialPrefs[KEY_FT_SPORT] ?: FitTrackeeUploader.DEFAULT_SPORT_ID)
     override val fitTrackeeSportId: StateFlow<Int> = _fitTrackeeSportId.asStateFlow()
 
     private val _fitTrackeeAutoUpload = MutableStateFlow(initialPrefs[KEY_FT_AUTO] ?: false)
@@ -235,7 +237,8 @@ class AndroidUserSettings(
             }
         }
         scope.launch {
-            store.data.map { it[KEY_FT_SPORT] ?: 0 }.collect { value ->
+            store.data.map { it[KEY_FT_SPORT] ?: FitTrackeeUploader.DEFAULT_SPORT_ID }
+                .collect { value ->
                 if (value != _fitTrackeeSportId.value) _fitTrackeeSportId.value = value
             }
         }

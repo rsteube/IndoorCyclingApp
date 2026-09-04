@@ -99,9 +99,10 @@ fun WorkoutOverviewScreen(
     val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
     val intervalsConfigured = !intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank()
     val ftToken by container.userSettings.fitTrackeeAccessToken.collectAsState()
-    val ftSportId by container.userSettings.fitTrackeeSportId.collectAsState()
     val ftAutoUpload by container.userSettings.fitTrackeeAutoUpload.collectAsState()
-    val ftConfigured = !ftToken.isNullOrBlank() && ftSportId > 0
+    // A sport is no longer part of being configured: it defaults to Cycling
+    // (Virtual) when the server won't share its list.
+    val ftConfigured = !ftToken.isNullOrBlank()
     val context = androidx.compose.ui.platform.LocalContext.current
 
     var uploading by remember { mutableStateOf(false) }

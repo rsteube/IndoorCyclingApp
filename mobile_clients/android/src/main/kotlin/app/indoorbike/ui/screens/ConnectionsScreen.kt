@@ -152,9 +152,8 @@ private fun FitTrackeeCard() {
         iconTint = CadenceColors.Brand500,
         title = "FitTrackee",
         statusText = when {
-            connected && sportId > 0 && autoUpload -> "Connected · auto-upload on"
-            connected && sportId > 0 -> "Connected · manual upload"
-            connected -> "Connected · pick a sport"
+            connected && autoUpload -> "Connected · auto-upload on"
+            connected -> "Connected · manual upload"
             else -> "Not connected · optional"
         },
         statusColor = if (connected) CadenceColors.Success else CadenceColors.Fg3,
@@ -288,9 +287,12 @@ private fun FitTrackeeCard() {
             Text(text = "SPORT", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
             Spacer(Modifier.height(Spacing.s2))
             if (sports.isEmpty()) {
+                // Not an error. Reading the list needs a scope FitTrackee's
+                // app screen doesn't reliably offer, so this is the normal
+                // case, and Cycling (Virtual) is the right answer anyway.
                 Text(
-                    text = "Couldn't read the sport list from your server. Rides can't be " +
-                        "filed without one.",
+                    text = "Rides are filed as Cycling (Virtual). Your server didn't share " +
+                        "its sport list, which is normal and doesn't stop anything.",
                     style = CadenceType.tick,
                     color = CadenceColors.Fg3
                 )
@@ -342,8 +344,7 @@ private fun FitTrackeeCard() {
                         color = CadenceColors.Fg1
                     )
                     Text(
-                        text = if (sportId > 0) "Sent as soon as a ride is saved."
-                        else "Pick a sport first.",
+                        text = "Sent as soon as a ride is saved.",
                         style = CadenceType.tick,
                         color = CadenceColors.Fg3
                     )

@@ -6,6 +6,27 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Typing a new FTP, weight or maximum heart rate now replaces the old one.**
+  Tapping one of those fields put the cursor inside the number rather than
+  selecting it, so typing 250 into a field showing 265 produced 2250. That is
+  over the allowed limit, so it was thrown away and the old value came back,
+  with nothing on screen to say why. It looked exactly like the setting refusing
+  to save, and it was luck whether you hit it: clear the field first and it
+  worked, type straight over the top and it did not. The value is now selected
+  when you tap the field, so typing replaces it. Reported by @ghose, who spotted
+  that weight saved while FTP and heart rate did not.
+
+- **FitTrackee no longer needs a sport list it usually cannot read.** Reading the
+  list requires a permission FitTrackee's own app-creation screen does not
+  reliably offer, so connecting could leave the app reporting that rides could
+  not be filed. Rides are now filed as **Cycling (Virtual)**, which is what an
+  indoor ride is; those sport numbers come from FitTrackee's own migrations and
+  are the same on every server. If your server does share its list you can still
+  pick something else. Also reported by @ghose, who worked out the cause and the
+  right sport.
+
 ## [1.8] (11) - 2026-09-03
 
 ### Added

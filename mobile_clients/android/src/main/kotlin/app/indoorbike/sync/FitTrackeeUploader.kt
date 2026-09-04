@@ -243,9 +243,11 @@ class FitTrackeeUploader(
      */
     suspend fun upload(session: WorkoutSession, workout: Workout?, ftp: Int): Outcome {
         val base = userSettings.fitTrackeeUrl.value?.trimEnd('/').orEmpty()
-        val sportId = userSettings.fitTrackeeSportId.value
+        // An unset sport means the list was unreadable, not that the rider
+        // still has to go and choose one. It is never a reason to refuse.
+        val sportId = userSettings.fitTrackeeSportId.value.takeIf { it > 0 } ?: DEFAULT_SPORT_ID
         var token = userSettings.fitTrackeeAccessToken.value.orEmpty()
-        if (base.isEmpty() || token.isEmpty() || sportId <= 0) return Outcome.NotConfigured
+        if (base.isEmpty() || token.isEmpty()) return Outcome.NotConfigured
 
         val telemetry = historyRepository.getTelemetryForSession(session.id)
         if (telemetry.isEmpty()) return Outcome.Failure("No telemetry recorded for this ride.")
@@ -432,16 +434,27 @@ class FitTrackeeUploader(
         const val REDIRECT_URI = "indoorbike://oauth"
 
         /**
-         * Enough to upload a ride, read the sport list it has to be filed
-         * under, and know who we are uploading as. Nothing more.
+         * Enough to upload a ride and know who we are uploading as.
          *
-         * `workouts:read` is not optional despite this app never reading a
-         * ride back: GET /api/sports is gated behind it, and without it the
-         * sport picker is permanently empty and no ride can be filed at all.
-         * Found by running the flow against a real instance, which returned
-         * `insufficient_scope`.
+         * Deliberately *not* asking for `workouts:read`. GET /api/sports is
+         * gated behind it, but FitTrackee's own app-creation screen does not
+         * reliably offer that scope, so asking for it left riders unable to
+         * connect at all for the sake of a list the app can do without.
+         * See [DEFAULT_SPORT_ID].
          */
-        const val SCOPES = "profile:read workouts:read workouts:write"
+        const val SCOPES = "profile:read workouts:write"
+
+        /**
+         * FitTrackee's "Cycling (Virtual)", which is what an indoor trainer
+         * ride actually is. Sport ids come from FitTrackee's own migrations
+         * rather than being chosen per-instance, and this one is documented in
+         * their reference table, so it is the same number on every server.
+         *
+         * Used whenever the sport list can't be read, which is the normal case
+         * given [SCOPES]. A rider whose server does share the list can still
+         * pick something else.
+         */
+        const val DEFAULT_SPORT_ID = 13
 
         private const val KEY_VERIFIER = "pkce_verifier"
         private const val KEY_STATE = "state"
