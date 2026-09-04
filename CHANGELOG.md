@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.1] (12) - 2026-09-05
+
 ### Fixed
 
 - **Typing a new FTP, weight or maximum heart rate now replaces the old one.**
