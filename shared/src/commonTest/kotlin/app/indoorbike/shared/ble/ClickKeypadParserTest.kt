@@ -15,6 +15,12 @@
  */
 package app.indoorbike.shared.ble
 
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -115,29 +121,54 @@ class ClickKeypadParserTest {
         assertTrue(parsed.minusPressed)
     }
 
-    @Test
-    fun managerEdgeDetectionEmitsOnPressOnly() {
-        // Hold-and-release should fire exactly one Plus event per press.
-        val mgr = ControllerManager()
-        val emissions = mutableListOf<ControllerEvent>()
-        // Emissions captured by direct re-entry into the internal handler;
-        // the SharedFlow's tryEmit goes into a buffer we don't drain here, so
-        // instead we drive the handler twice and assert the visible state
-        // change via repeated frames.
-        // Frame 1: both released
-        mgr.handleControllerBytes(byteArrayOf(0x37, 0x08, 0x01, 0x10, 0x01))
-        // Frame 2: plus pressed (edge — would emit Plus)
-        mgr.handleControllerBytes(byteArrayOf(0x37, 0x08, 0x00, 0x10, 0x01))
-        // Frame 3: still pressed (no edge)
-        mgr.handleControllerBytes(byteArrayOf(0x37, 0x08, 0x00, 0x10, 0x01))
-        // Frame 4: released
-        mgr.handleControllerBytes(byteArrayOf(0x37, 0x08, 0x01, 0x10, 0x01))
-        // Frame 5: pressed again (edge — would emit Plus)
-        mgr.handleControllerBytes(byteArrayOf(0x37, 0x08, 0x00, 0x10, 0x01))
+    private val NOTHING = byteArrayOf(0x37, 0x08, 0x01, 0x10, 0x01)
+    private val PLUS_HELD = byteArrayOf(0x37, 0x08, 0x00, 0x10, 0x01)
+    private val MINUS_HELD = byteArrayOf(0x37, 0x08, 0x01, 0x10, 0x00)
 
-        // Smoke check: the manager survives this sequence without throwing.
-        // Full event-emission verification needs a coroutine collector and is
-        // covered indirectly by the press/release frame assertions above.
-        assertEquals(true, true)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun assertEvents(expected: List<ControllerEvent>, vararg frames: ByteArray) = runTest {
+        val manager = ControllerManager()
+        val seen = mutableListOf<ControllerEvent>()
+        val collector = launch(UnconfinedTestDispatcher(testScheduler)) {
+            manager.events.toList(seen)
+        }
+        frames.forEach { manager.handleControllerBytes(it) }
+        runCurrent()
+        collector.cancel()
+        assertEquals(expected, seen)
     }
+
+    @Test
+    fun holdingAButtonEmitsOnceNotRepeatedly() =
+        assertEvents(listOf(ControllerEvent.Plus), NOTHING, PLUS_HELD, PLUS_HELD, PLUS_HELD)
+
+    @Test
+    fun releasingAndPressingAgainEmitsTwice() =
+        assertEvents(
+            listOf(ControllerEvent.Plus, ControllerEvent.Plus),
+            NOTHING, PLUS_HELD, NOTHING, PLUS_HELD,
+        )
+
+    @Test
+    fun bothButtonsEmitIndependently() =
+        assertEvents(
+            listOf(ControllerEvent.Plus, ControllerEvent.Minus),
+            NOTHING, PLUS_HELD, NOTHING, MINUS_HELD,
+        )
+
+    /**
+     * A sleeping controller is woken by pressing a button, and the first frame
+     * of the new session reports it still held. Emitting there would step the
+     * rider's target on every reconnect, in whichever direction they happened
+     * to press.
+     */
+    @Test
+    fun wakingOnPlusIsNotAPress() = assertEvents(emptyList(), PLUS_HELD)
+
+    @Test
+    fun wakingOnMinusIsNotAPress() = assertEvents(emptyList(), MINUS_HELD)
+
+    @Test
+    fun aPressAfterWakingStillCounts() =
+        assertEvents(listOf(ControllerEvent.Plus), PLUS_HELD, NOTHING, PLUS_HELD)
 }

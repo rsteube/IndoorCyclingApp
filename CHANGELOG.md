@@ -6,6 +6,46 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.8.2] (13) - 2026-09-05
+
+### Fixed
+
+- **A Zwift Click's buttons now work.** Zwift's controllers come in two protocol
+  families and the app only ever spoke the older one. A Click from the encrypted
+  generation pairs, reports itself connected, accepts every byte written to it
+  and answers none of them, so every button press went nowhere. The app now
+  performs the key exchange those units expect: an ephemeral P-256 handshake, a
+  session key derived with HKDF-SHA256, and AES-CCM on every frame after it.
+  Controllers speaking the older plaintext protocol are unaffected, and which
+  one is in your hand is settled by what it answers rather than guessed from its
+  name.
+
+  This is the fix that 1.7 announced and did not make. That release corrected
+  the order of the handshake and the subscriptions, which was a genuine bug, but
+  the reason a Click stayed silent was that it never understood the handshake at
+  all. The claim in 1.7's notes was wrong; this entry supersedes it.
+
+- **A controller that cannot work no longer says it is working.** Settings read
+  "Connected · in-ride ± control" for anything that paired, whether or not its
+  buttons could ever do anything. It now reads "Connected but not answering"
+  once the handshake has run out of attempts, in the same red the heart rate
+  monitor uses when it connects and then sends nothing. Not being able to tell
+  those two states apart is why this went unnoticed through two releases.
+
+- **Waking a controller no longer changes your target.** A sleeping Click is
+  woken by pressing a button, and the first frame of the new session reports
+  that button as still held. That was read as a press, so reconnecting nudged
+  your wattage in whichever direction you happened to reach for. The frame that
+  opens a session is now taken as a starting position rather than a change.
+
+- **No more phantom presses the moment a controller connects.** The controller
+  starts streaming on its data channel a few milliseconds before its handshake
+  reply arrives, and those first frames were reaching the keypad parser before
+  there was a session to decrypt them with. Random ciphertext reads as a random
+  button state about one frame in 256, which showed up as a + and a - landing in
+  the same millisecond. Nothing is parsed now until the app knows which protocol
+  the controller speaks.
+
 ## [1.8.1] (12) - 2026-09-05
 
 ### Fixed
@@ -121,7 +161,10 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
-- **A Zwift Click that connects and then does nothing now works.** The
+- **A Zwift Click that connects and then does nothing now works.**
+  *Correction: it did not. The timing bug described below was real and was
+  fixed, but it was not what kept the Click silent, and this release did not
+  make one work. See Unreleased.* The
   handshake that opens the controller's pipe and the subscriptions that listen
   to its buttons were started as independent coroutines that raced each other.
   Losing that race left the Click talking into a channel the phone had not

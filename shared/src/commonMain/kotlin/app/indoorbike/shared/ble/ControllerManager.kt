@@ -15,6 +15,10 @@
  */
 package app.indoorbike.shared.ble
 
+import app.indoorbike.shared.ble.zwift.ZwiftHandshake
+import app.indoorbike.shared.ble.zwift.ZwiftKeyPair
+import app.indoorbike.shared.ble.zwift.ZwiftSession
+import app.indoorbike.shared.ble.zwift.generateZwiftKeyPair
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.redactDeviceId
 import com.benasher44.uuid.uuidFrom
@@ -62,37 +66,44 @@ typealias ControllerCandidate = TrainerCandidate
  * (Zwift Play / Ride, generic remotes) can map their own buttons onto the
  * same event surface without each ride feature having to know the source.
  */
+internal enum class ControllerProtocol { Unknown, Plaintext, Encrypted }
+
 sealed class ControllerEvent {
     object Plus : ControllerEvent()
     object Minus : ControllerEvent()
 }
 
 /**
- * Optional external rider-controller (currently Zwift Click v1) for in-ride
+ * Optional external rider-controller (Zwift Click, Zwift Ride) for in-ride
  * ±difficulty input. Lives next to [TrainerManager] / [HeartRateMonitor] but
  * uses an independent BLE peripheral.
  *
- * Zwift Click v1 (BC1) protocol — unencrypted, reverse-engineered:
- *  - Custom service `0x00000001-19CA-4651-86E5-FA29DCDD09D1`
- *  - Sync RX (write)   `0x00000003-…` — host writes the literal bytes "RideOn"
- *    on connect; this opens the pipe.
- *  - Async  (notify)   `0x00000002-…` — keypad messages and idle pings arrive here.
- *  - Sync TX (indicate)`0x00000004-…` — handshake reply ("RideOn") arrives here.
+ * All of them expose the same custom service and the same three channels:
+ *  - Custom service `00000001-19CA-4651-86E5-FA29DCDD09D1`
+ *  - Control point (write)  `00000003-...` opens the session.
+ *  - Async (notify)         `00000002-...` carries keypad frames and idle pings.
+ *  - Sync TX (indicate)     `00000004-...` carries the reply to the handshake.
  *
- * Click keypad message wire format:
+ * What differs is the handshake, and there are two families of it. Older units
+ * take the literal bytes "RideOn" and answer with the same, after which
+ * everything is in clear. Newer ones, the Click included, take "RideOn"
+ * followed by an ephemeral P-256 public key and answer with their own, after
+ * which every frame is AES-CCM encrypted under a key derived from the two.
+ * [ZwiftSession] handles the second case; which family a controller belongs to
+ * is decided by what it answers, never by its name. Zwift Play, whose
+ * handshake differs again, is not supported.
+ *
+ * Keypad frames, once decrypted if they needed it:
  *  `[ 0x37, <protobuf body> ]`
- *  - The leading byte 0x37 is the Click-notification message type.
+ *  - The leading byte 0x37 is the keypad-notification message type.
  *  - The body is a tiny protobuf with two varint fields:
- *      field 1 (tag 0x08) → Plus  button: 0 = pressed, 1 = released
- *      field 2 (tag 0x10) → Minus button: 0 = pressed, 1 = released
- *  - Idle pings are 0x19 / 0x15 — ignored.
+ *      field 1 (tag 0x08) is the Plus  button: 0 = pressed, 1 = released
+ *      field 2 (tag 0x10) is the Minus button: 0 = pressed, 1 = released
+ *  - Idle pings are 0x19 / 0x15 and are ignored. The 0x19 body carries the
+ *    battery level, which is also readable from the standard service.
  *
- * We surface only press-edges (released → pressed) on [events]; auto-repeat is
- * left to the consumer (a long press just produces one Plus/Minus today).
- *
- * Encrypted Zwift devices (Play, Ride) require ECDH/AES-CCM and are out of
- * scope here; the manager is structured so a sibling class could plug into
- * [events] without rippling through the UI.
+ * Only press-edges (released to pressed) reach [events]; auto-repeat is left to
+ * the consumer, so a long press produces one Plus or Minus today.
  */
 class ControllerManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -129,6 +140,35 @@ class ControllerManager {
      */
     private var handshakeJob: Job? = null
     private var activePeripheral: Peripheral? = null
+
+    /**
+     * The ephemeral key pair offered to the controller, and the session its
+     * reply establishes. Both are per-connection: a new key pair every connect,
+     * and no session until the controller has answered the handshake.
+     *
+     * A null [session] after the handshake is not a failure. Ride controllers
+     * and older firmware answer a bare "RideOn" and then talk in clear, so the
+     * absence of a session is how the plaintext protocol is selected.
+     */
+    private var keyPair: ZwiftKeyPair? = null
+    private var session: ZwiftSession? = null
+
+    /** Whether a frame has been read successfully since this connect. */
+    private val _keypadLive = MutableStateFlow(false)
+
+    /**
+     * A controller that is connected, has been asked, and has given no answer.
+     *
+     * Only set once the handshake has run out of attempts, so it means "this
+     * will not start working", not "not yet" - the same distinction
+     * [HeartRateMonitor.sensorSilent] draws, and for the same reason: the rider
+     * needs to know the difference between waiting and acting. Without it a
+     * controller whose protocol the app cannot speak looks exactly like one
+     * that works, which is precisely how this went unnoticed through two
+     * releases.
+     */
+    private val _keypadSilent = MutableStateFlow(false)
+    val keypadSilent: StateFlow<Boolean> = _keypadSilent.asStateFlow()
     private val advertisementById = mutableMapOf<String, Advertisement>()
 
     // Persistent auto-reconnect supervisor (see TrainerManager for the model).
@@ -139,20 +179,33 @@ class ControllerManager {
     init { scope.launch { reconnectSupervisor() } }
 
     // Edge-tracking for press detection — only emit on released → pressed.
-    /**
-     * Whether anything at all has arrived from the controller since this
-     * connect. Read by the handshake watchdog to decide whether the pipe ever
-     * opened, and written by the observe coroutines, so it is a StateFlow
-     * rather than a plain flag: the same reason [HeartRateMonitor] tracks its
-     * last sample that way.
+/**
+     * Which protocol this controller turned out to speak.
+     *
+     * Nothing can be parsed until this is decided. A controller starts
+     * streaming on its data channel before its handshake reply arrives on the
+     * indication channel - six milliseconds earlier, measured - and those
+     * early frames are ciphertext. Handing them to the keypad parser reads
+     * random bytes as button state, and roughly one frame in 256 opens with
+     * the keypad message type and is taken seriously.
+     *
+     * A StateFlow rather than a flag because the handshake watchdog waits on
+     * it while the observe coroutines write it.
      */
-    private val sawKeypadTraffic = MutableStateFlow(false)
+    private val protocol = MutableStateFlow(ControllerProtocol.Unknown)
 
     /** How many of the controller's channels have a live subscription. */
     private val subscriptionsReady = MutableStateFlow(0)
 
     private var plusPressed = false
     private var minusPressed = false
+
+    /**
+     * Whether [plusPressed] and [minusPressed] describe the controller rather
+     * than just their initial value. Until they do, a frame reporting a held
+     * button is a starting position, not a press.
+     */
+    private var keypadStateKnown = false
 
     // Public API ─────────────────────────────────────────────────────────────
 
@@ -389,8 +442,13 @@ class ControllerManager {
         handshakeJob?.cancel()
         handshakeJob = null
         connectionJob?.cancel()
+        keyPair = null
+        session = null
+        _keypadLive.value = false
+        _keypadSilent.value = false
         plusPressed = false
         minusPressed = false
+        keypadStateKnown = false
 
         connectionJob = scope.launch {
             try {
@@ -528,7 +586,7 @@ class ControllerManager {
         observeJobs.forEach { it.cancel() }
         val jobs = mutableListOf<Job>()
         observeJobs = jobs
-        sawKeypadTraffic.value = false
+        protocol.value = ControllerProtocol.Unknown
         subscriptionsReady.value = 0
 
         logGattProfile(peripheral)
@@ -540,13 +598,13 @@ class ControllerManager {
             return
         }
 
-        // Listen on every channel the device offers, rather than on the two the
-        // protocol notes happened to describe. This unit exposes four: 0002 and
-        // 0005 notify, 0004 and 0006 indicate, and only the first of each was
-        // ever subscribed. A controller answering on one of the other two would
-        // have looked exactly like a controller saying nothing at all.
+        // The two channels the protocol defines, and no others. 0005 and 0006
+        // exist on newer firmware and carry nothing this app wants; enabling
+        // indications on them achieves nothing and is one more thing to go
+        // wrong on hardware that cannot be tested here.
         val listenable = service.characteristics.filter {
-            it.properties.value and (PROP_NOTIFY or PROP_INDICATE) != 0
+            it.characteristicUuid == uuidFrom(ZWIFT_ASYNC_CHAR) ||
+                it.characteristicUuid == uuidFrom(ZWIFT_SYNC_TX_CHAR)
         }
         Log.i(TAG, "Subscribing to ${listenable.size} controller channel(s)")
         listenable.forEach { char ->
@@ -557,18 +615,7 @@ class ControllerManager {
                         Log.i(TAG, "$label subscription established")
                         subscriptionsReady.value += 1
                     }
-                    .onEach { bytes ->
-                        if (!sawKeypadTraffic.value) {
-                            sawKeypadTraffic.value = true
-                            Log.i(TAG, "First controller traffic, on $label")
-                        }
-                        // Button state, not a body metric, and the wire format
-                        // has to be read off real hardware before it can be
-                        // parsed. Logged for that reason, unlike sensor payloads
-                        // which are deliberately never recorded.
-                        Log.i(TAG, "$label rx: ${bytes.toHex()}")
-                        handleControllerBytes(bytes)
-                    }
+                    .onEach { bytes -> onControllerFrame(label, bytes) }
                     .catch { Log.w(TAG, "Controller $label observe failed", it) }
                     .launchIn(scope)
             } catch (e: Exception) {
@@ -576,25 +623,11 @@ class ControllerManager {
             }
         }
 
-        // Read whatever is readable on the service once. A characteristic that
-        // holds its last message, or a protocol version, says more about what
-        // this device expects than any amount of writing at it does.
-        service.characteristics
-            .filter { it.properties.value and PROP_READ != 0 }
-            .forEach { char ->
-                val label = char.characteristicUuid.toString().substringBefore('-')
-                try {
-                    Log.i(TAG, "$label read: ${peripheral.read(char).toHex()}")
-                } catch (e: Exception) {
-                    Log.w(TAG, "$label read failed", e)
-                }
-            }
-
-        val writable = service.characteristics.filter {
-            it.properties.value and (PROP_WRITE or PROP_WRITE_NO_RESPONSE) != 0
+        val controlPoint = service.characteristics.firstOrNull {
+            it.characteristicUuid == uuidFrom(ZWIFT_SYNC_RX_CHAR)
         }
-        if (writable.isEmpty()) {
-            Log.w(TAG, "No writable characteristic on the Zwift service; cannot open the pipe")
+        if (controlPoint == null) {
+            Log.w(TAG, "No control point on the Zwift service; cannot open the pipe")
             return
         }
 
@@ -611,38 +644,83 @@ class ControllerManager {
                 Log.w(TAG, "Only ${subscriptionsReady.value}/${listenable.size} subscriptions live; continuing anyway")
             }
 
-            // Try the handshake against each writable characteristic in turn.
-            // Which one is the control point is exactly what is not known here,
-            // and the payload is the same either way, so this establishes it by
-            // observation instead of by assumption.
-            repeat(RIDE_ON_ATTEMPTS) { round ->
-                for (target in writable) {
-                    val label = target.characteristicUuid.toString().substringBefore('-')
-                    val withResponse = target.properties.value and PROP_WRITE != 0
-                    val sent = runCatching {
-                        peripheral.write(
-                            target,
-                            RIDE_ON_BYTES,
-                            if (withResponse) WriteType.WithResponse else WriteType.WithoutResponse,
-                        )
-                    }.onFailure {
-                        Log.w(TAG, "RideOn to $label failed (round ${round + 1})", it)
-                    }.isSuccess
+            val keys = generateZwiftKeyPair()
+            keyPair = keys
 
-                    if (sent) Log.i(TAG, "RideOn sent to $label (round ${round + 1})")
-                    delay(RIDE_ON_CONFIRM_MS)
-                    if (sawKeypadTraffic.value) {
-                        Log.i(TAG, "Controller answered after writing to $label")
-                        return@launch
-                    }
-                }
+            repeat(RIDE_ON_ATTEMPTS) { round ->
+                val sent = runCatching {
+                    peripheral.write(
+                        controlPoint,
+                        ZwiftHandshake.hello(keys.publicKey),
+                        WriteType.WithResponse,
+                    )
+                }.onFailure {
+                    Log.w(TAG, "Handshake write failed (round ${round + 1})", it)
+                }.isSuccess
+
+                if (sent) Log.i(TAG, "Handshake sent (round ${round + 1})")
+                delay(RIDE_ON_CONFIRM_MS)
+                if (protocol.value != ControllerProtocol.Unknown) return@launch
             }
+            _keypadSilent.value = true
             Log.w(
                 TAG,
-                "Controller connected but silent after trying ${writable.size} endpoint(s); " +
+                "Controller connected but never answered the handshake; " +
                     "buttons will do nothing. Use the in-app +/- stepper.",
             )
         }
+    }
+
+    /**
+     * One frame from the controller, on whichever channel it arrived.
+     *
+     * The first frame after a handshake is the controller's half of the key
+     * exchange, and it arrives on the same channel as everything else, so this
+     * has to recognise it rather than wait for it somewhere separate. After
+     * that every frame is encrypted and the counter that prefixes it is both
+     * the replay guard and part of the nonce.
+     */
+    private fun onControllerFrame(label: String, bytes: ByteArray) {
+        if (protocol.value == ControllerProtocol.Unknown) {
+            keyPair?.let { keys ->
+                ZwiftSession.establish(keys, bytes)?.let {
+                    session = it
+                    protocol.value = ControllerProtocol.Encrypted
+                    Log.i(TAG, "Encrypted session established on $label")
+                    return
+                }
+            }
+            if (ZwiftHandshake.isPlaintextAck(bytes)) {
+                // Nothing to derive: this controller talks in clear.
+                protocol.value = ControllerProtocol.Plaintext
+                Log.i(TAG, "Controller answered in plaintext; no session needed")
+                return
+            }
+            // The controller talking before its reply has been read. Dropped
+            // rather than guessed at: see [protocol].
+            return
+        }
+
+        val plaintext = if (protocol.value == ControllerProtocol.Encrypted) {
+            session?.decrypt(bytes) ?: run {
+                Log.w(TAG, "$label frame did not authenticate; dropped")
+                return
+            }
+        } else {
+            bytes
+        }
+
+        // Only the first frame, and then only presses. The controller sends a
+        // keepalive every five seconds and a burst at ~9 Hz while a button is
+        // held; logging all of it would push everything else out of the
+        // diagnostics buffer within minutes of riding, which is the opposite of
+        // what a bug report needs.
+        if (!_keypadLive.value) {
+            _keypadLive.value = true
+            _keypadSilent.value = false
+            Log.i(TAG, "Controller pipe open, first frame on $label: ${plaintext.toHex()}")
+        }
+        handleControllerBytes(plaintext)
     }
 
     /**
@@ -663,10 +741,27 @@ class ControllerManager {
         val newPlus = parsed.plusPressed
         val newMinus = parsed.minusPressed
 
+        // The first frame of a connect states where the buttons are, not that
+        // they moved. A sleeping controller is woken by pressing one, so firing
+        // on it would step the rider's target every single time it reconnects -
+        // and the button they happened to press decides which way.
+        if (!keypadStateKnown) {
+            keypadStateKnown = true
+            plusPressed = newPlus
+            minusPressed = newMinus
+            return
+        }
+
         // Edge-detect press transitions. Holding the button is *not* an
         // auto-repeat; we expect the caller to press again for another step.
-        if (newPlus && !plusPressed) _events.tryEmit(ControllerEvent.Plus)
-        if (newMinus && !minusPressed) _events.tryEmit(ControllerEvent.Minus)
+        if (newPlus && !plusPressed) {
+            Log.i(TAG, "Controller +")
+            _events.tryEmit(ControllerEvent.Plus)
+        }
+        if (newMinus && !minusPressed) {
+            Log.i(TAG, "Controller -")
+            _events.tryEmit(ControllerEvent.Minus)
+        }
 
         plusPressed = newPlus
         minusPressed = newMinus
@@ -680,12 +775,6 @@ class ControllerManager {
         private const val DEVICE_INFO_MANUFACTURER = "00002a29-0000-1000-8000-00805f9b34fb"
         private const val DEVICE_INFO_HARDWARE_REV = "00002a27-0000-1000-8000-00805f9b34fb"
         private const val DEVICE_INFO_FIRMWARE_REV = "00002a26-0000-1000-8000-00805f9b34fb"
-
-        private const val PROP_READ = 0x02
-        private const val PROP_WRITE_NO_RESPONSE = 0x04
-        private const val PROP_WRITE = 0x08
-        private const val PROP_NOTIFY = 0x10
-        private const val PROP_INDICATE = 0x20
 
         /** How long to wait for the notify subscription before sending RideOn regardless. */
         private const val SUBSCRIBE_WAIT_MS = 5_000L
@@ -706,11 +795,6 @@ class ControllerManager {
         const val ZWIFT_SYNC_RX_CHAR = "00000003-19ca-4651-86e5-fa29dcdd09d1"
         const val ZWIFT_SYNC_TX_CHAR = "00000004-19ca-4651-86e5-fa29dcdd09d1"
 
-        // "RideOn" — host-to-device handshake to start unencrypted comms.
-        // Used in plain form for the Click; Play/Ride wrap it with a public key.
-        val RIDE_ON_BYTES: ByteArray = byteArrayOf(
-            0x52, 0x69, 0x64, 0x65, 0x4F, 0x6E
-        )
 
         // First byte of a Zwift Click keypad-status notification.
         const val CLICK_NOTIFICATION_MESSAGE_TYPE = 0x37 // 55

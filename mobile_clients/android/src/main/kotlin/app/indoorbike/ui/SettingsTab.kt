@@ -345,6 +345,7 @@ private fun DevicesCard(
     val hrmSilent by container.heartRateMonitor.sensorSilent.collectAsState()
     val controllerState by container.controllerManager.connectionState.collectAsState()
     val controllerName by container.controllerManager.connectedDeviceName.collectAsState()
+    val controllerSilent by container.controllerManager.keypadSilent.collectAsState()
 
     Column(
         modifier = Modifier
@@ -375,8 +376,8 @@ private fun DevicesCard(
             icon = Icons.Outlined.SettingsRemote,
             iconTint = CadenceColors.Brand500,
             title = controllerTitle(controllerState, controllerName),
-            statusLine = controllerStatusLine(controllerState),
-            statusColor = controllerStatusColor(controllerState),
+            statusLine = controllerStatusLine(controllerState, controllerSilent),
+            statusColor = controllerStatusColor(controllerState, controllerSilent),
             onClick = onControllerClick
         )
     }
@@ -601,18 +602,20 @@ private fun ControllerSheetContent(
     val state by controller.connectionState.collectAsState()
     val name by controller.connectedDeviceName.collectAsState()
     val pairedId by controller.pairedDeviceId.collectAsState()
+    val keypadSilent by controller.keypadSilent.collectAsState()
 
     SheetBody(
         icon = Icons.Outlined.SettingsRemote,
         iconTint = CadenceColors.Brand500,
         title = controllerTitle(state, name),
-        statusLine = controllerStatusLine(state),
+        statusLine = controllerStatusLine(state, keypadSilent),
         // Plus increases the workout's target power, minus decreases it. Same
         // ±5 % step that the in-app stepper uses, so users feel the same beat
         // whether or not the Click is paired.
         helper = "Bluetooth ride controller for in-workout ± difficulty. " +
-                "Supported: Zwift Click v1 (BC1). Encrypted Zwift Play / Ride controllers " +
-                "are not yet supported. With no controller paired, the in-app ± buttons still work.",
+                "Supported: Zwift Click, including the encrypted firmware, and Zwift Ride. " +
+                "Zwift Play is not supported yet. With no controller paired, the in-app ± " +
+                "buttons still work.",
     ) {
         when (state) {
             ControllerConnectionState.Connected,
@@ -767,17 +770,28 @@ private fun hrmStatusColor(state: HrmConnectionState, sensorSilent: Boolean): Co
 private fun controllerTitle(state: ControllerConnectionState, name: String?): String =
     if (state == ControllerConnectionState.Connected && name != null) name else "Controller"
 
-private fun controllerStatusLine(state: ControllerConnectionState): String = when (state) {
+private fun controllerStatusLine(
+    state: ControllerConnectionState,
+    keypadSilent: Boolean,
+): String = when (state) {
     ControllerConnectionState.Scanning -> "Scanning…"
     ControllerConnectionState.Connecting -> "Connecting…"
-    ControllerConnectionState.Connected -> "Connected · in-ride ± control"
+    // Connected is not the same as usable: a controller whose protocol the app
+    // cannot speak pairs and reports itself connected like any other.
+    ControllerConnectionState.Connected ->
+        if (keypadSilent) "Connected but not answering · use in-app ± buttons"
+        else "Connected · in-ride ± control"
     ControllerConnectionState.Disconnecting -> "Disconnecting…"
     ControllerConnectionState.Disconnected -> "Not paired · use in-app ± buttons"
     ControllerConnectionState.Error -> "Connection error · tap to retry"
 }
 
-private fun controllerStatusColor(state: ControllerConnectionState): Color = when (state) {
-    ControllerConnectionState.Connected -> CadenceColors.Success
+private fun controllerStatusColor(
+    state: ControllerConnectionState,
+    keypadSilent: Boolean,
+): Color = when (state) {
+    ControllerConnectionState.Connected ->
+        if (keypadSilent) CadenceColors.Danger else CadenceColors.Success
     ControllerConnectionState.Scanning,
     ControllerConnectionState.Connecting,
     ControllerConnectionState.Disconnecting -> CadenceColors.Warning
