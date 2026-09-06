@@ -126,11 +126,14 @@ object GpxParser {
      * letters (`trkpt` must not match `trkpts`, and `trk` must not match
      * `trkseg`).
      */
-    private fun findTag(xml: String, tagName: String, from: Int): OpenTag? {
+    private fun findTag(xml: String, tagName: String, from: Int, until: Int = xml.length): OpenTag? {
         var i = from
-        while (i < xml.length) {
+        while (i < until) {
             val open = xml.indexOf('<', i)
-            if (open < 0 || open + 1 >= xml.length) return null
+            // Past the caller's bound is the same as absent: a point's <ele>
+            // search must not wander into the next point, and must not pay to
+            // find out that it would have.
+            if (open < 0 || open >= until || open + 1 >= xml.length) return null
             // Skip closing tags, comments, declarations and CDATA outright.
             val next = xml[open + 1]
             if (next == '/' || next == '!' || next == '?') {
@@ -141,8 +144,21 @@ object GpxParser {
             // Step past a namespace prefix, e.g. the "gpx:" of "<gpx:trkpt".
             val tagEnd = xml.indexOf('>', open)
             if (tagEnd < 0) return null
-            val colon = xml.indexOf(':', nameStart)
-            if (colon in (nameStart + 1) until tagEnd) {
+            // Searched within this tag rather than with indexOf, which takes a
+            // start but no end: it would scan to the end of the document and
+            // only then be bounded by the check below. A GPX using no
+            // namespace prefixes has no colon to stop it, so every tag
+            // examined cost a scan of the whole remaining file and the parse
+            // became quadratic in file size - a 40 KB route parsed in
+            // milliseconds while a 500 KB one took minutes and read to a
+            // rider as a download that never finished.
+            var colon = -1
+            var scan = nameStart + 1
+            while (scan < tagEnd) {
+                if (xml[scan] == ':') { colon = scan; break }
+                scan++
+            }
+            if (colon > nameStart) {
                 val prefixHasSpace = xml.substring(nameStart, colon).any { it.isWhitespace() }
                 if (!prefixHasSpace) nameStart = colon + 1
             }
@@ -196,7 +212,7 @@ object GpxParser {
         from: Int,
         limit: Int = xml.length,
     ): String? {
-        val tag = findTag(xml, tagName, from) ?: return null
+        val tag = findTag(xml, tagName, from, limit) ?: return null
         if (tag.contentStart > limit) return null
         if (tag.selfClosing) return ""
         val end = xml.indexOf('<', tag.contentStart)

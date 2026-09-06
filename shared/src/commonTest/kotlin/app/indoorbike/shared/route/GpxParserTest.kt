@@ -16,6 +16,7 @@
 package app.indoorbike.shared.route
 
 import kotlin.test.Test
+import kotlin.time.TimeSource
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -233,5 +234,72 @@ class GpxParserTest {
 
         val route = assertNotNull(GpxParser.parseGpx(gpx, id = "torn"))
         assertTrue(route.points.size >= 2, "kept ${route.points.size}")
+    }
+
+    /** A GPX of [points] points with no namespace prefix and no colon after the header. */
+    private fun longGpx(points: Int): String = buildString(points * 90) {
+        append("<gpx><trk><name>Long one</name><trkseg>")
+        for (i in 0 until points) {
+            append("<trkpt lat='")
+            append(41.1 + i * 0.00001)
+            append("' lon='")
+            append(1.28 + i * 0.00001)
+            append("'><ele>")
+            append(17 + (i % 100))
+            append("</ele></trkpt>")
+        }
+        append("</trkseg></trk></gpx>")
+    }
+
+    @Test
+    fun `cost grows with the file, not with its square`() {
+        // findTag used to look for a namespace prefix with an unbounded
+        // indexOf(':'), so every tag it examined scanned to the end of the
+        // document. A GPX with no colon after the header - which is most of
+        // them - made the parse quadratic: on a phone a 500 KB route took
+        // minutes and reached the rider as a spinner that never stopped.
+        //
+        // Asserted as a ratio between two sizes rather than a wall clock,
+        // because the absolute time says more about the machine than the
+        // code: a desktop JVM's indexOf is vectorised enough to hide the
+        // defect entirely, while ART is not. Doubling the input doubles a
+        // linear parse and quadruples a quadratic one, on any machine.
+        repeat(3) { GpxParser.parseGpx(longGpx(4000), id = "warmup") }
+
+        fun timeOf(points: Int): Double {
+            val gpx = longGpx(points)
+            val started = TimeSource.Monotonic.markNow()
+            assertNotNull(GpxParser.parseGpx(gpx, id = "long"))
+            return started.elapsedNow().inWholeMicroseconds.toDouble()
+        }
+
+        // Best of three each way: a single run is at the mercy of a GC pause.
+        val small = (1..3).minOf { timeOf(4000) }
+        val large = (1..3).minOf { timeOf(16000) }
+
+        // Four times the points. Linear predicts ~4x, quadratic ~16x. The
+        // bound sits well clear of both so ordinary noise cannot trip it.
+        val ratio = large / small
+        assertTrue(ratio < 8.0, "16000 points took ${ratio}x the time of 4000; quadratic parsing is back")
+    }
+
+    @Test
+    fun `keeps every point of a large file`() {
+        val route = assertNotNull(GpxParser.parseGpx(longGpx(6000), id = "long"))
+        assertEquals(6000, route.points.size)
+    }
+
+    @Test
+    fun `finds elevation only within its own point`() {
+        // Bounding findTag must not let a point borrow the next point's <ele>.
+        val gpx = "<gpx><trk><trkseg>" +
+            "<trkpt lat='60.1' lon='24.9'></trkpt>" +
+            "<trkpt lat='60.102' lon='24.9'><ele>250</ele></trkpt>" +
+            "</trkseg></trk></gpx>"
+
+        val route = assertNotNull(GpxParser.parseGpx(gpx, id = "borrow"))
+        assertEquals(2, route.points.size)
+        assertEquals(0.0, route.points[0].elevationMeters, "must not take the next point's elevation")
+        assertEquals(250.0, route.points[1].elevationMeters)
     }
 }
