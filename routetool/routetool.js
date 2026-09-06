@@ -1,7 +1,10 @@
 /* ============================================================
    Indoor Bike - route publishing tool
 
-   Turns a GPX into the JSON a community repository publishes.
+   Turns a GPX into the JSON a community repository publishes,
+   and keeps hold of the file being built so routes can be added
+   to it one at a time without the earlier ones being lost.
+
    Everything runs in the tab: the file is read with FileReader
    and the statistics come from assets/routelib.js, which is the
    JavaScript port of the same maths the app runs. The only
@@ -39,6 +42,24 @@
    */
   const NOMINATIM_MIN_INTERVAL_MS = 1500;
   let lastLookupAt = 0;
+
+  /**
+   * Where the GPX files are expected to sit. The app reads any gpxUrl that
+   * does not start with https:// as relative to the bundle file, so a bare
+   * folder like this is the portable form: it keeps working when the
+   * repository moves host, which an absolute URL does not.
+   *
+   * Most repositories keep the GPX beside the listing that points at them,
+   * hence a folder rather than a domain.
+   */
+  const DEFAULT_GPX_FOLDER = 'gpx_files/';
+
+  /**
+   * The folder the last route actually used, so a maintainer who publishes to
+   * somewhere else types it once rather than once per route. Same reasoning as
+   * attribution surviving a clear: it describes the repository, not the route.
+   */
+  let gpxFolder = DEFAULT_GPX_FOLDER;
 
   /** Everything the page knows about the loaded file. */
   const state = {
@@ -93,8 +114,8 @@
       state.track = R.buildTrack(parsed.points);
 
       drop.classList.add('is-loaded');
-      $('.drop-title').textContent = file.name;
-      $('.drop-sub').textContent =
+      drop.querySelector('.drop-title').textContent = file.name;
+      drop.querySelector('.drop-sub').textContent =
         `${parsed.points.length.toLocaleString()} points · ${formatBytes(buffer.byteLength)} · click to replace`;
 
       prefill(parsed, file.name);
@@ -132,7 +153,7 @@
     if (!$('#f-description').value && parsed.description) {
       $('#f-description').value = parsed.description;
     }
-    if (!$('#f-gpxurl').value) $('#f-gpxurl').value = `routes/${slug(base)}.gpx`;
+    if (!$('#f-gpxurl').value) $('#f-gpxurl').value = `${gpxFolder}${slug(base)}.gpx`;
   }
 
   function slug(text) {
@@ -318,8 +339,8 @@
   function render() {
     if (!state.track) return;
     const entry = buildEntry();
-    drawShape(entry.shape);
-    drawProfile(entry.profile);
+    drawShape($('#shape-canvas'), entry.shape);
+    drawProfile($('#profile-canvas'), entry.profile);
     renderStats(entry);
     renderHistogram(entry);
     renderValidation(entry);
@@ -509,25 +530,34 @@
   }
 
   // ── Drawing ────────────────────────────────────────────────────────────
-  function drawProfile(profile) {
-    const canvas = $('#profile-canvas');
+  /*
+   * Both take the canvas rather than looking one up, because the app preview
+   * draws the same two pictures once per route card. `opts.width`/`.height`
+   * are the logical size: a preview canvas is oversampled for a dense screen
+   * and its context pre-scaled, so canvas.width is not the size to draw at.
+   */
+  function drawProfile(canvas, profile, opts) {
+    const o = Object.assign(
+      { fill: '#455561', stroke: '#F2F4F7', lineWidth: 2, pad: 4 }, opts || {});
+    const w = o.width || canvas.width;
+    const h = o.height || canvas.height;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, w, h);
     if (!profile || profile.length < 2) return;
 
     const low = Math.min(...profile);
     const high = Math.max(...profile);
     const span = Math.max(high - low, R.PROFILE_MIN_SPAN_METERS);
-    const stepX = canvas.width / (profile.length - 1);
-    const y = (v) => canvas.height - ((v - low) / span) * (canvas.height - 8) - 4;
+    const stepX = w / (profile.length - 1);
+    const y = (v) => h - ((v - low) / span) * (h - o.pad * 2) - o.pad;
 
     ctx.beginPath();
     ctx.moveTo(0, y(profile[0]));
     profile.forEach((v, i) => ctx.lineTo(i * stepX, y(v)));
-    ctx.lineTo(canvas.width, canvas.height);
-    ctx.lineTo(0, canvas.height);
+    ctx.lineTo(w, h);
+    ctx.lineTo(0, h);
     ctx.closePath();
-    ctx.fillStyle = '#455561';
+    ctx.fillStyle = o.fill;
     ctx.fill();
 
     ctx.beginPath();
@@ -535,16 +565,20 @@
       const px = i * stepX;
       if (i === 0) ctx.moveTo(px, y(v)); else ctx.lineTo(px, y(v));
     });
-    ctx.strokeStyle = '#F2F4F7';
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = o.stroke;
+    ctx.lineWidth = o.lineWidth;
     ctx.lineJoin = 'round';
     ctx.stroke();
   }
 
-  function drawShape(encoded) {
-    const canvas = $('#shape-canvas');
+  function drawShape(canvas, encoded, opts) {
+    const o = Object.assign(
+      { stroke: '#C5CAD6', dot: '#F2F4F7', lineWidth: 2.5, inset: 10, dotRadius: 4 },
+      opts || {});
+    const w = o.width || canvas.width;
+    const h = o.height || canvas.height;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, w, h);
     const points = R.decodePolyline(encoded);
     if (points.length < 2) return;
 
@@ -558,30 +592,46 @@
     const spanLat = Math.max(maxLat - minLat, 1e-9);
     const spanLon = Math.max((maxLon - minLon) * squeeze, 1e-9);
 
-    const inset = 10;
     const scale = Math.min(
-      (canvas.width - inset * 2) / spanLon,
-      (canvas.height - inset * 2) / spanLat
+      (w - o.inset * 2) / spanLon,
+      (h - o.inset * 2) / spanLat
     );
-    const offsetX = (canvas.width - spanLon * scale) / 2;
-    const offsetY = (canvas.height - spanLat * scale) / 2;
+    const offsetX = (w - spanLon * scale) / 2;
+    const offsetY = (h - spanLat * scale) / 2;
     const px = (lon) => offsetX + (lon - minLon) * squeeze * scale;
-    const py = (lat) => canvas.height - offsetY - (lat - minLat) * scale;
+    const py = (lat) => h - offsetY - (lat - minLat) * scale;
 
     ctx.beginPath();
     points.forEach(([lat, lon], i) => {
       if (i === 0) ctx.moveTo(px(lon), py(lat)); else ctx.lineTo(px(lon), py(lat));
     });
-    ctx.strokeStyle = '#C5CAD6';
-    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = o.stroke;
+    ctx.lineWidth = o.lineWidth;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
     ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(px(points[0][1]), py(points[0][0]), 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#F2F4F7';
+    ctx.arc(px(points[0][1]), py(points[0][0]), o.dotRadius, 0, Math.PI * 2);
+    ctx.fillStyle = o.dot;
     ctx.fill();
+  }
+
+  /**
+   * A canvas sized in CSS pixels but backed at the screen's density, with the
+   * context already scaled so everything after this can draw in CSS pixels.
+   * Capped at 3x: past that the memory costs more than the sharpness is worth.
+   */
+  function hiDpiCanvas(w, h, className) {
+    const ratio = Math.min(window.devicePixelRatio || 1, 3);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * ratio);
+    canvas.height = Math.round(h * ratio);
+    canvas.style.width = `${w}px`;
+    canvas.style.height = `${h}px`;
+    if (className) canvas.className = className;
+    canvas.getContext('2d').setTransform(ratio, 0, 0, ratio, 0, 0);
+    return canvas;
   }
 
   // ── Copy / download ────────────────────────────────────────────────────
@@ -626,5 +676,564 @@
     return isFinite(v) ? v : 0;
   }
 
+
+  // ── The file being built ───────────────────────────────────────────────
+  /*
+   * A repository's routes.json is a plain JSON array of entries. The tool used
+   * to hand over one entry and leave the merging to the maintainer, which is
+   * the step where a route gets lost: paste in the wrong place, or replace the
+   * file with a single-entry one, and the other routes are gone from every
+   * rider's app at the next refresh. Holding the array here means the download
+   * is always the whole file, existing routes included.
+   */
+  const BUNDLE_KEY = 'indoorbike.routetool.bundle.v1';
+
+  const bundle = {
+    open: false,
+    /** Where it came from, shown so a maintainer can tell one file from another. */
+    origin: '',
+    entries: [],
+  };
+
+  const bundleDrop = $('#bundle-drop');
+  const bundleFileInput = $('#bundle-file');
+
+  bundleDrop.addEventListener('click', () => bundleFileInput.click());
+  bundleDrop.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bundleFileInput.click(); }
+  });
+  bundleDrop.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    bundleDrop.classList.add('is-over');
+  });
+  bundleDrop.addEventListener('dragleave', () => bundleDrop.classList.remove('is-over'));
+  bundleDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    bundleDrop.classList.remove('is-over');
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file) loadBundleFile(file);
+  });
+  bundleFileInput.addEventListener('change', () => {
+    const file = bundleFileInput.files && bundleFileInput.files[0];
+    if (file) loadBundleFile(file);
+  });
+
+  $('#bundle-new').addEventListener('click', () => {
+    openBundle([], 'New file', '');
+  });
+
+  /*
+   * Held back after Start over so it can be undone. The editor settled this
+   * question already: a destructive action gets an undo rather than a blocking
+   * confirm(), because a modal interrupts everyone to protect the one person
+   * who pressed it by accident.
+   */
+  let cleared = null;
+
+  $('#bundle-reset').addEventListener('click', () => {
+    cleared = { origin: bundle.origin, entries: bundle.entries };
+    bundle.open = false;
+    bundle.origin = '';
+    bundle.entries = [];
+    forget();
+    $('#bundle-start').hidden = false;
+    $('#bundle-open').hidden = true;
+    bundleDrop.classList.remove('is-loaded');
+    bundleFileInput.value = '';
+    // The list is hidden rather than gone, and leaving last week's routes
+    // sitting in it means Undo has something to disagree with.
+    renderBundle();
+    const count = cleared.entries.length;
+    setBundleNotice(
+      count
+        ? `Cleared ${count} route${count === 1 ? '' : 's'} from this page. Nothing you have already published changes.`
+        : '',
+      false,
+      count ? { label: 'Undo', onClick: undoClear } : null);
+  });
+
+  function undoClear() {
+    if (!cleared) return;
+    openBundle(cleared.entries, cleared.origin, '');
+    cleared = null;
+  }
+
+  $('#bundle-download').addEventListener('click', () => {
+    download('routes.json', JSON.stringify(bundle.entries, null, 2));
+  });
+
+  $('#add-to-bundle').addEventListener('click', addCurrentEntry);
+
+  async function loadBundleFile(file) {
+    setBundleNotice('', false);
+    try {
+      const text = await file.text();
+      const result = parseBundle(text);
+      openBundle(result.entries, file.name, result.note);
+    } catch (err) {
+      setBundleNotice(err.message || String(err), true);
+    }
+  }
+
+  /**
+   * Read a routes.json. Deliberately lenient about what is inside each entry -
+   * the app is the authority on that and the preview shows its verdict - but
+   * strict about the shape of the file, because silently treating a manifest
+   * or a single entry as a bundle would throw away whatever was really in it.
+   */
+  function parseBundle(text) {
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch (err) {
+      throw new Error(`That file is not valid JSON: ${err.message}`);
+    }
+    if (parsed && !Array.isArray(parsed) && typeof parsed === 'object' &&
+        (parsed.routeBundles || parsed.workouts || parsed.schemaVersion)) {
+      throw new Error(
+        'That looks like a manifest, not a route bundle. The bundle is the file ' +
+        'your manifest’s routeBundles points at - usually routes.json.');
+    }
+    if (!Array.isArray(parsed)) {
+      if (parsed && typeof parsed === 'object' && parsed.gpxUrl) {
+        // A single downloaded entry. Wrapping it is what they meant.
+        return { entries: [parsed], note: '' };
+      }
+      throw new Error(
+        'A route bundle is a JSON array of route entries. This file is a ' +
+        `${parsed === null ? 'null' : typeof parsed}.`);
+    }
+    const entries = parsed.filter((e) => e && typeof e === 'object' && !Array.isArray(e));
+    const dropped = parsed.length - entries.length;
+    return {
+      entries,
+      note: dropped
+        ? `${dropped} item${dropped === 1 ? '' : 's'} in that file ${dropped === 1 ? 'was' : 'were'} not a route entry and ${dropped === 1 ? 'was' : 'were'} left out.`
+        : '',
+    };
+  }
+
+  function openBundle(entries, origin, note) {
+    bundle.open = true;
+    bundle.origin = origin || '';
+    bundle.entries = entries;
+    $('#bundle-start').hidden = true;
+    $('#bundle-open').hidden = false;
+    setBundleNotice(note || '', false);
+    renderBundle();
+    remember();
+  }
+
+  /**
+   * One box, two kinds of message: a file that could not be read, and a file
+   * that was read with something left out. Only the first is a failure, and
+   * dressing the second in red would send a maintainer looking for a fault
+   * they do not have.
+   */
+  function setBundleNotice(message, isError, action) {
+    const box = $('#bundle-notice');
+    box.innerHTML = '';
+    box.hidden = !message;
+    box.classList.toggle('is-error', !!isError);
+    if (!message) return;
+    const text = document.createElement('span');
+    text.textContent = message;
+    box.appendChild(text);
+    if (action) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'mini-btn';
+      button.textContent = action.label;
+      button.addEventListener('click', action.onClick);
+      box.appendChild(button);
+    }
+  }
+
+  function renderBundle() {
+    const count = bundle.entries.length;
+    $('#bundle-count').textContent = count === 0
+      ? 'No routes yet'
+      : `${count} route${count === 1 ? '' : 's'}`;
+    $('#bundle-origin').textContent = bundle.origin ? `from ${bundle.origin}` : '';
+    $('#bundle-empty').hidden = count > 0;
+    $('#bundle-download').disabled = count === 0;
+    $('#bundle-preview').disabled = count === 0;
+
+    const list = $('#bundle-list');
+    list.innerHTML = '';
+    bundle.entries.forEach((entry, index) => {
+      const row = document.createElement('li');
+      row.className = 'bundle-row';
+
+      const main = document.createElement('div');
+      main.className = 'bundle-row-main';
+      const name = document.createElement('strong');
+      name.textContent = entry.name || '(unnamed)';
+      const meta = document.createElement('span');
+      const bits = [entry.id || '(no id)'];
+      if (entry.distanceMeters > 0) bits.push(R.formatDistance(entry.distanceMeters));
+      if (entry.ascentMeters > 0) bits.push(`${Math.round(entry.ascentMeters)} m up`);
+      meta.textContent = bits.join(' · ');
+      main.append(name, meta);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'mini-btn';
+      remove.textContent = 'Remove';
+      remove.addEventListener('click', () => {
+        bundle.entries.splice(index, 1);
+        renderBundle();
+        remember();
+      });
+
+      row.append(main, remove);
+      list.appendChild(row);
+    });
+  }
+
+  function addCurrentEntry() {
+    const json = $('#entry-json').textContent;
+    if (!json) return;
+    const entry = JSON.parse(json);
+    if (!entry.id || !entry.gpxUrl || !entry.name || entry.name === 'Untitled route') {
+      setAddStatus('Fill in the id, the name and the GPX URL first - the app drops an entry missing any of them.', true);
+      return;
+    }
+    // Starting the file implicitly is kinder than refusing: someone who went
+    // straight to the GPX still meant to end up with a routes.json.
+    if (!bundle.open) openBundle([], 'New file', '');
+
+    const at = bundle.entries.findIndex((e) => e && e.id === entry.id);
+    if (at >= 0) {
+      bundle.entries[at] = entry;
+      setAddStatus(`Replaced "${entry.name}" - an entry with the id ${entry.id} was already in the file.`, false);
+    } else {
+      bundle.entries.push(entry);
+      setAddStatus(`Added "${entry.name}". The file now has ${bundle.entries.length} route${bundle.entries.length === 1 ? '' : 's'}.`, false);
+    }
+    const lastSlash = entry.gpxUrl.lastIndexOf('/');
+    gpxFolder = lastSlash >= 0 ? entry.gpxUrl.slice(0, lastSlash + 1) : DEFAULT_GPX_FOLDER;
+
+    renderBundle();
+    remember();
+    clearRoute();
+    $('#bundle').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function setAddStatus(message, isError) {
+    const box = $('#add-status');
+    box.textContent = message;
+    box.hidden = !message;
+    box.classList.toggle('is-error', !!isError);
+  }
+
+  /**
+   * Back to an empty step 1, ready for the next GPX. The source, the licence
+   * and the rider figures survive on purpose: they are properties of the
+   * repository and its preview, not of the route, and retyping them per route
+   * is how a licence line ends up missing from one card in ten. "Modified" is
+   * the exception - it is a claim about this track, and the elevation backfill
+   * sets it, so carrying it over would put it on a route that never was.
+   */
+  function clearRoute() {
+    state.fileName = '';
+    state.fileBytes = 0;
+    state.sha256 = '';
+    state.raw = null;
+    state.original = null;
+    state.track = null;
+    state.hasElevation = false;
+    state.filled = false;
+
+    ['#f-id', '#f-name', '#f-description', '#f-place', '#f-tags', '#f-gpxurl']
+      .forEach((sel) => { $(sel).value = ''; });
+    $('#f-version').value = '1';
+    $('#f-attr-modified').checked = false;
+    setPlaceStatus('', false);
+
+    drop.classList.remove('is-loaded');
+    drop.querySelector('.drop-title').textContent = 'Drop a .gpx file here';
+    drop.querySelector('.drop-sub').textContent = 'or click to choose one';
+    fileInput.value = '';
+    showError('');
+    $('#ele-warning').hidden = true;
+    $('#ele-fill').checked = false;
+    $('#ele-status').hidden = true;
+    $('#preview-step').hidden = true;
+    $('#details-step').hidden = true;
+    $('#output-step').hidden = true;
+    $('#entry-json').textContent = '';
+  }
+
+  // ── Remembering it across a reload ─────────────────────────────────────
+  /*
+   * Building a repository is not a sitting: routes get added over an evening,
+   * with tab reloads in between. This is the whole file, so it stays in the
+   * browser and never leaves it.
+   */
+  function remember() {
+    try {
+      window.localStorage.setItem(BUNDLE_KEY, JSON.stringify({
+        origin: bundle.origin,
+        entries: bundle.entries,
+      }));
+    } catch (_) {
+      // Private windows and full quotas both land here. The file is still in
+      // the page, and the download still works, so this is worth a word rather
+      // than an interruption.
+      $('#bundle-origin').textContent =
+        `${bundle.origin ? `from ${bundle.origin} · ` : ''}not saved in this browser - download before closing the tab`;
+    }
+  }
+
+  function forget() {
+    try { window.localStorage.removeItem(BUNDLE_KEY); } catch (_) { /* nothing to do */ }
+  }
+
+  function restore() {
+    let saved;
+    try {
+      saved = window.localStorage.getItem(BUNDLE_KEY);
+    } catch (_) {
+      return;
+    }
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (!parsed || !Array.isArray(parsed.entries)) return;
+      openBundle(parsed.entries, parsed.origin || '', '');
+    } catch (_) {
+      forget();
+    }
+  }
+
+  // ── The app preview ────────────────────────────────────────────────────
+  /*
+   * The route browser as the app draws it, from the same entries and the same
+   * rules. Faithfulness is the point: a maintainer cannot otherwise see their
+   * card until it is live in front of riders, and by then a name that wraps to
+   * three lines or a route the app quietly drops has already shipped.
+   */
+  const ROUTE_SCHEMA_MAX_SUPPORTED = 1;
+  const PHONE_WIDTH = 360;
+  const CARD_INNER = PHONE_WIDTH - 16 * 2 - 16 * 2;
+
+  let previewTag = 'All';
+
+  const dialog = $('#preview-dialog');
+  $('#bundle-preview').addEventListener('click', () => {
+    previewTag = 'All';
+    renderPreview();
+    if (typeof dialog.showModal === 'function') dialog.showModal(); else dialog.setAttribute('open', '');
+  });
+  $('#preview-close').addEventListener('click', closePreview);
+  // A click on the backdrop lands on the dialog itself, never on its content.
+  dialog.addEventListener('click', (e) => { if (e.target === dialog) closePreview(); });
+
+  function closePreview() {
+    if (typeof dialog.close === 'function') dialog.close(); else dialog.removeAttribute('open');
+  }
+
+  /** The app's own two tests, so the preview drops exactly what the app drops. */
+  function isSupported(entry) {
+    const version = entry.schemaVersion;
+    return !(typeof version === 'number') || version <= ROUTE_SCHEMA_MAX_SUPPORTED;
+  }
+
+  function isUsable(entry) {
+    return !!(entry.id && String(entry.id).trim()) &&
+      !!(entry.name && String(entry.name).trim()) &&
+      !!(entry.gpxUrl && String(entry.gpxUrl).trim()) &&
+      entry.distanceMeters > 0;
+  }
+
+  function renderPreview() {
+    const screen = $('#phone-screen');
+    screen.innerHTML = '';
+    $('#preview-note').innerHTML = '';
+
+    const shown = bundle.entries.filter((e) => isSupported(e) && isUsable(e));
+    const dropped = bundle.entries.length - shown.length;
+
+    screen.appendChild(previewHeader());
+
+    const tags = ['All'].concat(
+      Array.from(new Set(shown.flatMap((e) => (Array.isArray(e.tags) ? e.tags : [])))).sort()
+    );
+    if (!tags.includes(previewTag)) previewTag = 'All';
+    if (tags.length > 1) screen.appendChild(previewChips(tags));
+
+    const list = document.createElement('div');
+    list.className = 'rp-list';
+    const visible = previewTag === 'All'
+      ? shown
+      : shown.filter((e) => Array.isArray(e.tags) && e.tags.includes(previewTag));
+
+    if (!visible.length) {
+      const empty = document.createElement('p');
+      empty.className = 'rp-empty';
+      empty.textContent = shown.length
+        ? 'No routes with that tag.'
+        : 'This repository has no routes yet.';
+      list.appendChild(empty);
+    } else {
+      visible.forEach((entry) => list.appendChild(previewCard(entry)));
+    }
+    screen.appendChild(list);
+
+    // The app drops a bad entry without a word to the rider. The maintainer is
+    // the one person who can fix it, so they are the one person who is told -
+    // outside the phone, because this is the tool speaking, not the app.
+    if (dropped) {
+      const warn = document.createElement('p');
+      warn.className = 'rp-dropped';
+      warn.textContent =
+        `${dropped} entr${dropped === 1 ? 'y is' : 'ies are'} missing from this listing: ` +
+        'the app skips any route without an id, a name, a GPX URL and a distance, ' +
+        'or written against a newer schema than it understands.';
+      $('#preview-note').appendChild(warn);
+    }
+  }
+
+  function previewHeader() {
+    const head = document.createElement('div');
+    head.className = 'rp-head';
+    const eyebrow = document.createElement('p');
+    eyebrow.className = 'rp-eyebrow';
+    eyebrow.textContent = 'Community';
+    const title = document.createElement('h3');
+    title.className = 'rp-title';
+    title.textContent = repoName();
+    head.append(eyebrow, title);
+    return head;
+  }
+
+  /** The name the app shows is the manifest's, so take it from theirs if given. */
+  function repoName() {
+    const raw = $('#manifest-in').value.trim();
+    if (raw) {
+      try {
+        const manifest = JSON.parse(raw);
+        if (manifest && typeof manifest.name === 'string' && manifest.name.trim()) {
+          return manifest.name.trim();
+        }
+      } catch (_) { /* the manifest block already says it is invalid */ }
+    }
+    return 'Your repository';
+  }
+
+  function previewChips(tags) {
+    const row = document.createElement('div');
+    row.className = 'rp-chips';
+    tags.forEach((tag) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'rp-chip' + (tag === previewTag ? ' is-on' : '');
+      chip.textContent = tag;
+      chip.addEventListener('click', () => { previewTag = tag; renderPreview(); });
+      row.appendChild(chip);
+    });
+    return row;
+  }
+
+  function previewCard(entry) {
+    const card = document.createElement('article');
+    card.className = 'rp-card';
+
+    const top = document.createElement('div');
+    top.className = 'rp-card-top';
+
+    const thumb = document.createElement('div');
+    thumb.className = 'rp-thumb';
+    if (entry.shape) {
+      const canvas = hiDpiCanvas(56, 56);
+      drawShape(canvas, entry.shape, {
+        width: 56, height: 56, stroke: '#9AA1B0', lineWidth: 1.6,
+        inset: 4, dotRadius: 2.5,
+      });
+      thumb.appendChild(canvas);
+    }
+    top.appendChild(thumb);
+
+    const titles = document.createElement('div');
+    titles.className = 'rp-card-titles';
+    const name = document.createElement('strong');
+    name.textContent = entry.name;
+    titles.appendChild(name);
+    if (entry.place && String(entry.place).trim()) {
+      const place = document.createElement('span');
+      place.textContent = entry.place;
+      titles.appendChild(place);
+    }
+    top.appendChild(titles);
+
+    const add = document.createElement('span');
+    add.className = 'rp-add';
+    add.innerHTML =
+      '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">' +
+      '<path d="M6.5 19a4.5 4.5 0 0 1-.4-8.98 6 6 0 0 1 11.66-1.2A4.25 4.25 0 0 1 17.5 19" ' +
+      'fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>' +
+      '<path d="M12 11v7m0 0-2.6-2.6M12 18l2.6-2.6" fill="none" stroke="currentColor" ' +
+      'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    top.appendChild(add);
+    card.appendChild(top);
+
+    if (Array.isArray(entry.profile) && entry.profile.length >= 2) {
+      const spark = hiDpiCanvas(CARD_INNER, 44, 'rp-spark');
+      drawProfile(spark, entry.profile, {
+        width: CARD_INNER, height: 44, pad: 0, lineWidth: 1.8,
+        fill: 'rgba(242, 244, 247, 0.18)', stroke: '#F2F4F7',
+      });
+      card.appendChild(spark);
+    }
+
+    const stats = document.createElement('div');
+    stats.className = 'rp-stats';
+    const seconds = R.estimateSeconds(entry, num('#ftp'), num('#weight'), num('#bike'));
+    [
+      ['Distance', R.formatDistance(entry.distanceMeters)],
+      ['Climbing', `${Math.round(entry.ascentMeters || 0)} m`],
+      ['Time', R.formatDuration(seconds)],
+    ].forEach(([label, value]) => {
+      const stat = document.createElement('div');
+      const l = document.createElement('span');
+      l.className = 'rp-stat-label';
+      l.textContent = label;
+      const v = document.createElement('span');
+      v.className = 'rp-stat-value';
+      v.textContent = value;
+      stat.append(l, v);
+      stats.appendChild(stat);
+    });
+    card.appendChild(stats);
+
+    if (entry.description && String(entry.description).trim()) {
+      const description = document.createElement('p');
+      description.className = 'rp-desc';
+      description.textContent = entry.description;
+      card.appendChild(description);
+    }
+
+    const credit = creditLine(entry);
+    if (credit) {
+      const line = document.createElement('p');
+      line.className = 'rp-credit';
+      line.textContent = credit;
+      card.appendChild(line);
+    }
+    return card;
+  }
+
+  /** The same fallback chain the card uses: source, licence, or nothing. */
+  function creditLine(entry) {
+    const attribution = entry.attribution;
+    if (!attribution) return null;
+    const source = (attribution.source || '').trim();
+    const licence = (attribution.licence || '').trim();
+    if (source && licence) return `${source} (${licence})`;
+    return source || licence || null;
+  }
+
   renderManifest();
+  restore();
 })();

@@ -31,11 +31,63 @@
 
   <main class="tool-main">
     <p class="eyebrow">Route tool</p>
-    <h1 class="page-title">Drop a GPX. Copy the JSON.</h1>
+    <h1 class="page-title">Drop a GPX. Build the file.</h1>
     <p class="page-lead">
       Publishing a route is three files that point at each other. This tool
-      writes the middle one, and tells you the single line to add to the last.
+      writes the middle one - a route at a time, onto the file you already
+      publish - and tells you the single line to add to the last.
     </p>
+
+
+    <!-- ── The file being built ────────────────────────────────────── -->
+    <!--
+      Deliberately not a numbered step. The numbered flow below describes
+      adding one route; this is the file those routes land in, and it stays
+      on screen the whole time because it is the thing being built.
+    -->
+    <section class="bundle" id="bundle" aria-labelledby="bundle-title">
+      <h2 class="bundle-title" id="bundle-title">The file you are building</h2>
+
+      <div class="bundle-start" id="bundle-start">
+        <p class="bundle-lead">
+          Start from the <code>routes.json</code> you already publish and this
+          adds to it, keeping every route already in it. Or start an empty one
+          and build it up a route at a time.
+        </p>
+        <div class="bundle-choices">
+          <div id="bundle-drop" class="dropzone dropzone-sm" tabindex="0" role="button"
+               aria-label="Choose your existing routes.json, or drop one here">
+            <p class="drop-title">Drop your routes.json</p>
+            <p class="drop-sub">or click to choose it</p>
+            <input type="file" id="bundle-file" accept=".json,application/json" hidden>
+          </div>
+          <div class="bundle-or" aria-hidden="true">or</div>
+          <button type="button" class="btn btn-secondary bundle-new" id="bundle-new">
+            Start a new repository
+          </button>
+        </div>
+      </div>
+
+      <div id="bundle-notice" class="status" hidden></div>
+
+      <div id="bundle-open" hidden>
+        <div class="bundle-head">
+          <div class="bundle-meta">
+            <strong id="bundle-count">No routes yet</strong>
+            <span id="bundle-origin"></span>
+          </div>
+          <div class="output-actions">
+            <button type="button" class="btn btn-secondary" id="bundle-preview">Preview</button>
+            <button type="button" class="btn btn-primary" id="bundle-download">Download routes.json</button>
+            <button type="button" class="mini-btn" id="bundle-reset">Start over</button>
+          </div>
+        </div>
+        <p class="bundle-empty" id="bundle-empty">
+          Nothing in it yet. Drop a GPX below, describe it, and add it here.
+        </p>
+        <ul class="bundle-list" id="bundle-list"></ul>
+      </div>
+    </section>
 
     <!-- ── The shape of the job, before any of the detail ──────────── -->
     <ol class="flow" aria-label="How publishing a route works">
@@ -186,12 +238,16 @@
         </label>
         <label class="field field-wide">
           <span>GPX URL <em>required</em></span>
-          <input type="text" id="f-gpxurl" placeholder="routes/ventoux-bedoin.gpx">
+          <input type="text" id="f-gpxurl" placeholder="gpx_files/ventoux-bedoin.gpx">
           <small>
-            Where you will host this GPX. A path relative to the route bundle
-            is the portable form and survives a host change; an absolute
-            <code>https://</code> URL also works. The app refuses plain HTTP
-            and does not follow redirects, so give it the direct file.
+            Where you will host this GPX. Anything that does not start with
+            <code>https://</code> is read as a path relative to your route
+            bundle, which is why this is filled in as
+            <code>gpx_files/</code> - most repositories keep the GPX beside the
+            listing, and a relative path keeps working when the repository
+            moves host. Put an absolute <code>https://</code> URL here instead
+            if the files live somewhere else. The app refuses plain HTTP and
+            does not follow redirects, so give it the direct file.
           </small>
         </label>
         <label class="field">
@@ -248,15 +304,19 @@
         <div class="output-head">
           <h3>The route entry</h3>
           <div class="output-actions">
+            <button class="btn btn-primary" id="add-to-bundle" type="button">Add to the file</button>
             <button class="btn btn-secondary" id="copy-entry" type="button">Copy</button>
             <button class="btn btn-secondary" id="download-entry" type="button">Download</button>
           </div>
         </div>
         <p class="step-lead">
-          Add this object to your route bundle file - the JSON array your
-          manifest points at. If this is your first route, the whole file is
-          just <code>[</code> this object <code>]</code>.
+          <strong>Add to the file</strong> puts this route in the
+          <code>routes.json</code> above and clears the form for the next one;
+          a route whose id is already in there replaces it rather than
+          appearing twice. Copy and Download hand you this one entry on its own
+          if you would rather paste it yourself.
         </p>
+        <div id="add-status" class="status" hidden></div>
         <pre class="output-json" id="entry-json"></pre>
       </div>
 
@@ -321,6 +381,27 @@
     </div>
     <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
   </footer>
+
+
+  <!--
+    The listing as the app draws it. A maintainer publishing a card cannot see
+    what the card looks like until it is live and someone opens their repo;
+    this is the same data through the same rules, so a missing place or an
+    unreadable name shows up here rather than in a rider's hands.
+  -->
+  <dialog class="preview-dialog" id="preview-dialog" aria-labelledby="preview-heading">
+    <div class="preview-dialog-head">
+      <div>
+        <h2 id="preview-heading">In the app</h2>
+        <p>What a rider sees when they open this repository's routes.</p>
+      </div>
+      <button type="button" class="mini-btn" id="preview-close">Close</button>
+    </div>
+    <div class="phone">
+      <div class="phone-screen" id="phone-screen"></div>
+    </div>
+    <div id="preview-note"></div>
+  </dialog>
 
   <script src="../assets/routelib.js"></script>
   <script src="routetool.js"></script>
