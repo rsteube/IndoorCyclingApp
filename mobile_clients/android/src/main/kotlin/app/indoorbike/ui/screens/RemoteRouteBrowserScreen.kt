@@ -71,6 +71,7 @@ import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.RouteProfileSpark
 import app.indoorbike.ui.components.RouteShapeThumb
+import app.indoorbike.ui.components.SegmentedSwitch
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -96,6 +97,7 @@ import kotlinx.coroutines.launch
 fun RemoteRouteBrowserScreen(
     manifestUrl: String,
     onBack: () -> Unit,
+    onBrowseWorkouts: () -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
@@ -147,6 +149,19 @@ fun RemoteRouteBrowserScreen(
                 IconBtn(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onClick = onBack)
             },
         )
+
+        // The other half of the same repository. See the note in
+        // RemoteRepoBrowserScreen for why this reads the manifest rather than
+        // the registry.
+        val loadedManifest = (fetchState as? RouteFetchState.Loaded)?.manifest
+        if (loadedManifest != null && loadedManifest.bundles.isNotEmpty()) {
+            SegmentedSwitch(
+                options = listOf(WORKOUTS_VIEW, ROUTES_VIEW),
+                selected = ROUTES_VIEW,
+                onSelect = { onBrowseWorkouts() },
+                modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s2)
+            )
+        }
 
         when (val state = fetchState) {
             is RouteFetchState.Loading -> CentredMessage {

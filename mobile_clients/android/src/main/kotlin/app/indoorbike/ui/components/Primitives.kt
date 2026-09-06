@@ -17,6 +17,7 @@ package app.indoorbike.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +42,7 @@ import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
@@ -881,6 +883,61 @@ data class TabItem(val id: String, val icon: ImageVector, val label: String)
  * bar never sits under the gesture handle and never drifts away from the edge
  * on a device that reserves nothing.
  */
+
+/**
+ * Two or three mutually exclusive views of one screen.
+ *
+ * Deliberately the bottom [TabBar]'s language - Bg1 track, the active segment
+ * filled Fg1 - because it is the same kind of choice: which view of one thing
+ * you are looking at. That is also why it is not a row of [FilterChip]s, which
+ * sit directly underneath it on the repository browsers and mean something
+ * quite different: a filter narrows a list, this changes which list.
+ */
+@Composable
+fun SegmentedSwitch(
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(CircleShape)
+            .background(CadenceColors.Bg1)
+            .padding(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        options.forEach { option ->
+            val active = option == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clip(CircleShape)
+                    .background(if (active) CadenceColors.Fg1 else Color.Transparent)
+                    // selectable rather than clickable: it tells a screen
+                    // reader which segment is chosen, which "button" does not.
+                    .selectable(
+                        selected = active,
+                        role = Role.Tab,
+                        onClick = { if (!active) onSelect(option) }
+                    )
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = option,
+                    style = CadenceType.small.copy(
+                        fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold
+                    ),
+                    color = if (active) CadenceColors.OnBrand else CadenceColors.Fg2,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun TabBar(
     active: String,

@@ -73,6 +73,7 @@ import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.SegmentedSwitch
 import app.indoorbike.ui.components.ZoneBar
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -96,6 +97,7 @@ import kotlinx.coroutines.launch
 fun RemoteRepoBrowserScreen(
     manifestUrl: String,
     onBack: () -> Unit,
+    onBrowseRoutes: () -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -195,6 +197,22 @@ fun RemoteRepoBrowserScreen(
             }
         )
 
+        // A repository may carry workouts, routes, or both. When this one also
+        // publishes routes, they are reachable from here rather than only by
+        // going back to the library and coming in through the other button.
+        // Shown on the manifest's own word, not the registry's `content`: a
+        // repository opened by URL or QR was never in the registry, and for a
+        // routes-only one this switch is all that stands between the rider and
+        // a screen that says there are no workouts and offers nothing else.
+        if (loadedManifest != null && loadedManifest.routeBundles.isNotEmpty()) {
+            SegmentedSwitch(
+                options = listOf(WORKOUTS_VIEW, ROUTES_VIEW),
+                selected = WORKOUTS_VIEW,
+                onSelect = { onBrowseRoutes() },
+                modifier = Modifier.padding(horizontal = Spacing.s4, vertical = Spacing.s2)
+            )
+        }
+
         when (val state = fetchState) {
             FetchState.Loading -> LoadingState()
             is FetchState.Failed -> ErrorState(
@@ -226,6 +244,10 @@ fun RemoteRepoBrowserScreen(
         }
     }
 }
+
+/** Labels for the workouts/routes switch. Shared with the routes browser. */
+internal const val WORKOUTS_VIEW = "Workouts"
+internal const val ROUTES_VIEW = "Routes"
 
 // ─── States ────────────────────────────────────────────────────────────────
 

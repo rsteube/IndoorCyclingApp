@@ -20,6 +20,9 @@ import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.db.TelemetryPoint
 import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.route.RouteTrack
+import app.indoorbike.shared.simulation.MIN_RESUMABLE_METERS
+import app.indoorbike.shared.simulation.RouteProgress
+import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
@@ -75,6 +78,12 @@ class WorkoutSessionManager(
      * platform that hasn't wired a store yet).
      */
     private val activeTelemetryStore: ActiveTelemetryStore? = null,
+    /**
+     * Where a partly-ridden route is remembered so the rider can carry on next
+     * time. Null leaves every route starting at its trailhead, which is what a
+     * platform that has not wired a store should do.
+     */
+    private val routeProgressStore: RouteProgressStore? = null,
     /**
      * How to get the user's current heart rate at sample time. The default
      * reads from the trainer's HR characteristic; a [HeartRateMonitor]-aware
@@ -300,13 +309,27 @@ class WorkoutSessionManager(
      * The ride finishes when the route does. That signal comes from the engine
      * rather than from the clock, which is why the callback is wired here.
      */
-    fun prepareSimulation(route: RouteTrack, ftp: Int) {
+    fun prepareSimulation(
+        route: RouteTrack,
+        ftp: Int,
+        /**
+         * Where on the road to begin. Non-zero when the rider chose to carry on
+         * from a previous sitting; see [RouteProgress].
+         */
+        startDistanceMeters: Double = 0.0,
+        /** Climbing already done, so a resumed ride's total covers the whole route. */
+        startElevationGainMeters: Double = 0.0,
+    ) {
         val engine = simulationEngine ?: return
         prepareWorkout(
             workout = simulationWorkout(routeId = route.id, routeName = route.name),
             ftp = ftp,
         )
-        engine.load(route)
+        engine.load(
+            route = route,
+            startDistanceMeters = startDistanceMeters,
+            elevationGainMeters = startElevationGainMeters,
+        )
         engine.onRouteFinished = { completeWorkout() }
     }
 
@@ -554,6 +577,11 @@ class WorkoutSessionManager(
      * Use [abandonUnfinishedRide] to also discard the snapshot.
      */
     fun stopWorkout() {
+        // Before the engine is stopped and its distance is gone. Backing out of
+        // a ride does not save it to history, but the rider still rode the
+        // road, and being asked to ride it again from the start is the thing
+        // this exists to prevent.
+        recordRouteProgress()
         timerJob?.cancel()
         pedalingDetectionJob?.cancel()
         simulationEngine?.stop()
@@ -578,6 +606,41 @@ class WorkoutSessionManager(
         // Never got past the initial "pedal to start" standby — no ride to save.
         if (sessionStartTimeEpoch == 0L) return
         completeWorkout()
+    }
+
+    /**
+     * Remember how far along the route this ride got, so a course too long for
+     * one sitting can be finished across several.
+     *
+     * Reaching the end clears the mark instead of moving it: a rider who picks
+     * a finished route again means to ride it, not to be put back at the line
+     * they already crossed. So does stopping in the first few hundred metres,
+     * where an offer to continue reads as the app having lost track of the
+     * ride rather than remembered it.
+     */
+    private fun recordRouteProgress() {
+        val store = routeProgressStore ?: return
+        val engine = simulationEngine ?: return
+        val route = engine.route.value ?: return
+        val finished = engine.finished.value
+        val distance = engine.distanceMeters.value
+        val climbed = engine.elevationGainMeters.value
+        val seconds = _elapsedSeconds.value
+        scope.launch(snapshotDispatcher) {
+            if (finished || distance < MIN_RESUMABLE_METERS) {
+                store.clear(route.id)
+            } else {
+                store.save(
+                    RouteProgress(
+                        routeId = route.id,
+                        distanceMeters = distance,
+                        elevationGainMeters = climbed,
+                        elapsedSeconds = seconds,
+                        savedAtEpochMs = getCurrentEpochMillis(),
+                    )
+                )
+            }
+        }
     }
 
     /**
@@ -871,6 +934,7 @@ class WorkoutSessionManager(
     }
 
     private fun completeWorkout() {
+        recordRouteProgress()
         // Flip state first so the timer loop's while-condition fails and it
         // unwinds through its exit handler, flushing the ride's last samples.
         _state.value = WorkoutState.Completed

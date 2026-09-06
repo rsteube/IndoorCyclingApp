@@ -484,22 +484,31 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
         entry<RouteRemoteRepo> { key: RouteRemoteRepo ->
             RemoteRepoBrowserScreen(
                 manifestUrl = key.manifestUrl,
-                onBack = { navigator.goBack() }
+                onBack = { navigator.goBack() },
+                // replace, not navigate: the two halves of a repository are one
+                // stop, so back leaves the repository however many times the
+                // rider crossed between them.
+                onBrowseRoutes = { navigator.replace(RouteRemoteRoutes(key.manifestUrl)) }
             )
         }
         entry<RouteRemoteRoutes> { key: RouteRemoteRoutes ->
             RemoteRouteBrowserScreen(
                 manifestUrl = key.manifestUrl,
-                onBack = { navigator.goBack() }
+                onBack = { navigator.goBack() },
+                onBrowseWorkouts = { navigator.replace(RouteRemoteRepo(key.manifestUrl)) }
             )
         }
         entry<RouteRouteLibrary> { _ ->
             RouteLibraryScreen(
                 onBack = { navigator.goBack() },
-                onStartRoute = { route ->
+                onStartRoute = { route, resumeFrom ->
                     container.sessionManager.prepareSimulation(
                         route = route,
-                        ftp = container.userSettings.ftp.value
+                        ftp = container.userSettings.ftp.value,
+                        // Null when the rider chose the trailhead, or had no
+                        // choice to make: either way the road starts at zero.
+                        startDistanceMeters = resumeFrom?.distanceMeters ?: 0.0,
+                        startElevationGainMeters = resumeFrom?.elevationGainMeters ?: 0.0
                     )
                     navigator.navigate(RouteRideScreen(simulationWorkoutId(route.id)))
                 },

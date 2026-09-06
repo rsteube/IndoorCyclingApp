@@ -26,6 +26,7 @@ import app.indoorbike.route.RouteImporter
 import app.indoorbike.library.WorkoutImporter
 import app.indoorbike.library.WorkoutLibrary
 import app.indoorbike.service.RideSessionService
+import app.indoorbike.route.AndroidRouteProgressStore
 import app.indoorbike.session.AndroidActiveSessionStore
 import app.indoorbike.session.AndroidActiveTelemetryStore
 import app.indoorbike.shared.session.WorkoutState
@@ -51,6 +52,7 @@ import app.indoorbike.shared.db.DatabaseDriverFactory
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.session.ActiveSessionStore
+import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.simulation.SimulationEngine
@@ -83,6 +85,7 @@ class AppContainer(
     val historyRepository: HistoryRepository,
     val userSettings: UserSettings,
     val activeSessionStore: ActiveSessionStore,
+    val routeProgressStore: RouteProgressStore,
     val workoutImporter: WorkoutImporter,
     val repositoryManager: RepositoryManager,
     /** Repositories the rider follows, and what each has published since they looked. */
@@ -143,6 +146,7 @@ class AppContainer(
             val controllerManager = ControllerManager()
             val activeSessionStore = AndroidActiveSessionStore(application)
             val activeTelemetryStore = AndroidActiveTelemetryStore(application)
+            val routeProgressStore = AndroidRouteProgressStore(application)
             // Built before the session manager so the manager can read the
             // rider's weight for its virtual-distance estimate.
             val userSettings = AndroidUserSettings(application)
@@ -164,6 +168,7 @@ class AppContainer(
                 trainerManager = trainerManager,
                 activeSessionStore = activeSessionStore,
                 activeTelemetryStore = activeTelemetryStore,
+                routeProgressStore = routeProgressStore,
                 // Prefer the dedicated HRM when one is connected and emitting samples;
                 // fall back to whatever the trainer reports (often 0 for trainer-only).
                 effectiveHeartRate = {
@@ -220,6 +225,7 @@ class AppContainer(
                 historyRepository = historyRepository,
                 userSettings = userSettings,
                 activeSessionStore = activeSessionStore,
+                routeProgressStore = routeProgressStore,
                 workoutImporter = workoutImporter,
                 repositoryManager = repositoryManager,
                 followedRepositories = followedRepositories,
