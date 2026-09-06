@@ -16,8 +16,9 @@
 package app.indoorbike.shared.util
 
 /**
- * Minimal cross-platform logger. F-Droid forbids Crashlytics, so this is just
- * platform-native logging (Logcat on Android, NSLog on iOS) — no remote sink.
+ * Minimal cross-platform logger. The project rules out Crashlytics and every
+ * other remote sink, so this is platform-native logging and nothing else:
+ * Logcat on Android, NSLog on iOS.
  *
  * Use sparingly: prefer flow-based state for runtime conditions; this is for
  * diagnostics, parse failures, and unrecoverable BLE errors.

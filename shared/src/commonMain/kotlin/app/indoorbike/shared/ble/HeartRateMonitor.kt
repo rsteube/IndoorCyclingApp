@@ -68,7 +68,8 @@ typealias HrmCandidate = TrainerCandidate
  * connect — so a service-UUID filter would never match them.
  *
  * ANT+-only HRMs are NOT supported — Android lacks a universal ANT+ stack
- * and the available SDKs depend on Google Play services not allowed in F-Droid.
+ * and the available SDKs are built on Google Play services, which the app
+ * rules out so it can run on a device that has none.
  */
 class HeartRateMonitor {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

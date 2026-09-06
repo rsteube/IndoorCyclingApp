@@ -55,9 +55,11 @@ For the full release flow (build, sign, changelog, tag, and publish the release 
 
 If you change something architectural - a new module, a different threading model, a different BLE library, a change to the on-disk storage layout - please update [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) in the same PR. The doc is the source of truth for "how does this hang together"; keeping it current means the next reader (or future you) doesn't have to re-derive it from grep.
 
-## F-Droid posture
+## No Google dependencies
 
-The app must remain free of proprietary blobs, Google Play Services, analytics, and crash reporters. New dependencies are only worth adding if equivalents don't already exist in the codebase or in F-Droid-clean libraries. If you're unsure whether a candidate library qualifies, raise an issue first.
+The app must run on an Android device with no Google services on it. That is the rule, and it is a hard one: no Google Play Services or anything built on it (Firebase, Crashlytics, Google Maps, the downloadable Google Fonts provider), no proprietary blobs, no analytics, no crash reporters. A new dependency is only worth adding if there is no equivalent already in the codebase, and it has to be open source and free of Play Services. If you are unsure whether a candidate qualifies, raise an issue first.
+
+This used to be called the project's "F-Droid posture", and F-Droid's packaging rules came along with the name. **F-Droid is no longer a distribution target** - releases go to CodeFloe and reach riders through ObtainX. The rule above is unchanged by that, because it was always about who can run the app rather than where it is listed.
 
 ## Code style
 

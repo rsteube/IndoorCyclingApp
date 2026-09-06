@@ -85,19 +85,21 @@ android {
         // `Activity`. It does — via `androidx.activity.ComponentActivity` —
         // but Lint can't always trace that chain across module boundaries.
         // Disable just this single false-positive check; everything else
-        // still runs (including the lintVitalRelease pass that fdroidserver
-        // exercises during the F-Droid build).
+        // still runs, including the lintVitalRelease pass on release builds.
         disable += "Instantiatable"
     }
 
     dependenciesInfo {
         // AGP embeds an extra APK signing block ("Dependency metadata")
         // with hashes of every dependency, intended for Google Play's
-        // app-review tooling. F-Droid's APK scanner rejects any extra
-        // signing block it doesn't recognise — see
-        // https://issuetracker.google.com/issues/189966237 — so disable
-        // both the APK and the AAB version. We never publish to Play
-        // anyway; F-Droid signs the distributed copy itself.
+        // app-review tooling. We do not publish to Play, so it is payload
+        // nobody reads, and it is exactly the kind of Google-oriented
+        // metadata this app has no business shipping. Disabled for both the
+        // APK and the AAB.
+        //
+        // F-Droid's APK scanner rejecting unrecognised signing blocks
+        // (https://issuetracker.google.com/issues/189966237) is what first
+        // put this here; the setting outlived that reason on its own merits.
         includeInApk = false
         includeInBundle = false
     }

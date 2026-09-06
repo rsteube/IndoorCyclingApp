@@ -1,6 +1,6 @@
 # Indoor Bike App - Design System
 
-A privacy-first indoor cycling app for smart trainers. Dark by default, telemetry-first, F-Droid friendly.
+A privacy-first indoor cycling app for smart trainers. Dark by default, telemetry-first, and free of Google dependencies so it runs on any Android.
 
 > **Product name: Indoor Bike App · indoorbike.app.** Confirm or change - see the *Naming* note at the bottom.
 
@@ -8,7 +8,7 @@ A privacy-first indoor cycling app for smart trainers. Dark by default, telemetr
 
 ## Product context
 
-**Cadence** is an Android (later iOS) app that connects to a smart trainer (initial target: Wahoo Kickr Core) over standard Bluetooth LE, runs structured workouts in **ERG mode**, and visualises ride progress via FTP-based **power zones**. Workouts are defined as JSON, completed rides are saved locally as files. The app must work fully offline with no account, no Google services, and no F-Droid anti-features. Optional sync via CleverCloud + Auth0 is post-MVP.
+**Cadence** is an Android (later iOS) app that connects to a smart trainer (initial target: Wahoo Kickr Core) over standard Bluetooth LE, runs structured workouts in **ERG mode**, and visualises ride progress via FTP-based **power zones**. Workouts are defined as JSON, completed rides are saved locally as files. The app must work fully offline with no account and no Google services, so it runs on a device that has none. Optional sync via CleverCloud + Auth0 is post-MVP.
 
 Core experiences in priority order:
 
@@ -31,11 +31,11 @@ The user has another app at **vertmatch.run** (running / vertical-distance). Cad
 | UI (Android) | Jetpack Compose | Material3-shaped components, but heavily restyled |
 | UI (iOS, later) | SwiftUI | Component shapes must work in either runtime |
 | BLE | Standard BLE APIs | No vendor SDKs - generic device chooser screen |
-| Distribution | F-Droid | **No Google Services, no proprietary analytics, no Firebase, no Crashlytics**. Auth0 + CleverCloud are optional and must be lazy-loaded behind a flag. |
+| Distribution | Signed APK via CodeFloe releases + ObtainX | **No Google Services, no proprietary analytics, no Firebase, no Crashlytics** - the app has to run on a device with no Google services on it. Auth0 + CleverCloud are optional and must be lazy-loaded behind a flag. |
 
-### F-Droid anti-feature watchlist
+### Non-free dependency watchlist
 
-Flag any of these if introduced: `NonFreeNet`, `NonFreeDep`, `Tracking`, `NonFreeAdd`. The login (Auth0) and sync (CleverCloud) paths likely trigger `NonFreeNet` - they must be **opt-in** with a clear "Local only" default.
+Flag anything that introduces a non-free network service, a non-free dependency, tracking, or advertising. The login (Auth0) and sync (CleverCloud) paths are non-free services - they must be **opt-in** with a clear "Local only" default. Anything requiring Google Play Services is out entirely, since the app has to run without it.
 
 ---
 
@@ -125,7 +125,7 @@ Flag any of these if introduced: `NonFreeNet`, `NonFreeDep`, `Tracking`, `NonFre
 - **Body: Inter** - neutral, dense numerics, legible.
 - **Mono: JetBrains Mono** - telemetry, axis ticks, file names, countdown timers.
 
-> **Substitution flag.** No source font files were provided. All three are loaded from Google Fonts CDN. **F-Droid implication:** Google Fonts CDN is fine (open-licensed) but the *prototype* loads them at runtime. The shipped Android app must **bundle the TTFs locally** - please confirm we can ship Space Grotesk + Inter + JetBrains Mono (all OFL-licensed; F-Droid-compatible).
+> **Substitution flag.** No source font files were provided. All three are loaded from Google Fonts CDN. **Shipping implication:** the fonts are open-licensed, but the *prototype* loads them from a Google CDN at runtime. The shipped Android app must **bundle the TTFs locally** - please confirm we can ship Space Grotesk + Inter + JetBrains Mono (all OFL-licensed).
 
 ### Spacing & layout
 
@@ -186,7 +186,7 @@ If imagery enters later (badges, progression artwork): cool-toned, high-contrast
 
 ## Iconography
 
-**System:** **[Lucide](https://lucide.dev/)** at **2px stroke**, `currentColor`, 24px default. Lucide is MIT-licensed and bundleable - F-Droid safe.
+**System:** **[Lucide](https://lucide.dev/)** at **2px stroke**, `currentColor`, 24px default. Lucide is MIT-licensed and bundleable, so it ships with the app rather than being fetched.
 
 - The app ships its own SVG sprite from the Lucide set (no CDN at runtime in the shipped app - only in this prototype).
 - **No emoji.** Anywhere.

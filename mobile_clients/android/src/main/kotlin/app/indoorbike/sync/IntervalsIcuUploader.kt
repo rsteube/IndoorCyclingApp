@@ -40,10 +40,9 @@ import app.indoorbike.shared.util.Log
  * user taps Upload (or after a ride completes when auto-upload is on). The
  * uploader itself never reads settings except to compose the request.
  *
- * **F-Droid posture (NonFreeNet anti-feature).** Intervals.icu is a non-free
- * SaaS, so the F-Droid metadata declares this integration under the
- * `NonFreeNet` anti-feature. The flag is *for the integration's existence*,
- * not for its day-to-day behaviour: with default settings the app makes
+ * **Posture.** Intervals.icu is a non-free SaaS, and this integration is the
+ * app's only path to one. What matters is that it exists rather than that it
+ * runs: with default settings the app makes
  * zero contact with Intervals.icu. The athlete id and API key are blank on
  * a fresh install; the upload code path is unreachable until the rider
  * fills both in, and even then only fires on a manual Upload tap or when

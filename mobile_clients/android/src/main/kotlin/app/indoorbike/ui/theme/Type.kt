@@ -29,7 +29,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.indoorbike.R
 
-// Bundled OFL fonts. F-Droid clean — no Google Fonts CDN, no runtime download.
+// Bundled OFL fonts: no Google Fonts CDN, no downloadable-font provider, no
+// runtime fetch. The app has to render on a device with no Google services.
 // Bebas Neue (static), Inter (variable wght), JetBrains Mono (variable wght).
 val DisplayFontFamily: FontFamily = FontFamily(
     Font(R.font.bebas_neue_regular, FontWeight.Normal)

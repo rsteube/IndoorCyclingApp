@@ -1,6 +1,6 @@
 # Indoor Bike - Android UI kit
 
-Interactive, click-thru recreation of the Cadence indoor cycling app at MVP scope. Dark, telemetry-first, F-Droid friendly.
+Interactive, click-thru recreation of the Cadence indoor cycling app at MVP scope. Dark, telemetry-first, no Google dependencies.
 
 ## Files
 

@@ -21,7 +21,7 @@ package app.indoorbike.shared.fit
  * power-zone indoor cycling activity that platforms like Intervals.icu,
  * Strava, Garmin Connect, and Training Peaks accept.
  *
- * F-Droid posture: no third-party dep, no Garmin SDK JAR. The format is
+ * No third-party dependency, and no Garmin SDK JAR. The format is
  * publicly documented at https://developer.garmin.com/fit/protocol/ — we
  * implement a tiny subset, all bytes accounted for, all CRCs computed
  * locally.

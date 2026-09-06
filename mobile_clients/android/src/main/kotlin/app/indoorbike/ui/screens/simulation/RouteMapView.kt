@@ -56,8 +56,9 @@ import java.io.File
  * The route on a real map, with the rider's position on it.
  *
  * OpenStreetMap raster tiles through osmdroid: open data, an open-source
- * renderer, no Play Services and no API key, which is what the project's
- * F-Droid rules require and what rules Google Maps out.
+ * renderer, no Play Services and no API key. That is what the project's
+ * no-Google rule requires, and it is what rules Google Maps out - which would
+ * not render at all on a device without Play Services.
  *
  * Three things are worth knowing about how this behaves:
  *

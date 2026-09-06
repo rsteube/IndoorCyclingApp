@@ -27,8 +27,9 @@ import kotlinx.coroutines.withContext
 
 /**
  * Small HTTPS GET wrapper. Stays on `HttpURLConnection` to avoid pulling in
- * OkHttp/Ktor for what amounts to fetching tiny JSON files — keeps the F-Droid
- * footprint small and removes one dep that auditors would otherwise check.
+ * OkHttp/Ktor for what amounts to fetching tiny JSON files - keeps the
+ * dependency surface small, and one fewer library is one fewer thing to vet
+ * against the project's no-Google rule.
  *
  * Returns the response body as a string, or throws on any non-2xx / IO error.
  * Caller is responsible for catching and surfacing user-facing messages.

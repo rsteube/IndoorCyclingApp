@@ -22,7 +22,9 @@ Two install slots so debug + release coexist on a single device:
 Each install has its own DataStore + SQLDelight DB, so they don't share settings or history. Both fully usable, ride to ride.
 
 ## Rules & Constraints
-- **F-Droid Release**: The app must not include any proprietary Google services or trackers. This means no Google Play Services (e.g., no Firebase Analytics or Crashlytics, no Google Maps). Open-source alternatives should be preferred.
+- **No Google dependencies**: the app must run on an Android device that has no Google services on it - a de-Googled ROM, a Huawei handset, an emulator image without GApps. That rules out Google Play Services and everything built on it (Firebase, Crashlytics, Google Maps, the Play-services location and fitness APIs, the downloadable Google Fonts provider), and it rules out proprietary blobs and trackers generally. Open-source alternatives are preferred. This is a hard guideline and it is about *who can run the app*, not about where the app is listed.
+
+    The project previously framed this as an F-Droid requirement and inherited F-Droid's packaging rules along with it. **F-Droid is no longer a distribution target** - releases go to CodeFloe and reach riders through ObtainX ([docs/RELEASE.md](RELEASE.md)) - but this rule survives that change untouched, because the store was never the reason for it.
 - **Authentication**: Auth0 will be used, but it must be completely optional. The app must function fully locally and allow structured workout execution and progression tracking without logging in.
 - **Progression System**: Initially local only. Later sync capability will be added via CleverCloud, ensuring it remains fully functional locally when offline or not logged in.
 - **UI System**: A clean, modern, and engaging user interface. Dark theme by default, rich visuals for power zones and progression tracking. Avoid generic styles. 
@@ -32,7 +34,7 @@ Structured workouts use Power Zones based on percentages of Functional Threshold
 - Models: `PowerZone` and `Workout` in `app.indoorbike.shared`.
 
 ## BLE Connection Structure
-Implemented in `shared/.../ble/TrainerManager.kt` using **juul/kable** (KMM-friendly, F-Droid clean). The manager is a regular `class` (not an `object`); a single instance is owned by `AppContainer`.
+Implemented in `shared/.../ble/TrainerManager.kt` using **juul/kable** (KMM-friendly, Apache-2.0, no Google dependencies). The manager is a regular `class` (not an `object`); a single instance is owned by `AppContainer`.
 
 - **Cycling Power Service** (`0x1818`) → Cycling Power Measurement (`0x2A63`) is the primary source for instantaneous power and crank-revolution-derived cadence.
 - **Fitness Machine Service** (`0x1826`) → Indoor Bike Data (`0x2AD2`) is a fallback for power/cadence on FTMS-only trainers; FTMS Control Point (`0x2AD9`) is used to write target power in ERG mode (opcode 0x05, sint16-LE watts; opcode 0x00 requests control on connect). Indications on the Control Point are enabled (via `observe`) before any command is written, because the spec requires it and strict trainers such as the Zwift Hub silently reject control writes otherwise.
@@ -259,7 +261,7 @@ A 1080×1080 PNG generated on-demand from a completed ride and surfaced via a Sh
 - `WRITE_EXTERNAL_STORAGE` is declared with `android:maxSdkVersion="28"` ([AndroidManifest.xml](../mobile_clients/android/src/main/AndroidManifest.xml)). Q+ uses scoped storage and skips the runtime prompt; pre-Q the share sheet requests it via `ActivityResultContracts.RequestPermission` before the first save.
 - `androidx.core.content.FileProvider` is registered with authority `${applicationId}.fileprovider` and `xml/file_paths.xml` exposing `cache-path/shared_images`. The cache directory is auto-cleaned by Android when storage is low, so staged share files are ephemeral by design.
 
-**F-Droid hygiene:** no third-party deps. Bitmap rendering uses `androidx.compose.ui:ui` (Compose 1.7+ `GraphicsLayer.toImageBitmap`), persistence uses `MediaStore` + AndroidX `FileProvider`. No analytics, no Firebase Dynamic Links, no network share endpoints - the user picks the destination via the system chooser.
+**Dependencies:** none added. Bitmap rendering uses `androidx.compose.ui:ui` (Compose 1.7+ `GraphicsLayer.toImageBitmap`), persistence uses `MediaStore` + AndroidX `FileProvider`. No analytics, no Firebase Dynamic Links, no network share endpoints - the user picks the destination via the system chooser.
 
 ### Workout library - sources, import, repositories
 
@@ -288,7 +290,7 @@ Duplicate workout ids are de-duped first-wins with priority **Imported > Bundled
 
 **Community registry URL** - hardcoded `BuildConfig.REGISTRY_URL = "https://indoorbike.app/registry.json"` ([app/build.gradle.kts](../mobile_clients/android/build.gradle.kts)). Absence is graceful: `RepositoryManager.refreshRegistry()` returns `RegistryState.Failed(error, cachedIndex)` and the Library's "Browse community" section shows an empty hint pointing at the Scan QR / Add by URL escape hatches. When the URL goes live, the next refresh picks it up automatically - no app update needed.
 
-**Networking** - [`HttpFetcher`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) is a thin `HttpURLConnection` wrapper. F-Droid clean (no OkHttp / Ktor dep), HTTPS-only (rejects `http://`), 12s connect/read timeouts, 2 MB body cap so a malicious URL can't OOM the device. `downloadTo()` is the exception for route GPX: it streams to a `.part` file and renames on completion (so a dead connection can't leave a truncated route where a valid one is expected), caps separately at `MAX_ROUTE_BYTES` = 12 MB, and returns a SHA-256 computed on the way past. Redirects stay unfollowed here as everywhere, which bites more often for routes since a `gpxUrl` may point at a third-party host - the thrown message names that case rather than surfacing a bare failure.
+**Networking** - [`HttpFetcher`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/HttpFetcher.kt) is a thin `HttpURLConnection` wrapper. No OkHttp / Ktor dependency, HTTPS-only (rejects `http://`), 12s connect/read timeouts, 2 MB body cap so a malicious URL can't OOM the device. `downloadTo()` is the exception for route GPX: it streams to a `.part` file and renames on completion (so a dead connection can't leave a truncated route where a valid one is expected), caps separately at `MAX_ROUTE_BYTES` = 12 MB, and returns a SHA-256 computed on the way past. Redirects stay unfollowed here as everywhere, which bites more often for routes since a `gpxUrl` may point at a third-party host - the thrown message names that case rather than surfacing a bare failure.
 
 ### Community routes - listing separate from data
 
@@ -331,7 +333,7 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 - **Browse community** - registry-driven cards. Tapping a card navigates to the remote-repo browser (`onOpenRepo(manifestUrl)`) where the rider picks individual workouts to add. Loading / empty / unreachable states are distinct.
 - **Imported workouts** - flat list of user files with delete; workouts added from a known repo carry the sidecar attribution noted above.
 
-[`QrScannerScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, F-Droid clean) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` - Apache 2.0, *not* a Google product despite the package; pure Java, also F-Droid clean) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, decodes-or-fetches the URL, and routes the result through the same `WorkoutImporter` pipeline.
+[`QrScannerScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/QrScannerScreen.kt) uses **CameraX** (`camera-camera2` / `camera-lifecycle` / `camera-view`, all 1.4.0, Apache 2.0, no Play Services) for the preview and **ZXing core** 3.5.3 (`com.google.zxing:core` - Apache 2.0, *not* a Google product despite the package; pure Java, no Play Services) for decoding. The analyzer feeds `PlanarYUVLuminanceSource` into `MultiFormatReader.decode()` per frame (back-pressure: latest only). On a hit it hops to main, decodes-or-fetches the URL, and routes the result through the same `WorkoutImporter` pipeline.
 
 **URL forms accepted by the QR scanner *and* the `indoorbike://import` deep-link:**
 
@@ -346,7 +348,7 @@ All four route through `WorkoutImporter.importJsonText()` → `ImportResult` (`W
 
 The decoder is [`WorkoutLinkParser.extractEmbeddedJson()`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLinkParser.kt). When it returns non-null, the network fetch is skipped entirely - important because the website's `share/` URL serves HTML to a browser, not JSON, so a naive GET wouldn't work. Decoding uses `android.util.Base64.decode(s, URL_SAFE | NO_PADDING | NO_WRAP)` to match the JS encoder in [`website/editor/editor.js`](website/editor/editor.js); gzipped forms are then inflated via `java.util.zip.GZIPInputStream`. Compression cuts a typical 1 KB workout URL roughly in half - enough to drop the QR several versions and make modules chunky enough for phone cameras to scan reliably.
 
-**Permissions** - `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) don't get filtered out of the Play / F-Droid index. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
+**Permissions** - `CAMERA` declared in manifest with `<uses-feature android:required="false">` so devices without a camera (rare but possible) aren't filtered out by any store index that reads the manifest. Runtime prompt is requested on screen entry; "Not now" leaves the screen with a polite no-permission state.
 
 ### Editor URL workout API (third-party deep links)
 
@@ -391,14 +393,14 @@ We claim manufacturer `255` (the FIT spec's *development* slot) - the honest ans
 
 The API key sits in plaintext DataStore for now. When device-credential hardening lands we'll move it to AndroidX `security-crypto` without touching the `UserSettings` interface (the property type is already `String?`).
 
-**Settings UI.** New `CLOUD SYNC` section between `DEVICES` and `ABOUT` in [`SettingsTab.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/SettingsTab.kt) hosting an `IntervalsIcuCard`: athlete-id input, API-key input (`PasswordVisualTransformation` with a show/hide eye toggle), and an auto-upload `Switch` that's disabled until both credential fields are filled. Copy explicitly states the F-Droid posture ("only contacts intervals.icu when an upload is triggered").
+**Settings UI.** New `CLOUD SYNC` section between `DEVICES` and `ABOUT` in [`SettingsTab.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/SettingsTab.kt) hosting an `IntervalsIcuCard`: athlete-id input, API-key input (`PasswordVisualTransformation` with a show/hide eye toggle), and an auto-upload `Switch` that's disabled until both credential fields are filled. Copy explicitly states the posture ("only contacts intervals.icu when an upload is triggered").
 
 **Upload triggers.** [`WorkoutOverviewScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutOverviewScreen.kt):
 
 - **Manual** - `IntervalsUploadCard` at the bottom of the scroll content, visible only when credentials are configured. "Upload" button posts a Toast with the result.
 - **Auto** - a `LaunchedEffect(activeSession.id, fromRide, autoUpload, intervalsConfigured)` fires once when the screen arrives from a finished ride. A `uploadAttemptedForSession` flag prevents config-change recompositions from re-firing the upload.
 
-**F-Droid posture.** Triggers `NonFreeNet` only when the user opts in. Manifest declares `INTERNET` (already present for the registry feature). No third-party libs added - FIT writing is pure Kotlin in shared, multipart POST is `HttpURLConnection`. Auto-upload is off by default and disabled in the UI until both credentials are provided. Can be unilaterally disabled from Settings without losing locally-stored ride history.
+**Posture.** Intervals.icu is a non-free service, and the integration exists only if the rider configures it. Manifest declares `INTERNET` (already present for the registry feature). No third-party libs added - FIT writing is pure Kotlin in shared, multipart POST is `HttpURLConnection`. Auto-upload is off by default and disabled in the UI until both credentials are provided. Can be unilaterally disabled from Settings without losing locally-stored ride history.
 
 ### Backup & sync safety (anti-wipe guard)
 
@@ -412,7 +414,9 @@ Three layers now guard against that:
 
 Note `deviceId` is a random UUID in DataStore, which Auto Backup **excludes** ([`data_extraction_rules.xml`](../mobile_clients/android/src/main/res/xml/data_extraction_rules.xml)); a true data wipe regenerates it, so the device writes a fresh slice rather than clobbering the old one. The guard above covers the residual case where the id survives while the DB is emptied.
 
-### F-Droid hygiene checklist
+### Google-free checklist
+
+Everything here exists to keep the app runnable on a device with no Google services. See the rule in [Rules & Constraints](#rules--constraints); it outlived the F-Droid ambition that first prompted it.
 
 - **Fonts**: bundled locally as OFL TTFs in `mobile_clients/android/src/main/res/font/` - no Google Fonts CDN, no runtime download. Sources are the OFL distribution at rest in `github.com/google/fonts`:
     - `bebas_neue_regular.ttf` (60 KB, static) - display headlines (`displayXl/L/M`, `h1`, `h2`).
@@ -421,12 +425,12 @@ Note `deviceId` is a random UUID in DataStore, which Auto Backup **excludes** ([
   Variable fonts are wired via `Font(R.font.…, weight = FontWeight.X, variationSettings = FontVariation.Settings(FontVariation.weight(N)))` in [`ui/theme/Type.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/theme/Type.kt). Requires `@OptIn(ExperimentalTextApi::class)` on Compose 1.7.5; the API graduates to stable in newer Compose versions.
 - **Icons**: design specifies Lucide; current implementation uses `androidx.compose.material:material-icons-extended` (Apache 2.0) as a visual stand-in.
 - **Mock trainer toggle**: in-ride mock toggle is gated behind `BuildConfig.DEBUG` so release builds don't expose dev affordances.
-- **Maps**: OpenStreetMap raster tiles via `org.osmdroid:osmdroid-android` (Apache 2.0, on Maven Central, no Play Services and no API key) - Google Maps is ruled out by the rules above. Pointed at app-private cache / preferences so it needs no storage permission, and sends a real user agent as OSM's tile usage policy requires. Only the map imagery needs the network; a simulated ride works offline without it.
+- **Maps**: OpenStreetMap raster tiles via `org.osmdroid:osmdroid-android` (Apache 2.0, on Maven Central, no Play Services and no API key). Google Maps is ruled out by the rule above, and would not work on a device without Play Services anyway. Pointed at app-private cache / preferences so it needs no storage permission, and sends a real user agent as OSM's tile usage policy requires. Only the map imagery needs the network; a simulated ride works offline without it.
 - **Activity export**: FIT and TCX are written by hand-rolled pure-Kotlin encoders in `shared/` (no third-party dep); the rider exports a past activity to a file via the OS share sheet, or uploads to Intervals.icu. See "Activity export (FIT / TCX) + Intervals.icu cloud sync" above.
 
 ### Diagnostics & bug reports
 
-There is no remote logger or crash reporter (F-Droid posture). `Log` ([`shared/.../util/Logger.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/util/Logger.kt)) writes to Logcat in debug builds only, and mirrors every line into [`DiagnosticsLog`](../shared/src/androidMain/kotlin/app/indoorbike/shared/util/DiagnosticsLog.kt) - a ring buffer of the last 300 lines, kept in **all** build types so release users have something to attach to a report.
+There is no remote logger or crash reporter, by rule. `Log` ([`shared/.../util/Logger.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/util/Logger.kt)) writes to Logcat in debug builds only, and mirrors every line into [`DiagnosticsLog`](../shared/src/androidMain/kotlin/app/indoorbike/shared/util/DiagnosticsLog.kt) - a ring buffer of the last 300 lines, kept in **all** build types so release users have something to attach to a report.
 
 **The buffer is also mirrored to disk, and this is the point.** A RAM-only buffer dies with the process, so a report drafted after a crash could only ever contain the launch that *followed* it - users sent reports whose "Recent logs" held nothing but `App start` and the auto-reconnect teardown three lines later. `DiagnosticsLog.attachStorage(filesDir/diagnostics)` runs first thing in `IndoorBikeApp.onCreate`, before the first log line. Lines batch to `diagnostics.log` every 5 s (so a hard kill costs at most 5 s of them); on the next launch that file is rotated to `diagnostics-previous.log` and offered to the report as the crashed run's log. Each file is capped at 128 KB and rotated rather than truncated. Both live in app-private storage, readable by no other app, and still leave the device only through a report the user composes.
 
