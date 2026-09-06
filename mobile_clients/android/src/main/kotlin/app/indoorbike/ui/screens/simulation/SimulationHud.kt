@@ -151,6 +151,8 @@ fun SimulationHud(
                     gradient = gradient,
                     compact = compact,
                     valueFontSize = if (compact) 34.sp else 44.sp,
+                    route = route,
+                    distanceMeters = distanceMeters,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 GearShifter(
@@ -175,6 +177,7 @@ fun SimulationHud(
                     target = null,
                     cardWidth = flankWidth,
                     valueFontSize = flankFont,
+                    compact = short,
                     modifier = Modifier.fillMaxHeight(),
                 )
                 FlankMetric(
@@ -189,6 +192,7 @@ fun SimulationHud(
                     sublabel = if (short) null else hrSublabel,
                     cardWidth = flankWidth,
                     valueFontSize = flankFont,
+                    compact = short,
                     modifier = Modifier.fillMaxHeight(),
                 )
             }
@@ -227,22 +231,36 @@ fun SimulationHud(
                         .fillMaxHeight(),
                     verticalArrangement = Arrangement.spacedBy(
                         if (short) Spacing.s2 else Spacing.s3,
-                        Alignment.CenterVertically,
                     ),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    SimulationPowerReadout(
-                        powerWatts = powerWatts,
-                        isStale = isPowerStale,
-                        wattsPerKg = wattsPerKg,
-                        zoneColor = zoneColor,
-                        powerFontSize = when {
-                            expanded -> 128.sp
-                            short -> 60.sp
-                            else -> 84.sp
-                        },
-                        barWidth = if (expanded) 280.dp else 200.dp,
-                    )
+                    // The gauges and the rider's own numbers take their height
+                    // first and the power number lives on what is left, sized
+                    // from it. The other way round - fixed type sizes stacked
+                    // and hoped to fit - is what pushed cadence and heart rate
+                    // off the bottom of a landscape phone: a Column does not
+                    // shrink its children, it just runs past the edge, and the
+                    // things that fell off were the two the rider cannot
+                    // reconstruct from anything else on screen.
+                    BoxWithConstraints(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // Eyebrow, W/kg bar and its caption, plus the gaps.
+                        val room = (this@BoxWithConstraints.maxHeight - 52.dp).value
+                        val powerFont = minOf(
+                            room,
+                            if (expanded) 128f else 84f,
+                        ).coerceAtLeast(34f).sp
+                        SimulationPowerReadout(
+                            powerWatts = powerWatts,
+                            isStale = isPowerStale,
+                            wattsPerKg = wattsPerKg,
+                            zoneColor = zoneColor,
+                            powerFontSize = powerFont,
+                            barWidth = if (expanded) 280.dp else 200.dp,
+                        )
+                    }
                     gauges(!expanded)
                     rider(
                         when {

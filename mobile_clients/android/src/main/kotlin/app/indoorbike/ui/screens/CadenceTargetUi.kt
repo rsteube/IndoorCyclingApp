@@ -179,6 +179,7 @@ fun CadenceFlankMetric(
     cardWidth: Dp,
     valueFontSize: androidx.compose.ui.unit.TextUnit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     val cue = target?.cueFor(rpm)
     FlankMetric(
@@ -193,6 +194,7 @@ fun CadenceFlankMetric(
         contentDescription = target?.let { cadenceCueContentDescription(it, cue) },
         cardWidth = cardWidth,
         valueFontSize = valueFontSize,
+        compact = compact,
         modifier = modifier,
         footer = target?.let {
             {

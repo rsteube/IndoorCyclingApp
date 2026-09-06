@@ -199,4 +199,41 @@ class DrivetrainTest {
         val hardest = d.gearAt(d.gearCount - 1)
         assertEquals("${hardest.chainring} x ${hardest.sprocket}", hardest.label)
     }
+
+    @Test
+    fun `every shift changes the load enough to be felt`() {
+        // The complaint this exists for: shifting and feeling nothing. A gear
+        // that carries within a couple of percent of the one beside it is a
+        // button that does nothing, whether it got there from two chainrings
+        // producing the same ratio or from the load factor clamping at the top
+        // of the ladder.
+        for (drivetrain in Drivetrain.ALL) {
+            for (i in 1 until drivetrain.gearCount) {
+                val previous = drivetrain.loadFactor(i - 1)
+                val next = drivetrain.loadFactor(i)
+                val step = (next / previous - 1.0) * 100.0
+                assertTrue(
+                    step > 3.0,
+                    "${drivetrain.name} gear ${i} to ${i + 1} moves the load only ${step}%",
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `the reference gear is the pivot the authority curve turns on`() {
+        // GEAR_AUTHORITY must not move the gear that matches the rider's real
+        // one: that gear carries the road's own force by definition, and it is
+        // what every other gear is measured against.
+        for (drivetrain in Drivetrain.ALL) {
+            val exact = 1.0
+            val atReference = (drivetrain.developmentMeters(drivetrain.referenceIndex) /
+                Drivetrain.ASSUMED_REAL_DEVELOPMENT_M)
+            // Where the cassette lands exactly on the reference, the factor is
+            // exactly 1 whatever the exponent is.
+            if (abs(atReference - 1.0) < 1e-9) {
+                assertEquals(exact, drivetrain.loadFactor(drivetrain.referenceIndex), 1e-9)
+            }
+        }
+    }
 }

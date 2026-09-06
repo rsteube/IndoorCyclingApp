@@ -1374,6 +1374,12 @@ internal fun FlankMetric(
     // expanded-width screens so the flanking metrics stay legible.
     cardWidth: Dp = 170.dp,
     valueFontSize: TextUnit = 40.sp,
+    /**
+     * Trims the card's own breathing room. On a landscape phone the HUD has
+     * about 390 dp of height for five blocks, and 16 dp of padding above and
+     * below one line of text is the cheapest of them to give back.
+     */
+    compact: Boolean = false,
 ) {
     // Translucent so the ridge behind it still reads as one continuous
     // backdrop, and fixed width so 2-digit to 3-digit transitions don't reflow
@@ -1384,7 +1390,7 @@ internal fun FlankMetric(
             .width(cardWidth)
             .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1.copy(alpha = 0.7f))
-            .padding(horizontal = Spacing.s5, vertical = Spacing.s4)
+            .padding(horizontal = Spacing.s5, vertical = if (compact) Spacing.s2 else Spacing.s4)
             .then(
                 if (contentDescription != null) {
                     Modifier.semantics(mergeDescendants = true) {

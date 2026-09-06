@@ -16,6 +16,7 @@
 package app.indoorbike.shared.simulation
 
 import kotlin.math.abs
+import kotlin.math.pow
 
 /** One rideable gear: a chainring, a sprocket, and the ground they cover. */
 data class VirtualGear(
@@ -113,6 +114,7 @@ data class Drivetrain(
      */
     fun loadFactor(index: Int): Double =
         (developmentMeters(index) / ASSUMED_REAL_DEVELOPMENT_M)
+            .pow(GEAR_AUTHORITY)
             .coerceIn(MIN_LOAD_FACTOR, MAX_LOAD_FACTOR)
 
     /**
@@ -179,7 +181,29 @@ data class Drivetrain(
          * resistance that is neither rideable nor, on some machines, accepted.
          */
         const val MIN_LOAD_FACTOR = 0.20
-        const val MAX_LOAD_FACTOR = 4.00
+        const val MAX_LOAD_FACTOR = 5.00
+
+        /**
+         * How hard a shift bites, as an exponent on the gear's ratio against
+         * the rider's real one.
+         *
+         * At 1.0 the model is exactly faithful to a bike: one sprocket is a
+         * 5 to 8 % change in the force at the wheel. On the road that is
+         * plainly felt, because your cadence drops with it. Indoors it is not:
+         * the virtual speed here comes from power alone, so a rider can absorb
+         * the change by pushing 5 % harder at the same cadence and never
+         * notice they shifted - which is exactly what riders report.
+         *
+         * Above 1.0 each shift moves more while the ladder keeps its order and
+         * its shape. The curve pivots on [ASSUMED_REAL_DEVELOPMENT_M], so the
+         * gear that matches the rider's real one still carries the road's own
+         * force unchanged: what grows is the reach of the gears either side of
+         * it. 1.35 roughly doubles the top of the ladder and takes a road
+         * bike's smallest shift from 3.6 % to 4.9 %.
+         *
+         * This is a feel setting, not physics, and it is the only one.
+         */
+        const val GEAR_AUTHORITY = 1.35
 
         /**
          * A modern endurance road bike: compact double, wide-range cassette.

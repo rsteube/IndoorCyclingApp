@@ -20,6 +20,8 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import app.indoorbike.shared.route.RouteTrack
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -44,6 +46,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -76,6 +80,13 @@ fun GradientReadout(
     modifier: Modifier = Modifier,
     valueFontSize: TextUnit = 44.sp,
     compact: Boolean = false,
+    /**
+     * The road and where the rider is on it. When given, the card is drawn on
+     * the terrain around them; without it the card is just the number, which
+     * is what a bare gradient reading was before.
+     */
+    route: RouteTrack? = null,
+    distanceMeters: Double = 0.0,
 ) {
     val colour by animateColorAsState(
         targetValue = gradientColor(gradient),
@@ -90,10 +101,22 @@ fun GradientReadout(
         label = "gradient-angle"
     )
 
-    Column(
+    Box(
         modifier = modifier
             .clip(RoundedCornerShape(Radii.lg))
-            .background(CadenceColors.Bg1.copy(alpha = 0.85f))
+            .background(CadenceColors.Bg1.copy(alpha = 0.85f)),
+    ) {
+        if (route != null) {
+            TerrainAhead(
+                route = route,
+                distanceMeters = distanceMeters,
+                colour = colour,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
+        Column(
+        modifier = Modifier
+            .align(Alignment.Center)
             .padding(horizontal = Spacing.s3, vertical = if (compact) Spacing.s2 else Spacing.s3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -132,6 +155,85 @@ fun GradientReadout(
                 modifier = Modifier.width(64.dp).height(22.dp),
             )
         }
+        }
+    }
+}
+
+/**
+ * The road immediately around the rider, drawn behind the gradient number.
+ *
+ * A fixed window - [TERRAIN_BEHIND_METERS] behind, [TERRAIN_AHEAD_METERS] in
+ * front - rather than a share of the route, because the question it answers is
+ * always the same one and does not depend on how long the ride is: how much
+ * further does this climb go, and where is the next one. The whole-route
+ * profile under the map cannot answer it, since on a 169 km stage a two
+ * kilometre climb is a pixel wide.
+ *
+ * Faint on purpose. It is a background: the number in front of it is the
+ * reading, and this is the context the reading sits in.
+ */
+@Composable
+private fun TerrainAhead(
+    route: RouteTrack,
+    distanceMeters: Double,
+    colour: Color,
+    modifier: Modifier = Modifier,
+) {
+    val from = distanceMeters - TERRAIN_BEHIND_METERS
+    val to = distanceMeters + TERRAIN_AHEAD_METERS
+    val span = TERRAIN_BEHIND_METERS + TERRAIN_AHEAD_METERS
+
+    // Sampled at whole metres off the smoothed profile, so the shape agrees
+    // with the gradient the rider is being made to feel. Keyed on a rounded
+    // distance: re-walking the profile four times a second for a picture that
+    // moves a pixel is work nobody sees.
+    val samples = remember(route, (distanceMeters / TERRAIN_RESAMPLE_METERS).toInt()) {
+        val step = span / (TERRAIN_SAMPLES - 1)
+        List(TERRAIN_SAMPLES) { i ->
+            route.elevationAt((from + i * step).coerceIn(0.0, route.totalDistanceMeters))
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        val low = samples.min()
+        val high = samples.max()
+        // A floor on the vertical range, or 4 m of drift over half a kilometre
+        // is drawn as an alp and the flattest road on the route looks like the
+        // steepest. Below this much relief, flat should look flat.
+        val relief = maxOf(high - low, TERRAIN_MIN_RELIEF_METERS)
+        val stepX = size.width / (samples.size - 1)
+        // The road sits in the lower part of the card, leaving the number the
+        // air above it.
+        val floorY = size.height
+        val roof = size.height * 0.42f
+        fun y(v: Double) = (floorY - ((v - low) / relief) * (floorY - roof)).toFloat()
+
+        val line = Path().apply {
+            moveTo(0f, y(samples[0]))
+            samples.forEachIndexed { i, v -> lineTo(i * stepX, y(v)) }
+        }
+        val filled = Path().apply {
+            addPath(line)
+            lineTo(size.width, size.height)
+            lineTo(0f, size.height)
+            close()
+        }
+        drawPath(filled, color = colour.copy(alpha = 0.16f))
+        drawPath(
+            line,
+            color = colour.copy(alpha = 0.55f),
+            style = Stroke(width = 2f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
+
+        // Where the rider is now, so the road behind and the road ahead are
+        // told apart at a glance.
+        val nowX = (TERRAIN_BEHIND_METERS / span * size.width).toFloat()
+        drawLine(
+            color = CadenceColors.Fg1.copy(alpha = 0.35f),
+            start = Offset(nowX, 0f),
+            end = Offset(nowX, size.height),
+            strokeWidth = 1.5f,
+        )
     }
 }
 
@@ -339,8 +441,12 @@ private fun ShiftButton(
 }
 
 /**
- * Where the rider is on the route, as one line: ground covered, ground left,
- * and the climbing done so far.
+ * Where the rider is on the route, as one line: speed, ground left, and the
+ * climbing done so far.
+ *
+ * No progress bar. The elevation profile directly above this says the same
+ * thing and says it against the terrain, so a second bare bar was the same
+ * fact twice, the second time with nothing to read it against.
  *
  * Distance remaining rather than distance done is deliberate. On a route the
  * rider already knows how far they have come; what they are deciding is
@@ -356,11 +462,6 @@ fun RouteProgressStrip(
     modifier: Modifier = Modifier,
 ) {
     val remaining = (totalDistanceMeters - distanceMeters).coerceAtLeast(0.0)
-    val fraction = if (totalDistanceMeters > 0.0) {
-        (distanceMeters / totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
-    } else {
-        0f
-    }
 
     Column(modifier = modifier.fillMaxWidth()) {
         // Equal thirds, each anchored at its own left edge. SpaceBetween sized
@@ -394,21 +495,6 @@ fun RouteProgressStrip(
                 accent = CadenceColors.Fg1,
                 valueWidth = 46.dp,
                 modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(Modifier.height(6.dp))
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(CadenceColors.Bg2),
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(fraction)
-                    .height(4.dp)
-                    .background(CadenceColors.Fg1),
             )
         }
     }
@@ -466,4 +552,19 @@ fun formatOneDecimal(value: Double): String {
 }
 
 /** How much steeper the slope glyph draws than the road really is. */
+/** The road behind the rider that the gradient card shows. */
+private const val TERRAIN_BEHIND_METERS = 50.0
+
+/** And the road in front, which is the part the rider is deciding about. */
+private const val TERRAIN_AHEAD_METERS = 500.0
+
+/** Points across that window. Enough for the shape, cheap enough for 4 Hz. */
+private const val TERRAIN_SAMPLES = 96
+
+/** Redraw granularity: the window is re-walked once per this much ground. */
+private const val TERRAIN_RESAMPLE_METERS = 5.0
+
+/** Least vertical range the window is drawn against. See [TerrainAhead]. */
+private const val TERRAIN_MIN_RELIEF_METERS = 12.0
+
 private const val SLOPE_VISUAL_GAIN = 3.4
