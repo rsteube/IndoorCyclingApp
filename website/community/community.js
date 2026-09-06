@@ -591,7 +591,15 @@
 
     const line = points.map(([lat, lon]) => `${px(lon)},${py(lat)}`).join(' ');
     return svgEl('svg', {
-      class: 'route-shape', viewBox: `0 0 ${width} ${height}`, 'aria-hidden': 'true',
+      class: 'route-shape',
+      // Width and height as well as the viewBox. An inline SVG carrying only a
+      // viewBox has no intrinsic size, so `flex: 0 0 auto` resolved it to the
+      // full width of the card and squeezed the text column beside it to
+      // nothing, which is what broke the route grid.
+      width: String(width),
+      height: String(height),
+      viewBox: `0 0 ${width} ${height}`,
+      'aria-hidden': 'true',
     },
       svgEl('polyline', {
         points: line, fill: 'none', stroke: '#C5CAD6', 'stroke-width': '2',
