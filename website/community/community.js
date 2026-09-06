@@ -18,8 +18,8 @@
 
   // ── Zone palette (mirrored from editor.js / share.js) ──────────────────
   const ZONE_COLORS = {
-    1: '#6B8AA8', 2: '#2E7BFF', 3: '#1FB373',
-    4: '#F0C419', 5: '#FF8A1F', 6: '#EB3B3B', 7: '#C53BFF',
+    1: '#8FA8C0', 2: '#5B9CF2', 3: '#3FC08A',
+    4: '#F0C419', 5: '#FF9A3D', 6: '#EF6B62', 7: '#CE6BF0',
   };
   function zoneFor(pct) {
     if (pct <= 55) return 1;
@@ -518,10 +518,10 @@
         buildProfileSvg(r.profile, 640, 150)
       ),
       el('div', { class: 'detail-stats' },
-        statTile('DISTANCE', RouteLib.formatDistance(r.distanceMeters)),
-        statTile('CLIMBING', `${Math.round(r.ascentMeters || 0)} m`),
-        statTile('MAX GRADIENT', `${(r.maxGradientPercent || 0).toFixed(1)} %`),
-        statTile('SHAPE', r.loop ? 'Loop' : 'Point to point')
+        statTile('Distance', RouteLib.formatDistance(r.distanceMeters)),
+        statTile('Climbing', `${Math.round(r.ascentMeters || 0)} m`),
+        statTile('Max gradient', `${(r.maxGradientPercent || 0).toFixed(1)} %`),
+        statTile('Shape', r.loop ? 'Loop' : 'Point to point')
       ),
       el('p', { class: 'route-estimate' },
         `About ${RouteLib.formatDuration(seconds)} for a ${REFERENCE_WEIGHT_KG} kg rider at ${REFERENCE_FTP} W FTP, `,
@@ -561,9 +561,9 @@
       class: 'spark', viewBox: `0 0 ${width} ${height}`,
       preserveAspectRatio: 'none', 'aria-hidden': 'true',
     },
-      svgEl('polygon', { points: area, fill: 'rgba(244,122,31,0.18)' }),
+      svgEl('polygon', { points: area, fill: '#455561' }),
       svgEl('polyline', {
-        points: line, fill: 'none', stroke: '#F47A1F',
+        points: line, fill: 'none', stroke: '#F2F4F7',
         'stroke-width': '2', 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke',
       })
     );
@@ -594,10 +594,10 @@
       class: 'route-shape', viewBox: `0 0 ${width} ${height}`, 'aria-hidden': 'true',
     },
       svgEl('polyline', {
-        points: line, fill: 'none', stroke: '#C2B5A1', 'stroke-width': '2',
+        points: line, fill: 'none', stroke: '#C5CAD6', 'stroke-width': '2',
         'stroke-linejoin': 'round', 'stroke-linecap': 'round',
       }),
-      svgEl('circle', { cx: px(points[0][1]), cy: py(points[0][0]), r: '3', fill: '#F47A1F' })
+      svgEl('circle', { cx: px(points[0][1]), cy: py(points[0][0]), r: '3', fill: '#F2F4F7' })
     );
   }
 
@@ -707,10 +707,10 @@
         el('span', {}, fmtClock(totalSeconds(w)))
       ),
       el('div', { class: 'detail-stats' },
-        statTile('DURATION', fmtClock(totalSeconds(w))),
+        statTile('Duration', fmtClock(totalSeconds(w))),
         statTile('TSS', String(tss(w))),
         statTile('IF', intensityFactor(w).toFixed(2)),
-        statTile('AVG % FTP', String(Math.round(avgPct(w))))
+        statTile('Avg % FTP', String(Math.round(avgPct(w))))
       )
     );
 

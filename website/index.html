@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Indoor Bike - Free, open-source structured training for your smart trainer</title>
-  <meta name="description" content="Free, open-source indoor cycling app for Android. Build workouts in your browser, beam them to your phone with a QR code, ride them in ERG mode. No account, no subscription, no tracking.">
-  <meta name="theme-color" content="#0F0C09">
+  <title>Indoor Bike - Free, open-source indoor cycling for Android</title>
+  <meta name="description" content="Free, open-source indoor cycling for Android. Ride structured workouts, real-world routes, or just ride. Workouts and routes come from repositories riders maintain. No account, no subscription, no Google.">
+  <meta name="theme-color" content="#313e50">
   <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
 
-  <meta property="og:title" content="Indoor Bike - Free, open-source structured training">
-  <meta property="og:description" content="Build workouts in your browser, beam them to your phone, ride them in ERG mode. No account, no subscription, no tracking.">
+  <meta property="og:title" content="Indoor Bike - Free, open-source indoor cycling for Android">
+  <meta property="og:description" content="Your smart trainer. Your phone. Nothing in between. Structured workouts, real-world routes, and just ride - from repositories riders maintain.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://indoorbike.app/">
 
@@ -17,601 +17,495 @@
 </head>
 <body>
 
+  <!-- Icon sprite: Material Symbols Outlined, weight 300, Apache 2.0.
+       Inlined so the page makes zero third-party requests. See NOTICE.md. -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-download" viewBox="0 -960 960 960"><path d="M480-328.46 309.23-499.23l42.16-43.38L450-444v-336h60v336l98.61-98.61 42.16 43.38L480-328.46ZM252.31-180Q222-180 201-201q-21-21-21-51.31v-108.46h60v108.46q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85h455.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46v-108.46h60v108.46Q780-222 759-201q-21 21-51.31 21H252.31Z"/></symbol>
+    <symbol id="i-arrow_forward" viewBox="0 -960 960 960"><path d="M665.08-450H180v-60h485.08L437.23-737.85 480-780l300 300-300 300-42.77-42.15L665.08-450Z"/></symbol>
+    <symbol id="i-arrow_outward" viewBox="0 -960 960 960"><path d="M251.77-254.23 210-296l393.62-394H245.77v-60h460v460h-60v-357.85l-394 393.62Z"/></symbol>
+    <symbol id="i-check" viewBox="0 -960 960 960"><path d="M382-253.85 168.62-467.23 211.38-510 382-339.38 748.62-706l42.76 42.77L382-253.85Z"/></symbol>
+    <symbol id="i-check_circle" viewBox="0 -960 960 960"><path d="m423.23-309.85 268.92-268.92L650-620.92 423.23-394.15l-114-114L267.08-466l156.15 156.15ZM480.07-100q-78.84 0-148.21-29.92t-120.68-81.21q-51.31-51.29-81.25-120.63Q100-401.1 100-479.93q0-78.84 29.92-148.21t81.21-120.68q51.29-51.31 120.63-81.25Q401.1-860 479.93-860q78.84 0 148.21 29.92t120.68 81.21q51.31 51.29 81.25 120.63Q860-558.9 860-480.07q0 78.84-29.92 148.21t-81.21 120.68q-51.29 51.31-120.63 81.25Q558.9-100 480.07-100Zm-.07-60q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z"/></symbol>
+    <symbol id="i-chevron_right" viewBox="0 -960 960 960"><path d="m517.85-480-184-184L376-706.15 602.15-480 376-253.85 333.85-296l184-184Z"/></symbol>
+    <symbol id="i-expand_more" viewBox="0 -960 960 960"><path d="M480-358.46 253.85-584.62 296-626.77l184 184 184-184 42.15 42.15L480-358.46Z"/></symbol>
+    <symbol id="i-bluetooth" viewBox="0 -960 960 960"><path d="M450-93.85v-314l-194 194L213.85-256l224-224-224-224L256-746.15l194 194v-314h30L694.15-652l-172 172 172 172L480-93.85h-30Zm60-458.3L609.85-652 510-750.62v198.47Zm0 342.77L609.85-308 510-407.85v198.47Z"/></symbol>
+    <symbol id="i-monitor_heart" viewBox="0 -960 960 960"><path d="M100-590v-117.69Q100-738 121-759q21-21 51.31-21h615.38Q818-780 839-759q21 21 21 51.31V-590h-60v-117.69q0-4.62-3.85-8.46-3.84-3.85-8.46-3.85H172.31q-4.62 0-8.46 3.85-3.85 3.84-3.85 8.46V-590h-60Zm72.31 410Q142-180 121-201q-21-21-21-51.31V-370h60v117.69q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85h615.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46V-370h60v117.69Q860-222 839-201q-21 21-51.31 21H172.31ZM400-290q8.31 0 15.81-4.15 7.5-4.16 11.34-12.47L560-572.31l52.85 105.69q3.84 8.31 11.34 12.47Q631.69-450 640-450h220v-60H658.85l-71.7-143.38q-3.84-7.93-11.15-11.27-7.31-3.35-16-3.35-8.31 0-15.81 3.35-7.5 3.34-11.34 11.27L400-387.69l-52.85-105.69q-3.84-8.31-11.34-12.47Q328.31-510 320-510H100v60h201.15l71.7 143.38q3.84 8.31 11.34 12.47Q391.69-290 400-290Zm80-190Z"/></symbol>
+    <symbol id="i-directions_bike" viewBox="0 -960 960 960"><path d="M612.31-742.31q-29.16 0-49.58-20.42-20.42-20.42-20.42-49.58 0-29.15 20.42-49.57 20.42-20.43 49.58-20.43 29.15 0 49.57 20.43 20.43 20.42 20.43 49.57 0 29.16-20.43 49.58-20.42 20.42-49.57 20.42Zm-191.85 200L510-448.77V-210h-60v-198.85L316.62-517.39q-12.08-10.07-16.7-21.46-4.61-11.39-4.61-27.15 0-15.77 5.11-26.73 5.12-10.96 16.2-22.04l114.3-114.31q11.08-11.07 24.23-16.19 13.16-5.11 28.85-5.11 15.69 0 28.85 5.11 13.15 5.12 24.23 16.19l76 76q26.61 26.62 62.03 43.5 35.43 16.89 78.89 18.81V-530q-58-1.92-104.38-23.27-46.39-21.35-82.7-57.65L528-649.85 420.46-542.31Zm-212.77 74.62q79.77 0 133.73 53.96 53.96 53.96 53.96 133.73 0 79.77-53.96 133.73-53.96 53.96-133.73 53.96-79.77 0-133.73-53.96Q20-200.23 20-280q0-79.77 53.96-133.73 53.96-53.96 133.73-53.96Zm0 327.69q57.77 0 98.89-41.12 41.11-41.11 41.11-98.88 0-57.77-41.11-98.88Q265.46-420 207.69-420t-98.88 41.12Q67.69-337.77 67.69-280q0 57.77 41.12 98.88Q149.92-140 207.69-140Zm544.62-327.69q79.77 0 133.73 53.96Q940-359.77 940-280q0 79.77-53.96 133.73-53.96 53.96-133.73 53.96-79.77 0-133.73-53.96-53.96-53.96-53.96-133.73 0-79.77 53.96-133.73 53.96-53.96 133.73-53.96Zm0 327.69q57.77 0 98.88-41.12 41.12-41.11 41.12-98.88 0-57.77-41.12-98.88Q810.08-420 752.31-420q-57.77 0-98.89 41.12-41.11 41.11-41.11 98.88 0 57.77 41.11 98.88Q694.54-140 752.31-140Z"/></symbol>
+    <symbol id="i-terrain" viewBox="0 -960 960 960"><path d="m78.08-260 203.84-272.31L441.15-320h320.77l-200-266-110 145.85L414.23-490l147.69-196.92 320 426.92H78.08Zm464.46-60Zm-344.46 0h168.07l-84.23-112.77L198.08-320Zm0 0h168.07-168.07Z"/></symbol>
+    <symbol id="i-speed" viewBox="0 -960 960 960"><path d="M424.15-346.15q21.31 21.3 54.89 20.23 33.57-1.08 49.27-24.23l217.07-314.46-315.23 216.3q-23.53 15.7-25.42 48.27-1.88 32.58 19.42 53.89ZM480-780q57.08 0 106.96 14.96 49.89 14.96 96.35 45.27l-56.39 36.46q-34.15-18.15-70.8-27.42Q519.46-720 480-720q-133 0-226.5 93.5T160-400q0 42 11.5 83t32.5 77h552q23-38 33.5-79t10.5-85q0-36-8.88-72.88-8.89-36.89-27.43-70.04l36.46-56.39q29.62 48.54 44.43 97.12 14.8 48.58 15.42 100.96.61 54.31-12.23 102.65-12.85 48.35-38.69 94.58-7.93 13-22.31 20.5Q772.38-180 756-180H204q-16 0-30.19-7.69-14.19-7.7-22.89-21.85-22.92-40-36.92-87.23Q100-344 100-400q0-78.38 29.74-147.37 29.74-68.99 81.19-120.85 51.46-51.86 120.99-81.82Q401.46-780 480-780Zm4.31 295.69Z"/></symbol>
+    <symbol id="i-schedule" viewBox="0 -960 960 960"><path d="m618.92-298.92 42.16-42.16L510-492.16V-680h-60v212.15l168.92 168.93ZM480.07-100q-78.84 0-148.21-29.92t-120.68-81.21q-51.31-51.29-81.25-120.63Q100-401.1 100-479.93q0-78.84 29.92-148.21t81.21-120.68q51.29-51.31 120.63-81.25Q401.1-860 479.93-860q78.84 0 148.21 29.92t120.68 81.21q51.31 51.29 81.25 120.63Q860-558.9 860-480.07q0 78.84-29.92 148.21t-81.21 120.68q-51.29 51.31-120.63 81.25Q558.9-100 480.07-100ZM480-480Zm0 320q133 0 226.5-93.5T800-480q0-133-93.5-226.5T480-800q-133 0-226.5 93.5T160-480q0 133 93.5 226.5T480-160Z"/></symbol>
+    <symbol id="i-trending_up" viewBox="0 -960 960 960"><path d="M142.15-258.08 100-300.23l274.08-276.08 160 160 224.54-221.77H640v-60h220v220h-60v-117.84L534.08-330l-160-160-231.93 231.92Z"/></symbol>
+    <symbol id="i-settings" viewBox="0 -960 960 960"><path d="m387.69-100-15.23-121.85q-16.07-5.38-32.96-15.07-16.88-9.7-30.19-20.77L196.46-210l-92.3-160 97.61-73.77q-1.38-8.92-1.96-17.92-.58-9-.58-17.93 0-8.53.58-17.34t1.96-19.27L104.16-590l92.3-159.23 112.46 47.31q14.47-11.46 30.89-20.96t32.27-15.27L387.69-860h184.62l15.23 122.23q18 6.54 32.57 15.27 14.58 8.73 29.43 20.58l114-47.31L855.84-590l-99.15 74.92q2.15 9.69 2.35 18.12.19 8.42.19 16.96 0 8.15-.39 16.58-.38 8.42-2.76 19.27L854.46-370l-92.31 160-112.61-48.08q-14.85 11.85-30.31 20.96-15.46 9.12-31.69 14.89L572.31-100H387.69ZM440-160h78.62L533-267.15q30.62-8 55.96-22.73 25.35-14.74 48.89-37.89L737.23-286l39.39-68-86.77-65.38q5-15.54 6.8-30.47 1.81-14.92 1.81-30.15 0-15.62-1.81-30.15-1.8-14.54-6.8-29.7L777.38-606 738-674l-100.54 42.38q-20.08-21.46-48.11-37.92-28.04-16.46-56.73-23.31L520-800h-79.38l-13.24 106.77q-30.61 7.23-56.53 22.15-25.93 14.93-49.47 38.46L222-674l-39.38 68L269-541.62q-5 14.24-7 29.62t-2 32.38q0 15.62 2 30.62 2 15 6.62 29.62l-86 65.38L222-286l99-42q22.77 23.38 48.69 38.31 25.93 14.92 57.31 22.92L440-160Zm40.46-200q49.92 0 84.96-35.04 35.04-35.04 35.04-84.96 0-49.92-35.04-84.96Q530.38-600 480.46-600q-50.54 0-85.27 35.04T360.46-480q0 49.92 34.73 84.96Q429.92-360 480.46-360ZM480-480Z"/></symbol>
+    <symbol id="i-person" viewBox="0 -960 960 960"><path d="M480-492.31q-57.75 0-98.87-41.12Q340-574.56 340-632.31q0-57.75 41.13-98.87 41.12-41.13 98.87-41.13 57.75 0 98.87 41.13Q620-690.06 620-632.31q0 57.75-41.13 98.88-41.12 41.12-98.87 41.12ZM180-187.69v-88.93q0-29.38 15.96-54.42 15.96-25.04 42.66-38.5 59.3-29.07 119.65-43.61 60.35-14.54 121.73-14.54t121.73 14.54q60.35 14.54 119.65 43.61 26.7 13.46 42.66 38.5Q780-306 780-276.62v88.93H180Zm60-60h480v-28.93q0-12.15-7.04-22.5-7.04-10.34-19.11-16.88-51.7-25.46-105.42-38.58Q534.7-367.69 480-367.69q-54.7 0-108.43 13.11-53.72 13.12-105.42 38.58-12.07 6.54-19.11 16.88-7.04 10.35-7.04 22.5v28.93Zm240-304.62q33 0 56.5-23.5t23.5-56.5q0-33-23.5-56.5t-56.5-23.5q-33 0-56.5 23.5t-23.5 56.5q0 33 23.5 56.5t56.5 23.5Zm0-80Zm0 384.62Z"/></symbol>
+    <symbol id="i-public" viewBox="0 -960 960 960"><path d="M480.07-100q-78.84 0-148.21-29.92t-120.68-81.21q-51.31-51.29-81.25-120.63Q100-401.1 100-479.93q0-78.84 29.92-148.21t81.21-120.68q51.29-51.31 120.63-81.25Q401.1-860 479.93-860q78.84 0 148.21 29.92t120.68 81.21q51.31 51.29 81.25 120.63Q860-558.9 860-480.07q0 78.84-29.92 148.21t-81.21 120.68q-51.29 51.31-120.63 81.25Q558.9-100 480.07-100ZM440-162v-78q-33 0-56.5-23.5T360-320v-40L168-552q-3 18-5.5 36t-2.5 36q0 121 79.5 212T440-162Zm276-102q20-22 36-47.5t26.5-53q10.5-27.5 16-56.5t5.5-59q0-98.29-54.31-179.53T600-776.77V-760q0 33-23.5 56.5T520-680h-80v80q0 17-11.5 28.5T400-560h-80v80h240q17 0 28.5 11.5T600-440v120h40q26 0 47 15.5t29 40.5Z"/></symbol>
+    <symbol id="i-smartphone" viewBox="0 -960 960 960"><path d="M292.31-60Q262-60 241-81q-21-21-21-51.31v-695.38Q220-858 241-879q21-21 51.31-21h375.38Q698-900 719-879q21 21 21 51.31v695.38Q740-102 719-81q-21 21-51.31 21H292.31ZM280-170v37.69q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85h375.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46V-170H280Zm0-60h400v-500H280v500Zm0-560h400v-37.69q0-4.62-3.85-8.46-3.84-3.85-8.46-3.85H292.31q-4.62 0-8.46 3.85-3.85 3.84-3.85 8.46V-790Zm0 0v-50 50Zm0 620v50-50Z"/></symbol>
+    <symbol id="i-sync" viewBox="0 -960 960 960"><path d="M173.08-173.08v-60H290l-29.08-27.84q-49.3-45.62-70.11-102.12Q170-419.54 170-477.23q0-103.69 60.73-185.96Q291.46-745.46 390-776.15v63.23q-72.39 28.3-116.19 92.73Q230-555.77 230-477.23q0 46.92 17.77 91.15 17.77 44.23 55.31 81.77l25.38 25.39v-109.54h60v215.38H173.08ZM570-183.85v-63.23q72.39-28.3 116.19-92.73Q730-404.23 730-482.77q0-46.92-17.77-91.15-17.77-44.23-55.31-81.77l-25.38-25.39v109.54h-60v-215.38h215.38v60H670l29.08 27.84q47.46 47.47 69.19 103.04Q790-540.46 790-482.77q0 103.69-60.73 185.96Q668.54-214.54 570-183.85Z"/></symbol>
+    <symbol id="i-android" viewBox="0 -960 960 960"><path d="M73.85-259.62q8.61-98.92 60.7-181.94 52.1-83.01 138.76-131.9l-68.23-118q-5.62-8.62-2.81-17.65 2.81-9.04 12.04-14.04 8-4.62 16.85-1.81 8.84 2.81 14.38 11.13l68.31 118.29q79.38-33.27 166.15-33.27 86.77 0 166.15 33.27l68.31-118.29q5.54-8.32 14.38-11.13 8.85-2.81 16.85 1.81 9.23 5 12.04 14.04 2.81 9.03-2.81 17.65l-68.23 118q86.66 48.89 138.76 131.9 52.09 83.02 60.7 181.94H73.85Zm221.59-101.53q19.41 0 32.75-13.4 13.35-13.41 13.35-32.81 0-19.41-13.4-32.76-13.4-13.34-32.81-13.34-19.41 0-32.75 13.4-13.35 13.4-13.35 32.81 0 19.4 13.4 32.75 13.4 13.35 32.81 13.35Zm369.23 0q19.41 0 32.75-13.4 13.35-13.41 13.35-32.81 0-19.41-13.4-32.76-13.4-13.34-32.81-13.34-19.41 0-32.75 13.4-13.35 13.4-13.35 32.81 0 19.4 13.4 32.75 13.4 13.35 32.81 13.35Z"/></symbol>
+    <symbol id="i-shop" viewBox="0 -960 960 960"><path d="M390-258.46 641.54-420 390-581.54v323.08ZM172.31-140Q142-140 121-161q-21-21-21-51.31V-700h240v-67.69Q340-798 361-819q21-21 51.31-21h135.38Q578-840 599-819q21 21 21 51.31V-700h240v487.69Q860-182 839-161q-21 21-51.31 21H172.31Zm0-60h615.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46V-640H160v427.69q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85ZM400-700h160v-67.69q0-4.62-3.85-8.46-3.84-3.85-8.46-3.85H412.31q-4.62 0-8.46 3.85-3.85 3.84-3.85 8.46V-700ZM160-200v-440 440Z"/></symbol>
+    <symbol id="i-route" viewBox="0 -960 960 960"><path d="M360-130q-62.15 0-106.08-43.92Q210-217.85 210-280v-333.92q-35-13-57.5-41.58T130-719.87q0-45.89 32.07-78.01Q194.14-830 239.95-830q45.82 0 77.93 32.12Q350-765.76 350-719.87q0 35.79-22.5 64.37-22.5 28.58-57.5 41.58V-280q0 37.13 26.46 63.56Q322.92-190 360.07-190q37.16 0 63.55-26.44Q450-242.87 450-280v-400q0-62.15 43.92-106.08Q537.85-830 600-830t106.08 43.92Q750-742.15 750-680v333.92q35 13 57.5 41.58t22.5 64.37q0 45.89-32.07 78.01Q765.86-130 720.05-130q-45.82 0-77.93-32.12Q610-194.24 610-240.13q0-35.79 22.5-64.87 22.5-29.08 57.5-41.08V-680q0-37.13-26.46-63.56Q637.08-770 599.93-770q-37.16 0-63.55 26.44Q510-717.13 510-680v400q0 62.15-43.92 106.08Q422.15-130 360-130ZM240-670q20.85 0 35.42-14.58Q290-699.15 290-720t-14.58-35.42Q260.85-770 240-770t-35.42 14.58Q190-740.85 190-720t14.58 35.42Q219.15-670 240-670Zm480 480q20.85 0 35.42-14.58Q770-219.15 770-240t-14.58-35.42Q740.85-290 720-290t-35.42 14.58Q670-260.85 670-240t14.58 35.42Q699.15-190 720-190ZM240-720Zm480 480Z"/></symbol>
+    <symbol id="i-phone_android" viewBox="0 -960 960 960"><path d="M404.62-166.92h150.76v-35.39H404.62v35.39ZM292.31-60Q262-60 241-81q-21-21-21-51.31v-695.38Q220-858 241-879q21-21 51.31-21h375.38Q698-900 719-879q21 21 21 51.31v695.38Q740-102 719-81q-21 21-51.31 21H292.31ZM280-249.23v116.92q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85h375.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46v-116.92H280Zm0-60h400V-730H280v420.77ZM280-790h400v-37.69q0-4.62-3.85-8.46-3.84-3.85-8.46-3.85H292.31q-4.62 0-8.46 3.85-3.85 3.84-3.85 8.46V-790Zm0 540.77V-120v-129.23ZM280-790v-50 50Z"/></symbol>
+    <symbol id="i-person_off" viewBox="0 -960 960 960"><path d="M792.15-82.31 686.77-187.69H180v-88.93q0-29.38 15.96-54.42 15.96-25.04 42.66-38.5 48.84-24.15 98.42-37.77 49.58-13.61 99.89-17.92h6.34q3.27 0 6.35.38L82.31-792.15l42.77-42.77 709.84 709.84-42.77 42.77ZM240-247.69h386.77L508.69-365.77q-7.77-.77-14.34-1.35-6.58-.57-14.35-.57-54.85 0-108.5 13.11-53.65 13.12-105.35 38.58-12.07 6.54-19.11 16.88-7.04 10.35-7.04 22.5v28.93Zm489.85-117.62q17.84 8.62 28.3 26.16 10.46 17.53 11.08 37.84l-82.46-82.46q11.08 4.31 21.85 8.62 10.76 4.31 21.23 9.84ZM557.61-515.62l-43.99-43.99q21.07-9.77 33.73-29.5Q560-608.85 560-632.31q0-33-23.5-56.5t-56.5-23.5q-23.46 0-43.19 12.66-19.73 12.65-29.5 33.73l-44-44q19.92-29.77 50.5-46.08T480-772.31q57.92 0 98.96 41.04Q620-690.23 620-632.31q0 35.62-16.31 66.19-16.31 30.58-46.08 50.5Zm69.16 267.93H240 626.77ZM460.46-612.77Z"/></symbol>
+    <symbol id="i-code" viewBox="0 -960 960 960"><path d="M320-253.85 93.85-480 320-706.15l42.77 42.77-184 184L362.15-296 320-253.85Zm320 0-42.77-42.77 184-184L597.85-664 640-706.15 866.15-480 640-253.85Z"/></symbol>
+    <symbol id="i-description" viewBox="0 -960 960 960"><path d="M330-250h300v-60H330v60Zm0-160h300v-60H330v60Zm-77.69 310Q222-100 201-121q-21-21-21-51.31v-615.38Q180-818 201-839q21-21 51.31-21H570l210 210v477.69Q780-142 759-121q-21 21-51.31 21H252.31ZM540-620v-180H252.31q-4.62 0-8.46 3.85-3.85 3.84-3.85 8.46v615.38q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85h455.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46V-620H540ZM240-800v180-180V-160v-640Z"/></symbol>
+  </svg>
+
   <header class="site-header">
     <div class="container">
       <a class="brand" href="#top" aria-label="Indoor Bike home">
-        <img src="assets/logo-wordmark.svg" alt="Indoor Bike">
+        <img src="assets/logo-mark.svg" alt="">
+        <span>Indoor Bike</span>
       </a>
       <nav class="nav" aria-label="Primary">
-        <a href="#flow">How it flows</a>
-        <a href="editor/index.html">Editor</a>
-        <a href="#libraries">Libraries</a>
-        <a href="#api">API</a>
-        <a href="#privacy">Free &amp; private</a>
+        <a href="#ride">Three ways to ride</a>
+        <a href="#community">Community</a>
+        <a href="#tools">Editor &amp; tools</a>
+        <a href="#anywhere">Any Android</a>
         <a href="#faq">FAQ</a>
       </nav>
-      <a class="btn btn-primary" href="#download">
-        Install
-      </a>
+      <a class="btn btn-primary" href="#install">Install</a>
     </div>
   </header>
 
   <main id="top">
 
-    <!-- HERO -->
+    <!-- 1. HERO -->
     <section class="hero">
       <div class="container">
         <div class="hero-copy">
-          <p class="eyebrow">Indoor cycling · Android · GPLv3</p>
-          <h1>Train by <span class="accent">power.</span><br>Owe nobody <span class="accent">anything.</span></h1>
+          <p class="eyebrow" style="margin:0">Free, open-source indoor cycling for Android</p>
+          <h1>Your smart trainer.<br>Your phone.<br>Nothing in between.</h1>
           <p class="lead">
-            Structured ERG workouts for your smart trainer. Build them in your
-            browser, beam them to your phone with a QR code, ride them against
-            your FTP. Everything stays on your device.
+            Ride structured workouts, real-world routes, or just ride. Workouts
+            and routes come from repositories that riders maintain, and the app
+            itself asks for nothing: no account, no subscription, no Google.
           </p>
           <div class="hero-cta">
-            <a class="btn btn-primary" href="#download">
-              Get the app
+            <a class="btn btn-primary btn-lg" href="#install">
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-download"></use></svg>
+              Install the app
             </a>
-            <a class="btn btn-secondary" href="editor/index.html">
-              Try the editor - no install <span class="arrow">→</span>
+            <a class="btn btn-secondary btn-lg" href="#community">
+              Browse community repos
+              <svg class="icon icon-18" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
             </a>
           </div>
-          <ul class="stance-strip" aria-label="What this app never asks of you">
-            <li>Free forever</li>
-            <li>No account</li>
-            <li>No tracking</li>
-            <li>No subscription</li>
-            <li>Open source</li>
+          <ul class="trust-strip" aria-label="What this app never asks of you">
+            <li><svg class="icon icon-16 icon-ok" aria-hidden="true"><use href="#i-check"></use></svg>Free forever</li>
+            <li><svg class="icon icon-16 icon-ok" aria-hidden="true"><use href="#i-check"></use></svg>No account</li>
+            <li><svg class="icon icon-16 icon-ok" aria-hidden="true"><use href="#i-check"></use></svg>No Google services</li>
+            <li><svg class="icon icon-16 icon-ok" aria-hidden="true"><use href="#i-check"></use></svg>GPLv3</li>
           </ul>
         </div>
 
-        <!-- Phone mock: the new "Ride" home screen, rendered live in CSS -->
+        <!-- The app's Home screen, drawn in CSS. -->
         <div class="device" aria-hidden="true">
-          <div class="device-screen mock">
-            <div class="m-appbar">
-              <span class="m-logo"><img src="assets/logo-mark.svg" alt=""></span>
-              <span class="m-title">Ride</span>
-              <span class="m-chip"><span class="m-dot"></span>KICKR CORE</span>
-              <span class="m-qr">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14h1M14 20h1M20 20h1"/></svg>
-              </span>
+          <div class="device-screen">
+            <div class="m-status">
+              <span>23:44</span>
+              <svg class="icon icon-14"><use href="#i-bluetooth"></use></svg>
             </div>
-            <div class="m-hero">
-              <span class="m-eyebrow">Up next · Ride again</span>
-              <span class="m-name">Sweet Spot 3×12</span>
-              <span class="m-sub">Last ridden Tuesday</span>
-              <div class="m-zonebar">
-                <i style="flex:14;background:var(--zone-1)"></i>
-                <i style="flex:24;background:var(--zone-3)"></i>
-                <i style="flex:8;background:var(--zone-1)"></i>
-                <i style="flex:24;background:var(--zone-4)"></i>
-                <i style="flex:8;background:var(--zone-1)"></i>
-                <i style="flex:14;background:var(--zone-3)"></i>
-                <i style="flex:8;background:var(--zone-1)"></i>
+            <div class="m-head">
+              <div class="m-day">Tuesday</div>
+              <div class="m-title">What are you riding?</div>
+            </div>
+            <div class="m-body">
+              <div class="m-row">
+                <span class="m-well"><svg class="icon icon-18"><use href="#i-directions_bike"></use></svg></span>
+                <span class="m-row-text"><b>Workout</b><span>Intervals the trainer holds for you.</span></span>
+                <svg class="icon icon-16" style="color:var(--fg-3)"><use href="#i-chevron_right"></use></svg>
               </div>
-              <div class="m-pills"><span>58 MIN</span><span>TSS 74</span><span>IF 0.88</span></div>
-              <span class="m-start">▶ Start workout</span>
-            </div>
-            <div class="m-shelf-label"><span>QUICK PICKS</span><span class="m-hint">starred + most ridden</span></div>
-            <div class="m-shelf">
-              <div class="m-mini"><span class="m-tag">★ STARRED</span><b>Threshold 2×20</b><span class="m-mt">75 MIN · TSS 92</span></div>
-              <div class="m-mini"><span class="m-tag">↻ RIDDEN 12×</span><b>Recovery Spin</b><span class="m-mt">30 MIN · TSS 21</span></div>
-            </div>
-            <div class="m-row">
-              <div class="m-row-l"><b>Endurance Builder</b>
-                <div class="m-zonebar thin">
-                  <i style="flex:20;background:var(--zone-1)"></i>
-                  <i style="flex:60;background:var(--zone-2)"></i>
-                  <i style="flex:20;background:var(--zone-1)"></i>
+              <div class="m-row">
+                <span class="m-well"><svg class="icon icon-18"><use href="#i-terrain"></use></svg></span>
+                <span class="m-row-text"><b>Route</b><span>A real road, with its hills under the wheel.</span></span>
+                <svg class="icon icon-16" style="color:var(--fg-3)"><use href="#i-chevron_right"></use></svg>
+              </div>
+              <div class="m-row">
+                <span class="m-well"><svg class="icon icon-18"><use href="#i-speed"></use></svg></span>
+                <span class="m-row-text"><b>Just ride</b><span>No plan. Set the resistance yourself.</span></span>
+                <svg class="icon icon-16" style="color:var(--fg-3)"><use href="#i-chevron_right"></use></svg>
+              </div>
+
+              <div class="m-label">Before you start</div>
+              <div class="m-list">
+                <div class="m-list-row">
+                  <svg class="icon icon-16" style="color:var(--fg-2)"><use href="#i-bluetooth"></use></svg>
+                  <div><b>KICKR CORE 1F2A</b><span>Connected</span></div>
+                  <span class="m-dot on"></span>
+                </div>
+                <div class="m-divider"></div>
+                <div class="m-list-row">
+                  <svg class="icon icon-16" style="color:var(--fg-2)"><use href="#i-monitor_heart"></use></svg>
+                  <div><b>Heart rate monitor</b><span>Not paired</span></div>
+                  <span class="m-dot off"></span>
                 </div>
               </div>
-              <span class="m-row-r">90 MIN<br>TSS 85</span>
-            </div>
-            <div class="m-row">
-              <div class="m-row-l"><b>VO2 Max Bursts</b>
-                <div class="m-zonebar thin">
-                  <i style="flex:20;background:var(--zone-1)"></i>
-                  <i style="flex:10;background:var(--zone-5)"></i>
-                  <i style="flex:10;background:var(--zone-1)"></i>
-                  <i style="flex:10;background:var(--zone-5)"></i>
-                  <i style="flex:10;background:var(--zone-1)"></i>
-                  <i style="flex:10;background:var(--zone-5)"></i>
-                  <i style="flex:20;background:var(--zone-1)"></i>
-                </div>
+
+              <div class="m-label">Repositories</div>
+              <div class="m-repo">
+                <div><b>Juhani&#39;s Indoor Workouts</b><span>2 workouts you do not have</span></div>
+                <span class="m-new">2 new</span>
               </div>
-              <span class="m-row-r">19 MIN<br>TSS 17</span>
-            </div>
-            <div class="m-row">
-              <div class="m-row-l"><b>Over-Under Cruisers</b>
-                <div class="m-zonebar thin">
-                  <i style="flex:15;background:var(--zone-1)"></i>
-                  <i style="flex:14;background:var(--zone-4)"></i>
-                  <i style="flex:14;background:var(--zone-3)"></i>
-                  <i style="flex:14;background:var(--zone-4)"></i>
-                  <i style="flex:14;background:var(--zone-3)"></i>
-                  <i style="flex:14;background:var(--zone-4)"></i>
-                  <i style="flex:15;background:var(--zone-1)"></i>
-                </div>
-              </div>
-              <span class="m-row-r">20 MIN<br>TSS 22</span>
             </div>
             <div class="m-tabbar">
-              <span class="on">Ride</span>
-              <span>History</span>
-              <span>Progress</span>
-              <span>Settings</span>
+              <span class="on"><svg class="icon icon-16"><use href="#i-directions_bike"></use></svg>Ride</span>
+              <span><svg class="icon icon-16"><use href="#i-schedule"></use></svg>History</span>
+              <span><svg class="icon icon-16"><use href="#i-trending_up"></use></svg>Progress</span>
+              <span><svg class="icon icon-16"><use href="#i-settings"></use></svg>Settings</span>
             </div>
           </div>
         </div>
       </div>
     </section>
 
-    <div class="topo-divider" aria-hidden="true"></div>
-
-    <!-- THE FLOW -->
-    <section id="flow">
+    <!-- 2. THREE WAYS TO RIDE -->
+    <section id="ride">
       <div class="container">
-        <p class="eyebrow">The whole idea</p>
-        <h2 class="section-title">Browser to sweat in fifteen seconds.</h2>
+        <p class="eyebrow">Three ways to ride</p>
+        <h2 class="section-title">Pick the kind of ride. The trainer does the rest.</h2>
         <p class="section-lead">
-          The workout editor runs right here on this site - no install, no
-          sign-up. Draw your intervals, point your phone at a QR code, and the
-          app takes over your trainer. That's the entire pipeline.
+          Every ride connects to your trainer over standard Bluetooth (FTMS),
+          saves to your phone as a file, and counts towards your streaks and
+          rider level.
         </p>
 
-        <div class="flow">
-          <div class="flow-step">
-            <div class="flow-stage">
-              <div class="mini-editor" aria-hidden="true">
-                <div class="mini-editor-bar">
-                  <i style="flex:2;background:var(--zone-1)"></i>
-                  <i style="flex:3;background:var(--zone-4)"></i>
-                  <i style="flex:1;background:var(--zone-1)"></i>
-                  <i style="flex:3;background:var(--zone-4)"></i>
-                  <i style="flex:1;background:var(--zone-1)"></i>
-                  <i style="flex:3;background:var(--zone-4)"></i>
-                  <i style="flex:2;background:var(--zone-1)"></i>
-                </div>
-                <span class="mini-editor-caption">Threshold 3×8 · 42 min</span>
+        <div class="ride-grid">
+          <article class="card ride-card">
+            <div class="ride-visual" aria-hidden="true">
+              <div class="zone-profile">
+                <i style="flex:3;height:40%;background:var(--zone-1)"></i>
+                <i style="flex:2;height:55%;background:var(--zone-2)"></i>
+                <i style="flex:3;height:95%;background:var(--zone-4)"></i>
+                <i style="flex:1.5;height:45%;background:var(--zone-1)"></i>
+                <i style="flex:3;height:95%;background:var(--zone-4)"></i>
+                <i style="flex:1.5;height:45%;background:var(--zone-1)"></i>
+                <i style="flex:3;height:95%;background:var(--zone-4)"></i>
+                <i style="flex:2.5;height:35%;background:var(--zone-1)"></i>
               </div>
             </div>
-            <p class="flow-k">01 · In your browser</p>
-            <h3>Build</h3>
-            <p>Lay out intervals as coloured blocks in the <a href="editor/index.html">editor</a>. Durations, %FTP, repeats - tweak until the shape feels right. Works on any laptop or tablet.</p>
-          </div>
-
-          <div class="flow-step">
-            <div class="flow-stage">
-              <div class="qr-mock" aria-hidden="true">
-                <div class="qr-grid">
-                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
-                  <i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i>
-                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
-                  <i class="o"></i><i class="o"></i><i class="o"></i><i></i><i class="o"></i><i class="o"></i><i class="o"></i>
-                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
-                  <i></i><i class="o"></i><i></i><i class="o"></i><i></i><i class="o"></i><i></i>
-                  <i></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
-                </div>
-                <div class="scanline"></div>
+            <div>
+              <div class="ride-head">
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-directions_bike"></use></svg>
+                <h3>Workout</h3>
               </div>
-            </div>
-            <p class="flow-k">02 · One tap in the app</p>
-            <h3>Beam</h3>
-            <p>Tap "Send to phone" in the editor, scan the QR straight from the app's home screen. The workout lands in your library and opens, ready to start. No cloud in between.</p>
-          </div>
-
-          <div class="flow-step">
-            <div class="flow-stage">
-              <div class="hud-mock" aria-hidden="true">
-                <span class="hud-w">243<em>W</em></span>
-                <span class="hud-target">TARGET 245</span>
-                <span class="hud-zone">Z4 · THRESHOLD</span>
-              </div>
-            </div>
-            <p class="flow-k">03 · On the trainer</p>
-            <h3>Ride</h3>
-            <p>ERG mode drives the trainer to each interval's wattage. You hold the cadence, it holds the watts. The finished ride saves to your phone as a file - export FIT any time.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- FEATURES -->
-    <section id="features">
-      <div class="container">
-        <p class="eyebrow">What's inside</p>
-        <h2 class="section-title">Built for the saddle, not the screen.</h2>
-        <p class="section-lead">
-          Every screen is designed for arm's-length legibility on a sweaty phone.
-          Telemetry first, decoration last.
-        </p>
-
-        <div class="features">
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M7 7l10 10"/><path d="M11 17l6-6-6-6v12z"/><path d="M11 7l6 6"/>
-              </svg>
-            </div>
-            <h3>BLE smart trainer</h3>
-            <p>Standard FTMS over Bluetooth LE. Pair your Wahoo Kickr Core or any FTMS-compatible trainer. No vendor SDK, no Google Play Services.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
-              </svg>
-            </div>
-            <h3>ERG mode control</h3>
-            <p>The app drives your trainer to hit each interval's target wattage automatically. You hold the cadence, it holds the watts.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 3v18h18"/><rect x="7" y="13" width="3" height="6"/><rect x="12" y="9" width="3" height="10"/><rect x="17" y="5" width="3" height="14"/>
-              </svg>
-            </div>
-            <h3>Power zones</h3>
-            <p>Z1 recovery through Z7 neuromuscular, calibrated as percentages of your FTP. Visualised on every workout, every interval, every chart.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
-              </svg>
-            </div>
-            <h3>JSON workouts</h3>
-            <p>Every workout is a readable JSON file. Use the bundled library, drop in your own, hand-craft them in a text editor, or build them visually with the <a href="editor/index.html" style="color:var(--brand-400);">workout editor</a>.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="9" cy="6" r="3"/><circle cx="15" cy="6" r="3"/><path d="M3 13l3-3h12l3 3"/><path d="M5 13v8h14v-8"/>
-              </svg>
-            </div>
-            <h3>Zwift Click ready</h3>
-            <p>Pair a Zwift Click v1 controller to nudge target power up or down mid-interval. On-screen +/- buttons work too. Your handlebar, your call.</p>
-          </article>
-
-          <article class="feature-card">
-            <div class="feature-icon" aria-hidden="true">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-            </div>
-            <h3>Yours, locally</h3>
-            <p>Rides, FTP, weight, paired devices: all on your phone. No telemetry leaves the device. Optional sync is opt-in and lazily loaded.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <!-- WORKOUT DEMO -->
-    <section id="workouts">
-      <div class="container">
-        <p class="eyebrow">Workout library</p>
-        <h2 class="section-title">Familiar formats. Honest names.</h2>
-        <p class="section-lead">
-          Sweet Spot, Threshold, VO2. The same intervals you already know from
-          other training apps, structured against your FTP and ridden in the
-          same colour-coded zones.
-        </p>
-
-        <div class="workout-demo">
-          <article class="workout-card">
-            <p class="eyebrow">Threshold</p>
-            <h3>Sweet Spot 3×12</h3>
-            <p class="meta">52 MIN · TSS 65 · IF 0.91</p>
-            <div class="workout-bar" aria-hidden="true">
-              <div style="background:#2E7BFF;flex:1"></div>
-              <div style="background:#1FB373;flex:3"></div>
-              <div style="background:#F0C419;flex:5"></div>
-              <div style="background:#1FB373;flex:1"></div>
-              <div style="background:#F0C419;flex:5"></div>
-              <div style="background:#1FB373;flex:1"></div>
-              <div style="background:#F0C419;flex:5"></div>
-              <div style="background:#2E7BFF;flex:1"></div>
-            </div>
-            <div class="workout-stats">
-              <div class="stat"><b>225</b>avg watts</div>
-              <div class="stat"><b>92</b>avg rpm</div>
-              <div class="stat"><b>3</b>intervals</div>
-            </div>
-          </article>
-
-          <article class="workout-card">
-            <p class="eyebrow">VO2 Max</p>
-            <h3>30/30s · 8 sets</h3>
-            <p class="meta">38 MIN · TSS 58 · IF 0.94</p>
-            <div class="workout-bar" aria-hidden="true">
-              <div style="background:#2E7BFF;flex:2"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#FF8A1F;flex:1"></div><div style="background:#1FB373;flex:1"></div>
-              <div style="background:#2E7BFF;flex:2"></div>
-            </div>
-            <div class="workout-stats">
-              <div class="stat"><b>118</b>%FTP peak</div>
-              <div class="stat"><b>8</b>sets</div>
-              <div class="stat"><b>30s</b>on/off</div>
-            </div>
-          </article>
-        </div>
-
-        <div class="zone-legend" aria-label="Power zones">
-          <span class="zone-badge" style="background:rgba(107,138,168,0.16);color:#9DB1C6"><span class="swatch" style="background:#6B8AA8"></span>Z1 Recovery</span>
-          <span class="zone-badge" style="background:rgba(46,123,255,0.18);color:#7BA8FF"><span class="swatch" style="background:#2E7BFF"></span>Z2 Endurance</span>
-          <span class="zone-badge" style="background:rgba(31,179,115,0.18);color:#5DD3A4"><span class="swatch" style="background:#1FB373"></span>Z3 Tempo</span>
-          <span class="zone-badge" style="background:rgba(240,196,25,0.20);color:#F4D258"><span class="swatch" style="background:#F0C419"></span>Z4 Threshold</span>
-          <span class="zone-badge" style="background:rgba(255,138,31,0.20);color:#FFAE5C"><span class="swatch" style="background:#FF8A1F"></span>Z5 VO2</span>
-          <span class="zone-badge" style="background:rgba(235,59,59,0.20);color:#F47272"><span class="swatch" style="background:#EB3B3B"></span>Z6 Anaerobic</span>
-          <span class="zone-badge" style="background:rgba(197,59,255,0.20);color:#D777FF"><span class="swatch" style="background:#C53BFF"></span>Z7 Neuro</span>
-        </div>
-      </div>
-    </section>
-
-    <!-- COMMUNITY LIBRARIES -->
-    <section id="libraries" class="libraries">
-      <div class="container">
-        <p class="eyebrow">Community libraries</p>
-        <h2 class="section-title">Anyone can publish a library.<br>Including you.</h2>
-        <p class="section-lead">
-          A workout library is just static files: a small <code>manifest.json</code>
-          plus the workouts it points at. Host it on any web space - a Codeberg
-          or GitHub Pages site, your blog, a folder on your NAS. No server code,
-          no gatekeeper, no permission needed.
-        </p>
-
-        <div class="lib-grid">
-          <div class="lib-diagram" aria-label="How a community library reaches a rider">
-            <div class="lib-node">
-              <p class="lib-node-k">You publish</p>
-              <pre class="code-block"><code>{
-  "schemaVersion": 2,
-  "id": "gravel-base",
-  "name": "Gravel Base Builder",
-  "author": "Your Name",
-  "bundles": [
-    { "id": "base",
-      "version": 3,
-      "url": "base.json" }
-  ]
-}</code></pre>
-              <p class="lib-node-caption">manifest.json · anywhere HTTPS</p>
-            </div>
-            <div class="lib-arrow" aria-hidden="true">→</div>
-            <div class="lib-node">
-              <p class="lib-node-k">Riders add it</p>
-              <ul class="lib-ways">
-                <li>Paste the URL in the app</li>
-                <li>Share it as a QR code</li>
-                <li>Get listed in the in-app registry</li>
-              </ul>
-              <p class="lib-node-caption">browse the pack, pick workouts</p>
-            </div>
-            <div class="lib-arrow" aria-hidden="true">→</div>
-            <div class="lib-node">
-              <p class="lib-node-k">They own their copy</p>
-              <p class="lib-node-body">
-                Every workout a rider adds becomes a local file on their phone -
-                theirs to ride, rename, or edit. If your library changes later,
-                nothing breaks and nothing is silently swapped underneath them.
+              <p>
+                Structured intervals in ERG mode. The app drives the trainer to
+                each step&#39;s wattage against your FTP; you hold the cadence.
+                Sweet Spot, Threshold, VO2, or anything you build.
               </p>
-              <p class="lib-node-caption">local-first, always</p>
             </div>
-          </div>
+          </article>
 
-          <div class="lib-copy">
-            <h3>Coaches, clubs, tinkerers</h3>
-            <p>
-              Publish your winter plan for the whole club. Ship a pack alongside
-              your coaching. Curate the intervals you swear by. The in-app
-              <b>Browse community</b> screen lists public libraries from the
-              registry at <code>indoorbike.app/registry.json</code> - open a pull
-              request to get yours listed, or share your manifest URL directly
-              and skip the registry entirely.
-            </p>
-            <div class="hero-cta">
-              <a class="btn btn-primary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/src/branch/main/docs/ARCHITECTURE.md#workout-library--sources-import-repositories">
-                Publishing guide <span class="arrow">→</span>
-              </a>
-              <a class="btn btn-secondary" href="community/index.html">
-                Browse community
-              </a>
+          <article class="card ride-card">
+            <div class="ride-visual" style="padding-bottom:14px" aria-hidden="true">
+              <div class="elev">
+                <svg viewBox="0 0 300 60" preserveAspectRatio="none">
+                  <polygon points="0,60 0,44 30,40 60,30 90,34 120,14 150,10 180,26 210,22 240,38 270,34 300,42 300,60" fill="var(--bg-2)"></polygon>
+                  <polyline points="0,44 30,40 60,30 90,34 120,14 150,10 180,26 210,22 240,38 270,34 300,42" fill="none" stroke="var(--fg-1)" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
+                </svg>
+                <div class="elev-caption">
+                  <span>Col de la Madone · 12.4 km</span>
+                  <span>+ 890 m · 6.8%</span>
+                </div>
+              </div>
             </div>
-          </div>
+            <div>
+              <div class="ride-head">
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-terrain"></use></svg>
+                <h3>Route</h3>
+              </div>
+              <p>
+                A real GPX road in simulation mode. The trainer sets resistance
+                from the gradient, your watts set your speed, and virtual gears
+                shift without touching the bike. Map, elevation profile and live
+                gradient on the HUD.
+              </p>
+            </div>
+          </article>
+
+          <article class="card ride-card">
+            <div class="ride-visual" aria-hidden="true">
+              <div class="stepper">
+                <i>−</i>
+                <b>168<em> W</em></b>
+                <i>+</i>
+              </div>
+            </div>
+            <div>
+              <div class="ride-head">
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-speed"></use></svg>
+                <h3>Just ride</h3>
+              </div>
+              <p>
+                No plan. Start at 40% of your FTP, dial the power up or down with
+                the buttons or a Zwift Click, stop when you&#39;re done. Saved and
+                counted like any other ride.
+              </p>
+            </div>
+          </article>
         </div>
       </div>
     </section>
 
-    <!-- OPEN API -->
-    <section id="api" class="api">
+    <!-- 3. COMMUNITY REPOSITORIES -->
+    <section id="community" class="section-alt">
+      <div class="container split">
+        <div>
+          <p class="eyebrow">Community repositories</p>
+          <h2 class="section-title">Workouts and routes, maintained by riders. Not by us.</h2>
+          <p class="section-lead">
+            There is no central catalogue to gatekeep. A repository is a folder of
+            plain JSON files and a small <code>manifest.json</code>, hosted on any
+            HTTPS web space: Codeberg, GitHub Pages, your own site. Coaches publish
+            plans, clubs share their winter block, tinkerers curate the intervals
+            they swear by.
+          </p>
+          <p class="section-lead" style="margin-bottom:28px">
+            In the app you browse a repository, keep the workouts and routes you
+            want, and each one becomes a local file on your phone. Follow a
+            repository and the home screen tells you when it publishes something new.
+          </p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="community/index.html">Browse repositories</a>
+            <a class="btn btn-secondary" href="community/contribute.html">
+              Publish your own
+              <svg class="icon icon-18" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
+            </a>
+          </div>
+        </div>
+
+        <div class="repo-aside">
+          <div class="card repo-flow" aria-label="How a repository reaches a rider">
+            <div class="flow-node">
+              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-person"></use></svg></span>
+              <b>Maintainer</b><span>publishes JSON</span>
+            </div>
+            <svg class="icon icon-20 flow-sep" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
+            <div class="flow-node">
+              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-public"></use></svg></span>
+              <b>Any web host</b><span>manifest.json</span>
+            </div>
+            <svg class="icon icon-20 flow-sep" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
+            <div class="flow-node">
+              <span class="well well-dest"><svg class="icon icon-22" aria-hidden="true"><use href="#i-smartphone"></use></svg></span>
+              <b>Your phone</b><span>local copy, yours</span>
+            </div>
+          </div>
+
+          <p class="repo-label">In the registry today</p>
+          <ul class="repo-list" id="registry-list">
+            <li class="card repo-empty">Loading the registry…</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. EDITOR &amp; TOOLS -->
+    <section id="tools">
       <div class="container">
-        <p class="eyebrow">Open API</p>
-        <h2 class="section-title">An API with no API keys.</h2>
+        <p class="eyebrow">Editor &amp; tools</p>
+        <h2 class="section-title">Build in the browser. Beam it to the phone.</h2>
         <p class="section-lead">
-          Third-party tools - training planners, AI coaches, analytics apps -
-          can generate a workout and hand it to a rider as a plain URL. The
-          link opens the editor pre-loaded; the rider tweaks it and beams it
-          to their phone. No backend, no OAuth, no callback. No user data ever
-          crosses a wire.
+          Both tools run on this site with no install and no sign-up. What you
+          make travels to the app as a QR code or a URL; no cloud sits in between.
         </p>
 
-        <div class="api-demo">
-          <p class="api-demo-label">One URL is the whole integration:</p>
-          <pre class="code-block code-url"><code>https://indoorbike.app/editor/?name=Threshold+3x8&amp;ftp=250
-       &amp;s=10m@50,<b>3x(8m@100;4m@55)</b>,5m@50</code></pre>
-          <p class="api-demo-caption">
-            Durations, %FTP targets, and repeat groups in a compact text form.
-            <a href="editor/index.html?name=Threshold+3x8&amp;ftp=250&amp;s=10m@50,3x(8m@100;4m@55),5m@50">Open this example in the editor →</a>
+        <div class="tool-grid">
+          <article class="card tool-card">
+            <div>
+              <p class="eyebrow" style="margin:0">Workout editor</p>
+              <h3>Draw intervals, scan, ride.</h3>
+              <p>
+                Durations, %FTP and repeat groups as coloured blocks. Tap
+                &ldquo;Send to phone&rdquo; and scan from the app. Tools can also
+                open the editor pre-loaded with one URL, no API key required.
+              </p>
+              <a class="link-more" href="editor/index.html">
+                Open the editor
+                <svg class="icon icon-18" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
+              </a>
+            </div>
+            <div class="qr-grid" aria-hidden="true">
+              <i class="on"></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i>
+              <i class="on"></i><i></i><i class="on"></i><i></i><i></i><i class="on"></i>
+              <i class="on"></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i>
+              <i></i><i></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i>
+              <i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i></i>
+              <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i class="on"></i><i></i>
+            </div>
+          </article>
+
+          <article class="card tool-card">
+            <div>
+              <p class="eyebrow" style="margin:0">Route tool</p>
+              <h3>Drop a GPX. Copy the JSON.</h3>
+              <p>
+                Turn any GPX track into a route the app can ride, ready to add to
+                your own repository or send straight to your phone.
+              </p>
+              <a class="link-more" href="routetool/index.html">
+                Open the route tool
+                <svg class="icon icon-18" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
+              </a>
+            </div>
+            <div class="tool-visual" aria-hidden="true">
+              <svg class="icon icon-40"><use href="#i-route"></use></svg>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. ANY ANDROID + INSTALL -->
+    <section id="anywhere" class="section-alt">
+      <div class="container split">
+        <div>
+          <p class="eyebrow">Any Android</p>
+          <h2 class="section-title">No Google Play Services. Not optional, structural.</h2>
+          <p class="section-lead" style="margin-bottom:var(--s-6)">
+            The app uses standard Android Bluetooth APIs and nothing proprietary:
+            no Firebase, no crash reporters, no analytics. So it runs on phones
+            that have no Google on them at all.
+          </p>
+          <ul class="os-list">
+            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Murena /e/OS</li>
+            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>GrapheneOS</li>
+            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Huawei and other GApps-free phones</li>
+            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Stock Android, of course</li>
+          </ul>
+        </div>
+
+        <div class="card install-card" id="install">
+          <p class="eyebrow" style="margin:0">Install</p>
+          <h3>Three ways to get it.</h3>
+          <div class="install-rows">
+            <a class="install-row" href="https://github.com/bikram-agarwal/ObtainX" target="_blank" rel="noopener">
+              <span class="well well-dest"><svg class="icon icon-22" aria-hidden="true"><use href="#i-sync"></use></svg></span>
+              <div>
+                <span class="install-name">ObtainX <span class="badge">Recommended</span></span>
+                <p>Signed APKs and automatic updates straight from our releases. No store account.</p>
+              </div>
+              <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+            </a>
+            <a class="install-row" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases/latest" target="_blank" rel="noopener">
+              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-android"></use></svg></span>
+              <div>
+                <span class="install-name">Direct APK</span>
+                <p>Download the latest release and sideload it.</p>
+              </div>
+              <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+            </a>
+            <div class="install-row soon">
+              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-shop"></use></svg></span>
+              <div>
+                <span class="install-name">Google Play <span class="badge badge-quiet">Coming soon</span></span>
+                <p>For phones that do have Google. Same app, same zero dependencies.</p>
+              </div>
+            </div>
+          </div>
+          <p class="install-note">
+            New to ObtainX? Install it, tap <b>Add App</b>, and paste
+            <code>https://codefloe.com/SnappTechnology/IndoorCyclingApp</code>
           </p>
         </div>
-
-        <div class="api-points">
-          <article class="api-point">
-            <h3>Stateless by design</h3>
-            <p>The workout travels inside the URL itself. Your tool never talks to our servers, and we never see your users.</p>
-          </article>
-          <article class="api-point">
-            <h3>Human in the loop</h3>
-            <p>Links open the editor, not the phone. The rider reviews the shape, adjusts if they like, then sends it on - nothing lands on a device unseen.</p>
-          </article>
-          <article class="api-point">
-            <h3>Machine-readable spec</h3>
-            <p>A compact <a href="editor/llms.txt">llms.txt</a> spec makes the format trivial for LLMs and codegen. Free <a href="badges/index.html">"Open in Indoor Bike" badges</a> if you want an on-brand button.</p>
-          </article>
-        </div>
-
-        <p class="api-links">
-          <a class="btn btn-secondary" href="api/index.html">API quick start <span class="arrow">→</span></a>
-          <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/src/branch/main/docs/EDITOR_URL_API.md">Full reference</a>
-        </p>
       </div>
     </section>
 
-    <!-- HOW IT WORKS -->
-    <section id="how">
-      <div class="container">
-        <p class="eyebrow">From install to first sprint</p>
-        <h2 class="section-title">Four steps. No accounts.</h2>
-        <p class="section-lead">
-          Install the APK, pair your trainer, pick a workout, ride. No sign-up
-          screens, no subscription paywalls, no welcome carousels.
-        </p>
-
-        <div class="steps">
-          <div class="step">
-            <h3>Install</h3>
-            <p>Get the app via ObtainX (or sideload the APK from a release). Open it. The first screen asks for your FTP and weight. That's it.</p>
-          </div>
-          <div class="step">
-            <h3>Pair</h3>
-            <p>Tap the trainer chip. Power on your Kickr Core, the app discovers it over BLE, and remembers it. Optionally pair a HRM and a Zwift Click.</p>
-          </div>
-          <div class="step">
-            <h3>Pick</h3>
-            <p>The home screen proposes your next ride - resume, ride again, or a starred favourite. Or search the library by how much time you have.</p>
-          </div>
-          <div class="step">
-            <h3>Ride</h3>
-            <p>Hit start. ERG holds the target wattage. The HUD shows zone, power, cadence, HR, and time-in-step. The completed ride saves locally as a file.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- PRIVACY / FREE -->
-    <section id="privacy" class="privacy">
-      <div class="container">
+    <!-- 6. THE DEAL -->
+    <section id="privacy">
+      <div class="container split">
         <div>
           <p class="eyebrow">The deal</p>
           <h2 class="section-title">Free. No asterisk.</h2>
-          <p class="section-lead">
-            No price, no premium tier, no ads, no "free trial". And the build
-            makes that structural: no proprietary blobs, no Google Play
-            Services, no analytics SDKs, no crash reporters phoning home. Even
-            this page loads zero third-party resources - the fonts are
-            self-hosted.
+          <p class="section-lead" style="margin-bottom:var(--s-4)">
+            No price, no premium tier, no ads, no trial. Everything you record
+            stays on your phone unless you choose to send it somewhere:
+            Intervals.icu and FitTrackee sync exist, off by default. Even this
+            page loads no third-party resources.
           </p>
+          <a class="link-more" href="privacy.html">
+            Privacy policy
+            <svg class="icon icon-18" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
+          </a>
         </div>
-        <ul class="privacy-list">
+        <ul class="deal-list">
           <li>
-            <span class="check" aria-hidden="true">✓</span>
-            <span><b>Local-first storage.</b> Your FTP, weight, paired devices, and ride history live on your phone.</span>
+            <svg class="icon icon-22" aria-hidden="true"><use href="#i-phone_android"></use></svg>
+            <span><b>Local-first.</b> FTP, weight, devices and every ride are files on your phone. FIT and TCX export any time.</span>
           </li>
           <li>
-            <span class="check" aria-hidden="true">✓</span>
-            <span><b>No account, ever.</b> The app is fully functional offline with zero sign-up. Optional sync exists, off by default.</span>
+            <svg class="icon icon-22" aria-hidden="true"><use href="#i-person_off"></use></svg>
+            <span><b>No account.</b> Fully functional offline with zero sign-up.</span>
           </li>
           <li>
-            <span class="check" aria-hidden="true">✓</span>
-            <span><b>No Google services.</b> Standard Android BLE APIs. No FCM, no Firebase, no Crashlytics.</span>
+            <svg class="icon icon-22" aria-hidden="true"><use href="#i-code"></use></svg>
+            <span><b>Open source, GPLv3.</b> Kotlin Multiplatform core, Jetpack Compose UI. Read it, fork it, build it.</span>
           </li>
           <li>
-            <span class="check" aria-hidden="true">✓</span>
-            <span><b>Open source, GPLv3.</b> Kotlin Multiplatform core and Jetpack Compose UI. Read it, fork it, build it yourself.</span>
-          </li>
-          <li>
-            <span class="check" aria-hidden="true">✓</span>
-            <span><b>Open file formats.</b> Workouts are JSON. Saved rides are files you can copy off the device any time - FIT export included.</span>
+            <svg class="icon icon-22" aria-hidden="true"><use href="#i-description"></use></svg>
+            <span><b>Open formats.</b> Workouts and routes are readable JSON you can edit by hand.</span>
           </li>
         </ul>
-        <p style="margin-top:var(--s-5);font-size:14px;">
-          <a href="privacy.html" style="color:var(--brand-400);">Read the full privacy policy →</a>
-        </p>
       </div>
     </section>
 
-    <!-- FAQ -->
-    <section id="faq">
-      <div class="container">
-        <p class="eyebrow" style="text-align:center">Questions</p>
-        <h2 class="section-title" style="text-align:center">Good to know.</h2>
+    <!-- 7. FAQ -->
+    <section id="faq" class="section-alt">
+      <div class="container" style="max-width:760px">
+        <p class="eyebrow">Questions</p>
+        <h2 class="section-title" style="margin-bottom:28px">Good to know.</h2>
 
-        <div class="faq" style="margin-top:var(--s-7)">
+        <div class="faq">
           <details class="faq-item">
-            <summary>Which trainers are supported?</summary>
-            <p>Any smart trainer that speaks the standard Bluetooth LE FTMS profile. The first-class target is the Wahoo Kickr Core; other FTMS-compatible trainers should work but aren't extensively tested yet.</p>
+            <summary>Which trainers work?
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
+            </summary>
+            <p>Any smart trainer that speaks the standard Bluetooth LE FTMS profile. The Wahoo Kickr Core is the first-class target; Tacx, Saris, Elite and other FTMS trainers should work. Heart-rate straps and the Zwift Click v1 pair the same way.</p>
           </details>
           <details class="faq-item">
-            <summary>Do I need an account?</summary>
-            <p>No. The app is fully functional offline with no sign-up. Optional Auth0 login and CleverCloud sync exist for users who want cross-device backup, but everything works without them.</p>
+            <summary>Do I need an account or Google Play?
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
+            </summary>
+            <p>No. The app is fully functional offline with no sign-up, and it uses no Google Play Services, so it runs on /e/OS, GrapheneOS and other de-Googled phones. A Play Store listing is coming for convenience only.</p>
           </details>
           <details class="faq-item">
-            <summary>Where do I get the app?</summary>
-            <p>Install via <a href="https://github.com/bikram-agarwal/ObtainX">ObtainX</a> to get signed APKs and automatic updates straight from our releases. You can also grab the APK from a release directly, or build from source.</p>
+            <summary>Where do workouts and routes come from?
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
+            </summary>
+            <p>From community repositories: static JSON files a maintainer hosts anywhere. Browse the in-app registry, paste a manifest URL, scan a QR from the editor, or import a file. Everything you add becomes a local copy.</p>
           </details>
           <details class="faq-item">
-            <summary>Can I use my own workouts?</summary>
-            <p>Yes. Workouts are plain JSON files describing a sequence of intervals (duration + power as % of FTP). Build them visually in the <a href="editor/index.html">browser editor</a> and QR them to the app, import a file, or paste a URL.</p>
+            <summary>How do I publish my own repository?
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
+            </summary>
+            <p>Write a small manifest.json pointing at your workout and route files and host both on any HTTPS web space. Riders add it by URL or QR; open a pull request to appear in the registry. The <a href="community/contribute.html">publishing guide</a> walks through it.</p>
           </details>
           <details class="faq-item">
-            <summary>How do I publish my own workout library?</summary>
-            <p>Write a small <code>manifest.json</code> pointing at your workout files and host both on any HTTPS web space - static hosting is enough. Riders add your library by URL or QR, and you can open a pull request to appear in the in-app Browse list. See the <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/src/branch/main/docs/ARCHITECTURE.md#workout-library--sources-import-repositories">publishing guide</a>.</p>
+            <summary>Can my tool integrate with Indoor Bike?
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
+            </summary>
+            <p>Yes. Encode a workout in an editor URL and show it to your user. No registration, no keys, no server calls. See the <a href="api/index.html">API quick start</a> and the machine-readable <a href="editor/llms.txt">llms.txt</a>.</p>
           </details>
           <details class="faq-item">
-            <summary>Can my app or tool integrate with Indoor Bike?</summary>
-            <p>Yes - generate an editor URL with the workout encoded in its parameters and show it to your user. No registration, no keys, no server-to-server calls. Start with the <a href="api/index.html">API quick start</a> or the <a href="editor/llms.txt">machine-readable spec</a>.</p>
-          </details>
-          <details class="faq-item">
-            <summary>Is iOS supported?</summary>
-            <p>Not yet. The shared core is built with Kotlin Multiplatform Mobile so an iOS port is planned, but the current focus is shipping a polished Android release first.</p>
-          </details>
-          <details class="faq-item">
-            <summary>What about heart-rate monitors?</summary>
-            <p>Standard BLE HRMs (including the Garmin HRM) pair the same way as the trainer. HR shows on the ride HUD and is recorded with the ride file.</p>
+            <summary>Is iOS supported?
+              <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
+            </summary>
+            <p>Not yet. The shared core is Kotlin Multiplatform, so a port is planned once the Android release is polished.</p>
           </details>
         </div>
       </div>
     </section>
 
-    <!-- DOWNLOAD CTA -->
-    <section id="download" class="cta">
+    <!-- 8. CTA -->
+    <section class="cta">
       <div class="container">
         <h2>Ready when you are.</h2>
-        <p>Install with <a href="https://github.com/bikram-agarwal/ObtainX">ObtainX</a> to get the app and automatic updates straight from our <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases">releases</a> - no store account, no Google services.</p>
-        <div class="hero-cta" style="justify-content:center">
-          <a class="btn btn-primary" href="https://github.com/bikram-agarwal/ObtainX">
-            Get ObtainX
+        <p>Install, set your FTP and weight, pair the trainer, ride. About a minute, no sign-up screens.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary btn-lg" href="#install">
+            <svg class="icon icon-20" aria-hidden="true"><use href="#i-download"></use></svg>
+            Install the app
           </a>
-          <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases/latest">
-            Download the APK
-          </a>
+          <a class="btn btn-secondary btn-lg" href="community/index.html">Browse community repos</a>
         </div>
-        <p style="margin-top:var(--s-4);font-size:13px;color:var(--fg-3)">
-          New to ObtainX? Install it, tap <b>Add App</b>, and paste
-          <code style="font-family:var(--font-mono);color:var(--brand-300)">https://codefloe.com/SnappTechnology/IndoorCyclingApp</code>.
-        </p>
       </div>
     </section>
 
@@ -619,25 +513,104 @@
 
   <footer class="site-footer">
     <div class="container">
-      <div>
-        <span>© <span id="copyright-year">2026</span> Juhani Lehtimäki · indoorbike.app</span><br>
-        <span style="color:var(--fg-3);font-size:13px">
-          Licensed under <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener" style="color:var(--fg-3);text-decoration:underline;">GPLv3</a>
-          · <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp" target="_blank" rel="noopener" style="color:var(--fg-3);text-decoration:underline;">Source on CodeFloe</a>
+      <div class="brand-line">
+        <img src="assets/logo-mark.svg" alt="">
+        <span>© <span id="copyright-year">2026</span> Juhani Lehtimäki · indoorbike.app ·
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPLv3</a> ·
+          <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp" target="_blank" rel="noopener">Source</a>
         </span>
       </div>
-      <div class="footer-links">
+      <nav class="footer-links" aria-label="Site">
         <a href="editor/index.html">Editor</a>
+        <a href="routetool/index.html">Route tool</a>
         <a href="community/index.html">Community</a>
         <a href="api/index.html">API</a>
+        <a href="badges/index.html">Badges</a>
         <a href="privacy.html">Privacy</a>
-        <a href="#faq">FAQ</a>
-      </div>
+      </nav>
     </div>
   </footer>
 
   <script>
     document.getElementById('copyright-year').textContent = new Date().getFullYear();
+
+    /* The registry strip is rendered from registry.json - the same file the
+       app reads - so this list never drifts from what riders see in-app. */
+    (function () {
+      var list = document.getElementById('registry-list');
+      if (!list) return;
+
+      function row(repo) {
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.className = 'card repo-row';
+        a.href = 'community/index.html#repo=' + encodeURIComponent(repo.id);
+
+        var text = document.createElement('div');
+        var name = document.createElement('b');
+        name.textContent = repo.name;
+        text.appendChild(name);
+
+        var by = document.createElement('span');
+        by.className = 'repo-by';
+        var host = '';
+        try { host = new URL(repo.homepage || repo.manifestUrl).hostname.replace(/^www\./, ''); } catch (e) { /* ignore */ }
+        by.textContent = host ? repo.author + ' · ' + host : repo.author;
+        text.appendChild(by);
+
+        if (repo.tags && repo.tags.length) {
+          var tags = document.createElement('div');
+          tags.className = 'repo-tags';
+          repo.tags.forEach(function (t) {
+            var chip = document.createElement('span');
+            chip.className = 'tag';
+            chip.textContent = t;
+            tags.appendChild(chip);
+          });
+          text.appendChild(tags);
+        }
+        a.appendChild(text);
+
+        var chevron = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        chevron.setAttribute('class', 'icon icon-22');
+        chevron.setAttribute('aria-hidden', 'true');
+        var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+        use.setAttribute('href', '#i-chevron_right');
+        chevron.appendChild(use);
+        a.appendChild(chevron);
+
+        li.appendChild(a);
+        return li;
+      }
+
+      function fallback() {
+        list.textContent = '';
+        var li = document.createElement('li');
+        var a = document.createElement('a');
+        a.className = 'card repo-row';
+        a.href = 'community/index.html';
+        var d = document.createElement('div');
+        var b = document.createElement('b');
+        b.textContent = 'Browse the registry';
+        var s = document.createElement('span');
+        s.className = 'repo-by';
+        s.textContent = 'The list did not load here - open the community browser.';
+        d.appendChild(b); d.appendChild(s);
+        a.appendChild(d);
+        li.appendChild(a);
+        list.appendChild(li);
+      }
+
+      fetch('registry.json', { cache: 'no-cache' })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (data) {
+          var repos = (data && data.repositories) || [];
+          if (!repos.length) { fallback(); return; }
+          list.textContent = '';
+          repos.forEach(function (repo) { list.appendChild(row(repo)); });
+        })
+        .catch(fallback);
+    })();
   </script>
 
 </body>

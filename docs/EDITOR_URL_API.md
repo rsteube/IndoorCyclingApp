@@ -185,12 +185,12 @@ hosted on the website with a live gallery, copy-paste embed code, and per-file d
 Two embed forms, both just an anchor wrapping the badge:
 
 ```html
-<!-- Inline SVG (crispest; full Bebas Neue) -->
+<!-- Inline SVG (crispest; picks up Manrope if the page already loads it) -->
 <a href="https://indoorbike.app/editor/?s=10m@55,4x(10m@90;5m@60),8m@50" target="_blank" rel="noopener">
   <!-- paste the badge SVG here -->
 </a>
 
-<!-- Image tag (simplest; condensed-sans fallback when loaded as an image) -->
+<!-- Image tag (simplest; falls back to the reader's system sans) -->
 <a href="https://indoorbike.app/editor/?s=10m@55,4x(10m@90;5m@60),8m@50" target="_blank" rel="noopener">
   <img src="https://indoorbike.app/badges/indoorbike-open-in-filled.svg" alt="Open in Indoor Bike" width="..." height="...">
 </a>

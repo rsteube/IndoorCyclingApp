@@ -5,26 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Privacy policy - Indoor Bike</title>
   <meta name="description" content="What Indoor Bike stores, where it stays, and the short list of cases where any data ever leaves your device.">
-  <meta name="theme-color" content="#0F0C09">
+  <meta name="theme-color" content="#313e50">
   <link rel="icon" type="image/svg+xml" href="assets/logo-mark.svg">
   <link rel="stylesheet" href="styles.css">
   <style>
     .privacy-main { max-width: 760px; margin: 0 auto; padding: var(--s-7) var(--s-5) var(--s-10); }
     .privacy-main h1 {
-      font-family: var(--font-display); font-weight: 400;
+      font-weight: 800;
       font-size: clamp(40px, 7vw, 64px); line-height: 1;
-      letter-spacing: 0.02em; text-transform: uppercase;
+      letter-spacing: -0.03em;
       margin: var(--s-2) 0 var(--s-3); color: var(--fg-1);
     }
     .privacy-main h2 {
-      font-family: var(--font-display); font-weight: 400;
-      font-size: 26px; letter-spacing: 0.02em;
-      text-transform: uppercase; margin: var(--s-7) 0 var(--s-3);
+      font-weight: 800;
+      font-size: 26px; margin: var(--s-7) 0 var(--s-3);
       color: var(--fg-1);
     }
     .privacy-main h3 {
       font-family: var(--font-mono); font-size: 12px;
-      letter-spacing: 0.1em; text-transform: uppercase;
       color: var(--fg-3); margin: var(--s-5) 0 var(--s-2);
     }
     .privacy-main p, .privacy-main li {
@@ -35,22 +33,21 @@
     .privacy-main ul { padding-left: 22px; margin: 0 0 var(--s-4); }
     .privacy-main li { margin-bottom: 6px; }
     .privacy-main li strong { color: var(--fg-1); }
-    .privacy-main a { color: var(--brand-400); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
-    .privacy-main a:hover { color: var(--brand-300); }
+    .privacy-main a { color: var(--fg-1); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
+    .privacy-main a:hover { color: var(--fg-2); }
     .privacy-main code {
       font-family: var(--font-mono); font-size: 0.92em;
       background: var(--bg-2); border: 1px solid var(--line-1);
-      padding: 1px 6px; border-radius: 4px; color: var(--brand-300);
+      padding: 1px 6px; border-radius: 4px; color: var(--fg-2);
     }
     .privacy-meta {
       font-family: var(--font-mono); font-size: 11px;
-      letter-spacing: 0.1em; text-transform: uppercase;
       color: var(--fg-3); margin: 0 0 var(--s-4);
     }
     .tldr {
       background: var(--bg-1);
       border: 1px solid var(--line-2);
-      border-left: 3px solid var(--brand-500);
+      border-left: 3px solid var(--fg-1);
       border-radius: var(--r-md);
       padding: var(--s-4) var(--s-5);
       margin: var(--s-5) 0 var(--s-7);
@@ -63,19 +60,17 @@
   <header class="site-header">
     <div class="container">
       <a class="brand" href="index.html" aria-label="Indoor Bike home">
-        <img src="assets/logo-wordmark.svg" alt="Indoor Bike">
+        <img src="assets/logo-mark.svg" alt="">
+        <span>Indoor Bike</span>
       </a>
       <nav class="nav" aria-label="Primary">
-        <a href="index.html#features">Features</a>
-        <a href="index.html#how">How it works</a>
-        <a href="index.html#privacy">Privacy</a>
-        <a href="editor/index.html">Editor</a>
+        <a href="index.html#ride">Three ways to ride</a>
         <a href="community/index.html">Community</a>
+        <a href="editor/index.html">Editor</a>
+        <a href="routetool/index.html">Route tool</a>
         <a href="index.html#faq">FAQ</a>
       </nav>
-      <a class="btn btn-primary" aria-disabled="true" href="index.html#download">
-        Download <span class="btn-tag">soon</span>
-      </a>
+      <a class="btn btn-primary" href="index.html#install">Install</a>
     </div>
   </header>
 
@@ -294,13 +289,23 @@
 
   <footer class="site-footer">
     <div class="container">
-      <span>© Indoor Bike · indoorbike.app</span>
-      <div class="footer-links">
-        <a href="index.html">Home</a>
-        <a href="community/index.html">Community</a>
-        <a href="privacy.html">Privacy</a>
+      <div class="brand-line">
+        <img src="assets/logo-mark.svg" alt="">
+        <span>&copy; <span id="copyright-year">2026</span> Juhani Lehtimäki · indoorbike.app ·
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPLv3</a> ·
+          <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp" target="_blank" rel="noopener">Source</a></span>
       </div>
+      <nav class="footer-links" aria-label="Site">
+        <a href="index.html">Home</a>
+        <a href="editor/index.html">Editor</a>
+        <a href="routetool/index.html">Route tool</a>
+        <a href="community/index.html">Community</a>
+        <a href="api/index.html">API</a>
+        <a href="badges/index.html">Badges</a>
+        <a href="privacy.html">Privacy</a>
+      </nav>
     </div>
+    <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
   </footer>
 
 </body>

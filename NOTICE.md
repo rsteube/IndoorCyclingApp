@@ -19,13 +19,21 @@ The full text of the Apache 2.0 license is available at https://www.apache.org/l
 
 ## Fonts
 
-All fonts ship as static / variable TTF files in [mobile_clients/android/src/main/res/font/](mobile_clients/android/src/main/res/font/). Nothing is downloaded at runtime.
+All fonts ship as static / variable TTF files, in [mobile_clients/android/src/main/res/font/](mobile_clients/android/src/main/res/font/) for the app and [website/fonts/](website/fonts/) for the site. Nothing is downloaded at runtime; neither the app nor the website requests a webfont from a CDN.
 
 | Font | License | Source |
 | --- | --- | --- |
 | Manrope (variable) | SIL Open Font License 1.1 | https://github.com/sharanda/manrope |
 
 The SIL Open Font License is available at https://openfontlicense.org/.
+
+## Icons
+
+| Asset | Purpose | License | Source |
+| --- | --- | --- | --- |
+| Material Symbols Outlined (weight 300) | Icon glyphs, inlined as an SVG sprite in each website page | Apache 2.0 | https://github.com/google/material-design-icons |
+
+The website inlines only the glyphs it uses; nothing is fetched from a font CDN at runtime.
 
 ## Trademarks
 

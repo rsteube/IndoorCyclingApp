@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Workout editor - Indoor Bike</title>
   <meta name="description" content="Build power-zone workouts for the Indoor Bike app. Visual editor, no account, no backend.">
-  <meta name="theme-color" content="#0F0C09">
+  <meta name="theme-color" content="#313e50">
   <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
   <link rel="stylesheet" href="../styles.css">
   <!-- Bump ?v= on every editor.css / editor.js change so returning visitors
@@ -17,11 +17,12 @@
   <header class="editor-header">
     <div class="editor-header-inner">
       <a class="brand" href="../index.html" aria-label="Indoor Bike home">
-        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+        <img src="../assets/logo-mark.svg" alt="">
+        <span>Indoor Bike</span>
       </a>
       <div class="editor-eyebrow">Workout editor</div>
       <div class="editor-ftp">
-        <label for="ftp-input" class="t-eyebrow-inline">YOUR FTP</label>
+        <label for="ftp-input" class="t-eyebrow-inline">Your FTP</label>
         <div class="ftp-input-wrap">
           <input id="ftp-input" type="number" min="50" max="600" inputmode="numeric" value="200">
           <span class="ftp-unit">W</span>
@@ -34,11 +35,11 @@
 
     <!-- STATS -->
     <section class="stats-strip" aria-label="Workout stats">
-      <div class="stat"><div class="stat-label">DURATION</div><div class="stat-value" id="stat-duration">0:00</div></div>
+      <div class="stat"><div class="stat-label">Duration</div><div class="stat-value" id="stat-duration">0:00</div></div>
       <div class="stat"><div class="stat-label">TSS</div><div class="stat-value stat-value--accent" id="stat-tss">0</div></div>
       <div class="stat"><div class="stat-label">IF</div><div class="stat-value" id="stat-if">0.00</div></div>
-      <div class="stat"><div class="stat-label">AVG %FTP</div><div class="stat-value" id="stat-avg">0<span class="stat-suffix">%</span></div></div>
-      <div class="stat"><div class="stat-label">PEAK %FTP</div><div class="stat-value" id="stat-peak">0<span class="stat-suffix">%</span></div></div>
+      <div class="stat"><div class="stat-label">Avg %FTP</div><div class="stat-value" id="stat-avg">0<span class="stat-suffix">%</span></div></div>
+      <div class="stat"><div class="stat-label">Peak %FTP</div><div class="stat-value" id="stat-peak">0<span class="stat-suffix">%</span></div></div>
       <div class="stat"><div class="stat-label">kJ</div><div class="stat-value" id="stat-kj">0</div></div>
     </section>
 
@@ -47,7 +48,7 @@
 
       <!-- Palette: drag tiles onto the timeline, or click to append -->
       <div class="builder-palette">
-        <span class="t-eyebrow-inline">DRAG OR TAP TO ADD</span>
+        <span class="t-eyebrow-inline">Drag or tap to add</span>
         <div class="palette-tiles" id="palette"></div>
         <button id="open-set-builder" class="btn-quiet" type="button">+ Interval set…</button>
       </div>
@@ -88,15 +89,15 @@
         <h2 class="section-h">Workout details</h2>
         <div class="meta-grid">
           <label class="field">
-            <span class="t-eyebrow-inline">NAME</span>
+            <span class="t-eyebrow-inline">Name</span>
             <input id="workout-name" type="text" maxlength="80" placeholder="Threshold 3×8" autocomplete="off">
           </label>
           <label class="field">
-            <span class="t-eyebrow-inline">DESCRIPTION</span>
+            <span class="t-eyebrow-inline">Description</span>
             <textarea id="workout-description" rows="3" maxlength="600" placeholder="Three sets at threshold to push your hour-long power higher."></textarea>
           </label>
           <div class="field">
-            <span class="t-eyebrow-inline">TAGS</span>
+            <span class="t-eyebrow-inline">Tags</span>
             <div class="tag-grid" id="tag-grid"></div>
           </div>
         </div>
@@ -167,7 +168,7 @@
         </p>
         <div class="qr-stage" id="qr-stage"></div>
         <label class="field">
-          <span class="t-eyebrow-inline">IMPORT LINK</span>
+          <span class="t-eyebrow-inline">Import link</span>
           <div class="link-row">
             <input id="qr-link" type="text" readonly>
             <button id="qr-copy-link" class="btn btn-secondary" type="button">Copy</button>
@@ -192,18 +193,18 @@
         </p>
         <div class="set-grid">
           <label class="field">
-            <span class="t-eyebrow-inline">REPS</span>
+            <span class="t-eyebrow-inline">Reps</span>
             <input id="set-reps" type="number" min="1" max="40" value="4">
           </label>
           <label class="field">
-            <span class="t-eyebrow-inline">WORK</span>
+            <span class="t-eyebrow-inline">Work</span>
             <div class="dual">
               <input id="set-work-min" type="number" min="0" max="60" value="5"> min
               <input id="set-work-pct" type="number" min="30" max="200" value="100"> %FTP
             </div>
           </label>
           <label class="field">
-            <span class="t-eyebrow-inline">RECOVERY</span>
+            <span class="t-eyebrow-inline">Recovery</span>
             <div class="dual">
               <input id="set-rec-min" type="number" min="0" max="60" value="5"> min
               <input id="set-rec-pct" type="number" min="30" max="200" value="50"> %FTP

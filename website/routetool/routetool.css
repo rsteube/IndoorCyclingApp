@@ -8,9 +8,10 @@
 }
 
 .tool-main .page-title {
-  font-family: var(--font-display);
+  font-weight: 800;
   font-size: clamp(2rem, 5vw, 3rem);
   line-height: 1.05;
+  letter-spacing: -0.03em;
   margin: 0 0 var(--s-3, 12px);
   color: var(--fg-1);
 }
@@ -42,8 +43,8 @@
   width: 28px;
   height: 28px;
   border-radius: 999px;
-  background: rgba(244, 122, 31, 0.18);
-  color: var(--brand-500);
+  background: var(--bg-2);
+  color: var(--fg-1);
   font-family: var(--font-mono);
   font-size: 0.85rem;
 }
@@ -75,7 +76,7 @@
 .dropzone:hover,
 .dropzone:focus-visible,
 .dropzone.is-over {
-  border-color: var(--brand-500);
+  border-color: var(--fg-1);
   background: var(--bg-2);
   outline: none;
 }
@@ -116,7 +117,7 @@
   cursor: pointer;
 }
 
-.checkline input { margin-top: 3px; accent-color: var(--brand-500); }
+.checkline input { margin-top: 3px; accent-color: var(--fg-1); }
 
 .status {
   margin-top: var(--s-4, 16px);
@@ -130,7 +131,7 @@
 
 .status p { margin: 0 0 var(--s-1, 4px); }
 .status p:last-child { margin-bottom: 0; }
-.status.is-error { border-color: rgba(235, 59, 59, 0.5); background: rgba(235, 59, 59, 0.08); }
+.status.is-error { border-color: rgba(239, 107, 98, 0.5); background: rgba(239, 107, 98, 0.08); }
 
 /* ── Preview ──────────────────────────────────────────────────────────── */
 .preview-card {
@@ -175,7 +176,6 @@
 .stat-label {
   font-family: var(--font-mono);
   font-size: 0.62rem;
-  letter-spacing: 0.08em;
   color: var(--fg-4);
 }
 
@@ -226,7 +226,7 @@
 .hist-value { text-align: right; }
 
 .hist-bar-wrap { background: var(--bg-2); border-radius: 4px; height: 12px; overflow: hidden; }
-.hist-bar { display: block; height: 100%; background: var(--brand-500); border-radius: 4px; }
+.hist-bar { display: block; height: 100%; background: var(--fg-1); border-radius: 4px; }
 
 /* ── Fields ───────────────────────────────────────────────────────────── */
 .field-grid {
@@ -242,14 +242,12 @@
 .field > span {
   font-family: var(--font-mono);
   font-size: 0.7rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
   color: var(--fg-3);
 }
 
 .field > span em {
   font-style: normal;
-  color: var(--brand-500);
+  color: var(--fg-1);
   margin-left: var(--s-2, 8px);
 }
 
@@ -273,7 +271,7 @@ textarea { resize: vertical; }
 
 input:focus, textarea:focus, select:focus {
   outline: none;
-  border-color: var(--brand-500);
+  border-color: var(--fg-1);
 }
 
 /* ── Output ───────────────────────────────────────────────────────────── */
@@ -334,7 +332,7 @@ input:focus, textarea:focus, select:focus {
   transition: border-color 120ms ease, color 120ms ease;
 }
 
-.mini-btn:hover:not(:disabled) { border-color: var(--brand-500); color: var(--brand-500); }
+.mini-btn:hover:not(:disabled) { border-color: var(--fg-1); color: var(--fg-1); }
 .mini-btn:disabled { opacity: 0.5; cursor: default; }
 
 #place-status.is-error { color: var(--zone-6); }
@@ -346,74 +344,77 @@ input:focus, textarea:focus, select:focus {
    with no context and reads as a fourth thing to learn rather than as one
    line to paste. */
 
+/* One card holding three nodes, not three cards: the three files are one
+   chain, and drawing them as separate panels made them read as three
+   unrelated things of equal importance. Same shape as the repository flow on
+   the home page, so the two diagrams say "this connects to that" the same way.
+
+   No ordinals here on purpose - the page already has its own 1/2/3 for the
+   steps you perform, and a second numbering meaning something else next to it
+   is what made this strip confusing. Order comes from the arrows. */
+
 .flow {
-  display: flex;
-  align-items: stretch;
-  gap: var(--s-2, 8px);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr auto 1fr;
+  align-items: start;
+  gap: var(--s-4, 16px);
   list-style: none;
-  margin: 0 0 var(--s-4, 16px);
-  padding: 0;
+  margin: 0 0 var(--s-5, 20px);
+  padding: var(--s-6, 24px);
+  background: var(--bg-1);
+  border-radius: var(--r-xl, 20px);
 }
 
 .flow-step {
-  flex: 1 1 0;
   display: flex;
   flex-direction: column;
-  gap: var(--s-1, 4px);
-  padding: var(--s-4, 16px);
-  border: 1px solid var(--line-2);
-  border-radius: 14px;
-  background: var(--bg-1);
+  align-items: flex-start;
+  gap: 6px;
   min-width: 0;
 }
 
-/* The one step that happens on this page, so the eye lands on it. */
-.flow-step.is-tool {
-  border-color: rgba(244, 122, 31, 0.45);
-  background: rgba(244, 122, 31, 0.06);
+/* The role each file plays, as a chip. This is the line that answers the
+   reader's real question - who makes this one? - so it leads. */
+.flow-role {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
-.flow-num {
-  font-family: var(--font-mono);
-  font-size: 0.68rem;
-  /* Ordinals, not decoration: at Fg4 they were faint enough to read as
-     specks rather than as step numbers. */
-  color: var(--fg-3);
+/* Emphasis is contrast, not a second grey: the one step this page performs
+   gets the filled chip, the way Slate marks any primary action. */
+.flow-step.is-tool .flow-role {
+  background: var(--fg-1);
+  color: var(--on-inverse);
+  font-weight: 700;
 }
-
-.flow-step.is-tool .flow-num { color: var(--brand-500); }
 
 .flow-file {
-  font-family: var(--font-mono);
-  font-size: 0.86rem;
+  margin-top: 2px;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   color: var(--fg-1);
   /* A filename must never be the thing that makes the page scroll sideways. */
   overflow-wrap: anywhere;
 }
 
 .flow-what {
-  font-size: 0.82rem;
-  color: var(--fg-2);
-  line-height: 1.45;
+  font-size: 14px;
+  color: var(--fg-3);
+  line-height: 1.5;
 }
-
-.flow-who {
-  margin-top: auto;
-  padding-top: var(--s-2, 8px);
-  font-family: var(--font-mono);
-  font-size: 0.62rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--fg-4);
-}
-
-.flow-step.is-tool .flow-who { color: var(--brand-500); }
 
 .flow-arrow {
-  flex: 0 0 auto;
   display: grid;
   place-items: center;
-  color: var(--fg-4);
+  align-self: center;
+  color: var(--fg-3);
 }
 
 .flow-note {
@@ -428,7 +429,7 @@ input:focus, textarea:focus, select:focus {
 
 /* Narrow screens stack the strip, and the arrows turn to point down it. */
 @media (max-width: 700px) {
-  .flow { flex-direction: column; }
+  .flow { grid-template-columns: 1fr; gap: var(--s-3, 12px); }
+  .flow-arrow { justify-self: start; padding-left: 14px; }
   .flow-arrow svg { transform: rotate(90deg); }
-  .flow-who { margin-top: var(--s-1, 4px); padding-top: 0; }
 }

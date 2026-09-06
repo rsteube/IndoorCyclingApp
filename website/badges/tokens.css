@@ -1,43 +1,30 @@
 /* ============================================================
-   CADENCE DESIGN SYSTEM
-   Tokens for an indoor cycling app (Android first)
-   Dark-by-default. Power-zone driven.
+   SLATE DESIGN SYSTEM
+   Tokens for the Indoor Bike link badges page.
+
+   This page is self-contained (it does not load ../styles.css),
+   so the Slate tokens are repeated here. Keep the values in
+   sync with ../styles.css :root.
    ============================================================ */
 
-/* ----- FONTS -------------------------------------------------
-   WILD-SPORTS GRAVEL aesthetic.
-   Display: "Bebas Neue" - tall, rugged, condensed sans. Trail-poster energy.
-   Body:    "Inter" - neutral, dense numerics, legible at distance.
-   Mono:    "JetBrains Mono" - telemetry, units, file names.
-   ------------------------------------------------------------- */
-/* Self-hosted fonts (OFL) - same files the app ships, no CDN. */
+/* Self-hosted font (OFL) - the same file the app and the site ship. No CDN. */
 @font-face {
-  font-family: "Bebas Neue";
-  src: url("../fonts/bebas_neue_regular.ttf") format("truetype");
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: "Inter";
-  src: url("../fonts/inter_variable.ttf") format("truetype-variations");
+  font-family: "Manrope";
+  src: url("../fonts/manrope_variable.ttf") format("truetype-variations");
   font-weight: 400 800;
-  font-display: swap;
-}
-@font-face {
-  font-family: "JetBrains Mono";
-  src: url("../fonts/jetbrains_mono_variable.ttf") format("truetype-variations");
-  font-weight: 400 700;
   font-display: swap;
 }
 
 :root {
-  /* ---------- TYPOGRAPHY ---------- */
-  --font-display: "Bebas Neue", "Inter", system-ui, sans-serif;
-  --font-body:    "Inter", system-ui, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  /* ---------- TYPOGRAPHY ----------
+     Slate is a one-family system: Manrope, weight-differentiated.
+     The display and mono aliases are kept so existing rules resolve. */
+  --font:         "Manrope", system-ui, sans-serif;
+  --font-body:    var(--font);
+  --font-display: var(--font);
+  --font-mono:    var(--font);
 
-  /* Type scale - modular, optimized for reading at arm's length on a bike */
-  --t-display-xl: 72px;  /* in-ride power readout */
+  --t-display-xl: 72px;
   --t-display-l:  56px;
   --t-display-m:  40px;
   --t-h1:         32px;
@@ -46,92 +33,58 @@
   --t-body:       16px;
   --t-small:      14px;
   --t-micro:      12px;
-  --t-tick:       11px;  /* axis labels, telemetry units */
+  --t-tick:       11px;
 
-  --lh-tight:   1.05; /* @kind other */
-  --lh-snug:    1.2;  /* @kind other */
-  --lh-normal:  1.45; /* @kind other */
-  --lh-loose:   1.6;  /* @kind other */
+  --lh-tight:   1.05;
+  --lh-snug:    1.2;
+  --lh-normal:  1.45;
+  --lh-loose:   1.6;
 
   --tr-tight:  -0.02em;
-  --tr-normal:  0; /* @kind other */
-  --tr-wide:    0.04em;
-  --tr-caps:    0.12em;
+  --tr-normal:  0;
 
-  /* ---------- COLOR - NEUTRALS (dark, gravel-warm) ----------
-     Warm peat-brown blacks instead of cool bluish blacks. Reads like
-     dirt + dusk, not metallic + city. Pairs naturally w/ ember orange. */
-  --bg-0:       #0F0C09;  /* app base - burnt-coffee black */
-  --bg-1:       #181410;  /* surfaces, cards */
-  --bg-2:       #221C16;  /* raised surfaces */
-  --bg-3:       #2D251D;  /* hover, popovers */
-  --bg-4:       #3A3025;  /* pressed / selected */
+  /* ---------- SURFACES (the five slates, ascending) ---------- */
+  --bg-0: #313e50;  /* Charcoal Blue   - canvas */
+  --bg-1: #3a435e;  /* Twilight Indigo - cards */
+  --bg-2: #455561;  /* Charcoal Blue 2 - wells, chips, dividers */
+  --bg-3: #5c6672;  /* Blue Slate      - pressed, dashed outline */
+  --bg-4: #6c6f7f;  /* Slate Grey      - disabled ink */
 
-  --line-1:     rgba(255,236,210,0.06);  /* warm hairline */
-  --line-2:     rgba(255,236,210,0.10);
-  --line-3:     rgba(255,236,210,0.18);
+  --line-1: rgba(242,244,247,0.06);
+  --line-2: rgba(242,244,247,0.10);
+  --line-3: rgba(242,244,247,0.18);
 
-  --fg-1:       #F4ECDF;  /* primary - trail-dust off-white */
-  --fg-2:       #C2B5A1;  /* secondary - oat */
-  --fg-3:       #8A7E6C;  /* tertiary - sand */
-  --fg-4:       #4F4838;  /* disabled */
+  /* ---------- FOREGROUND ---------- */
+  --fg-1: #F2F4F7;
+  --fg-2: #C5CAD6;
+  --fg-3: #9AA1B0;
+  --fg-4: #6c6f7f;
+  --on-inverse: #313e50;
 
-  /* ---------- COLOR - BRAND ---------- */
-  /* Cadence ember: warm orange linking visually to VertMatch.
-     Same hot/saturated orange family used for VertMatch's 'Add Race' CTA, TEP value, and the Mastering TEP hero. */
-  --brand-500:  #F47A1F;  /* primary accent - ember orange */
-  --brand-600:  #E0660D;  /* hover / active */
-  --brand-700:  #B8520A;  /* pressed */
-  --brand-400:  #FF9847;
-  --brand-300:  #FFB57A;
-  --brand-glow: 0 0 24px rgba(244, 122, 31, 0.35);
+  /* ---------- LIGHT MIRROR (the light-background badge) ---------- */
+  --paper-0: #FAFBFC;
+  --paper-1: #FFFFFF;
+  --ink-1:   #1B2330;
+  --ink-2:   #4A5566;
+  --ink-3:   #7D8798;
 
-  /* Sibling vector - deep ember, used in gradients with brand */
-  --ember-600:  #D54F0A;
-  --ember-700:  #A03808;
+  /* ---------- Power zones (the only colour) ----------
+     Retuned for Slate. The app's ramp was mixed on a near-black canvas; on
+     #313e50 the old Z1 sank into the surfaces, and Z2 / Z6 / Z7 glared. These
+     sit in one lightness band so the ramp reads as a family and the dark
+     zone labels stay legible on every block. Same seven hues, same order. */
+  --zone-1: #8FA8C0;
+  --zone-2: #5B9CF2;
+  --zone-3: #3FC08A;
+  --zone-4: #F0C419;
+  --zone-5: #FF9A3D;
+  --zone-6: #EF6B62;
+  --zone-7: #CE6BF0;
 
-  /* Legacy aliases */
-  --azure-600:  #D54F0A;
-  --azure-700:  #A03808;
-
-  /* ---------- COLOR - LIGHT MIRROR (for marketing/web parity with VertMatch) ---------- */
-  --paper-0:    #FAF7F2;  /* VertMatch off-white background */
-  --paper-1:    #FFFFFF;  /* card */
-  --paper-2:    #F4EFE7;  /* warning tint */
-  --ink-1:      #1A1715;  /* near-black nav */
-  --ink-2:      #4B433D;
-  --ink-3:      #8A7F76;
-
-  /* ---------- COLOR - POWER ZONES (FTP %) ----------
-     Z1 Active Recovery   <55%    cool gray-blue
-     Z2 Endurance         56-75%  blue
-     Z3 Tempo             76-90%  green
-     Z4 Threshold         91-105% yellow
-     Z5 VO2 Max          106-120% orange
-     Z6 Anaerobic        121-150% red
-     Z7 Neuromuscular     >150%   magenta
-     Spectrum cool→hot, calibrated for dark bg legibility */
-  --zone-1:     #6B8AA8;
-  --zone-2:     #2E7BFF;
-  --zone-3:     #1FB373;
-  --zone-4:     #F0C419;
-  --zone-5:     #FF8A1F;
-  --zone-6:     #EB3B3B;
-  --zone-7:     #C53BFF;
-
-  --zone-1-bg:  rgba(107,138,168,0.16);
-  --zone-2-bg:  rgba(46,123,255,0.18);
-  --zone-3-bg:  rgba(31,179,115,0.18);
-  --zone-4-bg:  rgba(240,196,25,0.20);
-  --zone-5-bg:  rgba(255,138,31,0.20);
-  --zone-6-bg:  rgba(235,59,59,0.20);
-  --zone-7-bg:  rgba(197,59,255,0.20);
-
-  /* ---------- COLOR - SEMANTIC ---------- */
-  --success:    #1FB373;
-  --warning:    #F0C419;
-  --danger:     #EB3B3B;
-  --info:       var(--brand-500);
+  --success: var(--zone-3);
+  --warning: var(--zone-4);
+  --danger:  var(--zone-6);
+  --info:    var(--fg-1);
 
   /* ---------- SPACING ---------- */
   --s-1:   4px;
@@ -150,118 +103,96 @@
   --r-sm:  8px;
   --r-md:  12px;
   --r-lg:  16px;
-  --r-xl:  24px;
+  --r-xl:  20px;
   --r-pill: 999px;
 
   /* ---------- ELEVATION ---------- */
-  --shadow-1: 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-2: 0 4px 12px rgba(0,0,0,0.45);
-  --shadow-3: 0 12px 32px rgba(0,0,0,0.55);
-  --shadow-glow: 0 0 0 1px rgba(244,122,31,0.5), 0 0 24px rgba(244,122,31,0.35);
+  --shadow-1: 0 1px 2px rgba(0,0,0,0.35);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.40);
+  --shadow-3: 0 12px 32px rgba(0,0,0,0.45);
 
   /* ---------- MOTION ---------- */
-  --ease-out:    cubic-bezier(0.2, 0.7, 0.2, 1); /* @kind other */
-  --ease-in-out: cubic-bezier(0.6, 0, 0.4, 1); /* @kind other */
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1); /* @kind other */
-  --dur-fast:    120ms; /* @kind other */
-  --dur-base:    200ms; /* @kind other */
-  --dur-slow:    320ms; /* @kind other */
+  --ease-out:    cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.4, 1);
+  --dur-fast:    120ms;
+  --dur-base:    200ms;
+  --dur-slow:    320ms;
 }
 
 /* ============================================================
    SEMANTIC TYPE STYLES
    ============================================================ */
 .t-display-xl {
-  font-family: var(--font-display);
-  font-weight: 400; /* Bebas is single-weight; size carries the impact */
+  font-weight: 800;
   font-size: var(--t-display-xl);
   line-height: var(--lh-tight);
-  letter-spacing: 0.01em;
-  font-feature-settings: "tnum";
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 .t-display-l {
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: var(--t-display-l);
   line-height: var(--lh-tight);
-  letter-spacing: 0.01em;
-  text-transform: uppercase;
+  letter-spacing: -0.03em;
 }
 .t-display-m {
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: var(--t-display-m);
   line-height: var(--lh-snug);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: var(--tr-tight);
 }
 .t-h1 {
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: var(--t-h1);
   line-height: var(--lh-snug);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: var(--tr-tight);
 }
 .t-h2 {
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: var(--t-h2);
   line-height: var(--lh-snug);
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
+  letter-spacing: var(--tr-tight);
 }
 .t-h3 {
-  font-family: var(--font-body);
   font-weight: 700;
   font-size: var(--t-h3);
   line-height: var(--lh-snug);
   letter-spacing: -0.01em;
 }
 .t-body {
-  font-family: var(--font-body);
-  font-weight: 400;
+  font-weight: 500;
   font-size: var(--t-body);
   line-height: var(--lh-normal);
 }
 .t-body-strong {
-  font-family: var(--font-body);
-  font-weight: 600;
+  font-weight: 700;
   font-size: var(--t-body);
   line-height: var(--lh-normal);
 }
 .t-small {
-  font-family: var(--font-body);
-  font-weight: 400;
+  font-weight: 500;
   font-size: var(--t-small);
   line-height: var(--lh-normal);
 }
 .t-micro {
-  font-family: var(--font-body);
-  font-weight: 500;
-  font-size: var(--t-micro);
-  line-height: var(--lh-snug);
-  letter-spacing: var(--tr-wide);
-}
-.t-eyebrow {
-  font-family: var(--font-body);
   font-weight: 600;
   font-size: var(--t-micro);
   line-height: var(--lh-snug);
-  letter-spacing: var(--tr-caps);
-  text-transform: uppercase;
+}
+/* Section labels: sentence case, untracked. */
+.t-eyebrow {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: var(--lh-snug);
   color: var(--fg-3);
 }
 .t-tick {
-  font-family: var(--font-mono);
-  font-weight: 500;
+  font-weight: 600;
   font-size: var(--t-tick);
-  letter-spacing: var(--tr-wide);
-  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
 }
-.t-mono {
-  font-family: var(--font-mono);
-  font-feature-settings: "tnum";
+.t-num {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
@@ -270,9 +201,11 @@
 html, body {
   background: var(--bg-0);
   color: var(--fg-1);
-  font-family: var(--font-body);
+  font-family: var(--font);
+  font-weight: 500;
   font-size: var(--t-body);
   line-height: var(--lh-normal);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  font-variant-numeric: tabular-nums;
 }

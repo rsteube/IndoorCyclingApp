@@ -1,19 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FF9847"></stop>
-      <stop offset="100%" stop-color="#D54F0A"></stop>
-    </linearGradient>
-  </defs>
-  
-  <path d="M 4 28 L 14 18 L 22 24 L 32 12 L 44 22 L 54 16 L 60 22" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
+  <!-- horizon ridge -->
+  <path d="M 4 28 L 14 18 L 22 24 L 32 12 L 44 22 L 54 16 L 60 22" stroke="#9AA1B0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"></path>
 
-  
-  <circle cx="16" cy="48" r="8" stroke="#F4ECDF" stroke-width="2.6" fill="none"></circle>
-  <circle cx="48" cy="48" r="8" stroke="#F4ECDF" stroke-width="2.6" fill="none"></circle>
-  
-  <g stroke="#F4ECDF" stroke-width="1" stroke-linecap="round" opacity="0.7">
+  <!-- wheels -->
+  <circle cx="16" cy="48" r="8" stroke="#F2F4F7" stroke-width="2.6" fill="none"></circle>
+  <circle cx="48" cy="48" r="8" stroke="#F2F4F7" stroke-width="2.6" fill="none"></circle>
+
+  <!-- spoke ticks -->
+  <g stroke="#F2F4F7" stroke-width="1" stroke-linecap="round" opacity="0.7">
     <line x1="16" y1="38" x2="16" y2="40"></line>
     <line x1="16" y1="56" x2="16" y2="58"></line>
     <line x1="6" y1="48" x2="8" y2="48"></line>
@@ -24,26 +18,18 @@
     <line x1="56" y1="48" x2="58" y2="48"></line>
   </g>
 
-  
-  <g stroke="#F47A1F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
-    
+  <!-- frame -->
+  <g stroke="#F2F4F7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
     <line x1="32" y1="48" x2="28" y2="32"></line>
-    
     <line x1="28" y1="32" x2="44" y2="30"></line>
-    
     <line x1="32" y1="48" x2="44" y2="38"></line>
-    
     <line x1="32" y1="48" x2="16" y2="48"></line>
-    
     <line x1="16" y1="48" x2="28" y2="32"></line>
-    
     <line x1="44" y1="30" x2="44" y2="38"></line>
-    
     <line x1="44" y1="38" x2="48" y2="48"></line>
   </g>
 
-  
-  <path d="M 40 28 Q 44 26 48 28 Q 50 30 49 33" stroke="#F47A1F" stroke-width="2.4" stroke-linecap="round" fill="none"></path>
-  
-  <line x1="24" y1="32" x2="32" y2="32" stroke="#F47A1F" stroke-width="2.4" stroke-linecap="round"></line>
+  <!-- bars and saddle -->
+  <path d="M 40 28 Q 44 26 48 28 Q 50 30 49 33" stroke="#F2F4F7" stroke-width="2.4" stroke-linecap="round" fill="none"></path>
+  <line x1="24" y1="32" x2="32" y2="32" stroke="#F2F4F7" stroke-width="2.4" stroke-linecap="round"></line>
 </svg>
