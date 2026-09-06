@@ -397,7 +397,6 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 },
                 onOpenRepositories = { navigator.navigate(RouteRepositories) },
                 onOpenRepo = { manifestUrl -> navigator.navigate(RouteRemoteRepo(manifestUrl)) },
-                onScanQr = { navigator.navigate(RouteQrScanner) },
                 onOpenTrainerPairing = { navigator.navigate(RouteTrainerPairing) },
                 onOpenHrmPairing = { navigator.navigate(RouteHrmPairing) },
                 onOpenControllerPairing = { navigator.navigate(RouteControllerPairing) },
@@ -420,6 +419,7 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 onBack = { navigator.goBack() },
                 onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
                 onOpenLibrary = { navigator.navigate(RouteLibrary) },
+                onScanQr = { navigator.navigate(RouteQrScanner) },
             )
         }
         entry<RouteRepositories> { _ ->

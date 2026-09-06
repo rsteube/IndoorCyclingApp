@@ -38,7 +38,6 @@ import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudSync
-import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Terrain
 import androidx.compose.material3.CircularProgressIndicator
@@ -99,7 +98,6 @@ fun HomeScreen(
     onStartFreeRide: () -> Unit,
     onOpenRepositories: () -> Unit,
     onOpenRepo: (manifestUrl: String) -> Unit,
-    onScanQr: () -> Unit,
     onOpenTrainerPairing: () -> Unit,
     onOpenHrmPairing: () -> Unit,
     onOpenControllerPairing: () -> Unit,
@@ -131,11 +129,7 @@ fun HomeScreen(
     val showFirstRide = hasCompletedOnboarding && !dismissedStarter && sessions.isEmpty()
 
     Column(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
-        AppBar(
-            title = "Ride",
-            eyebrow = eyebrow,
-            trailing = { IconBtn(Icons.Outlined.QrCodeScanner, "Scan a workout QR code", onClick = onScanQr) },
-        )
+        AppBar(title = "Ride", eyebrow = eyebrow)
 
         LazyColumn(
             contentPadding = PaddingValues(Spacing.s4),

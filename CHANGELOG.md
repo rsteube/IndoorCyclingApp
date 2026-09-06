@@ -14,6 +14,9 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   was the only thing a ride could be, and stopped being right the moment a ride
   could also be a road. Searching and filtering the library did not go away, it
   moved to where choosing a workout actually happens.
+- Scanning a QR code from the web editor moved from the home screen to the
+  workout picker. It carries a workout out of the browser, so it belongs where
+  workouts are chosen rather than sitting above all three kinds of ride.
 - **Up next is gone**, along with the quick-pick shelf. Both existed to make a
   long list usable as a landing screen, and there is no longer a list to land on.
 - The home screen now shows the trainer, heart rate monitor and controller

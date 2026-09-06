@@ -174,6 +174,7 @@ fun WorkoutPickerScreen(
     onBack: () -> Unit,
     onPick: (Workout) -> Unit,
     onOpenLibrary: () -> Unit,
+    onScanQr: () -> Unit,
 ) {
     val container = LocalAppContainer.current
     val ftp by container.userSettings.ftp.collectAsState()
@@ -218,6 +219,16 @@ fun WorkoutPickerScreen(
             eyebrow = "CHOOSE A RIDE",
             leading = {
                 IconBtn(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onClick = onBack)
+            },
+            // The QR handoff carries a workout out of the web editor, so it
+            // belongs where workouts are chosen. On the home screen it was an
+            // action for one of the three ride kinds sitting above all of them.
+            trailing = {
+                IconBtn(
+                    Icons.Outlined.QrCodeScanner,
+                    "Scan a workout QR code",
+                    onClick = onScanQr,
+                )
             },
         )
 
