@@ -6,13 +6,10 @@ re-investigated each time. Distribution is via **CodeFloe releases + ObtainX**
 (no Google Play, no F-Droid): the APK attached to a release is the only
 copy, and it is signed with the project's own key.
 
-**CodeFloe is the only home for the code.** Codeberg is kept alive purely as a
-release channel for riders who have not repointed their ObtainX source yet, and
-nothing else: its `main` is frozen, its README says so, and it receives no
-further development. Do not push branches to it, do not merge anything from it.
-It gets the release tag and the APK, which is all a release asset needs to hang
-on, and nothing more. The local `codeberg` remote is configured to push tags
-only, so a bare `git push codeberg` cannot move a branch by accident.
+**CodeFloe is the only home for the code and the only place it is released.**
+Codeberg was a release mirror through 2.0.1 and is retired: no remote, no tag,
+no release. Riders still pointed at the Codeberg URL stop receiving updates
+there, and the last thing they can see is 2.0.1.
 
 > Project convention: **no em-dash characters** anywhere (commit messages,
 > changelog, notes). Use a spaced hyphen, colon, or comma instead.
@@ -23,14 +20,17 @@ only, so a bare `git push codeberg` cannot move a branch by accident.
   fall back to the **debug** key and the APK is not a valid update (ObtainX
   will reject it as a different signer). Always verify the signer after building
   (step 4).
-- `CODEFLOE_TOKEN` is set in the environment (scope `write:repository`), or pass
-  `-Token` to the publish script. `CODEBERG_TOKEN` too, for the mirror publish.
-  Never print or commit either token.
+- `CODEFLOE_TOKEN` is set in the environment **with the `write:repository`
+  scope**, or pass `-Token` to the publish script. Never print or commit it. A
+  read-only token gets all the way to step 8 before failing with "user should
+  have a permission to write to a repo", so it is worth checking first:
+  `curl -s -H "Authorization: token $CODEFLOE_TOKEN"
+  https://codefloe.com/api/v1/repos/SnappTechnology/IndoorCyclingApp` should
+  report `"push": true`.
 - Working tree is clean and all the changes you intend to ship are committed to
   `main`. `git status` snapshots in the harness prompt can be stale, so confirm
   with a fresh `git status --short`.
-- Remote `origin` is the CodeFloe repo over SSH. `codeberg` exists only to
-  receive release tags and assets.
+- Remote `origin` is the CodeFloe repo over SSH, and is the only remote.
 
 ## Decide the version
 
@@ -128,20 +128,15 @@ Notes:
 ```bash
 git push origin main
 git push origin vX.Y
-# Codeberg gets the tag only. Pushing the tag carries the objects it points at,
-# which is enough for a release to attach to; its `main` stays frozen.
-git push codeberg vX.Y
 ```
 
 ### 8. Publish the release (this is what ObtainX tracks)
 
 A pushed tag alone is not enough. The release object + attached APK asset are
-what ObtainX polls. Publish to CodeFloe, then to Codeberg for the riders who
-have not moved yet.
+what ObtainX polls.
 
 ```powershell
 .\scripts\publish_release.ps1 -Tag vX.Y
-.\scripts\publish_release.ps1 -Tag vX.Y -Forge codeberg
 ```
 
 The script (see [scripts/publish_release.ps1](../scripts/publish_release.ps1))
@@ -172,7 +167,6 @@ wrap it in an object). Run it with the PowerShell tool, not Bash.
 4. Verify signer is `CN=Juhani Lehtimaki`.
 5. Copy build output into `mobile_clients/android/release/` as `indoorbike-X.Y.apk`.
 6. Commit `Release X.Y: ...`, annotated tag `vX.Y`.
-7. `git push origin main` and `git push origin vX.Y`, then `git push codeberg vX.Y`
-   (tag only).
-8. `publish_release.ps1 -Tag vX.Y`, then again with `-Forge codeberg`.
+7. `git push origin main` and `git push origin vX.Y`.
+8. `publish_release.ps1 -Tag vX.Y`.
 9. Confirm the release page and attached asset.

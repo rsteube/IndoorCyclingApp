@@ -83,4 +83,4 @@ Third-party code and font attributions: [NOTICE.md](NOTICE.md).
 
 ## Repository
 
-Primary location: [codefloe.com/SnappTechnology/IndoorCyclingApp](https://codefloe.com/SnappTechnology/IndoorCyclingApp). Releases are mirrored to [Codeberg](https://codeberg.org/juhanilehtimaki/IndoorCyclingApp) for riders who have not repointed their ObtainX source yet.
+Home: [codefloe.com/SnappTechnology/IndoorCyclingApp](https://codefloe.com/SnappTechnology/IndoorCyclingApp). The Codeberg mirror is retired; 2.0.1 was the last release published there, and ObtainX sources still pointed at it should be repointed to the CodeFloe URL.

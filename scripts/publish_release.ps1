@@ -3,24 +3,23 @@
 # ObtainX tracks *release assets*, so a pushed tag alone isn't enough - this
 # creates the Release object and uploads the APK to it.
 #
-# Development lives on CodeFloe; Codeberg stays a release-only mirror so riders
-# who haven't repointed their ObtainX source yet keep getting updates. The forge
-# is therefore a parameter rather than baked in, and a release means running
-# this twice:
+# CodeFloe is the only place the app is released. The forge is still a
+# parameter, but only so a one-off elsewhere needs -ApiBase + -Repo + -Token
+# rather than a code change:
 #
 #   .\scripts\publish_release.ps1 -Tag v1.8
-#   .\scripts\publish_release.ps1 -Tag v1.8 -Forge codeberg
 #
 # -Apk and -NotesFile default to the conventional paths for the tag, so the
 # usual case needs nothing but the tag.
 #
-# Auth: each forge reads its own token from the environment
-# ($env:CODEFLOE_TOKEN / $env:CODEBERG_TOKEN), or pass -Token. The token needs
-# the 'write:repository' scope (Settings -> Applications -> Generate Token).
-# The token is never written to disk or printed.
+# Auth: the token comes from $env:CODEFLOE_TOKEN, or pass -Token. It needs the
+# 'write:repository' scope (Settings -> Applications -> Generate Token), and a
+# token without it fails with "user should have a permission to write to a
+# repo" - the release is refused, nothing is half-published. The token is never
+# written to disk or printed.
 
 param(
-    [ValidateSet("codefloe", "codeberg")]
+    [ValidateSet("codefloe")]
     [string]$Forge     = "codefloe",
     [string]$Tag       = "",
     [string]$Apk       = "",
@@ -32,17 +31,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Per-forge defaults. Anything passed explicitly wins, so a one-off publish to
-# somewhere else needs -ApiBase + -Repo + -Token and no code change.
-if ($Forge -eq "codefloe") {
-    if (-not $ApiBase) { $ApiBase = "https://codefloe.com" }
-    if (-not $Repo)    { $Repo    = "SnappTechnology/IndoorCyclingApp" }
-    if (-not $Token)   { $Token   = $env:CODEFLOE_TOKEN }
-} else {
-    if (-not $ApiBase) { $ApiBase = "https://codeberg.org" }
-    if (-not $Repo)    { $Repo    = "juhanilehtimaki/IndoorCyclingApp" }
-    if (-not $Token)   { $Token   = $env:CODEBERG_TOKEN }
-}
+# Defaults. Anything passed explicitly wins, so a one-off publish somewhere
+# else needs -ApiBase + -Repo + -Token and no code change.
+if (-not $ApiBase) { $ApiBase = "https://codefloe.com" }
+if (-not $Repo)    { $Repo    = "SnappTechnology/IndoorCyclingApp" }
+if (-not $Token)   { $Token   = $env:CODEFLOE_TOKEN }
 
 if (-not $Tag) {
     Write-Error "No -Tag. Pass the already-pushed tag, e.g. -Tag v1.8."

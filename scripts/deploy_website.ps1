@@ -1,8 +1,7 @@
 # Deploy the website directory to the forge's Pages hosting.
 #
 # Pushes the contents of 'website' to the `pages` branch without switching
-# branches. indoorbike.app is served from CodeFloe Pages; Codeberg Pages served
-# it until the move, which is why the remote is a parameter and not baked in.
+# branches. indoorbike.app is served from CodeFloe Pages.
 #
 # The paths this publishes are load-bearing for shipped APKs: every install ever
 # released fetches https://indoorbike.app/registry.json, and the editor and share
@@ -10,11 +9,9 @@
 #
 # Usage:
 #   .\scripts\deploy_website.ps1
-#   .\scripts\deploy_website.ps1 -Remote codeberg
 #
-# `origin` is CodeFloe; `codeberg` is the release mirror. CodeFloe Pages serves
-# from a `pages` branch, the same convention Codeberg Pages used, so the branch
-# default survives the move.
+# The remote is still a parameter so a one-off elsewhere needs no code change,
+# but `origin` (CodeFloe) is the only one the site is served from.
 
 param(
     [string]$Remote = "origin",

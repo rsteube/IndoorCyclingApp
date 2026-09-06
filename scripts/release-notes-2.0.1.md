@@ -48,6 +48,6 @@ Notes
 
 Install
 - Add this repo to [ObtainX](https://github.com/bikram-agarwal/ObtainX) for automatic updates, or grab the APK below.
-- **Development has moved to [CodeFloe](https://codefloe.com/SnappTechnology/IndoorCyclingApp).** Codeberg remains a release mirror for now, so nothing breaks today. When you get a chance, install ObtainX and point it at the CodeFloe URL: Obtainium cannot track CodeFloe, so this is a change of app as well as a change of address.
+- **The Codeberg mirror is retired, and this is the last release on it.** If your ObtainX source still points at Codeberg you will stop seeing updates: repoint it at [CodeFloe](https://codefloe.com/SnappTechnology/IndoorCyclingApp). Obtainium cannot track CodeFloe, so for some people this is a change of app as well as a change of address.
 
 Signed with the project's release key; `versionCode 15`.
