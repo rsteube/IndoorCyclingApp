@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Indoor Bike - Link badges</title>
+<meta name="description" content="Free SVG badges that link a workout straight into the Indoor Bike editor. Filled, outline and chip, in two sizes and four wordings.">
+<meta name="theme-color" content="#313e50">
+<link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
 <link rel="stylesheet" href="tokens.css">
 <style>
   *, *::before, *::after { box-sizing: border-box; }
@@ -14,23 +17,22 @@
     text-rendering: optimizeLegibility; font-feature-settings: "tnum";
   }
   a { color: inherit; text-decoration: none; }
-  ::selection { background: rgba(244,122,31,0.32); }
+  ::selection { background: rgba(242,244,247,0.22); }
 
   .wrap { max-width: 1060px; margin: 0 auto; padding: 0 var(--s-6); }
 
   /* ---------- header ---------- */
   header.bar {
     position: sticky; top: 0; z-index: 30;
-    background: rgba(15,12,9,0.82);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border-bottom: 1px solid var(--line-1);
+    background: rgba(49,62,80,0.85);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   }
   header.bar .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
   .lockup { display: flex; align-items: center; gap: var(--s-3); }
-  .lockup img { height: 26px; display: block; }
+  .lockup img { width: 28px; height: 28px; display: block; }
+  .lockup .nm { font-weight: 800; font-size: 16px; letter-spacing: -0.01em; }
   .lockup .div { width: 1px; height: 22px; background: var(--line-2); }
-  .lockup .ctx { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.14em;
-    text-transform: uppercase; color: var(--fg-3); }
+  .lockup .ctx { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
   header.bar nav { display: flex; gap: var(--s-6); }
   header.bar nav a { font-size: 13px; font-weight: 500; color: var(--fg-2);
     transition: color var(--dur-fast) var(--ease-out); }
@@ -38,35 +40,27 @@
   @media (max-width: 720px){ header.bar nav { display: none; } }
 
   /* ---------- hero ---------- */
-  .hero { position: relative; padding: var(--s-10) 0 var(--s-9); overflow: hidden; }
-  .hero::before {
-    content:""; position: absolute; inset: -20% -10% auto -10%; height: 460px; z-index: 0;
-    background: radial-gradient(58% 60% at 50% 0%, rgba(244,122,31,0.16), rgba(213,79,10,0.05) 42%, transparent 72%);
-    pointer-events: none;
-  }
-  .hero .wrap { position: relative; z-index: 1; }
-  .eyebrow { font-weight: 600; font-size: 11px; color: var(--fg-3);
-    text-transform: uppercase; letter-spacing: 0.14em; margin: 0 0 var(--s-3); }
+  .hero { position: relative; padding: var(--s-10) 0 var(--s-9); }
+  .hero .wrap { position: relative; }
+  .eyebrow { font-weight: 600; font-size: 11px; color: var(--fg-3); margin: 0 0 var(--s-3); }
   .hero h1 {
-    font-family: var(--font-display); font-weight: 400; text-transform: uppercase;
-    font-size: clamp(44px, 7vw, 76px); line-height: 0.95; letter-spacing: 0.01em;
+    font-weight: 800;
+    font-size: clamp(44px, 7vw, 76px); line-height: 0.98; letter-spacing: -0.03em;
     margin: 0 0 var(--s-4); max-width: 16ch;
   }
-  .hero h1 .ac { color: var(--brand-500); }
+  .hero h1 .ac { color: var(--fg-1); }
   .hero p.lead { font-size: 18px; color: var(--fg-2); line-height: 1.55; max-width: 56ch; margin: 0 0 var(--s-7); }
   .hero-badge { margin-top: var(--s-2); }
   .hero-meta { display: flex; gap: var(--s-3); flex-wrap: wrap; align-items: center;
-    font-family: var(--font-mono); font-size: 11px; color: var(--fg-3);
-    letter-spacing: 0.08em; text-transform: uppercase; margin-top: var(--s-6); }
-  .hero-meta .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand-500);
-    box-shadow: 0 0 8px rgba(244,122,31,0.6); }
+    font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); margin-top: var(--s-6); }
+  .hero-meta .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--fg-1); }
 
   /* ---------- sections ---------- */
   section { padding: var(--s-9) 0; border-top: 1px solid var(--line-1); }
   .sec-head { margin-bottom: var(--s-7); }
   .sec-head h2 {
-    font-family: var(--font-display); font-weight: 400; text-transform: uppercase;
-    font-size: clamp(28px, 4vw, 40px); line-height: 1.04; letter-spacing: 0.02em; margin: 0 0 var(--s-3);
+    font-weight: 800;
+    font-size: clamp(28px, 4vw, 40px); line-height: 1.04; margin: 0 0 var(--s-3);
   }
   .sec-head p { margin: 0; color: var(--fg-2); font-size: 15px; line-height: 1.6; max-width: 64ch; }
 
@@ -83,14 +77,12 @@
     padding: var(--s-8) var(--s-6); display: flex; align-items: center; justify-content: center;
     gap: var(--s-5); flex-wrap: wrap; min-height: 132px; position: relative;
   }
-  .card .stage[data-bg="dark"]  { background:
-    radial-gradient(120% 120% at 50% 0%, #1a1410 0%, #0f0c09 70%); }
-  .card .stage[data-bg="light"] { background:
-    radial-gradient(120% 120% at 50% 0%, #ffffff 0%, #f4efe7 100%); }
+  .card .stage[data-bg="dark"]  { background: var(--bg-0); }
+  .card .stage[data-bg="light"] { background: var(--paper-0); }
   .card .stage[data-bg="busy"] {
     background:
-      repeating-linear-gradient(135deg, rgba(255,255,255,0.04) 0 14px, transparent 14px 28px),
-      linear-gradient(120deg, #20303a, #2a1c2e 60%, #3a2418);
+      repeating-linear-gradient(135deg, rgba(242,244,247,0.05) 0 14px, transparent 14px 28px),
+      linear-gradient(120deg, #2b3646, #3a435e 60%, #455561);
   }
   .badge-link { display: inline-flex; line-height: 0; cursor: pointer; }
   .badge-link svg { display: block; }
@@ -98,19 +90,19 @@
   .card .info { padding: var(--s-4) var(--s-5) var(--s-5); border-top: 1px solid var(--line-1); }
   .card .info .nm { display: flex; align-items: baseline; gap: var(--s-3); flex-wrap: wrap; margin-bottom: 2px; }
   .card .info h3 { font-family: var(--font-body); font-weight: 700; font-size: 15px; margin: 0; letter-spacing: -0.01em; }
-  .card .info .dim { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); letter-spacing: 0.04em; }
+  .card .info .dim { font-family: var(--font-mono); font-size: 11px; color: var(--fg-3); }
   .card .info .desc { color: var(--fg-2); font-size: 13px; margin: 4px 0 0; line-height: 1.5; }
 
   /* ---------- code panel ---------- */
   .code { border-top: 1px solid var(--line-1); background: var(--bg-0); }
   .code .tabs { display: flex; gap: 2px; padding: var(--s-3) var(--s-3) 0; }
   .code .tabs button {
-    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    font-family: var(--font-mono); font-size: 11px;
     color: var(--fg-3); background: transparent; border: 0; padding: 7px 11px; border-radius: var(--r-sm) var(--r-sm) 0 0;
     cursor: pointer; transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
   }
   .code .tabs button:hover { color: var(--fg-1); }
-  .code .tabs button[aria-selected="true"] { color: var(--brand-400); background: var(--bg-1); }
+  .code .tabs button[aria-selected="true"] { color: var(--fg-1); background: var(--bg-1); }
   .code .panel { position: relative; }
   .code pre {
     margin: 0; padding: var(--s-4) var(--s-5); max-height: 168px; overflow: auto;
@@ -120,21 +112,21 @@
   .code pre code { color: inherit; }
   .copy {
     position: absolute; top: var(--s-3); right: var(--s-3);
-    font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase;
+    font-family: var(--font-mono); font-size: 10.5px;
     color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--line-2);
     padding: 6px 10px; border-radius: var(--r-sm); cursor: pointer;
     transition: all var(--dur-fast) var(--ease-out);
   }
   .copy:hover { border-color: var(--line-3); color: var(--fg-1); }
-  .copy.ok { color: var(--zone-3); border-color: rgba(31,179,115,0.4); background: rgba(31,179,115,0.12); }
+  .copy.ok { color: var(--zone-3); border-color: rgba(63,192,138,0.4); background: rgba(63,192,138,0.12); }
   .actions { display: flex; gap: var(--s-2); padding: var(--s-3) var(--s-5) var(--s-5); }
   .mini {
-    font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+    font-family: var(--font-mono); font-size: 11px;
     color: var(--fg-2); background: var(--bg-2); border: 1px solid var(--line-2);
     padding: 8px 12px; border-radius: var(--r-sm); cursor: pointer;
     transition: all var(--dur-fast) var(--ease-out); display: inline-flex; align-items: center; gap: 7px;
   }
-  .mini:hover { border-color: var(--brand-500); color: var(--fg-1); }
+  .mini:hover { border-color: var(--fg-1); color: var(--fg-1); }
   .mini svg { width: 13px; height: 13px; }
 
   /* ---------- usage ---------- */
@@ -142,11 +134,10 @@
   @media (max-width: 760px){ .rules { grid-template-columns: 1fr; } }
   .rule { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: var(--s-6); }
   .rule h4 { display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-4);
-    font-family: var(--font-body); font-weight: 700; font-size: 14px; letter-spacing: 0.02em; }
-  .rule h4 .tag { font-family: var(--font-mono); font-size: 11px; padding: 3px 9px; border-radius: var(--r-pill);
-    letter-spacing: 0.1em; text-transform: uppercase; }
-  .rule.do h4 .tag { color: var(--zone-3); background: rgba(31,179,115,0.14); border: 1px solid rgba(31,179,115,0.34); }
-  .rule.dont h4 .tag { color: var(--danger); background: rgba(235,59,59,0.12); border: 1px solid rgba(235,59,59,0.32); }
+    font-family: var(--font-body); font-weight: 700; font-size: 14px; }
+  .rule h4 .tag { font-family: var(--font-mono); font-size: 11px; padding: 3px 9px; border-radius: var(--r-pill); }
+  .rule.do h4 .tag { color: var(--zone-3); background: rgba(63,192,138,0.14); border: 1px solid rgba(63,192,138,0.34); }
+  .rule.dont h4 .tag { color: var(--danger); background: rgba(239,107,98,0.12); border: 1px solid rgba(239,107,98,0.32); }
   .rule ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--s-3); }
   .rule li { display: flex; gap: var(--s-3); font-size: 14px; color: var(--fg-2); line-height: 1.5; }
   .rule li .gl { flex: none; width: 18px; text-align: center; font-family: var(--font-mono); font-weight: 700; }
@@ -158,12 +149,12 @@
   .urlbox { background: var(--bg-1); border: 1px solid var(--line-2); border-radius: var(--r-md); padding: var(--s-6); }
   .urlbox pre { margin: 0 0 var(--s-4); font-family: var(--font-mono); font-size: 12.5px; line-height: 1.7;
     color: var(--fg-1); white-space: pre-wrap; word-break: break-all; }
-  .urlbox .b500 { color: var(--brand-400); }
+  .urlbox .b500 { color: var(--fg-1); }
   .urlbox .b300 { color: var(--fg-3); }
   .ptable { width: 100%; border-collapse: collapse; font-size: 13px; }
   .ptable th, .ptable td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line-1); vertical-align: top; }
-  .ptable th { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--fg-3); font-weight: 500; }
-  .ptable td code { font-family: var(--font-mono); color: var(--brand-300); font-size: 12px; }
+  .ptable th { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); font-weight: 500; }
+  .ptable td code { font-family: var(--font-mono); color: var(--fg-2); font-size: 12px; }
   .ptable td { color: var(--fg-2); line-height: 1.5; }
 
   /* ---------- downloads ---------- */
@@ -177,21 +168,21 @@
   }
   .dl:hover { border-color: var(--line-3); transform: translateY(-1px); }
   .dl .prev { flex: none; width: 132px; height: 44px; display: grid; place-items: center;
-    background: radial-gradient(120% 120% at 50% 0%, #1a1410, #0f0c09); border-radius: var(--r-sm);
+    background: var(--bg-0); border-radius: var(--r-sm);
     border: 1px solid var(--line-1); overflow: hidden; }
-  .dl .prev[data-bg="light"] { background: #faf7f2; }
+  .dl .prev[data-bg="light"] { background: var(--paper-0); }
   .dl .prev svg { transform: scale(0.78); }
   .dl .meta { min-width: 0; }
   .dl .meta .fn { font-family: var(--font-mono); font-size: 12px; color: var(--fg-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dl .meta .sz { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); margin-top: 2px; letter-spacing: 0.04em; }
+  .dl .meta .sz { font-family: var(--font-mono); font-size: 10.5px; color: var(--fg-3); margin-top: 2px; }
   .dl .arr { margin-left: auto; color: var(--fg-3); font-family: var(--font-mono); flex: none; }
-  .dl:hover .arr { color: var(--brand-400); }
+  .dl:hover .arr { color: var(--fg-1); }
 
   footer { border-top: 1px solid var(--line-1); padding: var(--s-7) 0 var(--s-9); color: var(--fg-3); font-size: 13px; }
   footer .wrap { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; }
   footer a { color: var(--fg-2); } footer a:hover { color: var(--fg-1); }
   .note { font-size: 12.5px; color: var(--fg-3); line-height: 1.6; margin-top: var(--s-4); }
-  .note code { font-family: var(--font-mono); color: var(--brand-300); font-size: 11.5px; }
+  .note code { font-family: var(--font-mono); color: var(--fg-2); font-size: 11.5px; }
 
   @media (prefers-reduced-motion: reduce){ *,*::before,*::after{ transition:none!important; animation:none!important; } }
 </style>
@@ -201,7 +192,8 @@
 <header class="bar">
   <div class="wrap">
     <div class="lockup">
-      <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      <img src="../assets/logo-mark.svg" alt="">
+      <span class="nm">Indoor Bike</span>
       <div class="div"></div>
       <span class="ctx">Link badges</span>
     </div>
@@ -226,7 +218,7 @@
     <div class="hero-meta">
       <span class="dot"></span><span>indoorbike.app/editor</span>
       <span>·</span><span>SVG + HTML</span>
-      <span>·</span><span>MIT-friendly</span>
+      <span>·</span><span>Use encouraged, never required</span>
     </div>
   </div>
 </section>
@@ -235,7 +227,7 @@
   <div class="wrap">
     <div class="sec-head">
       <h2>The badge family</h2>
-      <p>One mark, three treatments. The filled ember badge is the default - use it wherever it has room to breathe.
+      <p>One mark, three treatments. The filled badge is the default - use it wherever it has room to breathe.
         Reach for the outline when the badge sits in a busy interface, and the chip when space is tight. Every badge
         carries the chainring mark on its home turf: a dark tile, so it reads on any background.</p>
     </div>
@@ -280,9 +272,9 @@
   <div class="wrap">
     <div class="sec-head">
       <h2>Where it links</h2>
-      <p>The badge is just an anchor. Point its <code style="font-family:var(--font-mono);color:var(--brand-300)">href</code>
+      <p>The badge is just an anchor. Point its <code style="font-family:var(--font-mono);color:var(--fg-2)">href</code>
         at the editor and describe the workout entirely in the query string. Everything below is optional except
-        <code style="font-family:var(--font-mono);color:var(--brand-300)">s</code>, the segments.</p>
+        <code style="font-family:var(--font-mono);color:var(--fg-2)">s</code>, the segments.</p>
     </div>
     <div class="urlbox">
       <pre><span class="b300">https://indoorbike.app/editor/?</span>v=1<span class="b300">&amp;</span>name=<span class="b500">Sweet+Spot+4x10</span><span class="b300">&amp;</span>ftp=<span class="b500">250</span><span class="b300">&amp;</span>s=<span class="b500">10m@55,4x(10m@90;5m@60),8m@50</span></pre>
@@ -315,14 +307,14 @@
           <li><span class="gl">✓</span><span>Link straight to <b>indoorbike.app/editor/</b> with the workout in the query string.</span></li>
           <li><span class="gl">✓</span><span>Keep <b>clear space</b> around the badge equal to the height of the mark tile.</span></li>
           <li><span class="gl">✓</span><span>Use the <b>filled</b> badge by default; switch to outline only on busy or branded surfaces.</span></li>
-          <li><span class="gl">✓</span><span>Match the badge to its background - <b>light ink on light, light text on dark</b>.</span></li>
+          <li><span class="gl">✓</span><span>Match the badge to its background - <b>dark ink on light, light text on dark</b>.</span></li>
           <li><span class="gl">✓</span><span>Prefer the <b>inline-SVG</b> embed so the mark and type stay crisp at any scale.</span></li>
         </ul>
       </div>
       <div class="rule dont">
         <h4><span class="tag">Don't</span></h4>
         <ul>
-          <li><span class="gl">✕</span><span><b>Recolor</b> the badge or the mark - the ember is the brand.</span></li>
+          <li><span class="gl">✕</span><span><b>Recolor</b> the badge or the mark - the monochrome is the brand.</span></li>
           <li><span class="gl">✕</span><span><b>Stretch, rotate, or add shadows.</b> Keep the proportions as drawn.</span></li>
           <li><span class="gl">✕</span><span>Put the badge on a <b>clashing accent</b> or low-contrast background.</span></li>
           <li><span class="gl">✕</span><span>Imply <b>endorsement</b> or official partnership - it's a link, not a co-brand.</span></li>
@@ -337,11 +329,11 @@
   <div class="wrap">
     <div class="sec-head">
       <h2>Download the assets</h2>
-      <p>Grab a single SVG, or take the whole set. Each file is self-contained - fonts fall back to a condensed sans
-        when embedded as an image, and render in full Bebas Neue when inlined.</p>
+      <p>Grab a single SVG, or take the whole set. Each file is self-contained and loads no webfont: it asks for Manrope
+        first and falls back to the reader&#39;s system sans, so an embedded badge stays a single request.</p>
     </div>
     <div style="display:flex;gap:var(--s-3);flex-wrap:wrap;margin-bottom:var(--s-6)">
-      <button class="mini" id="dlAll" style="border-color:var(--brand-500);color:var(--fg-1)">
+      <button class="mini" id="dlAll" style="border-color:var(--fg-1);color:var(--fg-1)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Download all as SVG
       </button>
@@ -352,7 +344,7 @@
 
 <footer>
   <div class="wrap">
-    <span>Indoor Bike · Cadence design system · link badges</span>
+    <span>Indoor Bike · Slate design system · link badges</span>
     <span>Open source · use encouraged, never required</span>
   </div>
 </footer>

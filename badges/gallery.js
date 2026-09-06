@@ -170,7 +170,7 @@
 
     // styles
     mount('styleGrid', card({ label: 'open-in', style: 'filled', theme: 'dark', size: 'std', bg: 'dark',
-      title: 'Filled · ember', desc: 'The default. Warm, high-contrast, reads on any background.' }));
+      title: 'Filled', desc: 'The default. Cool white, high-contrast, reads on any background.' }));
     mount('styleGrid', card({ label: 'open-in', style: 'outline', theme: 'dark', size: 'std', bg: 'dark',
       title: 'Outline · dark', desc: 'Quieter. For dark UIs where a filled badge would shout.' }));
     mount('styleGrid', card({ label: 'open-in', style: 'outline', theme: 'light', size: 'std', bg: 'light',
@@ -196,7 +196,7 @@
 
     // context
     mount('ctxGrid', card({ label: 'open-in', style: 'filled', theme: 'dark', size: 'std', bg: 'busy',
-      title: 'Filled on a busy surface', desc: 'The ember holds up against noise and photography.' }));
+      title: 'Filled on a busy surface', desc: 'The solid fill holds up against noise and photography.' }));
     mount('ctxGrid', card({ label: 'open-in', style: 'outline', theme: 'light', size: 'std', bg: 'light',
       title: 'Outline on light', desc: 'Sits politely inside a light third-party page.' }));
 

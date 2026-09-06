@@ -359,12 +359,12 @@
     const ftp = num('#ftp'), weight = num('#weight'), bike = num('#bike');
     const seconds = R.estimateSeconds(entry, ftp, weight, bike);
     const tiles = [
-      ['DISTANCE', R.formatDistance(entry.distanceMeters)],
-      ['CLIMBING', `${Math.round(entry.ascentMeters)} m`],
-      ['DESCENT', `${Math.round(entry.descentMeters)} m`],
-      ['MAX GRADIENT', `${entry.maxGradientPercent.toFixed(1)} %`],
-      ['EST. TIME', R.formatDuration(seconds)],
-      ['SHAPE', entry.loop ? 'Loop' : 'Point to point'],
+      ['Distance', R.formatDistance(entry.distanceMeters)],
+      ['Climbing', `${Math.round(entry.ascentMeters)} m`],
+      ['Descent', `${Math.round(entry.descentMeters)} m`],
+      ['Max gradient', `${entry.maxGradientPercent.toFixed(1)} %`],
+      ['Est. time', R.formatDuration(seconds)],
+      ['Shape', entry.loop ? 'Loop' : 'Point to point'],
     ];
     const box = $('#stats');
     box.innerHTML = '';
@@ -527,7 +527,7 @@
     ctx.lineTo(canvas.width, canvas.height);
     ctx.lineTo(0, canvas.height);
     ctx.closePath();
-    ctx.fillStyle = 'rgba(244,122,31,0.18)';
+    ctx.fillStyle = '#455561';
     ctx.fill();
 
     ctx.beginPath();
@@ -535,7 +535,7 @@
       const px = i * stepX;
       if (i === 0) ctx.moveTo(px, y(v)); else ctx.lineTo(px, y(v));
     });
-    ctx.strokeStyle = '#F47A1F';
+    ctx.strokeStyle = '#F2F4F7';
     ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
     ctx.stroke();
@@ -572,7 +572,7 @@
     points.forEach(([lat, lon], i) => {
       if (i === 0) ctx.moveTo(px(lon), py(lat)); else ctx.lineTo(px(lon), py(lat));
     });
-    ctx.strokeStyle = '#C2B5A1';
+    ctx.strokeStyle = '#C5CAD6';
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
@@ -580,7 +580,7 @@
 
     ctx.beginPath();
     ctx.arc(px(points[0][1]), py(points[0][0]), 4, 0, Math.PI * 2);
-    ctx.fillStyle = '#F47A1F';
+    ctx.fillStyle = '#F2F4F7';
     ctx.fill();
   }
 

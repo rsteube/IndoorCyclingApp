@@ -11,13 +11,13 @@
   // ── Zone definitions ────────────────────────────────────────────────────
   // Match the app's `PowerZone` enum (mobile_clients/.../ui/zones/PowerZones.kt).
   const ZONES = [
-    { num: 1, name: 'Recovery',  color: '#6B8AA8', low:  0,  high:  55, defaultPct:  50, defaultMin:  5 },
-    { num: 2, name: 'Endurance', color: '#2E7BFF', low: 56,  high:  75, defaultPct:  65, defaultMin: 10 },
-    { num: 3, name: 'Tempo',     color: '#1FB373', low: 76,  high:  90, defaultPct:  85, defaultMin:  8 },
+    { num: 1, name: 'Recovery',  color: '#8FA8C0', low:  0,  high:  55, defaultPct:  50, defaultMin:  5 },
+    { num: 2, name: 'Endurance', color: '#5B9CF2', low: 56,  high:  75, defaultPct:  65, defaultMin: 10 },
+    { num: 3, name: 'Tempo',     color: '#3FC08A', low: 76,  high:  90, defaultPct:  85, defaultMin:  8 },
     { num: 4, name: 'Threshold', color: '#F0C419', low: 91,  high: 105, defaultPct: 100, defaultMin:  5 },
-    { num: 5, name: 'VO2',       color: '#FF8A1F', low:106,  high: 120, defaultPct: 115, defaultMin:  3 },
-    { num: 6, name: 'Anaerobic', color: '#EB3B3B', low:121,  high: 150, defaultPct: 140, defaultMin:  1 },
-    { num: 7, name: 'Neuro',     color: '#C53BFF', low:151,  high: 999, defaultPct: 170, defaultMin:  0.5 }
+    { num: 5, name: 'VO2',       color: '#FF9A3D', low:106,  high: 120, defaultPct: 115, defaultMin:  3 },
+    { num: 6, name: 'Anaerobic', color: '#EF6B62', low:121,  high: 150, defaultPct: 140, defaultMin:  1 },
+    { num: 7, name: 'Neuro',     color: '#CE6BF0', low:151,  high: 999, defaultPct: 170, defaultMin:  0.5 }
   ];
   const FREE_TILE = { num: 'F', name: 'Free', color: '#8A7E6C', defaultPct: 60, defaultMin: 5 };
   function zoneFor(pct) { for (const z of ZONES) if (pct <= z.high) return z; return ZONES[6]; }
@@ -762,14 +762,14 @@
       )
     ));
     root.appendChild(el('div', { class: 'inspector-field' },
-      el('label', {}, 'DURATION'),
+      el('label', {}, 'Duration'),
       minInput,
       el('span', { class: 'unit' }, ':'),
       secInput,
       el('span', { class: 'unit' }, 'min:sec')
     ));
     root.appendChild(el('div', { class: 'inspector-field' },
-      el('label', {}, 'POWER'),
+      el('label', {}, 'Power'),
       pctInput,
       el('span', { class: 'unit' }, '% FTP')
     ));
@@ -819,7 +819,7 @@
     if (on) toggle.checked = true;
 
     const field = el('div', { class: 'inspector-field inspector-field--cadence' },
-      el('label', { for: 'cadence-toggle' }, 'CADENCE'),
+      el('label', { for: 'cadence-toggle' }, 'Cadence'),
       toggle
     );
 

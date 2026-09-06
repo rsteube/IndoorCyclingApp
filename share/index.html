@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Open in Indoor Bike</title>
-  <meta name="theme-color" content="#0F0C09">
+  <meta name="theme-color" content="#313e50">
   <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
   <link rel="stylesheet" href="../styles.css">
   <style>
@@ -22,18 +22,15 @@
       margin-top: var(--s-5);
     }
     .share-card h2 {
-      font-family: var(--font-display);
-      font-weight: 400;
+      font-weight: 800;
       font-size: 36px;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
       margin: 0 0 var(--s-2);
     }
     .share-card p { color: var(--fg-2); margin: 0 0 var(--s-4); }
     .share-meta {
       display: flex; flex-wrap: wrap; gap: var(--s-2);
       font-family: var(--font-mono); font-size: 11px;
-      color: var(--fg-3); letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--fg-3);
     }
     .share-meta span {
       padding: 4px 10px;
@@ -50,9 +47,9 @@
     .share-bar > div { height: 100%; }
     .share-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-5); }
     .share-error {
-      background: rgba(235,59,59,0.08);
-      border: 1px solid rgba(235,59,59,0.4);
-      color: #f7a;
+      background: rgba(239,107,98,0.10);
+      border: 1px solid rgba(239,107,98,0.45);
+      color: var(--danger);
     }
     .install-hint {
       margin-top: var(--s-6);
@@ -60,27 +57,36 @@
       color: var(--fg-3);
       line-height: 1.6;
     }
-    .install-hint a { color: var(--brand-400); }
+    .install-hint a { color: var(--fg-1); }
   </style>
 </head>
 <body>
   <header class="site-header">
     <div class="container">
       <a class="brand" href="../index.html" aria-label="Indoor Bike home">
-        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+        <img src="../assets/logo-mark.svg" alt="">
+        <span>Indoor Bike</span>
       </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../index.html#ride">Three ways to ride</a>
+        <a href="../community/index.html">Community</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="../routetool/index.html">Route tool</a>
+        <a href="../index.html#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-primary" href="../index.html#install">Install</a>
     </div>
   </header>
 
   <main class="share-wrap">
-    <p class="eyebrow" style="margin-bottom: var(--s-2);">SHARED WORKOUT</p>
-    <h1 style="font-family:var(--font-display);font-weight:400;font-size:48px;line-height:1;letter-spacing:0.02em;text-transform:uppercase;margin:0;">Open in Indoor Bike</h1>
+    <p class="eyebrow" style="margin-bottom: var(--s-2);">Shared workout</p>
+    <h1 style="font-weight: 800;font-size:48px;line-height:1;margin:0;">Open in Indoor Bike</h1>
 
     <div id="content"><!-- filled by share.js --></div>
 
     <p class="install-hint">
       Don't have the app yet? It's an open-source indoor cycling app for
-      Android. <a href="../index.html#download">Find install instructions on the home page</a>.
+      Android. <a href="../index.html#install">Find install instructions on the home page</a>.
     </p>
     <p class="install-hint" style="margin-top: var(--s-3); font-size: 12px;">
       <a href="../privacy.html">Privacy policy</a>

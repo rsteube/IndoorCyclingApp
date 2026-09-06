@@ -17,19 +17,15 @@
 }
 
 .contribute-section h2 {
-  font-family: var(--font-display);
-  font-weight: 400;
+  font-weight: 800;
   font-size: 30px;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  letter-spacing: -0.02em;
   color: var(--fg-1);
   margin: 0 0 var(--s-4);
 }
 .contribute-section h3 {
   font-family: var(--font-mono);
   font-size: 12px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
   color: var(--fg-3);
   margin: var(--s-6) 0 var(--s-3);
 }
@@ -42,8 +38,8 @@
 }
 .contribute-section p.muted { color: var(--fg-3); font-size: 13px; }
 
-.contribute-section a { color: var(--brand-400); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
-.contribute-section a:hover { color: var(--brand-300); }
+.contribute-section a { color: var(--fg-1); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
+.contribute-section a:hover { color: var(--fg-2); }
 
 /* ─── Lists ───────────────────────────────────────────────── */
 .numbered-list, .bullet-list {
@@ -63,7 +59,7 @@
   border: 1px solid var(--line-1);
   padding: 1px 6px;
   border-radius: 4px;
-  color: var(--brand-300);
+  color: var(--fg-2);
 }
 
 /* ─── Schema table (the field reference grids) ────────────── */
@@ -88,13 +84,11 @@
   background: var(--bg-2);
   font-family: var(--font-mono);
   font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--fg-3);
 }
 .schema-row code {
   font-family: var(--font-mono);
-  color: var(--brand-300);
+  color: var(--fg-2);
   background: none;
   border: none;
   padding: 0;

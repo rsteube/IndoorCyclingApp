@@ -8,8 +8,8 @@
   'use strict';
 
   const ZONE_COLORS = {
-    1: '#6B8AA8', 2: '#2E7BFF', 3: '#1FB373',
-    4: '#F0C419', 5: '#FF8A1F', 6: '#EB3B3B', 7: '#C53BFF',
+    1: '#8FA8C0', 2: '#5B9CF2', 3: '#3FC08A',
+    4: '#F0C419', 5: '#FF9A3D', 6: '#EF6B62', 7: '#CE6BF0',
   };
   function zoneFor(pct) {
     if (pct <= 55) return 1;
