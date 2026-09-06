@@ -114,6 +114,7 @@ fun LibraryScreen(
     onBack: () -> Unit,
     onScanQr: () -> Unit,
     onOpenRepo: (manifestUrl: String) -> Unit,
+    onOpenRoutes: (manifestUrl: String) -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -207,7 +208,8 @@ fun LibraryScreen(
             registryItems(
                 state = registry,
                 refreshing = refreshingRegistry,
-                onBrowse = { entry -> onOpenRepo(entry.manifestUrl) }
+                onBrowse = { entry -> onOpenRepo(entry.manifestUrl) },
+                onBrowseRoutes = { entry -> onOpenRoutes(entry.manifestUrl) }
             )
 
             // ── Imported workouts (manage) ───────────────────────────────────
@@ -463,7 +465,8 @@ private fun ImportedWorkoutRow(name: String, onDelete: () -> Unit) {
 private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
     state: RegistryState,
     refreshing: Boolean,
-    onBrowse: (RegistryEntry) -> Unit
+    onBrowse: (RegistryEntry) -> Unit,
+    onBrowseRoutes: (RegistryEntry) -> Unit = {}
 ) {
     when (state) {
         RegistryState.Initial -> if (refreshing) item { LoadingRow() } else item { RegistryEmpty() }
@@ -473,7 +476,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
                 item { RegistryEmpty() }
             } else {
                 items(repos, key = { "reg-${it.id}" }) { entry ->
-                    RegistryEntryCard(entry = entry, onBrowse = { onBrowse(entry) })
+                    RegistryEntryCard(
+                        entry = entry,
+                        onBrowse = { onBrowse(entry) },
+                        onBrowseRoutes = { onBrowseRoutes(entry) },
+                    )
                 }
             }
         }
@@ -481,7 +488,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
             item { RegistryUnreachable(state.error) }
             state.cachedIndex?.repositories?.let { repos ->
                 items(repos, key = { "reg-cached-${it.id}" }) { entry ->
-                    RegistryEntryCard(entry = entry, onBrowse = { onBrowse(entry) })
+                    RegistryEntryCard(
+                        entry = entry,
+                        onBrowse = { onBrowse(entry) },
+                        onBrowseRoutes = { onBrowseRoutes(entry) },
+                    )
                 }
             }
         }
@@ -491,7 +502,8 @@ private fun androidx.compose.foundation.lazy.LazyListScope.registryItems(
 @Composable
 private fun RegistryEntryCard(
     entry: RegistryEntry,
-    onBrowse: () -> Unit
+    onBrowse: () -> Unit,
+    onBrowseRoutes: () -> Unit = {}
 ) {
     val shape = RoundedCornerShape(Radii.md)
     Column(
@@ -525,16 +537,36 @@ private fun RegistryEntryCard(
             // dead. Whole card is clickable too (target the chunk near a
             // user's thumb), with this acting as the explicit affordance.
             Row(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(CadenceColors.Brand500.copy(alpha = 0.18f))
-                    .clickable(onClick = onBrowse)
-                    .padding(horizontal = Spacing.s4, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "Browse", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
-                Spacer(Modifier.size(6.dp))
-                Text(text = "›", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
+                // Shown only when the registry says this repo publishes
+                // routes. Guessing would mean fetching every manifest just to
+                // draw the list, which is the round-trip the registry avoids.
+                if (entry.hasRoutes) {
+                    Row(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(CadenceColors.Bg3)
+                            .clickable(onClick = onBrowseRoutes)
+                            .padding(horizontal = Spacing.s4, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "Routes", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(CadenceColors.Brand500.copy(alpha = 0.18f))
+                        .clickable(onClick = onBrowse)
+                        .padding(horizontal = Spacing.s4, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = "Browse", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
+                    Spacer(Modifier.size(6.dp))
+                    Text(text = "›", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
+                }
             }
         }
     }

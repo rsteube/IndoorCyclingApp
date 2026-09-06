@@ -134,6 +134,7 @@ dependencies {
     implementation(libs.camerax.lifecycle)
     implementation(libs.camerax.view)
     implementation(libs.zxing.core)
+    implementation(libs.osmdroid.android)
 
     debugImplementation(libs.compose.ui.tooling)
 }

@@ -112,6 +112,13 @@ data class BackupSession(
     val avgPower: Long,
     val avgCadence: Long,
     val avgHeartRate: Long,
+    /**
+     * Progress along a simulated route, in metres, and the climbing collected.
+     * Null for every ride that had no road under it, and for sessions written
+     * by builds that predate simulation mode - defaulted so those still decode.
+     */
+    val routeDistanceMeters: Double? = null,
+    val routeElevationGainMeters: Double? = null,
 )
 
 /**

@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
+import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.ui.components.PrimaryBtn
@@ -96,6 +97,13 @@ fun ShareSheet(
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val highlight = remember(workout, telemetry) { deriveHighlight(workout, telemetry) }
+    // The road a simulated ride was on. Null for the other two modes, and for a
+    // route that has since been removed from the catalogue - in which case the
+    // card falls back to the power chart rather than showing a blank panel.
+    val container = app.indoorbike.LocalAppContainer.current
+    val route = remember(session.workoutId) {
+        simulationRouteId(session.workoutId)?.let { container.routeCatalog.find(it) }
+    }
     val graphicsLayer = rememberGraphicsLayer()
 
     var busy by remember { mutableStateOf(false) }
@@ -164,6 +172,7 @@ fun ShareSheet(
             // capture target, scaled down to fit the sheet width.
             ThumbnailPreview {
                 CaptureTarget(
+                    route = route,
                     graphicsLayer = graphicsLayer,
                     session = session,
                     stats = stats,
@@ -267,6 +276,7 @@ private fun ThumbnailPreview(card: @Composable () -> Unit) {
  */
 @Composable
 private fun CaptureTarget(
+    route: app.indoorbike.shared.route.RouteTrack?,
     graphicsLayer: androidx.compose.ui.graphics.layer.GraphicsLayer,
     session: WorkoutSession,
     stats: RideStats,
@@ -298,7 +308,8 @@ private fun CaptureTarget(
                 workout = workout,
                 telemetry = telemetry,
                 ftp = ftp,
-                highlight = highlight
+                highlight = highlight,
+                route = route
             )
         }
     }

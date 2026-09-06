@@ -73,6 +73,12 @@ class WorkoutImporter(private val context: Context) {
                 ImportKind.Registry -> ImportResult.Failure(
                     "That's a registry file, not a workout or repository."
                 )
+                // Route bundles are listings, not rideable data: each entry
+                // only points at a GPX. Adding them means downloading those,
+                // which is the route browser's job, not the workout importer's.
+                ImportKind.RouteList -> ImportResult.Failure(
+                    "That's a route pack. Open it from Routes to add routes from it."
+                )
                 ImportKind.Unknown -> ImportResult.Failure(
                     "Couldn't recognise this file. Expected a workout JSON or a repository manifest."
                 )

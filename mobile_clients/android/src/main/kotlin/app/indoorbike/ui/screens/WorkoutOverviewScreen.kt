@@ -56,6 +56,8 @@ import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.progression.timeInZoneSeconds
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
+import app.indoorbike.shared.workout.simulationRouteId
+import app.indoorbike.ui.screens.simulation.RouteSummaryPanel
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -307,6 +309,22 @@ fun WorkoutOverviewScreen(
                 )
             }
 
+            // The road, for a ride that had one. Above the estimated-distance
+            // cards on purpose: on a route those estimates are the less
+            // interesting number, because the ground covered was real ground on
+            // a real road rather than a guess from watts.
+            val routeId = simulationRouteId(activeSession.workoutId)
+            val riddenRoute = routeId?.let { container.routeCatalog.find(it) }
+            if (riddenRoute != null) {
+                Spacer(modifier = Modifier.height(Spacing.s4))
+                RouteSummaryPanel(
+                    route = riddenRoute,
+                    riddenMeters = activeSession.routeDistanceMeters,
+                    elevationGainMeters = activeSession.routeElevationGainMeters,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             // A trainer measures no ground speed, so these are estimates from
             // power rather than readings. Absent entirely when the rider has no
             // weight set, since there is then nothing to estimate from.
@@ -353,12 +371,15 @@ fun WorkoutOverviewScreen(
                 }
             }
 
-            // Adherence is a ride measured against its plan. A free ride had
-            // none, so the section is dropped rather than shown empty - an
-            // empty chart there reads as missing data instead of as an answer.
-            // A structured ride whose workout has since been deleted still
-            // gets the empty state, because there the data really is missing.
-            if (activeSession.workoutId != FREE_RIDE_WORKOUT_ID) {
+            // Adherence is a ride measured against its plan. Neither a free
+            // ride nor a route ride had one, so the section is dropped rather
+            // than shown empty - an empty chart there reads as missing data
+            // instead of as an answer. A structured ride whose workout has
+            // since been deleted still gets the empty state, because there the
+            // data really is missing.
+            val hadAPlan = activeSession.workoutId != FREE_RIDE_WORKOUT_ID &&
+                simulationRouteId(activeSession.workoutId) == null
+            if (hadAPlan) {
                 Spacer(modifier = Modifier.height(Spacing.s6))
                 Text("Power Adherence", style = CadenceType.h3, color = CadenceColors.Fg1)
                 Spacer(modifier = Modifier.height(Spacing.s3))

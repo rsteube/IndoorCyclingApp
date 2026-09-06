@@ -94,6 +94,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
+import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.ui.screens.simulation.SimulationHud
 import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.isFreeRide
@@ -179,6 +181,21 @@ fun RideScreen(
     val freeRideTarget by sessionManager.freeRideTargetWatts.collectAsState()
     val ftp by container.userSettings.ftp.collectAsState()
 
+    // "Simulation": a real route under the wheels. The trainer is in FTMS
+    // simulation mode rather than ERG, so there is no target to hold and no
+    // interval furniture to show; what the rider needs instead is the road,
+    // which is what [SimulationHud] draws.
+    val isSimulation = workout?.isSimulation == true
+    val simulationEngine = container.simulationEngine
+    val simulationRoute by simulationEngine.route.collectAsState()
+    val simulationPosition by simulationEngine.position.collectAsState()
+    val simulationDistance by simulationEngine.distanceMeters.collectAsState()
+    val simulationGradient by simulationEngine.gradient.collectAsState()
+    val simulationSpeedMps by simulationEngine.speedMps.collectAsState()
+    val simulationGear by simulationEngine.gearIndex.collectAsState()
+    val simulationDrivetrain by simulationEngine.drivetrain.collectAsState()
+    val simulationClimb by simulationEngine.elevationGainMeters.collectAsState()
+
     val currentPower by trainerManager.power.collectAsState()
     val currentCadence by trainerManager.cadence.collectAsState()
     val trainerHr by trainerManager.heartRate.collectAsState()
@@ -211,9 +228,12 @@ fun RideScreen(
     // "pedal to start" Standby has no ride time, so it's excluded.
     // A free ride also offers it while Active: ending IS how the mode
     // finishes, so burying it behind a pause first would be busywork.
+    // A simulated ride is offered the same mid-ride exit as a free ride: a
+    // rider who has had enough of a route is done, and making them pause first
+    // to be allowed to save it would be busywork.
     val canEndAndSave = (state == WorkoutState.Paused ||
         (state == WorkoutState.Standby && actualRide > 0) ||
-        (isFreeRide && state == WorkoutState.Active && actualRide > 0))
+        ((isFreeRide || isSimulation) && state == WorkoutState.Active && actualRide > 0))
     // Idempotency guard for the post-completion save+navigate path. The
     // LaunchedEffect that watches `state` + `continueRequested` would otherwise
     // re-run if its keys re-emit, racing the in-flight insert and producing a
@@ -250,12 +270,13 @@ fun RideScreen(
     // One place decides what a ± step means, so the in-app stepper and the
     // handlebar controller can't drift apart: ±5 % of the interval's target on
     // a structured workout, ±10 W on a free ride, which has no target of its
-    // own to take a percentage of.
+    // own to take a percentage of, and one gear on a simulated route, where a
+    // shifter is exactly what a pair of ± buttons on the bars is.
     val adjustEffort: (Int) -> Unit = { direction ->
-        if (isFreeRide) {
-            sessionManager.adjustFreeRideTarget(direction * FREE_RIDE_STEP_WATTS)
-        } else {
-            sessionManager.adjustDifficulty(direction * 5)
+        when {
+            isSimulation -> simulationEngine.shiftBy(direction)
+            isFreeRide -> sessionManager.adjustFreeRideTarget(direction * FREE_RIDE_STEP_WATTS)
+            else -> sessionManager.adjustDifficulty(direction * 5)
         }
     }
 
@@ -264,7 +285,7 @@ fun RideScreen(
     // manager keeps running in the background but emissions to nowhere are
     // cheap. Re-keyed on the mode so the collector always holds a lambda that
     // knows which kind of ride it's stepping.
-    LaunchedEffect(isFreeRide) {
+    LaunchedEffect(isFreeRide, isSimulation) {
         container.controllerManager.events.collect { event ->
             val direction = when (event) {
                 app.indoorbike.shared.ble.ControllerEvent.Plus -> +1
@@ -314,12 +335,20 @@ fun RideScreen(
     // colouring from it would leave the HUD in Z1 no matter how hard the
     // rider is working. Read the zone off what they actually asked for.
     val currentZone = when {
+        // Nothing sets a target on a route, so the zone is read off the effort
+        // the rider is actually producing. That makes the HUD's colour say
+        // something true about the climb they're on rather than about a
+        // synthetic segment nobody is holding them to.
+        isSimulation -> PowerZone.fromFtpPercent(
+            if (ftp > 0) currentPower * 100 / ftp else 0
+        )
         isFreeRide -> PowerZone.fromFtpPercent(
             if (ftp > 0) freeRideTarget * 100 / ftp else 0
         )
         else -> currentSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) } ?: PowerZone.Z1
     }
-    val nextZone = if (isFreeRide) null else nextSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) }
+    val nextZone = if (isFreeRide || isSimulation) null
+        else nextSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) }
     // What the TARGET pill reads. On a free ride that's the rider's setting,
     // not the trainer's live target: the trainer sits at 0 W until the ride
     // goes active, and a pill stuck on "TARGET 0 W" would make the ± buttons
@@ -459,7 +488,7 @@ fun RideScreen(
                 state = state,
                 elapsed = elapsed,
                 totalDuration = totalDuration,
-                openEnded = isFreeRide,
+                openEnded = isFreeRide || isSimulation,
                 isMockTrainer = isMockTrainer,
                 onBack = handleBack,
                 onPauseToggle = {
@@ -473,7 +502,7 @@ fun RideScreen(
                 onMockToggle = { trainerManager.toggleMockPedaling() },
                 canEndAndSave = canEndAndSave,
                 onEndAndSave = { confirmingEnd = true },
-                canSkip = !isFreeRide,
+                canSkip = !isFreeRide && !isSimulation,
                 // Narrow widths (portrait) get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
                 compact = LocalConfiguration.current.screenWidthDp < 600
@@ -503,7 +532,43 @@ fun RideScreen(
                 val segLabel = currentSeg?.intervalType ?: "Segment"
                 val segPower = currentSeg?.powerPercentFTP ?: 0
 
-                if (wide) {
+                val route = simulationRoute
+                if (isSimulation && route != null) {
+                    // The simulation HUD replaces the metrics area wholesale
+                    // rather than decorating it: a route ride shares the power,
+                    // cadence and heart-rate readouts with a workout but
+                    // nothing else, and threading a map and an elevation
+                    // profile through the workout layout's three-across
+                    // arrangement would leave both worse.
+                    SimulationHud(
+                        route = route,
+                        position = simulationPosition,
+                        distanceMeters = simulationDistance,
+                        gradient = simulationGradient,
+                        speedMps = simulationSpeedMps,
+                        drivetrain = simulationDrivetrain,
+                        gearIndex = simulationGear,
+                        elevationGainMeters = simulationClimb,
+                        powerWatts = currentPower,
+                        isPowerStale = showStalePower,
+                        wattsPerKg = wattsPerKg,
+                        cadenceRpm = animatedCadence,
+                        heartRate = animatedHr,
+                        isHrStale = showStaleHr,
+                        hrColor = hrZone?.color ?: CadenceColors.Danger,
+                        hrSublabel = if (showStaleHr) null
+                            else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                        zoneColor = animatedZoneColor,
+                        onShiftDown = { simulationEngine.shiftDown() },
+                        onShiftUp = { simulationEngine.shiftUp() },
+                        // Shifting a bike that isn't moving does nothing on the
+                        // road either, but the rider setting up before they
+                        // start pedalling is a real thing to want, so it's only
+                        // the countdown that locks the shifter out.
+                        shiftingEnabled = state != WorkoutState.Countdown,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (wide) {
                     // ── three-across (landscape phone → tablet) ──
                     // Sizes step down with available height so the power column
                     // (eyebrow + number + W/kg + target steppers) always fits the

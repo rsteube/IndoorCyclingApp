@@ -414,7 +414,7 @@ fun HeroPowerReadout(
  *   Using ints keeps the animator stable and avoids float-tween jitter at 1 Hz.
  */
 @Composable
-private fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color, barWidth: Dp = 220.dp) {
+internal fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color, barWidth: Dp = 220.dp) {
     val safe = wkgCenti.coerceAtLeast(0)
     val fraction = (safe / 500f).coerceIn(0f, 1f)
     Box(

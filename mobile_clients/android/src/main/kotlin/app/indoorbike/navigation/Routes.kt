@@ -46,6 +46,10 @@ data object RouteControllerPairing : NavKey
 @Serializable
 data object RouteConnections : NavKey
 
+/** Bike and gearing settings, which only a simulated route ride reads. */
+@Serializable
+data object RouteSimulationSettings : NavKey
+
 @Serializable
 data class RouteRideScreen(val workoutId: String) : NavKey
 
@@ -66,3 +70,22 @@ data object RouteQrScanner : NavKey
  */
 @Serializable
 data class RouteRemoteRepo(val manifestUrl: String) : NavKey
+
+/**
+ * Remote-route browser: the same repository seen from its route side. Split
+ * from [RouteRemoteRepo] rather than tabbed inside it because the two lists
+ * cost different things — workouts arrive with the browse, routes are
+ * listings whose data is only fetched on add — and a rider looking for a road
+ * to ride is not part-way through looking for an interval session.
+ */
+@Serializable
+data class RouteRemoteRoutes(val manifestUrl: String) : NavKey
+
+/**
+ * The rider own routes: which road to ride tonight, and what each one will
+ * cost them. Its own destination rather than a section of the rides list
+ * because picking a route is a different question from picking a workout, and
+ * the answer depends on numbers (distance, climbing, time) that need room.
+ */
+@Serializable
+data object RouteRouteLibrary : NavKey

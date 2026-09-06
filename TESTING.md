@@ -193,6 +193,27 @@ For pure logic (workout parsing, summary math, progression):
 
 Running before any release is recommended.
 
+## Route format checks
+
+Two node scripts, no dependencies.
+
+```powershell
+node scriptsoute_parity_check.js          # JS port vs the Kotlin
+node scriptsalidate_repo.mjs --registry   # every listed community repository
+```
+
+`route_parity_check.js` is the one to run after touching anything in
+`shared/.../route/` or `website/assets/routelib.js`. Those two are the same
+maths written twice: the publishing tool generates a route listing in
+JavaScript and the app rides the road that listing described. If they drift,
+a card promises one climb and the trainer delivers another, and neither
+codebase notices on its own.
+
+`validate_repo.mjs` is the pull-request gate for the registry, and now checks
+routes as well as workouts: it fetches each `gpxUrl` the way the app will
+(HTTPS, no redirects followed, 12 MB cap), and flags the failures a maintainer
+cannot see from their own machine.
+
 ---
 
 ## When the smoke test fails

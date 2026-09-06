@@ -47,6 +47,7 @@ import app.indoorbike.LocalWorkouts
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.isFreeRide
+import app.indoorbike.shared.workout.isSimulation
 import app.indoorbike.shared.workout.resolveRideWorkout
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -81,8 +82,16 @@ fun UnfinishedRideBanner(
     val snapshot by container.sessionManager.persistedSnapshot.collectAsState()
 
     val current = snapshot ?: return
-    val workout = resolveRideWorkout(current.workoutId, workouts) ?: return
-    val freeRide = workout.isFreeRide
+    // Route names come from the catalog so a recovered simulated ride is
+    // labelled with the road it was on rather than with its route id.
+    val workout = resolveRideWorkout(
+        workoutId = current.workoutId,
+        library = workouts,
+        routeNames = container.routeCatalog.routeNames(),
+    ) ?: return
+    // Both plan-less modes have a six-hour backstop segment rather than a
+    // planned length, so neither can report progress as a fraction of it.
+    val openEnded = workout.isFreeRide || workout.isSimulation
 
     // A finished ride that never reached history: either the app died between
     // the trophy screen and the summary, or the rider backed out of it. The
@@ -151,9 +160,10 @@ fun UnfinishedRideBanner(
         )
         Spacer(Modifier.height(8.dp))
 
-        // Mini progress bar. A free ride has nothing to be a fraction of - its
-        // segment length is only a backstop - so it reports time instead.
-        if (!freeRide) {
+        // Mini progress bar. A free ride and a route ride have nothing to be a
+        // fraction of - the segment length is only a backstop - so they report
+        // time instead.
+        if (!openEnded) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -173,7 +183,7 @@ fun UnfinishedRideBanner(
         Text(
             text = when {
                 isFinished -> "${formatClock(rideSeconds)} ridden · not yet in your history"
-                freeRide -> "${formatClock(current.elapsedSeconds)} ridden · no set finish"
+                openEnded -> "${formatClock(current.elapsedSeconds)} ridden · no set finish"
                 else -> "${formatClock(current.elapsedSeconds)} / ${formatClock(total)} · $pct% complete"
             },
             style = CadenceType.tick,
@@ -205,7 +215,7 @@ fun UnfinishedRideBanner(
         AbandonConfirmDialog(
             workoutName = workout.name,
             elapsed = if (isFinished) rideSeconds else current.elapsedSeconds,
-            total = if (freeRide) null else total,
+            total = if (openEnded) null else total,
             isFinished = isFinished,
             onCancel = { confirmingAbandon = false },
             onConfirm = {

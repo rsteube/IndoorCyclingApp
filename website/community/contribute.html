@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Contribute a community repository - Indoor Bike</title>
-  <meta name="description" content="How to publish your own workout repository for the Indoor Bike community: manifest format, hosting, and submission process.">
+  <meta name="description" content="How to publish your own workout and route repository for the Indoor Bike community: manifest format, route listings, hosting, and submission process.">
   <meta name="theme-color" content="#0F0C09">
   <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
   <link rel="stylesheet" href="../styles.css">
@@ -24,6 +24,7 @@
         <a href="../index.html#privacy">Privacy</a>
         <a href="../editor/index.html">Editor</a>
         <a href="index.html">Community</a>
+        <a href="../routetool/index.html">Route tool</a>
         <a href="../index.html#faq">FAQ</a>
       </nav>
       <a class="btn btn-primary" aria-disabled="true" href="../index.html#download">
@@ -40,12 +41,19 @@
     </nav>
 
     <p class="eyebrow">Contribute</p>
-    <h1 class="page-title">Publish a workout pack.</h1>
+    <h1 class="page-title">Publish a workout or route pack.</h1>
     <p class="page-lead">
       Anyone can run a community repository: a coach with a structured plan, a
-      training group sharing their winter intervals, or a single rider who's
-      built a pack worth handing out. The process is two static JSON files
-      and a pull request.
+      training group sharing their winter intervals, a rider who has mapped the
+      roads they miss in winter. The process is two static JSON files and a
+      pull request.
+    </p>
+    <p class="page-lead">
+      A repository can carry workouts, routes, or both.
+      <a href="../routetool/index.html">The route tool</a> turns a GPX into the
+      JSON for you, and if your repository is already listed you can add routes
+      without opening another pull request at all -
+      <a href="#routes">jump to routes</a>.
     </p>
 
     <!-- ── At-a-glance ───────────────────────────────────────────────── -->
@@ -379,8 +387,14 @@ milliseconds: 1785297508000   &lt;- 13 digits, what this field wants</code></pre
   "author": "Alpine Coach Collective",
   "manifestUrl": "https://alpinecoach.example/manifest.json",
   "tags": ["Threshold", "VO2 Max"],
-  "homepage": "https://alpinecoach.example"
+  "homepage": "https://alpinecoach.example",
+  "content": ["workouts", "routes"]
 }</code></pre>
+          <code>content</code> says what you publish. It is a hint the browser
+          uses to decide whether to show a Routes button on your card, because
+          the only other way to know is to fetch every manifest in the registry
+          to draw one list. Omit it and you are read as workouts-only, which is
+          what every repository written before routes existed is.
           The <code>id</code> here must match the <code>id</code> in your
           manifest. <code>tags</code> here are repo-level (shown on the card);
           they're independent from per-workout tags. <code>homepage</code> is
@@ -433,6 +447,260 @@ milliseconds: 1785297508000   &lt;- 13 digits, what this field wants</code></pre
     </section>
 
     <!-- ── Maintaining ───────────────────────────────────────────────── -->
+    <!-- ── Routes ───────────────────────────────────── -->
+    <section class="contribute-section" id="routes">
+      <h2>4. Publishing routes</h2>
+      <p>
+        A route is a real road the app simulates: it reads the gradient off a
+        GPX and asks the trainer for that resistance, so riding one feels like
+        the climb it came from. Publishing routes works like publishing
+        workouts, with one structural difference worth understanding before you
+        start.
+      </p>
+
+      <h3>Why routes are listed separately from their data</h3>
+      <p>
+        A workout bundle <em>is</em> the workout: a few dozen segments of JSON,
+        and the app has everything. A GPX is three orders of magnitude bigger.
+        If browsing your repository downloaded fifty of them to draw fifty
+        cards, a rider would pay tens of megabytes for a browse they might
+        abandon.
+      </p>
+      <p>
+        So route metadata and route geometry live in different files. Your
+        <strong>route bundle</strong> is a small JSON array describing each
+        route - distance, climbing, a gradient histogram, a tiny profile and
+        shape for the card - and each entry carries a <code>gpxUrl</code>
+        pointing at the actual file. The app downloads a GPX exactly once, for
+        the one route a rider adds.
+      </p>
+
+      <h3>The easy way: use the tool</h3>
+      <p>
+        <a href="../routetool/index.html">The route publishing tool</a> reads a
+        GPX in your browser - the file is never uploaded - and gives you the
+        entry to paste, plus your manifest with the pointer already added. It
+        also warns you about the things that quietly ruin a route, most
+        importantly a GPX with no elevation, which the app would simulate as
+        dead flat. Two fields it can fill for you, each only when you ask:
+        elevation from the Copernicus DEM, and the <code>place</code> name,
+        which it gets by asking OpenStreetMap what is at the middle of your
+        route - a GPX has coordinates in it, but no idea where it is. Unless
+        you are automating this, start there and skip the rest of this section.
+      </p>
+
+      <h3>Manifest: add a routeBundles pointer</h3>
+      <p>
+        Note what does <em>not</em> change: <code>schemaVersion</code> stays at
+        <code>2</code>. Routes were added without bumping it on purpose. A
+        manifest declaring v3 would be rejected outright by every already
+        installed copy of the app, and those riders would lose your
+        <em>workouts</em> too. Instead <code>routeBundles</code> is an optional
+        field that older builds skip and never notice.
+      </p>
+      <pre class="code-block code-inline-block"><code>{
+  "schemaVersion": 2,
+  "id": "alpine-coach",
+  "name": "Alpine Coach",
+  "bundles": [
+    { "id": "main", "schemaVersion": 1, "version": 3, "url": "workouts.json" }
+  ],
+  "routeBundles": [
+    { "id": "routes", "schemaVersion": 1, "version": 1, "url": "routes.json" }
+  ]
+}</code></pre>
+      <p>
+        A <code>routeBundles</code> entry has the same fields as a workout
+        bundle entry: <code>id</code>, optional <code>name</code>,
+        <code>schemaVersion</code> (the format of the file it points at, so the
+        app can skip one it is too old for <em>without downloading it</em>),
+        <code>version</code>, and a <code>url</code> that is absolute or
+        relative to the manifest.
+      </p>
+
+      <h3>The route bundle file</h3>
+      <p>
+        A JSON array of route entries. Every number below is measured on the
+        smoothed elevation profile, not the raw GPX points, which is what the
+        tool does for you and what the app recomputes after download.
+      </p>
+      <div class="schema-table">
+        <div class="schema-row schema-head">
+          <span>Field</span><span>Type</span><span>Required</span><span>Notes</span>
+        </div>
+        <div class="schema-row">
+          <span><code>schemaVersion</code></span><span>integer</span><span>yes</span>
+          <span>Route entry format version. Currently <code>1</code>. Entries newer than the app understands are skipped individually, so one future-format route costs a rider that route and nothing else.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>id</code></span><span>string</span><span>yes</span>
+          <span>Stable and unique in your repository. It is the filename on the rider device and the dedup key, so do not change it after publishing.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>name</code></span><span>string</span><span>yes</span>
+          <span>What the card says. The road, not the file: "Mont Ventoux from Bedoin", not "ride_2024_07_12".</span>
+        </div>
+        <div class="schema-row">
+          <span><code>description</code></span><span>string</span><span>no</span>
+          <span>One or two sentences. Plain text.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>place</code></span><span>string</span><span>no</span>
+          <span>Free text location, shown under the name. "Provence, France".</span>
+        </div>
+        <div class="schema-row">
+          <span><code>tags</code></span><span>string[]</span><span>no</span>
+          <span>Become the filter chips in the app. Keep them few and reusable.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>version</code></span><span>integer</span><span>no</span>
+          <span>Bump when the GPX or the metadata changes.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>gpxUrl</code></span><span>string</span><span>yes</span>
+          <span>Absolute <code>https://</code>, or relative to the bundle file. Relative is portable and survives a host change. The app refuses plain HTTP and does <em>not</em> follow redirects, so point at the file itself.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>gpxBytes</code></span><span>integer</span><span>no</span>
+          <span>Size of the GPX, so the app can warn before a large download.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>gpxSha256</code></span><span>string</span><span>no</span>
+          <span>Lowercase hex digest. Checked after download; a mismatch is refused, because the rider asked for the route the listing described. Leave it out rather than letting it go stale.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>distanceMeters</code></span><span>number</span><span>yes</span>
+          <span>An entry without a positive distance is dropped as unusable.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>ascentMeters</code>, <code>descentMeters</code></span><span>number</span><span>no</span>
+          <span>Total climbing and descending on the smoothed profile.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>minElevationMeters</code>, <code>maxElevationMeters</code>, <code>maxGradientPercent</code></span><span>number</span><span>no</span>
+          <span>Shown on the detail view.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>loop</code></span><span>boolean</span><span>no</span>
+          <span>True when the finish is back at the start, so the route can be lapped.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>gradientMeters</code></span><span>number[14]</span><span>strongly recommended</span>
+          <span>Metres of road in each gradient bucket. This is what the estimated ride time is built from - see below. Any length other than 14 is ignored.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>profile</code></span><span>number[64]</span><span>no</span>
+          <span>Elevation evenly spaced along the route, for the card sparkline.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>shape</code></span><span>string</span><span>no</span>
+          <span>The track simplified to about 160 points and encoded as a polyline (precision 5), for the card thumbnail.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>bounds</code></span><span>number[4]</span><span>no</span>
+          <span><code>[minLat, minLon, maxLat, maxLon]</code>.</span>
+        </div>
+        <div class="schema-row">
+          <span><code>attribution</code></span><span>object</span><span>see below</span>
+          <span><code>source</code>, <code>url</code>, <code>licence</code>, <code>modified</code>.</span>
+        </div>
+      </div>
+
+      <h3>Why the gradient histogram matters</h3>
+      <p>
+        The app puts an estimated ride time on every card, computed from the
+        rider own FTP and weight, before any GPX has been downloaded. It cannot
+        do that from distance and total climbing, because time on a road is not
+        linear in gradient: five hundred metres of ascent taken as one steady
+        5 % drag and the same five hundred taken as twenty 12 % ramps are
+        completely different rides, and the minutes lost climbing are never
+        repaid on the descent.
+      </p>
+      <p>
+        So <code>gradientMeters</code> says how far the road runs at each
+        steepness, in these fourteen fixed buckets, in percent:
+      </p>
+      <pre class="code-block code-inline-block"><code>&lt;-10  -10..-7  -7..-4  -4..-2  -2..0  0..2  2..4
+ 4..6   6..8   8..10  10..12  12..15  15..20  &gt;20</code></pre>
+      <p>
+        Fourteen numbers, about a hundred bytes, and the app can work out what
+        the route costs <em>this</em> rider. The edges are part of the format,
+        so do not invent your own - the tool generates them correctly.
+      </p>
+
+      <h3>Attribution is not optional in spirit</h3>
+      <p>
+        Route geometry usually comes from a licensed database. OpenStreetMap
+        and EuroVelo tracks are ODbL, which asks for credit and for adaptations
+        to stay open; national mapping agencies have their own terms. The app
+        shows <code>attribution</code> on the route card for as long as the
+        route is installed, which is how that credit actually reaches anybody.
+      </p>
+      <pre class="code-block code-inline-block"><code>"attribution": {
+  "source": "OpenStreetMap contributors",
+  "url": "https://www.openstreetmap.org/relation/12345",
+  "licence": "ODbL-1.0",
+  "modified": true
+}</code></pre>
+      <p>
+        Set <code>modified</code> when you resampled, trimmed, or added
+        elevation to the published track, which is true of most routes that
+        started life as an OSM extract. If the ride is your own recording, say
+        so - that is useful information too.
+      </p>
+
+      <h3>Example: a one-route bundle</h3>
+      <pre class="code-block code-inline-block"><code>[
+  {
+    "schemaVersion": 1,
+    "id": "ventoux-bedoin",
+    "name": "Mont Ventoux from Bedoin",
+    "description": "Twenty-one kilometres and the last six above the treeline.",
+    "place": "Provence, France",
+    "tags": ["Climb", "France"],
+    "version": 1,
+    "gpxUrl": "routes/ventoux-bedoin.gpx",
+    "gpxBytes": 184320,
+    "gpxSha256": "9f2c...",
+    "distanceMeters": 21400,
+    "ascentMeters": 1610,
+    "descentMeters": 20,
+    "minElevationMeters": 313,
+    "maxElevationMeters": 1909,
+    "maxGradientPercent": 12.1,
+    "loop": false,
+    "gradientMeters": [0, 0, 0, 0, 120, 300, 1500, 4200, 8100, 5900, 1200, 80, 0, 0],
+    "profile": [313, 340, 372, "… 64 values total"],
+    "shape": "_p~iF~ps|U_ulLnnqC…",
+    "bounds": [44.10, 5.20, 44.19, 5.31],
+    "attribution": {
+      "source": "OpenStreetMap contributors",
+      "licence": "ODbL-1.0",
+      "modified": true
+    }
+  }
+]</code></pre>
+
+      <h3>Sizing your GPX</h3>
+      <p>
+        The app caps a single route download at 12 MB and resamples elevation
+        onto a 10 m grid regardless, so points closer together than that are
+        bytes every rider pays for and nobody can feel. A 100 km route at 10 to
+        25 m spacing is a few hundred kilobytes and loses nothing. If your file
+        is several megabytes, it is almost certainly 1 Hz recording data that
+        wants simplifying before you publish it.
+      </p>
+
+      <h3>Already in the registry? You are done</h3>
+      <p>
+        Upload the GPX, the route bundle and the updated manifest, and riders
+        see your routes the next time they open your repository. No pull
+        request. The only thing worth a one-line registry PR is adding
+        <code>"content": ["workouts", "routes"]</code> to your entry, which is
+        what makes the Routes button appear on your card in the browser.
+      </p>
+    </section>
+
     <section class="contribute-section">
       <h2>Updating after publication</h2>
       <ul class="bullet-list">

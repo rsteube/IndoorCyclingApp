@@ -106,6 +106,14 @@ class TrainerManager {
     val targetPower: StateFlow<Int> = _targetPower.asStateFlow()
 
     /**
+     * The road most recently commanded in simulation mode, or null while the
+     * trainer is in ERG (or in nothing at all). Non-null means [setTargetPower]
+     * is not driving this trainer - the rider's own effort is.
+     */
+    private val _simulationParameters = MutableStateFlow<SimulationParameters?>(null)
+    val simulationParameters: StateFlow<SimulationParameters?> = _simulationParameters.asStateFlow()
+
+    /**
      * Human-readable ERG-mode problem, or `null` when ERG is healthy. The UI
      * surfaces this as a banner so the rider knows when target power isn't
      * actually reaching the trainer (trainer can't do ERG, control couldn't be
@@ -181,6 +189,9 @@ class TrainerManager {
     fun setTargetPower(watts: Int) {
         val clamped = watts.coerceAtLeast(0)
         _targetPower.value = clamped
+        // Leaving simulation mode: a Set Target Power write puts the machine
+        // back into ERG, so the road we were commanding is no longer in force.
+        _simulationParameters.value = null
         if (ftmsControlPointWriter == null) {
             // No FTMS Control Point on this peripheral. Only a problem for a real
             // trainer we're actually connected to — the mock path and the
@@ -236,6 +247,61 @@ class TrainerManager {
     fun clearErgError() {
         _ergError.value = null
     }
+
+    /**
+     * Put the trainer into simulation mode on the road described by
+     * [parameters]: FTMS Set Indoor Bike Simulation Parameters (0x11), taking
+     * control first if the grant has not been confirmed yet.
+     *
+     * Unlike [setTargetPower] this is not a target the trainer chases. It is a
+     * standing description of the road, which the machine applies against its
+     * own wheel speed until the next one arrives, so the rider's watts are
+     * theirs to choose. The caller re-sends it as the gradient changes.
+     *
+     * A trainer with no FTMS control point cannot simulate at all. That is a
+     * harder failure than it is for ERG (there is no fallback: the whole mode
+     * is the resistance) so it reports through the same [ergError] banner the
+     * ride screen already shows.
+     */
+    fun setSimulationParameters(parameters: SimulationParameters) {
+        _simulationParameters.value = parameters
+        // ERG is not driving the trainer any more; a stale target would only
+        // mislead the HUD's readouts.
+        _targetPower.value = 0
+        val writer = ftmsControlPointWriter
+        if (writer == null) {
+            if (_connectionState.value == TrainerConnectionState.Connected && !_isMockTrainer.value) {
+                _ergError.value = "This trainer doesn't support simulation mode " +
+                    "(no FTMS control point). Gradient can't be sent to it."
+            }
+            return
+        }
+        ftmsControlRetries = 0
+        writeSimulationParameters(parameters)
+    }
+
+    /**
+     * Write Set Indoor Bike Simulation Parameters, pairing a Request Control
+     * with it until the grant is confirmed. Same handshake and same reasoning
+     * as [writeTargetPower]; see there.
+     */
+    private fun writeSimulationParameters(parameters: SimulationParameters) {
+        val writer = ftmsControlPointWriter ?: return
+        scope.launch {
+            try {
+                if (!ftmsControlGranted) {
+                    writer(byteArrayOf(0x00)) // Request Control
+                }
+                writer(FtmsSimulationCodec.encode(parameters))
+                _ergError.value = null
+            } catch (e: Exception) {
+                Log.w(TAG, "FTMS Set Simulation Parameters write failed", e)
+                _ergError.value = "Couldn't send the road gradient to the trainer. " +
+                    "Simulation resistance may not be working."
+            }
+        }
+    }
+
 
     fun toggleMockPedaling() {
         isMockPedaling = !isMockPedaling
@@ -600,6 +666,10 @@ class TrainerManager {
                             activePeripheral = null
                             _connectedTrainerName.value = null
                             _ergError.value = null
+                            // The road we commanded died with the connection.
+                            // A reconnect mid-ride re-sends it on the next
+                            // gradient change rather than assuming it survived.
+                            _simulationParameters.value = null
                         }
                     }
                 }.launchIn(scope)
@@ -734,10 +804,16 @@ class TrainerManager {
         val requestOpCode = bytes[1].toInt() and 0xFF
         val resultCode = bytes[2].toInt() and 0xFF
 
+        // Which mode the rejected command belonged to decides how we recover
+        // and what we tell the rider: a simulated ride has no target power to
+        // re-send, and being told about ERG while climbing a hill would only
+        // be confusing.
+        val simulating = _simulationParameters.value != null
+
         if (resultCode == 0x01) { // Success
             when (requestOpCode) {
                 0x00 -> { ftmsControlGranted = true; ftmsControlRetries = 0 }
-                0x05 -> { ftmsControlRetries = 0; _ergError.value = null }
+                0x05, 0x11 -> { ftmsControlRetries = 0; _ergError.value = null }
             }
             return
         }
@@ -748,22 +824,36 @@ class TrainerManager {
             if (ftmsControlRetries < MAX_CONTROL_RETRIES) {
                 ftmsControlRetries++
                 Log.w(TAG, "FTMS control not permitted; re-requesting control (attempt $ftmsControlRetries)")
-                // writeTargetPower re-sends Request Control (granted is false) then
-                // the target, serialised on the GATT queue.
-                writeTargetPower(_targetPower.value)
+                // Re-send Request Control (granted is false) then the command
+                // that was refused, serialised on the GATT queue.
+                val road = _simulationParameters.value
+                if (road != null) writeSimulationParameters(road) else writeTargetPower(_targetPower.value)
             } else {
-                _ergError.value = "Trainer rejected ERG control. Close any other app " +
+                val mode = if (simulating) "simulation" else "ERG"
+                _ergError.value = "Trainer rejected $mode control. Close any other app " +
                     "connected to the trainer (e.g. Zwift), then re-pair it in Settings."
             }
             return
         }
 
+        // A trainer that answers 0x11 with "not supported" can still do ERG.
+        // Say so plainly rather than leaving the rider on a route whose hills
+        // they cannot feel and cannot explain.
+        if (resultCode == 0x02 && requestOpCode == 0x11) {
+            _ergError.value = "This trainer doesn't support simulation mode, so the " +
+                "route's gradient won't change the resistance. Workouts and Just Ride " +
+                "still work."
+            return
+        }
+
         val reason = when (resultCode) {
             0x02 -> "the command isn't supported"
-            0x03 -> "the target power was out of range"
+            0x03 -> if (simulating) "the road parameters were out of range"
+                else "the target power was out of range"
             else -> "the trainer reported an error"
         }
-        _ergError.value = "Trainer rejected the ERG command: $reason."
+        val mode = if (simulating) "simulation" else "ERG"
+        _ergError.value = "Trainer rejected the $mode command: $reason."
     }
 
     private fun touchTelemetry() {
@@ -777,7 +867,18 @@ class TrainerManager {
             while (true) {
                 if (_isMockTrainer.value && isMockPedaling) {
                     val target = _targetPower.value
-                    if (target > 0) {
+                    val road = _simulationParameters.value
+                    if (road != null) {
+                        // Simulation mode has no target to chase: the rider
+                        // chooses their effort. The mock plays a rider who
+                        // works harder as the road tilts up, which is enough
+                        // to drive the route forward and exercise the whole
+                        // gradient / gear / speed loop without a trainer.
+                        val climbWatts = (road.gradePercent * 12.0).toInt().coerceIn(-60, 220)
+                        _power.value = (170 + climbWatts + (-8..8).random()).coerceAtLeast(0)
+                        _cadence.value = (80..92).random()
+                        _heartRate.value = (135..160).random()
+                    } else if (target > 0) {
                         _power.value = target + (-5..5).random()
                         _cadence.value = (85..95).random()
                         _heartRate.value = (140..155).random()

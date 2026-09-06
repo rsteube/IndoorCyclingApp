@@ -20,7 +20,15 @@ CREATE TABLE WorkoutSession (
     -- upload can succeed without a parseable activity id coming back.
     intervalsUploadedEpoch INTEGER NOT NULL DEFAULT 0,
     -- Same, for the rider's own FitTrackee server. 0 = never.
-    fitTrackeeUploadedEpoch INTEGER NOT NULL DEFAULT 0
+    fitTrackeeUploadedEpoch INTEGER NOT NULL DEFAULT 0,
+    -- How far along its route a simulated ride got, and how much of the route's
+    -- climbing it collected. Zero for every other mode, which is also what the
+    -- post-ride screen reads as "this ride had no road under it". The route is
+    -- named by workoutId ("simulation:<routeId>") and lives in the route
+    -- catalogue; only the rider's progress along it needs storing, because it
+    -- is the one thing that cannot be reconstructed afterwards.
+    routeDistanceMeters REAL NOT NULL DEFAULT 0.0,
+    routeElevationGainMeters REAL NOT NULL DEFAULT 0.0
 );
 
 -- Non-unique because the v1 → v2 migration leaves multiple rows with the
@@ -41,8 +49,8 @@ CREATE TABLE WorkoutTelemetry (
 );
 
 insertSession:
-INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();

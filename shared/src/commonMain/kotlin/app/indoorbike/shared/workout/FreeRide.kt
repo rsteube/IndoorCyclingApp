@@ -103,10 +103,24 @@ fun clampFreeRideWatts(watts: Int): Int =
 /**
  * Find the workout a persisted ride belongs to.
  *
- * A free ride's workout isn't in [library] - it's synthesised per ride - so a
- * plain lookup would fail and the unfinished-ride banner would silently drop
- * a recoverable session.
+ * Neither of the two plan-less modes keeps its workout in [library] - both
+ * synthesise one per ride - so a plain lookup would fail and the
+ * unfinished-ride banner would silently drop a recoverable session.
+ *
+ * [routeNames] lets a simulated ride recover its route's name for the banner.
+ * An id that isn't in it still resolves, just labelled with the raw route id:
+ * the ride is recoverable either way, and refusing to resolve it would lose a
+ * real session over a missing string.
  */
-fun resolveRideWorkout(workoutId: String, library: List<Workout>): Workout? =
-    if (workoutId == FREE_RIDE_WORKOUT_ID) freeRideWorkout()
-    else library.find { it.id == workoutId }
+fun resolveRideWorkout(
+    workoutId: String,
+    library: List<Workout>,
+    routeNames: Map<String, String> = emptyMap(),
+): Workout? {
+    if (workoutId == FREE_RIDE_WORKOUT_ID) return freeRideWorkout()
+    val routeId = simulationRouteId(workoutId)
+    if (routeId != null) {
+        return simulationWorkout(routeId, routeNames[routeId] ?: routeId)
+    }
+    return library.find { it.id == workoutId }
+}

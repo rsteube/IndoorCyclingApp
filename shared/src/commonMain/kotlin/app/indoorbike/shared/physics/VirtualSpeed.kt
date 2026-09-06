@@ -54,15 +54,19 @@ object VirtualSpeed {
     /** Bike + kit, added to the rider's body mass. A road bike with pedals and bottles. */
     const val DEFAULT_BIKE_MASS_KG: Float = 9f
 
-    private const val GRAVITY_MS2 = 9.8067
+    // The road model's calibration. Public because [RideDynamics] simulates the
+    // same road with a gradient on it, and the two readouts have to agree: a
+    // rider who sees 32 km/h for 200 W on the flat here must see the same
+    // number on a 0 % stretch of a simulated route.
+    const val GRAVITY_MS2 = 9.8067
     /** Dry air at 15 °C, sea level. */
-    private const val AIR_DENSITY_KG_M3 = 1.225
+    const val AIR_DENSITY_KG_M3 = 1.225
     /** Rolling resistance coefficient: road tyres on tarmac. */
-    private const val CRR = 0.005
+    const val CRR = 0.005
     /** Drag area in m², a rider on the hoods. */
-    private const val CDA_M2 = 0.36
+    const val CDA_M2 = 0.36
     /** Chain losses between the crank and the road. */
-    private const val DRIVETRAIN_EFFICIENCY = 0.97
+    const val DRIVETRAIN_EFFICIENCY = 0.97
 
     private const val MAX_NEWTON_STEPS = 12
     private const val CONVERGED_MPS = 1e-7

@@ -18,6 +18,7 @@ package app.indoorbike.ride
 import app.indoorbike.AppContainer
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.workout.isSimulation
 import java.util.UUID
 
 /**
@@ -39,6 +40,15 @@ suspend fun saveRideToHistory(
     durationSeconds: Int,
     telemetry: List<TelemetryPoint>,
 ): Long {
+    // A route ride's progress along its road, which nothing else can
+    // reconstruct once the engine is torn down. Zero for the other two modes:
+    // the engine is cleared for them, so this reads as "no road under it".
+    val simulated = workout.isSimulation
+    val routeDistance =
+        if (simulated) container.simulationEngine.distanceMeters.value else 0.0
+    val routeClimb =
+        if (simulated) container.simulationEngine.elevationGainMeters.value else 0.0
+
     val avgPower = telemetry.averageOf { it.power }
     val avgCadence = telemetry.averageOf { it.cadence }
     val avgHeartRate = telemetry.averageOf { it.heartRate }
@@ -51,6 +61,8 @@ suspend fun saveRideToHistory(
         avgPower = avgPower,
         avgCadence = avgCadence,
         avgHeartRate = avgHeartRate,
+        routeDistanceMeters = routeDistance,
+        routeElevationGainMeters = routeClimb,
         // Globally-unique stable id for the backup-sync layer. The device-id
         // namespace + a fresh UUID per session means two phones can never
         // collide on a session id without any cross-device coordination.

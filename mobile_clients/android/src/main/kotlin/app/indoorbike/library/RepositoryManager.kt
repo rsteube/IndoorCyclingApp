@@ -20,8 +20,10 @@ import app.indoorbike.shared.WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.repo.BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.repo.ManifestParser
+import app.indoorbike.shared.repo.ROUTE_BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.repo.RegistryIndex
 import app.indoorbike.shared.repo.RepositoryManifest
+import app.indoorbike.shared.repo.RouteEntry
 import app.indoorbike.shared.util.Log
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -129,7 +131,7 @@ class RepositoryManager(
                     Log.w(TAG, "Skipping bundle '${entry.id}' - schema v${entry.schemaVersion} > supported")
                     continue
                 }
-                val resolved = resolveBundleUrl(entry.url, manifestUrl) ?: run {
+                val resolved = resolveUrl(entry.url, manifestUrl) ?: run {
                     Log.w(TAG, "Bundle '${entry.id}' has relative URL '${entry.url}' but no base - skip")
                     continue
                 }
@@ -153,18 +155,79 @@ class RepositoryManager(
     }
 
     /**
-     * Resolve a bundle entry's URL. Absolute (`https://`) URLs return as-is;
-     * relative URLs resolve against the manifest URL's directory. Returns
-     * null only when a relative URL has no base to resolve against.
+     * Fetch a single repository's routes: download its manifest, then every
+     * supported route bundle, and return the merged listing.
+     *
+     * The shape mirrors [fetchRepoWorkouts], but what comes back is
+     * deliberately *not* rideable. A [RouteEntry] is metadata plus a pointer;
+     * no GPX is downloaded here. The rider browses a list built entirely from
+     * these numbers and only pays for geometry on the one route they add,
+     * which is the whole reason routes are listed separately from their data.
+     *
+     * Each entry has its `gpxUrl` resolved against the bundle it came from
+     * before being handed on, so callers downstream never need to know which
+     * file an entry was published in.
+     *
+     * A repository with no `routeBundles` is not an error: most repositories
+     * are workouts-only, and asking for their routes should quietly return
+     * nothing rather than fail.
      */
-    private fun resolveBundleUrl(entryUrl: String, manifestUrl: String): String? {
+    suspend fun fetchRepoRoutes(manifestUrl: String): RouteFetchResult = withContext(Dispatchers.IO) {
+        try {
+            val manifestText = HttpFetcher.getString(manifestUrl)
+            val manifest = ManifestParser.parseRepositoryManifest(manifestText)
+            val routes = mutableListOf<RouteEntry>()
+            for (entry in manifest.routeBundles) {
+                if (entry.schemaVersion > ROUTE_BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED) {
+                    Log.w(TAG, "Skipping route bundle '${entry.id}' - schema v${entry.schemaVersion} > supported")
+                    continue
+                }
+                val resolved = resolveUrl(entry.url, manifestUrl) ?: run {
+                    Log.w(TAG, "Route bundle '${entry.id}' has relative URL '${entry.url}' but no base - skip")
+                    continue
+                }
+                try {
+                    val bundleText = HttpFetcher.getString(resolved)
+                    // parseRouteBundle has already dropped entries this build
+                    // is too old for, or that are missing what a ride needs.
+                    for (route in ManifestParser.parseRouteBundle(bundleText)) {
+                        val gpxUrl = resolveUrl(route.gpxUrl, resolved) ?: run {
+                            Log.w(TAG, "Route '${route.id}' has unresolvable GPX URL '${route.gpxUrl}' - skip")
+                            continue
+                        }
+                        routes += route.copy(gpxUrl = gpxUrl)
+                    }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "Route bundle '${entry.id}' fetch/parse failed: ${t.message}")
+                }
+            }
+            RouteFetchResult.Ok(manifest, routes)
+        } catch (t: Throwable) {
+            Log.w(TAG, "Route fetch failed for $manifestUrl: ${t.message}")
+            RouteFetchResult.Failure(t.message ?: "Couldn't fetch repository")
+        }
+    }
+
+    /**
+     * Resolve a URL found inside a fetched file. Absolute (`https://`) URLs
+     * return as-is; relative URLs resolve against the containing file's
+     * directory. Returns null only when a relative URL has no base to resolve
+     * against.
+     *
+     * Used for bundle URLs against the manifest, and for a route's `gpxUrl`
+     * against its own bundle file, which is why the base is a parameter rather
+     * than assumed to be the manifest: a repository may keep its route
+     * listings and its GPX files in the same subdirectory and refer to them
+     * with bare filenames.
+     */
+    private fun resolveUrl(entryUrl: String, baseUrl: String): String? {
         if (entryUrl.startsWith("https://", ignoreCase = true) ||
             entryUrl.startsWith("http://", ignoreCase = true)) {
             return entryUrl
         }
-        val baseEnd = manifestUrl.lastIndexOf('/')
+        val baseEnd = baseUrl.lastIndexOf('/')
         if (baseEnd < 0) return null
-        return manifestUrl.substring(0, baseEnd + 1) + entryUrl
+        return baseUrl.substring(0, baseEnd + 1) + entryUrl
     }
 
     // ── Internal ─────────────────────────────────────────────────────────────
@@ -189,6 +252,12 @@ class RepositoryManager(
 sealed class RepoFetchResult {
     data class Ok(val manifest: RepositoryManifest, val workouts: List<Workout>) : RepoFetchResult()
     data class Failure(val message: String) : RepoFetchResult()
+}
+
+/** The route-side counterpart of [RepoFetchResult]: a listing, not ride data. */
+sealed class RouteFetchResult {
+    data class Ok(val manifest: RepositoryManifest, val routes: List<RouteEntry>) : RouteFetchResult()
+    data class Failure(val message: String) : RouteFetchResult()
 }
 
 sealed class RegistryState {

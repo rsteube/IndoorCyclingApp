@@ -45,6 +45,13 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
         avgPower: Long,
         avgCadence: Long,
         avgHeartRate: Long,
+        /**
+         * How far along its route a simulated ride got, in metres, and how
+         * much of the route's climbing it collected. Zero for every other
+         * mode - a workout and a free ride have no road under them.
+         */
+        routeDistanceMeters: Double = 0.0,
+        routeElevationGainMeters: Double = 0.0,
         externalId: String,
         telemetry: List<TelemetryPoint>
     ): Long {
@@ -58,6 +65,8 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                     avgPower = avgPower,
                     avgCadence = avgCadence,
                     avgHeartRate = avgHeartRate,
+                    routeDistanceMeters = routeDistanceMeters,
+                    routeElevationGainMeters = routeElevationGainMeters,
                     externalId = externalId
                 )
 

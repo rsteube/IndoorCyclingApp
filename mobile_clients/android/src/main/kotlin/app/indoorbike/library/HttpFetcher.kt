@@ -16,9 +16,11 @@
 package app.indoorbike.library
 
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
 import javax.net.ssl.HttpsURLConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,6 +37,20 @@ object HttpFetcher {
 
     private const val TIMEOUT_MS = 12_000
     private const val MAX_BODY_BYTES = 2 * 1024 * 1024 // 2 MB cap on remote JSON
+
+    /**
+     * Read timeout for [downloadTo]. Longer than [TIMEOUT_MS] because a route
+     * GPX on a phone connection is a real transfer rather than a request that
+     * either answers promptly or is broken.
+     */
+    private const val DOWNLOAD_READ_TIMEOUT_MS = 45_000
+
+    /**
+     * Cap on a single route GPX. Roughly a 500 km route at the point spacing
+     * a listing should be published at, so it is generous for anything
+     * rideable while still refusing a file that would fill the device.
+     */
+    const val MAX_ROUTE_BYTES = 12L * 1024 * 1024
 
     suspend fun getString(
         url: String,
@@ -253,7 +269,93 @@ object HttpFetcher {
         return out.toByteArray()
     }
 
+    /**
+     * Streams a file to disk instead of into a string. Used for route GPX,
+     * which is the one thing this app downloads that is not tiny.
+     *
+     * [getString] caps at [MAX_BODY_BYTES] and buffers the whole body in
+     * memory, which is exactly right for a manifest and exactly wrong for a
+     * route: a 100 km GPX runs to a couple of megabytes, and it is going
+     * straight to disk anyway. So this streams, caps separately at
+     * [MAX_ROUTE_BYTES], and hashes as it goes, since the bytes are already
+     * passing through.
+     *
+     * The download lands on a `.part` sibling and is renamed onto
+     * [destination] only once it is complete, so a connection that dies
+     * halfway can never leave a truncated GPX where a valid one is expected.
+     *
+     * Same posture as the rest of this object: HTTPS only, redirects not
+     * followed. Redirects bite harder here than elsewhere, because a route
+     * often points at a third-party host that moved, so the thrown message
+     * names the situation instead of surfacing a bare failure.
+     */
+    suspend fun downloadTo(
+        url: String,
+        destination: File,
+        maxBytes: Long = MAX_ROUTE_BYTES,
+    ): DownloadResult = withContext(Dispatchers.IO) {
+        val parsed = URL(url)
+        require(parsed.protocol.equals("https", ignoreCase = true)) {
+            "Only https:// URLs are allowed (got ${parsed.protocol})"
+        }
+        val connection = parsed.openConnection() as HttpURLConnection
+        connection.apply {
+            connectTimeout = TIMEOUT_MS
+            readTimeout = DOWNLOAD_READ_TIMEOUT_MS
+            requestMethod = "GET"
+            instanceFollowRedirects = false
+            setRequestProperty("Accept", "application/gpx+xml, application/xml, text/xml, */*")
+            setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
+        }
+        val part = File(destination.parentFile, destination.name + ".part")
+        try {
+            val code = connection.responseCode
+            if (code in 300..399) {
+                throw IllegalStateException(
+                    "$url redirects (HTTP $code). Ask the repository maintainer for the direct file URL."
+                )
+            }
+            if (code !in 200..299) {
+                throw IllegalStateException("HTTP $code from $url")
+            }
+            destination.parentFile?.mkdirs()
+            val digest = MessageDigest.getInstance("SHA-256")
+            var total = 0L
+            connection.inputStream.use { stream ->
+                part.outputStream().use { out ->
+                    val buf = ByteArray(16 * 1024)
+                    while (true) {
+                        val read = stream.read(buf)
+                        if (read == -1) break
+                        total += read
+                        if (total > maxBytes) {
+                            throw IllegalStateException(
+                                "Route file is larger than ${maxBytes / (1024 * 1024)} MB"
+                            )
+                        }
+                        digest.update(buf, 0, read)
+                        out.write(buf, 0, read)
+                    }
+                }
+            }
+            if (total == 0L) throw IllegalStateException("Empty response from $url")
+            if (!part.renameTo(destination)) {
+                part.copyTo(destination, overwrite = true)
+            }
+            DownloadResult(
+                bytes = total,
+                sha256 = digest.digest().joinToString("") { b -> "%02x".format(b) },
+            )
+        } finally {
+            if (part.exists()) part.delete()
+            connection.disconnect()
+        }
+    }
+
     data class PostResult(val code: Int, val body: String) {
         val isSuccess: Boolean get() = code in 200..299
     }
+
+    /** What [downloadTo] wrote, so a caller can verify it against a listing. */
+    data class DownloadResult(val bytes: Long, val sha256: String)
 }

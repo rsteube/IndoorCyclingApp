@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
+import app.indoorbike.ui.screens.simulation.RouteSummaryPanel
+import app.indoorbike.shared.route.RouteTrack
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.ui.theme.BodyFontFamily
@@ -87,6 +89,13 @@ fun RideShareCard(
     telemetry: List<WorkoutTelemetry>,
     ftp: Int,
     highlight: ShareHighlight,
+    /**
+     * The road a simulated ride was on, or null for the two modes that had
+     * none. When present it replaces the power-adherence chart: a route ride
+     * had no plan to adhere to, and its shape and profile are what the ride
+     * actually was.
+     */
+    route: RouteTrack? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -122,23 +131,47 @@ fun RideShareCard(
 
             Spacer(Modifier.height(40.dp))
 
-            // Hero chart panel — planned zone bars + actual power line, mirroring
-            // the on-screen "Power Adherence" view but sized for thumb-stopping
-            // legibility on a feed.
-            ChartPanel(
-                workout = workout,
-                telemetry = telemetry,
-                ftp = ftp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
+            // Hero panel. A route ride shows the road it was on, labelled as
+            // the simulation it was; everything else shows the planned zone
+            // bars against the actual power line, mirroring the on-screen
+            // "Power Adherence" view but sized for legibility in a feed.
+            if (route != null) {
+                RouteSummaryPanel(
+                    route = route,
+                    riddenMeters = session.routeDistanceMeters,
+                    elevationGainMeters = session.routeElevationGainMeters,
+                    titleSize = 26.sp,
+                    statSize = 44.sp,
+                    shapeHeight = 260.dp,
+                    profileHeight = 110.dp,
+                    strokeWidth = 11f,
+                    background = CadenceColors.Bg1.copy(alpha = 0.6f),
+                    fillHeight = true,
+                    caption = "Simulated indoors on this route's gradient.",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            } else {
+                ChartPanel(
+                    workout = workout,
+                    telemetry = telemetry,
+                    ftp = ftp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            }
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(if (route != null) 24.dp else 32.dp))
 
-            HighlightCallout(highlight)
-
-            Spacer(Modifier.height(32.dp))
+            // The route panel is the highlight on a route ride, and it needs
+            // the room: squeezed in beside a callout, its shape collapses to a
+            // smudge and the elevation profile falls off the bottom.
+            if (route == null) {
+                HighlightCallout(highlight)
+                Spacer(Modifier.height(32.dp))
+            }
 
             FooterBlock()
         }

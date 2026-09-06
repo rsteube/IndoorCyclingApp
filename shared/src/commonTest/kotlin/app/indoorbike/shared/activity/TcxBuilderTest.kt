@@ -58,6 +58,8 @@ class TcxBuilderTest {
             externalId = "test:1",
             intervalsUploadedEpoch = 0L,
             fitTrackeeUploadedEpoch = 0L,
+    routeDistanceMeters = 0.0,
+    routeElevationGainMeters = 0.0,
         )
         return Triple(session, telemetry, workout)
     }

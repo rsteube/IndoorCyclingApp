@@ -59,6 +59,7 @@ import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.outlined.Terrain
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
@@ -95,7 +96,9 @@ import app.indoorbike.shared.workout.FREE_RIDE_START_PERCENT_FTP
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.shared.workout.WorkoutSummary
 import app.indoorbike.shared.workout.formatDurationPretty
+import app.indoorbike.shared.route.RouteTrack
 import app.indoorbike.shared.workout.freeRideStartWatts
+import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.FilterChip
@@ -180,6 +183,8 @@ fun WorkoutListScreen(
     onPick: (Workout) -> Unit,
     onStartWorkout: (Workout) -> Unit = {},
     onStartFreeRide: () -> Unit = {},
+    onStartSimulation: (RouteTrack) -> Unit = {},
+    onBrowseRoutes: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     onScanQr: () -> Unit = {},
     onOpenTrainerPairing: () -> Unit = {},
@@ -190,6 +195,13 @@ fun WorkoutListScreen(
     val sessions by container.sessions.collectAsState()
     val hasCompletedOnboarding by container.userSettings.hasCompletedOnboarding.collectAsState()
     val persistedSnapshot by container.sessionManager.persistedSnapshot.collectAsState()
+    val routes by container.routeCatalog.routes.collectAsState()
+    // The card promotes one road so simulation is one tap from the rides list.
+    // Which one is deliberately the first alphabetically rather than anything
+    // cleverer: with more than one route installed the card grows a link to
+    // the full selector, and guessing at a favourite would only get in the way
+    // of the rider going to pick properly.
+    val simulationRoute = routes.firstOrNull()
 
     val workouts = remember(entries) { entries.map { it.workout } }
     val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }
@@ -215,7 +227,9 @@ fun WorkoutListScreen(
     val hasUnfinishedRide = persistedSnapshot?.let { snap ->
         // A free ride's workout is synthesised per ride rather than kept in
         // the library, so it never appears here; the banner rebuilds it.
-        snap.workoutId == FREE_RIDE_WORKOUT_ID || summaryById.containsKey(snap.workoutId)
+        snap.workoutId == FREE_RIDE_WORKOUT_ID ||
+            simulationRouteId(snap.workoutId) != null ||
+            summaryById.containsKey(snap.workoutId)
     } ?: false
 
     val upNext = remember(summaryById, sessions, favouriteIds, hasUnfinishedRide) {
@@ -353,6 +367,19 @@ fun WorkoutListScreen(
                         onStart = onStartFreeRide,
                         onPairTrainer = onOpenTrainerPairing,
                     )
+                }
+
+                if (simulationRoute != null) {
+                    item(key = "simulation", span = { GridItemSpan(maxLineSpan) }) {
+                        SimulationCard(
+                            route = simulationRoute,
+                            isTrainerLive = isTrainerLive,
+                            routeCount = routes.size,
+                            onStart = { onStartSimulation(simulationRoute) },
+                            onPairTrainer = onOpenTrainerPairing,
+                            onBrowseRoutes = onBrowseRoutes,
+                        )
+                    }
                 }
 
                 if (quickPicks.isNotEmpty()) {
@@ -757,6 +784,96 @@ private fun JustRideCard(
             )
         }
         Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
+    }
+}
+
+/**
+ * Entry point to simulation mode, showing the road rather than the mode.
+ *
+ * A rider choosing between three ways to spend an hour is choosing between
+ * "hold these watts", "spin as you like" and "ride this". Only the third has a
+ * *thing* behind it, so the card leads with the route's name, length and
+ * climbing rather than with an explanation of what simulation is.
+ *
+ * Trainer-gated like the other two: without a trainer there is nothing to feel
+ * the gradient through, and the mode would be a map that scrolls on its own.
+ */
+@Composable
+private fun SimulationCard(
+    route: RouteTrack,
+    isTrainerLive: Boolean,
+    /** How many routes are installed, which decides whether a selector is worth offering. */
+    routeCount: Int,
+    onStart: () -> Unit,
+    onPairTrainer: () -> Unit,
+    onBrowseRoutes: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    Column {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(CadenceColors.Bg1)
+            .border(1.dp, CadenceColors.Line2, shape)
+            .clickable(onClick = if (isTrainerLive) onStart else onPairTrainer)
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Terrain,
+                contentDescription = null,
+                tint = CadenceColors.Brand500,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "SIMULATION",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Brand500
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = route.name,
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Text(
+                text = if (isTrainerLive) {
+                    val km = (route.totalDistanceMeters / 100).toInt() / 10.0
+                    val ascent = route.totalAscentMeters.toInt()
+                    "$km km · $ascent m climbing. The road sets the resistance."
+                } else {
+                    "Pair a trainer to feel a real route's hills."
+                },
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
+        }
+        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
+    }
+    // Only once there is a choice to make. With a single route the link would
+    // lead to a list of that same route.
+    if (routeCount > 1) {
+        Text(
+            text = "All $routeCount routes",
+            style = CadenceType.tick,
+            color = CadenceColors.Brand500,
+            modifier = Modifier
+                .padding(top = Spacing.s2)
+                .clickable(onClick = onBrowseRoutes)
+                .padding(vertical = Spacing.s1, horizontal = Spacing.s2)
+        )
+    }
     }
 }
 

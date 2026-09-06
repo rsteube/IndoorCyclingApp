@@ -1,0 +1,11 @@
+-- Migrates HistoryDatabase v4 -> v5: records where a simulated route ride got
+-- to, so a finished one can still draw its road afterwards.
+--
+-- Both default to 0, which is what every ride that isn't a route simulation
+-- reports and what the post-ride screen reads as "no route here". The route
+-- itself isn't stored: the session's workoutId already names it
+-- ("simulation:<routeId>"), and the route catalogue is the thing that owns
+-- GPX files. Only the rider's progress along it needs a home, because that is
+-- the one fact nothing else can reconstruct once the ride is over.
+ALTER TABLE WorkoutSession ADD COLUMN routeDistanceMeters REAL NOT NULL DEFAULT 0.0;
+ALTER TABLE WorkoutSession ADD COLUMN routeElevationGainMeters REAL NOT NULL DEFAULT 0.0;

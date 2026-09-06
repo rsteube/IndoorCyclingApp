@@ -46,6 +46,19 @@ data class ActiveSessionSnapshot(
      * "just ride" existed still decode.
      */
     val freeRideTargetWatts: Int? = null,
+    /**
+     * Where a simulated ride had got to along its route, in metres, and which
+     * gear it was in. Null for every other mode. Without these a recovered
+     * route ride would restart the rider at the trailhead with an hour of
+     * telemetry behind them, which is worse than not offering the resume.
+     *
+     * The route itself isn't stored: it is named by the workout id
+     * (`simulation:<routeId>`) and reloaded from the platform's route catalog.
+     */
+    val simulationDistanceMeters: Double? = null,
+    val simulationGearIndex: Int? = null,
+    /** Metres climbed so far, so a resumed ride doesn't reset its ascent. */
+    val simulationElevationGainMeters: Double? = null,
 )
 
 /**

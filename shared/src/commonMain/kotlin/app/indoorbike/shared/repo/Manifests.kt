@@ -35,6 +35,15 @@ import kotlinx.serialization.json.Json
  * Schema v1 (legacy, no longer accepted): workouts were embedded inline in
  * the manifest. Repos using v1 must migrate to v2 — the app rejects unknown
  * schema versions and surfaces a clear error to the rider.
+ *
+ * Routes ([routeBundles]) were added later and deliberately did *not* bump the
+ * schema version. See [RouteBundleEntry] for why: a v3 manifest would be
+ * rejected outright by every already-shipped build, so a repo that added a
+ * route would lose its workouts on older installs. Instead the field is
+ * optional and old builds skip it through `ignoreUnknownKeys`, which means a
+ * maintainer already listed in the registry can start publishing routes by
+ * editing their own manifest, with no pull request and no risk to their
+ * existing readers.
  */
 @Serializable
 data class RepositoryManifest(
@@ -46,6 +55,12 @@ data class RepositoryManifest(
     val homepage: String? = null,
     val updatedEpoch: Long? = null,
     val bundles: List<WorkoutBundleEntry> = emptyList(),
+    /**
+     * Route listings, if this repository publishes any. Optional and
+     * independently versioned; a repository may carry workouts, routes, or
+     * both.
+     */
+    val routeBundles: List<RouteBundleEntry> = emptyList(),
 )
 
 /**
@@ -106,7 +121,21 @@ data class RegistryEntry(
     val manifestUrl: String,
     val tags: List<String> = emptyList(),
     val homepage: String? = null,
-)
+    /**
+     * What this repository publishes: `"workouts"`, `"routes"`, or both.
+     *
+     * A hint, not a contract. Whether a repository has routes is only truly
+     * knowable by fetching its manifest, and fetching every manifest to draw
+     * one list is exactly the round-trip the registry exists to avoid. So a
+     * maintainer declares it here and the browser uses it to decide which
+     * affordances to offer; an empty list means "not stated" and is read as
+     * workouts, which is what every repository predating routes is.
+     */
+    val content: List<String> = emptyList(),
+) {
+    /** True when this repository says it publishes rideable routes. */
+    val hasRoutes: Boolean get() = content.any { it.equals("routes", ignoreCase = true) }
+}
 
 object ManifestParser {
     private val json = Json {
@@ -136,6 +165,19 @@ object ManifestParser {
     fun parseWorkoutBundle(text: String): List<Workout> =
         json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(Workout.serializer()), text)
 
+    /**
+     * Route bundle file = JSON array of [RouteEntry] objects (bundle
+     * schemaVersion 1).
+     *
+     * Entries this build cannot use are dropped here rather than surfaced as a
+     * parse failure: a repository that adds one route against a newer schema,
+     * or ships one malformed entry, should cost the rider that route and not
+     * the whole bundle.
+     */
+    fun parseRouteBundle(text: String): List<RouteEntry> =
+        json.decodeFromString(kotlinx.serialization.builtins.ListSerializer(RouteEntry.serializer()), text)
+            .filter { it.isSupported && it.isUsable }
+
     fun parseRegistryIndex(text: String): RegistryIndex =
         json.decodeFromString(RegistryIndex.serializer(), text)
 
@@ -151,14 +193,24 @@ object ManifestParser {
      * legacy v1 manifest's `"workouts"` key is no longer recognised — old
      * manifests parse-fail at decode time, which surfaces as a graceful
      * Failure import result.
+     *
+     * Route files are told apart by `"gpxUrl"`, which only a [RouteEntry] has.
+     * That check has to come before the bare-array shortcut, because a route
+     * bundle and a workout bundle are both top-level JSON arrays. A manifest
+     * that carries only routes has no `"bundles"` key at all, so
+     * `"routeBundles"` is recognised on its own — note the two do not collide
+     * as substrings, since the search includes the opening quote.
      */
     fun classify(text: String): ImportKind {
         // Cheap pre-checks first.
         val trimmed = text.trimStart()
-        if (trimmed.startsWith("[")) return ImportKind.WorkoutList
+        if (trimmed.startsWith("[")) {
+            return if ("\"gpxUrl\"" in text) ImportKind.RouteList else ImportKind.WorkoutList
+        }
         return when {
             "\"repositories\"" in text -> ImportKind.Registry
-            "\"bundles\"" in text && "\"manifestUrl\"" !in text -> ImportKind.RepositoryManifest
+            ("\"bundles\"" in text || "\"routeBundles\"" in text) &&
+                "\"manifestUrl\"" !in text -> ImportKind.RepositoryManifest
             "\"segments\"" in text -> ImportKind.SingleWorkout
             else -> ImportKind.Unknown
         }
@@ -169,5 +221,5 @@ object ManifestParser {
 }
 
 enum class ImportKind {
-    SingleWorkout, WorkoutList, RepositoryManifest, Registry, Unknown,
+    SingleWorkout, WorkoutList, RouteList, RepositoryManifest, Registry, Unknown,
 }

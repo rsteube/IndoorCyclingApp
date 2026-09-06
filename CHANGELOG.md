@@ -6,6 +6,33 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Community routes.** Repositories can now publish roads as well as intervals.
+  A route listing carries everything a picker needs - distance, climbing, a
+  gradient histogram, a small elevation profile and the shape of the road - and
+  points at its GPX rather than containing it, so browsing fifty routes costs
+  one small file and the geometry is downloaded once, for the one route you add.
+  Added routes join the bundled ones in a new route selector reached from the
+  rides list, and each keeps showing the credit its data licence asks for.
+- **Estimated ride time per route, for you.** Every route card says how long it
+  will take at *your* FTP and weight, worked out from the gradient histogram
+  rather than from distance, because 500 m of climbing taken as one steady drag
+  and the same 500 m taken as twenty ramps are not the same evening. The
+  physics is the physics the ride itself uses, so the estimate and the road
+  agree.
+- **A route publishing tool on the website.** Drop a GPX at
+  [indoorbike.app/routetool](https://indoorbike.app/routetool/) and it hands
+  back the JSON to paste into a repository, plus your manifest with the pointer
+  already merged in. Nothing is uploaded; the file is read in the browser. It
+  warns about the thing that quietly ruins a route - a GPX with no elevation,
+  which would otherwise simulate dead flat - and can fill that in from open
+  elevation data if you ask it to.
+- A repository already listed in the registry can start publishing routes by
+  editing its own files. The manifest format did not change version to make
+  this safe: adding routes cannot break the repository for anyone still on an
+  older build of the app.
+
 ## [1.8.2] (13) - 2026-09-05
 
 ### Fixed

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.Terrain
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.SettingsRemote
@@ -67,6 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
@@ -89,7 +91,8 @@ fun SettingsTab(
     onNavigateToPairing: () -> Unit,
     onNavigateToHrmPairing: () -> Unit,
     onNavigateToControllerPairing: () -> Unit,
-    onNavigateToConnections: () -> Unit
+    onNavigateToConnections: () -> Unit,
+    onNavigateToSimulationSettings: () -> Unit = {},
 ) {
     var sheetTarget by remember { mutableStateOf<DeviceSheetTarget?>(null) }
 
@@ -153,6 +156,19 @@ fun SettingsTab(
 
             Spacer(modifier = Modifier.height(Spacing.s6))
 
+            SectionHeader("SIMULATION")
+            // The bike, rather than the rider. Only a route ride reads these,
+            // so they sit behind their own page instead of adding two rows to
+            // a Settings screen that is about the person on the pedals.
+            NavRow(
+                icon = Icons.Outlined.Terrain,
+                title = "Bike & gearing",
+                subtitle = simulationSummary(),
+                onClick = onNavigateToSimulationSettings
+            )
+
+            Spacer(modifier = Modifier.height(Spacing.s6))
+
             SectionHeader("BACKUP & SYNC")
             BackupSyncCard()
 
@@ -187,6 +203,16 @@ fun SettingsTab(
             onNavigateToControllerPairing()
         }
     )
+}
+
+/** Bike weight and drivetrain, so the row says something without being opened. */
+@Composable
+private fun simulationSummary(): String {
+    val settings = LocalAppContainer.current.userSettings
+    val bikeWeight by settings.bikeWeightKg.collectAsState()
+    val drivetrainId by settings.drivetrainId.collectAsState()
+    val drivetrain = Drivetrain.byId(drivetrainId)
+    return "${drivetrain.name} · ${app.indoorbike.ui.screens.simulation.formatOneDecimal(bikeWeight.toDouble())} kg bike"
 }
 
 /** One-line summary of what's configured, so Settings still says something. */

@@ -28,7 +28,11 @@ import androidx.datastore.preferences.preferencesDataStore
 import java.util.UUID
 import app.indoorbike.shared.settings.DEFAULT_FTP
 import app.indoorbike.shared.settings.DEFAULT_MAX_HR
+import app.indoorbike.shared.settings.DEFAULT_BIKE_WEIGHT_KG
 import app.indoorbike.shared.settings.DEFAULT_WEIGHT_KG
+import app.indoorbike.shared.settings.MAX_BIKE_WEIGHT_KG
+import app.indoorbike.shared.settings.MIN_BIKE_WEIGHT_KG
+import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.settings.MAX_FTP
 import app.indoorbike.shared.settings.MAX_MAX_HR
 import app.indoorbike.shared.settings.MAX_WEIGHT_KG
@@ -76,6 +80,14 @@ class AndroidUserSettings(
 
     private val _weightKg = MutableStateFlow(initialPrefs[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG)
     override val weightKg: StateFlow<Float> = _weightKg.asStateFlow()
+
+    private val _bikeWeightKg =
+        MutableStateFlow(initialPrefs[KEY_BIKE_WEIGHT] ?: DEFAULT_BIKE_WEIGHT_KG)
+    override val bikeWeightKg: StateFlow<Float> = _bikeWeightKg.asStateFlow()
+
+    private val _drivetrainId =
+        MutableStateFlow(initialPrefs[KEY_DRIVETRAIN] ?: Drivetrain.DEFAULT.id)
+    override val drivetrainId: StateFlow<String> = _drivetrainId.asStateFlow()
 
     private val _maxHr = MutableStateFlow(initialPrefs[KEY_MAX_HR] ?: DEFAULT_MAX_HR)
     override val maxHr: StateFlow<Int> = _maxHr.asStateFlow()
@@ -169,6 +181,16 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_MAX_HR] ?: DEFAULT_MAX_HR }.collect { value ->
                 if (value != _maxHr.value) _maxHr.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_BIKE_WEIGHT] ?: DEFAULT_BIKE_WEIGHT_KG }.collect { value ->
+                if (value != _bikeWeightKg.value) _bikeWeightKg.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_DRIVETRAIN] ?: Drivetrain.DEFAULT.id }.collect { value ->
+                if (value != _drivetrainId.value) _drivetrainId.value = value
             }
         }
         scope.launch {
@@ -282,6 +304,20 @@ class AndroidUserSettings(
         if (newWeightKg !in MIN_WEIGHT_KG..MAX_WEIGHT_KG) return
         _weightKg.value = newWeightKg
         scope.launch { store.edit { it[KEY_WEIGHT] = newWeightKg } }
+    }
+
+    override fun setBikeWeightKg(value: Float) {
+        if (value !in MIN_BIKE_WEIGHT_KG..MAX_BIKE_WEIGHT_KG) return
+        _bikeWeightKg.value = value
+        scope.launch { store.edit { it[KEY_BIKE_WEIGHT] = value } }
+    }
+
+    override fun setDrivetrainId(id: String) {
+        // Only ids the app actually knows: a typo or a value from a newer
+        // build would otherwise persist and silently fall back forever.
+        if (Drivetrain.ALL.none { it.id == id }) return
+        _drivetrainId.value = id
+        scope.launch { store.edit { it[KEY_DRIVETRAIN] = id } }
     }
 
     override fun setMaxHr(newMaxHr: Int) {
@@ -444,6 +480,8 @@ class AndroidUserSettings(
     companion object {
         private val KEY_FTP = intPreferencesKey("user_ftp")
         private val KEY_WEIGHT = floatPreferencesKey("user_weight_kg")
+        private val KEY_BIKE_WEIGHT = floatPreferencesKey("bike_weight_kg")
+        private val KEY_DRIVETRAIN = stringPreferencesKey("simulation_drivetrain_id")
         private val KEY_MAX_HR = intPreferencesKey("user_max_hr")
         private val KEY_TRAINER = stringPreferencesKey("paired_trainer_id")
         private val KEY_HRM = stringPreferencesKey("paired_hrm_id")

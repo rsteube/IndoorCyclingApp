@@ -44,6 +44,8 @@ private fun session(
     externalId = "test:$id",
     intervalsUploadedEpoch = 0L,
     fitTrackeeUploadedEpoch = 0L,
+    routeDistanceMeters = 0.0,
+    routeElevationGainMeters = 0.0,
 )
 
 class StreakTest {

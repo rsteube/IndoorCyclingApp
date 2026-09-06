@@ -1,0 +1,434 @@
+/* Route publishing tool. Leans on the tokens in ../styles.css so the page
+   sits inside the rest of the site rather than beside it. */
+
+.tool-main {
+  max-width: 920px;
+  margin: 0 auto;
+  padding: var(--s-7, 32px) var(--s-4, 16px) var(--s-8, 40px);
+}
+
+.tool-main .page-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.05;
+  margin: 0 0 var(--s-3, 12px);
+  color: var(--fg-1);
+}
+
+.tool-main .page-lead {
+  color: var(--fg-2);
+  max-width: 62ch;
+  margin: 0 0 var(--s-7, 32px);
+}
+
+.tool-step {
+  border-top: 1px solid var(--line-2);
+  padding-top: var(--s-6, 24px);
+  margin-top: var(--s-6, 24px);
+}
+
+.tool-step h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3, 12px);
+  font-size: 1.25rem;
+  color: var(--fg-1);
+  margin: 0 0 var(--s-3, 12px);
+}
+
+.step-num {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(244, 122, 31, 0.18);
+  color: var(--brand-500);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+}
+
+.sub-head {
+  margin: var(--s-6, 24px) 0 var(--s-2, 8px);
+  color: var(--fg-1);
+  font-size: 1rem;
+}
+
+.step-lead {
+  color: var(--fg-2);
+  font-size: 0.92rem;
+  max-width: 68ch;
+  margin: 0 0 var(--s-4, 16px);
+}
+
+/* ── Dropzone ─────────────────────────────────────────────────────────── */
+.dropzone {
+  border: 2px dashed var(--line-3);
+  border-radius: 16px;
+  background: var(--bg-1);
+  padding: var(--s-8, 40px) var(--s-4, 16px);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible,
+.dropzone.is-over {
+  border-color: var(--brand-500);
+  background: var(--bg-2);
+  outline: none;
+}
+
+.dropzone.is-loaded { border-style: solid; border-color: var(--line-3); }
+
+.drop-title {
+  margin: 0 0 var(--s-1, 4px);
+  color: var(--fg-1);
+  font-weight: 600;
+}
+
+.drop-sub {
+  margin: 0;
+  color: var(--fg-3);
+  font-size: 0.85rem;
+}
+
+/* ── Notices ──────────────────────────────────────────────────────────── */
+.notice {
+  margin-top: var(--s-4, 16px);
+  padding: var(--s-4, 16px);
+  border-radius: 12px;
+  border: 1px solid rgba(240, 196, 25, 0.35);
+  background: rgba(240, 196, 25, 0.07);
+}
+
+.notice p { margin: 0 0 var(--s-2, 8px); color: var(--fg-2); font-size: 0.9rem; }
+.notice p:last-child { margin-bottom: 0; }
+.notice-fineprint { color: var(--fg-3); font-size: 0.82rem; }
+
+.checkline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2, 8px);
+  color: var(--fg-2);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.checkline input { margin-top: 3px; accent-color: var(--brand-500); }
+
+.status {
+  margin-top: var(--s-4, 16px);
+  padding: var(--s-3, 12px) var(--s-4, 16px);
+  border-radius: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  color: var(--fg-2);
+  font-size: 0.88rem;
+}
+
+.status p { margin: 0 0 var(--s-1, 4px); }
+.status p:last-child { margin-bottom: 0; }
+.status.is-error { border-color: rgba(235, 59, 59, 0.5); background: rgba(235, 59, 59, 0.08); }
+
+/* ── Preview ──────────────────────────────────────────────────────────── */
+.preview-card {
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  background: var(--bg-1);
+  padding: var(--s-4, 16px);
+}
+
+.preview-graphics {
+  display: flex;
+  gap: var(--s-4, 16px);
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.preview-graphics canvas {
+  background: var(--bg-2);
+  border-radius: 10px;
+  max-width: 100%;
+}
+
+#shape-canvas { flex: 0 0 220px; }
+#profile-canvas { flex: 1 1 320px; min-width: 260px; }
+
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: var(--s-3, 12px);
+  margin-top: var(--s-4, 16px);
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--s-3, 12px);
+  background: var(--bg-2);
+  border-radius: 10px;
+}
+
+.stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  color: var(--fg-4);
+}
+
+.stat-value { color: var(--fg-1); font-weight: 600; font-size: 1.05rem; }
+
+.rider-box {
+  margin-top: var(--s-4, 16px);
+  padding: var(--s-4, 16px);
+  border-radius: 12px;
+  background: var(--bg-1);
+  border: 1px solid var(--line-1);
+}
+
+.rider-lead { margin: 0 0 var(--s-3, 12px); color: var(--fg-3); font-size: 0.84rem; }
+
+.rider-inputs { display: flex; gap: var(--s-4, 16px); flex-wrap: wrap; }
+
+.rider-inputs label {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 8px);
+  color: var(--fg-2);
+  font-size: 0.88rem;
+}
+
+.rider-inputs input { width: 5.5rem; }
+
+/* ── Histogram ────────────────────────────────────────────────────────── */
+.histogram-details { margin-top: var(--s-4, 16px); }
+
+.histogram-details summary {
+  cursor: pointer;
+  color: var(--fg-2);
+  font-size: 0.88rem;
+  padding: var(--s-2, 8px) 0;
+}
+
+.histogram { display: flex; flex-direction: column; gap: 3px; padding-top: var(--s-2, 8px); }
+
+.hist-row { display: grid; grid-template-columns: 8rem 1fr 4.5rem; gap: var(--s-3, 12px); align-items: center; }
+
+.hist-label, .hist-value {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--fg-3);
+}
+
+.hist-value { text-align: right; }
+
+.hist-bar-wrap { background: var(--bg-2); border-radius: 4px; height: 12px; overflow: hidden; }
+.hist-bar { display: block; height: 100%; background: var(--brand-500); border-radius: 4px; }
+
+/* ── Fields ───────────────────────────────────────────────────────────── */
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--s-4, 16px);
+}
+
+.field { display: flex; flex-direction: column; gap: var(--s-2, 8px); }
+.field-wide { grid-column: 1 / -1; }
+.checkfield { padding-top: var(--s-1, 4px); }
+
+.field > span {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+}
+
+.field > span em {
+  font-style: normal;
+  color: var(--brand-500);
+  margin-left: var(--s-2, 8px);
+}
+
+.field small { color: var(--fg-4); font-size: 0.78rem; line-height: 1.45; }
+
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  background: var(--bg-2);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+textarea { resize: vertical; }
+
+input:focus, textarea:focus, select:focus {
+  outline: none;
+  border-color: var(--brand-500);
+}
+
+/* ── Output ───────────────────────────────────────────────────────────── */
+.output-block { margin-bottom: var(--s-6, 24px); }
+
+.output-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3, 12px);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-2, 8px);
+}
+
+.output-head h3 { margin: 0; color: var(--fg-1); font-size: 1rem; }
+.output-actions { display: flex; gap: var(--s-2, 8px); }
+
+.output-json {
+  background: var(--bg-0);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: var(--s-4, 16px);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: var(--fg-2);
+  /* JSON is wide and must never push the page sideways. */
+  overflow-x: auto;
+  max-height: 420px;
+  overflow-y: auto;
+  white-space: pre;
+}
+
+.manifest-in { margin-bottom: var(--s-3, 12px); font-family: var(--font-mono); font-size: 0.78rem; }
+
+.numbered-list { color: var(--fg-2); font-size: 0.9rem; line-height: 1.7; padding-left: 1.2rem; }
+.numbered-list code { font-family: var(--font-mono); font-size: 0.85em; color: var(--fg-1); }
+
+/* ── Field with an inline action ──────────────────────────────────────── */
+.field-row {
+  display: flex;
+  gap: var(--s-2, 8px);
+  align-items: stretch;
+}
+
+.field-row input { flex: 1; min-width: 0; }
+
+.mini-btn {
+  flex: 0 0 auto;
+  background: var(--bg-3);
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  color: var(--fg-1);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  padding: 0 var(--s-3, 12px);
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.mini-btn:hover:not(:disabled) { border-color: var(--brand-500); color: var(--brand-500); }
+.mini-btn:disabled { opacity: 0.5; cursor: default; }
+
+#place-status.is-error { color: var(--zone-6); }
+
+/* ── The publishing flow strip ────────────────────────────────────────────
+   Sits above the tool's own numbered steps and answers a different question:
+   those explain how to drive this page, this explains what publishing a route
+   actually consists of. Without it the manifest section at the bottom arrives
+   with no context and reads as a fourth thing to learn rather than as one
+   line to paste. */
+
+.flow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-2, 8px);
+  list-style: none;
+  margin: 0 0 var(--s-4, 16px);
+  padding: 0;
+}
+
+.flow-step {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1, 4px);
+  padding: var(--s-4, 16px);
+  border: 1px solid var(--line-2);
+  border-radius: 14px;
+  background: var(--bg-1);
+  min-width: 0;
+}
+
+/* The one step that happens on this page, so the eye lands on it. */
+.flow-step.is-tool {
+  border-color: rgba(244, 122, 31, 0.45);
+  background: rgba(244, 122, 31, 0.06);
+}
+
+.flow-num {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  /* Ordinals, not decoration: at Fg4 they were faint enough to read as
+     specks rather than as step numbers. */
+  color: var(--fg-3);
+}
+
+.flow-step.is-tool .flow-num { color: var(--brand-500); }
+
+.flow-file {
+  font-family: var(--font-mono);
+  font-size: 0.86rem;
+  color: var(--fg-1);
+  /* A filename must never be the thing that makes the page scroll sideways. */
+  overflow-wrap: anywhere;
+}
+
+.flow-what {
+  font-size: 0.82rem;
+  color: var(--fg-2);
+  line-height: 1.45;
+}
+
+.flow-who {
+  margin-top: auto;
+  padding-top: var(--s-2, 8px);
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fg-4);
+}
+
+.flow-step.is-tool .flow-who { color: var(--brand-500); }
+
+.flow-arrow {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--fg-4);
+}
+
+.flow-note {
+  color: var(--fg-2);
+  font-size: 0.88rem;
+  line-height: 1.6;
+  max-width: 74ch;
+  margin: 0 0 var(--s-7, 32px);
+}
+
+.flow-privacy { display: block; margin-top: var(--s-2, 8px); color: var(--fg-3); }
+
+/* Narrow screens stack the strip, and the arrows turn to point down it. */
+@media (max-width: 700px) {
+  .flow { flex-direction: column; }
+  .flow-arrow svg { transform: rotate(90deg); }
+  .flow-who { margin-top: var(--s-1, 4px); padding-top: 0; }
+}

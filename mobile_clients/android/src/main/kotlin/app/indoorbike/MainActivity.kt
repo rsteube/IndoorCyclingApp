@@ -69,6 +69,7 @@ import app.indoorbike.navigation.RouteConnections
 import app.indoorbike.navigation.RouteControllerPairing
 import app.indoorbike.navigation.RouteHrmPairing
 import app.indoorbike.navigation.RouteRideScreen
+import app.indoorbike.navigation.RouteSimulationSettings
 import app.indoorbike.navigation.RouteTrainerPairing
 import app.indoorbike.navigation.RouteWorkoutDetail
 import app.indoorbike.navigation.RouteWorkoutOverview
@@ -84,15 +85,22 @@ import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
+import app.indoorbike.shared.workout.simulationRouteId
+import app.indoorbike.shared.workout.simulationWorkoutId
 import app.indoorbike.ui.ControllerPairingScreen
 import app.indoorbike.sync.FitTrackeeUploader
 import app.indoorbike.ui.screens.ConnectionsScreen
+import app.indoorbike.ui.screens.SimulationSettingsScreen
 import app.indoorbike.ui.screens.LibraryScreen
 import app.indoorbike.ui.screens.QrScannerScreen
 import app.indoorbike.ui.screens.RemoteRepoBrowserScreen
+import app.indoorbike.ui.screens.RemoteRouteBrowserScreen
+import app.indoorbike.ui.screens.RouteLibraryScreen
 import app.indoorbike.navigation.RouteLibrary
 import app.indoorbike.navigation.RouteQrScanner
 import app.indoorbike.navigation.RouteRemoteRepo
+import app.indoorbike.navigation.RouteRemoteRoutes
+import app.indoorbike.navigation.RouteRouteLibrary
 import app.indoorbike.ui.HistoryTab
 import app.indoorbike.ui.HrmPairingScreen
 import app.indoorbike.ui.ProgressTab
@@ -339,7 +347,14 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
     val resumer = remember(navigator, resumerScope) {
         RideResumer(
             continueRide = { workout, snapshot ->
-                container.sessionManager.restoreFromSnapshot(snapshot, workout)
+                // A simulated ride names its route in the workout id but can't
+                // carry the route itself through a process death, so it's
+                // fetched back from the catalog here. A route that has since
+                // gone missing resumes without one, which the session manager
+                // handles rather than refusing the resume.
+                val route = simulationRouteId(workout.id)
+                    ?.let { container.routeCatalog.find(it) }
+                container.sessionManager.restoreFromSnapshot(snapshot, workout, route)
                 navigator.continueRide(workout.id)
             },
             abandonRide = { container.sessionManager.abandonUnfinishedRide() },
@@ -385,6 +400,17 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                     )
                     navigator.navigate(RouteRideScreen(FREE_RIDE_WORKOUT_ID))
                 },
+                onStartSimulation = { route ->
+                    // Same shape as a free ride: a synthetic workout, but with
+                    // a road behind it. The trainer goes into simulation mode
+                    // rather than ERG the moment the ride goes active.
+                    container.sessionManager.prepareSimulation(
+                        route = route,
+                        ftp = container.userSettings.ftp.value
+                    )
+                    navigator.navigate(RouteRideScreen(simulationWorkoutId(route.id)))
+                },
+                onBrowseRoutes = { navigator.navigate(RouteRouteLibrary) },
                 onOpenLibrary = { navigator.navigate(RouteLibrary) },
                 onScanQr = { navigator.navigate(RouteQrScanner) },
                 onOpenTrainerPairing = { navigator.navigate(RouteTrainerPairing) },
@@ -396,6 +422,9 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 onScanQr = { navigator.navigate(RouteQrScanner) },
                 onOpenRepo = { manifestUrl ->
                     navigator.navigate(RouteRemoteRepo(manifestUrl))
+                },
+                onOpenRoutes = { manifestUrl ->
+                    navigator.navigate(RouteRemoteRoutes(manifestUrl))
                 }
             )
         }
@@ -403,6 +432,29 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
             RemoteRepoBrowserScreen(
                 manifestUrl = key.manifestUrl,
                 onBack = { navigator.goBack() }
+            )
+        }
+        entry<RouteRemoteRoutes> { key: RouteRemoteRoutes ->
+            RemoteRouteBrowserScreen(
+                manifestUrl = key.manifestUrl,
+                onBack = { navigator.goBack() }
+            )
+        }
+        entry<RouteRouteLibrary> { _ ->
+            RouteLibraryScreen(
+                onBack = { navigator.goBack() },
+                onStartRoute = { route ->
+                    container.sessionManager.prepareSimulation(
+                        route = route,
+                        ftp = container.userSettings.ftp.value
+                    )
+                    navigator.navigate(RouteRideScreen(simulationWorkoutId(route.id)))
+                },
+                // Routes are found through the same community browse workouts
+                // use, so this lands on the repo list rather than a second,
+                // routes-only registry the rider would have to learn about.
+                onFindMore = { navigator.navigate(RouteLibrary) },
+                onPairTrainer = { navigator.navigate(RouteTrainerPairing) }
             )
         }
         entry<RouteQrScanner> { _ ->
@@ -471,11 +523,15 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) },
                 onNavigateToHrmPairing = { navigator.navigate(RouteHrmPairing) },
                 onNavigateToControllerPairing = { navigator.navigate(RouteControllerPairing) },
-                onNavigateToConnections = { navigator.navigate(RouteConnections) }
+                onNavigateToConnections = { navigator.navigate(RouteConnections) },
+                onNavigateToSimulationSettings = { navigator.navigate(RouteSimulationSettings) }
             )
         }
         entry<RouteConnections> { _ ->
             ConnectionsScreen(onBack = { navigator.goBack() })
+        }
+        entry<RouteSimulationSettings> { _ ->
+            SimulationSettingsScreen(onBack = { navigator.goBack() })
         }
         entry<RouteTrainerPairing> { _ ->
             TrainerPairingScreen(onBack = { navigator.goBack() })

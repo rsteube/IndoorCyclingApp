@@ -16,10 +16,13 @@
  */
 
 /**
- * Validates a community workout repository the way both consumers see it:
- * the Android app (RepositoryManager.fetchRepoWorkouts) and the website
+ * Validates a community repository the way both consumers see it: the Android
+ * app (RepositoryManager.fetchRepoWorkouts / fetchRepoRoutes) and the website
  * browser (website/community/community.js). Run it before merging a registry
  * pull request, or as a contributor before opening one.
+ *
+ * Covers workouts and routes. A repository may publish either or both; the
+ * only hard failure is resolving to nothing at all.
  *
  *   node scripts/validate_repo.mjs https://example.org/manifest.json
  *   node scripts/validate_repo.mjs --registry          # every entry in website/registry.json
@@ -38,6 +41,13 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_MANIFEST_SCHEMA = 2;
 const MAX_BUNDLE_SCHEMA = 1;
 const MAX_WORKOUT_SCHEMA = 2;
+// Mirrors of shared/.../repo/RouteManifests.kt.
+const MAX_ROUTE_BUNDLE_SCHEMA = 1;
+const MAX_ROUTE_SCHEMA = 1;
+const ROUTE_BUCKET_COUNT = 14;
+const ROUTE_PROFILE_SAMPLES = 64;
+// HttpFetcher.MAX_ROUTE_BYTES. A GPX over this cannot be downloaded at all.
+const MAX_ROUTE_BYTES = 12 * 1024 * 1024;
 
 // Segment bounds as documented in website/community/contribute.html.
 const MAX_SEGMENT_SECONDS = 14400;
@@ -186,8 +196,10 @@ function checkManifestShape(m) {
   if (m.id && !/^[a-z0-9][a-z0-9-]*$/.test(m.id)) {
     warn(`Manifest id "${m.id}" is not lowercase kebab-case. It is used as a cache key.`);
   }
-  if (!Array.isArray(m.bundles) || m.bundles.length === 0) {
-    err('Manifest has no bundles. Riders would see an empty repository.');
+  const hasWorkouts = Array.isArray(m.bundles) && m.bundles.length > 0;
+  const hasRoutes = Array.isArray(m.routeBundles) && m.routeBundles.length > 0;
+  if (!hasWorkouts && !hasRoutes) {
+    err('Manifest has neither bundles nor routeBundles. Riders would see an empty repository.');
   }
   if (m.homepage && !m.homepage.startsWith('https://')) {
     warn(`homepage "${m.homepage}" is not https.`);
@@ -385,11 +397,200 @@ async function validateRepo(manifestUrl, registryEntry, reservedIds) {
     });
   }
 
-  if (workoutCount === 0) {
-    err('The repository resolved to zero workouts.');
+  const routeCount = await validateRoutes(manifest, manifestUrl);
+
+  if (workoutCount === 0 && routeCount === 0) {
+    err('The repository resolved to zero workouts and zero routes.');
   } else {
-    section(`  ${workoutCount} workout(s) resolved.`);
+    section(`  ${workoutCount} workout(s) and ${routeCount} route(s) resolved.`);
   }
+
+  // The registry hint drives whether a Routes button appears on the repo card,
+  // so a mismatch is invisible in testing and only shows up as riders never
+  // finding the routes.
+  if (registryEntry) {
+    const declares = Array.isArray(registryEntry.content) &&
+      registryEntry.content.some((c) => String(c).toLowerCase() === 'routes');
+    if (routeCount > 0 && !declares) {
+      warn(
+        `This repository publishes ${routeCount} route(s) but its registry entry has no ` +
+        `"content": ["routes"]. The community browser will not show a Routes button for it.`
+      );
+    }
+    if (declares && routeCount === 0) {
+      warn('Registry entry declares "routes" but the repository resolved none.');
+    }
+  }
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────
+
+/** Returns how many usable routes the repository resolved to. */
+async function validateRoutes(manifest, manifestUrl) {
+  const bundles = Array.isArray(manifest.routeBundles) ? manifest.routeBundles : [];
+  if (bundles.length === 0) return 0;
+
+  const seenIds = new Set();
+  let routeCount = 0;
+
+  for (const entry of bundles) {
+    const bundleSchema = entry.schemaVersion ?? 1;
+    if (typeof entry.id !== 'string' || !entry.id.trim()) {
+      err('A routeBundles entry has no id.');
+    }
+    if (bundleSchema > MAX_ROUTE_BUNDLE_SCHEMA) {
+      err(`Route bundle "${entry.id}" declares schemaVersion ${bundleSchema} > ${MAX_ROUTE_BUNDLE_SCHEMA}; it is skipped without downloading.`);
+      continue;
+    }
+    if (typeof entry.url !== 'string' || !entry.url) {
+      err(`Route bundle "${entry.id}" has no url.`);
+      continue;
+    }
+    const bundleUrl = resolveBundleUrl(entry.url, manifestUrl);
+    section(`  route bundle "${entry.id}" -> ${bundleUrl}`);
+
+    let bundle;
+    try {
+      const { res, text } = await fetchJson(bundleUrl);
+      if (!checkTransport(bundleUrl, res)) continue;
+      checkCors(bundleUrl, res);
+      try {
+        bundle = JSON.parse(text);
+      } catch (e) {
+        err(`Route bundle is not valid JSON: ${e.message}`);
+        continue;
+      }
+    } catch (e) {
+      err(`Could not reach the route bundle: ${e.message}`);
+      continue;
+    }
+    if (!Array.isArray(bundle)) {
+      err('Route bundle must be a JSON array of route objects.');
+      continue;
+    }
+
+    for (let i = 0; i < bundle.length; i++) {
+      if (await checkRoute(bundle[i], i, seenIds, bundleUrl)) routeCount++;
+    }
+  }
+  return routeCount;
+}
+
+/** Returns true when the app would be able to use this route. */
+async function checkRoute(r, index, seenIds, bundleUrl) {
+  const label = `route[${index}] "${r?.name ?? r?.id ?? 'unnamed'}"`;
+  if (!r || typeof r !== 'object') {
+    err(`${label}: not an object.`);
+    return false;
+  }
+
+  const schema = r.schemaVersion ?? 1;
+  if (schema > MAX_ROUTE_SCHEMA) {
+    warn(`${label}: schemaVersion ${schema} > ${MAX_ROUTE_SCHEMA}; this app build skips it.`);
+    return false;
+  }
+
+  let usable = true;
+  for (const field of ['id', 'name']) {
+    if (typeof r[field] !== 'string' || !r[field].trim()) {
+      err(`${label}: missing a non-empty "${field}".`);
+      usable = false;
+    }
+  }
+  if (r.id) {
+    if (seenIds.has(r.id)) {
+      err(`${label}: duplicate route id "${r.id}" in this repository.`);
+      usable = false;
+    }
+    seenIds.add(r.id);
+    if (!/^[a-z0-9][a-z0-9._-]*$/.test(r.id)) {
+      warn(`${label}: id "${r.id}" is not lowercase kebab-case. It becomes a filename on the device.`);
+    }
+  }
+
+  if (!(typeof r.distanceMeters === 'number' && r.distanceMeters > 0)) {
+    err(`${label}: distanceMeters must be a positive number, or the app drops the route.`);
+    usable = false;
+  }
+
+  // The GPX pointer. These are the failures a maintainer cannot see from their
+  // own machine, so they are checked against the network the app will use.
+  if (typeof r.gpxUrl !== 'string' || !r.gpxUrl) {
+    err(`${label}: no gpxUrl. There is nothing to download.`);
+    usable = false;
+  } else {
+    const gpxUrl = resolveBundleUrl(r.gpxUrl, bundleUrl);
+    if (gpxUrl.startsWith('http://')) {
+      err(`${label}: gpxUrl is plain HTTP. The app refuses it on every device.`);
+      usable = false;
+    } else {
+      try {
+        const res = await fetch(gpxUrl, { method: 'HEAD', redirect: 'manual' });
+        if (res.status >= 300 && res.status < 400) {
+          err(
+            `${label}: gpxUrl redirects (HTTP ${res.status}). The app does not follow redirects; ` +
+            `publish the direct file URL.`
+          );
+          usable = false;
+        } else if (!res.ok) {
+          err(`${label}: gpxUrl returned HTTP ${res.status}.`);
+          usable = false;
+        } else {
+          const length = Number(res.headers.get('content-length'));
+          if (Number.isFinite(length) && length > 0) {
+            if (length > MAX_ROUTE_BYTES) {
+              err(`${label}: GPX is ${(length / 1048576).toFixed(1)} MB, over the ${MAX_ROUTE_BYTES / 1048576} MB download cap.`);
+              usable = false;
+            } else if (length > 4 * 1024 * 1024) {
+              warn(`${label}: GPX is ${(length / 1048576).toFixed(1)} MB. The app resamples to 10 m, so tighter spacing is bytes nobody feels.`);
+            }
+            if (typeof r.gpxBytes === 'number' && r.gpxBytes !== length) {
+              warn(`${label}: gpxBytes says ${r.gpxBytes} but the server serves ${length}.`);
+            }
+          }
+          checkCors(gpxUrl, res);
+        }
+      } catch (e) {
+        err(`${label}: could not reach gpxUrl: ${e.message}`);
+        usable = false;
+      }
+    }
+  }
+
+  // The histogram is what makes an offline time estimate possible. Without it
+  // the app falls back to treating the route as flat, which reads as wrong on
+  // exactly the routes people care about.
+  if (!Array.isArray(r.gradientMeters) || r.gradientMeters.length !== ROUTE_BUCKET_COUNT) {
+    warn(
+      `${label}: no gradientMeters histogram (${ROUTE_BUCKET_COUNT} numbers). ` +
+      `Estimated ride time falls back to a flat road. The route tool generates it.`
+    );
+  } else {
+    const sum = r.gradientMeters.reduce((a, b) => a + (Number(b) || 0), 0);
+    if (r.distanceMeters > 0 && Math.abs(sum - r.distanceMeters) > r.distanceMeters * 0.02) {
+      warn(`${label}: gradientMeters sums to ${Math.round(sum)} m but distanceMeters is ${Math.round(r.distanceMeters)} m.`);
+    }
+  }
+
+  if (Array.isArray(r.profile) && r.profile.length && r.profile.length !== ROUTE_PROFILE_SAMPLES) {
+    warn(`${label}: profile has ${r.profile.length} samples, expected ${ROUTE_PROFILE_SAMPLES}.`);
+  }
+  if (Array.isArray(r.bounds) && r.bounds.length !== 4) {
+    warn(`${label}: bounds must be [minLat, minLon, maxLat, maxLon].`);
+  }
+
+  // Flat routes are almost always a GPX with no elevation rather than a real
+  // flat road, and they simulate as nothing at all.
+  const rise = (r.maxElevationMeters ?? 0) - (r.minElevationMeters ?? 0);
+  if ((r.ascentMeters ?? 0) === 0 && rise === 0) {
+    warn(`${label}: no elevation at all. The trainer would apply no gradient; is the GPX missing <ele>?`);
+  }
+
+  if (!r.attribution || !r.attribution.licence) {
+    warn(`${label}: no attribution.licence. Most route data is licensed and the licence asks for credit.`);
+  }
+
+  return usable;
 }
 
 // ── Entry point ──────────────────────────────────────────────────────────

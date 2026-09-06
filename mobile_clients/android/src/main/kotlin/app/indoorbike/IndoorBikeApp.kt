@@ -20,6 +20,8 @@ import android.app.Application
 import android.os.Bundle
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.indoorbike.library.RepositoryManager
+import app.indoorbike.route.RouteCatalog
+import app.indoorbike.route.RouteImporter
 import app.indoorbike.library.WorkoutImporter
 import app.indoorbike.library.WorkoutLibrary
 import app.indoorbike.service.RideSessionService
@@ -48,6 +50,8 @@ import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.session.WorkoutSessionManager
+import app.indoorbike.shared.simulation.Drivetrain
+import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.settings.UserSettings
 import app.indoorbike.shared.util.CrashHandler
 import app.indoorbike.shared.util.DiagnosticsLog
@@ -68,6 +72,12 @@ class AppContainer(
     val heartRateMonitor: HeartRateMonitor,
     val controllerManager: ControllerManager,
     val sessionManager: WorkoutSessionManager,
+    /** Drives a simulated route ride: position, speed, gears, road resistance. */
+    val simulationEngine: SimulationEngine,
+    /** Every route the rider can simulate. */
+    val routeCatalog: RouteCatalog,
+    /** Downloads and stores the GPX behind a route the rider adds. */
+    val routeImporter: RouteImporter,
     val historyRepository: HistoryRepository,
     val userSettings: UserSettings,
     val activeSessionStore: ActiveSessionStore,
@@ -102,6 +112,8 @@ class AppContainer(
         heartRateMonitor.dispose()
         controllerManager.dispose()
         sessionManager.dispose()
+        simulationEngine.dispose()
+        routeCatalog.dispose()
         workoutLibrary.dispose()
         containerScope.cancel()
         if (userSettings is AndroidUserSettings) userSettings.dispose()
@@ -117,6 +129,20 @@ class AppContainer(
             // Built before the session manager so the manager can read the
             // rider's weight for its virtual-distance estimate.
             val userSettings = AndroidUserSettings(application)
+            // Built before the session manager, which hands it the trainer
+            // whenever a simulated ride goes active.
+            val simulationEngine = SimulationEngine(
+                powerWatts = { trainerManager.power.value },
+                applyRoad = trainerManager::setSimulationParameters,
+                riderMassKg = { userSettings.weightKg.value },
+                bikeMassKg = { userSettings.bikeWeightKg.value },
+                drivetrainProvider = { Drivetrain.byId(userSettings.drivetrainId.value) },
+            )
+            // One importer, shared with the catalogue: the route browser adds
+            // through it and then asks the catalogue to refresh, and both have
+            // to be looking at the same directory for that to mean anything.
+            val routeImporter = RouteImporter(application)
+            val routeCatalog = RouteCatalog(application, routeImporter)
             val sessionManager = WorkoutSessionManager(
                 trainerManager = trainerManager,
                 activeSessionStore = activeSessionStore,
@@ -128,6 +154,7 @@ class AppContainer(
                     if (hrm > 0) hrm else trainerManager.heartRate.value
                 },
                 riderMassKg = { userSettings.weightKg.value },
+                simulationEngine = simulationEngine,
             )
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)
@@ -169,6 +196,9 @@ class AppContainer(
                 heartRateMonitor = heartRateMonitor,
                 controllerManager = controllerManager,
                 sessionManager = sessionManager,
+                simulationEngine = simulationEngine,
+                routeCatalog = routeCatalog,
+                routeImporter = routeImporter,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
                 activeSessionStore = activeSessionStore,
@@ -226,6 +256,7 @@ class IndoorBikeApp : Application() {
         Log.i("IndoorBikeApp", "App start")
         container = AppContainer.create(this)
         container.workoutLibrary.start()
+        container.routeCatalog.start()
         // Surface any unfinished ride snapshot to the UI (banner) by populating
         // the session manager's persistedSnapshot StateFlow from disk.
         initScope.launch { container.sessionManager.loadPersistedSnapshot() }

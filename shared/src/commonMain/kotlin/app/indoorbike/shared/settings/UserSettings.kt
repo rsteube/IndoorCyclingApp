@@ -38,6 +38,28 @@ interface UserSettings {
     val maxHr: StateFlow<Int>
     fun setMaxHr(newMaxHr: Int)
 
+    // ── Simulation mode ───────────────────────────────────────────────────
+    // Only a simulated route ride reads these. A workout or a free ride has no
+    // road under it, so neither the bike's weight nor its gearing can change
+    // what the trainer is asked for.
+
+    /**
+     * Mass of the bike itself, in kg, added to the rider's body mass when
+     * working out what a hill costs. Matters most on a climb, where a 7 kg
+     * road bike and a 15 kg mountain bike are genuinely different rides.
+     */
+    val bikeWeightKg: StateFlow<Float>
+    fun setBikeWeightKg(value: Float)
+
+    /**
+     * Which drivetrain the virtual gears model, by
+     * [app.indoorbike.shared.simulation.Drivetrain.id]. An unknown id falls
+     * back to the default rather than failing, so a setting written by a newer
+     * build never breaks an older one.
+     */
+    val drivetrainId: StateFlow<String>
+    fun setDrivetrainId(id: String)
+
     /** id of the last paired trainer ("mock" for the simulator). */
     val pairedTrainerId: StateFlow<String?>
     fun setPairedTrainerId(id: String?)
@@ -188,6 +210,11 @@ const val MIN_FTP = 50
 const val MAX_FTP = 600
 
 const val DEFAULT_WEIGHT_KG = 75f
+
+/** A road bike with pedals, cages and a couple of bottles. */
+const val DEFAULT_BIKE_WEIGHT_KG = 9f
+const val MIN_BIKE_WEIGHT_KG = 4f
+const val MAX_BIKE_WEIGHT_KG = 30f
 const val MIN_WEIGHT_KG = 30f
 const val MAX_WEIGHT_KG = 250f
 
