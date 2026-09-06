@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Route publishing tool - Indoor Bike</title>
+  <meta name="description" content="Drop a GPX file and get the JSON entry to paste into your Indoor Bike community repository. Runs entirely in your browser.">
+  <meta name="theme-color" content="#0F0C09">
+  <link rel="icon" type="image/svg+xml" href="../assets/logo-mark.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <link rel="stylesheet" href="routetool.css">
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="../index.html" aria-label="Indoor Bike home">
+        <img src="../assets/logo-wordmark.svg" alt="Indoor Bike">
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../index.html#features">Features</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="../community/index.html">Community</a>
+        <a href="../community/contribute.html">Contribute</a>
+      </nav>
+      <a class="btn btn-primary" aria-disabled="true" href="../index.html#download">
+        Download <span class="btn-tag">soon</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="tool-main">
+    <p class="eyebrow">Route tool</p>
+    <h1 class="page-title">Drop a GPX. Copy the JSON.</h1>
+    <p class="page-lead">
+      Publishing a route is three files that point at each other. This tool
+      writes the middle one, and tells you the single line to add to the last.
+    </p>
+
+    <!-- ── The shape of the job, before any of the detail ──────────── -->
+    <ol class="flow" aria-label="How publishing a route works">
+      <li class="flow-step">
+        <span class="flow-num">1</span>
+        <span class="flow-file">your-route.gpx</span>
+        <span class="flow-what">The road itself.</span>
+        <span class="flow-who">You supply it</span>
+      </li>
+      <li class="flow-arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
+          <path d="M4 12h14M13 7l5 5-5 5" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </li>
+      <li class="flow-step is-tool">
+        <span class="flow-num">2</span>
+        <span class="flow-file">routes.json</span>
+        <span class="flow-what">The listing: distance, climbing, the shape of the card.</span>
+        <span class="flow-who">This tool writes it</span>
+      </li>
+      <li class="flow-arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" focusable="false">
+          <path d="M4 12h14M13 7l5 5-5 5" fill="none" stroke="currentColor"
+                stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">3</span>
+        <span class="flow-file">manifest.json</span>
+        <span class="flow-what">Your repository, plus one line pointing at the listing.</span>
+        <span class="flow-who">One line added</span>
+      </li>
+    </ol>
+
+    <p class="flow-note">
+      Host all three over HTTPS, anywhere. <strong>If your repository is
+      already in the registry, that is the whole job</strong> - no pull
+      request, and riders see the route next time they open your repo.
+      <span class="flow-privacy">
+        Your GPX is never uploaded: it is read in this tab. Two optional
+        lookups do send coordinates out, elevation and the place name, and
+        each happens only when you ask for it.
+      </span>
+    </p>
+
+    <!-- ── 1. The file ─────────────────────────────────────────────── -->
+    <section class="tool-step">
+      <h2><span class="step-num">1</span> Your GPX file</h2>
+
+      <div id="drop" class="dropzone" tabindex="0" role="button"
+           aria-label="Choose a GPX file, or drop one here">
+        <p class="drop-title">Drop a .gpx file here</p>
+        <p class="drop-sub">or click to choose one</p>
+        <input type="file" id="file" accept=".gpx,application/gpx+xml,application/xml,text/xml" hidden>
+      </div>
+
+      <div id="file-error" class="status is-error" hidden></div>
+
+      <div id="ele-warning" class="notice" hidden>
+        <p>
+          <strong>This route has no elevation data.</strong> The app would
+          simulate it as flat, which is almost certainly not what you want:
+          the trainer would apply no resistance changes at all.
+        </p>
+        <p class="notice-action">
+          <label class="checkline">
+            <input type="checkbox" id="ele-fill">
+            Look up elevation from the Copernicus DEM via
+            <a href="https://open-meteo.com/en/docs/elevation-api" target="_blank" rel="noopener">Open-Meteo</a>
+          </label>
+        </p>
+        <p class="notice-fineprint">
+          This sends the route coordinates to Open-Meteo. It is off until you
+          tick it. If you would rather not, add elevation with your own tools
+          and come back.
+        </p>
+        <p id="ele-status" class="notice-fineprint" hidden></p>
+      </div>
+    </section>
+
+    <!-- ── 2. Preview ──────────────────────────────────────────────── -->
+    <section class="tool-step" id="preview-step" hidden>
+      <h2><span class="step-num">2</span> Check it against what you rode</h2>
+      <p class="step-lead">
+        These are the numbers the app will show. If the distance or climbing
+        disagrees with your head unit by more than a little, the file is
+        probably not the one you meant.
+      </p>
+
+      <div class="preview-card">
+        <div class="preview-graphics">
+          <canvas id="shape-canvas" width="220" height="150" aria-label="Route shape"></canvas>
+          <canvas id="profile-canvas" width="640" height="150" aria-label="Elevation profile"></canvas>
+        </div>
+        <div class="stat-row" id="stats"></div>
+      </div>
+
+      <div class="rider-box">
+        <p class="rider-lead">
+          Estimated time is per rider. These values are only for the preview -
+          each person sees the estimate for their own FTP and weight.
+        </p>
+        <div class="rider-inputs">
+          <label>FTP <input type="number" id="ftp" value="200" min="50" max="600" step="5"> W</label>
+          <label>Rider <input type="number" id="weight" value="75" min="30" max="200" step="1"> kg</label>
+          <label>Bike <input type="number" id="bike" value="9" min="3" max="30" step="0.5"> kg</label>
+        </div>
+      </div>
+
+      <details class="histogram-details">
+        <summary>Gradient histogram (what the time estimate is built from)</summary>
+        <div id="histogram" class="histogram"></div>
+      </details>
+    </section>
+
+    <!-- ── 3. Details ──────────────────────────────────────────────── -->
+    <section class="tool-step" id="details-step" hidden>
+      <h2><span class="step-num">3</span> Describe it</h2>
+
+      <div class="field-grid">
+        <label class="field">
+          <span>Route id <em>required</em></span>
+          <input type="text" id="f-id" placeholder="ventoux-bedoin">
+          <small>Stable and unique in your repo. Do not change it after publishing.</small>
+        </label>
+        <label class="field">
+          <span>Name <em>required</em></span>
+          <input type="text" id="f-name" placeholder="Mont Ventoux from Bedoin">
+        </label>
+        <label class="field field-wide">
+          <span>Description</span>
+          <textarea id="f-description" rows="2" placeholder="One or two sentences. Plain text."></textarea>
+        </label>
+        <label class="field">
+          <span>Place</span>
+          <span class="field-row">
+            <input type="text" id="f-place" placeholder="Provence, France">
+            <button type="button" class="mini-btn" id="place-lookup">Look up</button>
+          </span>
+          <small id="place-status">
+            A GPX carries coordinates, not place names, so this asks
+            OpenStreetMap what is at the middle of your route. It sends those
+            two coordinates to Nominatim, and only when you press the button.
+          </small>
+        </label>
+        <label class="field">
+          <span>Tags</span>
+          <input type="text" id="f-tags" placeholder="Climb, France">
+          <small>Comma separated. These become the filter chips in the app.</small>
+        </label>
+        <label class="field field-wide">
+          <span>GPX URL <em>required</em></span>
+          <input type="text" id="f-gpxurl" placeholder="routes/ventoux-bedoin.gpx">
+          <small>
+            Where you will host this GPX. A path relative to the route bundle
+            is the portable form and survives a host change; an absolute
+            <code>https://</code> URL also works. The app refuses plain HTTP
+            and does not follow redirects, so give it the direct file.
+          </small>
+        </label>
+        <label class="field">
+          <span>Version</span>
+          <input type="number" id="f-version" value="1" min="1" step="1">
+          <small>Bump when you change the GPX or the metadata.</small>
+        </label>
+      </div>
+
+      <h3 class="sub-head">Attribution</h3>
+      <p class="step-lead">
+        Route geometry usually comes from a licensed database, and the licence
+        asks for credit. The app shows this on the route card for as long as
+        the route is installed, so fill it in even when the licence is
+        permissive.
+      </p>
+      <div class="field-grid">
+        <label class="field">
+          <span>Source</span>
+          <input type="text" id="f-attr-source" placeholder="OpenStreetMap contributors">
+        </label>
+        <label class="field">
+          <span>Licence</span>
+          <select id="f-attr-licence">
+            <option value="">Not stated</option>
+            <option value="ODbL-1.0">ODbL-1.0 (OpenStreetMap, EuroVelo)</option>
+            <option value="CC-BY-4.0">CC-BY-4.0</option>
+            <option value="CC-BY-SA-4.0">CC-BY-SA-4.0</option>
+            <option value="CC0-1.0">CC0-1.0 / public domain</option>
+            <option value="OGL-3.0">OGL-3.0 (UK government data)</option>
+            <option value="own-recording">My own recording</option>
+          </select>
+        </label>
+        <label class="field field-wide">
+          <span>Source URL</span>
+          <input type="text" id="f-attr-url" placeholder="https://www.openstreetmap.org/relation/...">
+        </label>
+        <label class="field field-wide checkfield">
+          <label class="checkline">
+            <input type="checkbox" id="f-attr-modified">
+            The published track was modified (resampled, trimmed, or had elevation added)
+          </label>
+        </label>
+      </div>
+    </section>
+
+    <!-- ── 4. Output ───────────────────────────────────────────────── -->
+    <section class="tool-step" id="output-step" hidden>
+      <h2><span class="step-num">4</span> Paste it into your repository</h2>
+
+      <div id="validation" class="status" hidden></div>
+
+      <div class="output-block">
+        <div class="output-head">
+          <h3>The route entry</h3>
+          <div class="output-actions">
+            <button class="btn btn-secondary" id="copy-entry" type="button">Copy</button>
+            <button class="btn btn-secondary" id="download-entry" type="button">Download</button>
+          </div>
+        </div>
+        <p class="step-lead">
+          Add this object to your route bundle file - the JSON array your
+          manifest points at. If this is your first route, the whole file is
+          just <code>[</code> this object <code>]</code>.
+        </p>
+        <pre class="output-json" id="entry-json"></pre>
+      </div>
+
+      <div class="output-block">
+        <div class="output-head">
+          <h3>Your manifest</h3>
+          <div class="output-actions">
+            <button class="btn btn-secondary" id="copy-manifest" type="button">Copy result</button>
+          </div>
+        </div>
+        <p class="step-lead">
+          Paste your existing <code>manifest.json</code> below and this adds
+          the <code>routeBundles</code> pointer for you, leaving your workouts
+          and everything else untouched. Leave it empty to get a fresh manifest
+          instead. Note the <code>schemaVersion</code> stays at 2 on purpose:
+          bumping it would make every already-installed app reject your whole
+          repository.
+        </p>
+        <textarea id="manifest-in" class="manifest-in" rows="6"
+                  placeholder="Paste your manifest.json here (optional)"></textarea>
+        <pre class="output-json" id="manifest-json"></pre>
+      </div>
+
+      <div class="output-block">
+        <h3>Then</h3>
+        <ol class="numbered-list">
+          <li>Upload the GPX to the URL you gave above.</li>
+          <li>Upload the route bundle and the manifest.</li>
+          <li>
+            If your repository is already in the registry, you are done - no
+            pull request, and riders see the route the next time they open your
+            repo. Add <code>"content": ["workouts", "routes"]</code> to your
+            registry entry so the Routes button appears on your card.
+          </li>
+          <li>
+            If it is not listed yet, open a pull request adding it to
+            <code>website/registry.json</code>. See the
+            <a href="../community/contribute.html">contributor docs</a>.
+          </li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <p>Indoor Bike - free software, GPLv3.</p>
+    </div>
+  </footer>
+
+  <script src="../assets/routelib.js"></script>
+  <script src="routetool.js"></script>
+</body>
+</html>

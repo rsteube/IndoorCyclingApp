@@ -354,3 +354,108 @@
   border-radius: var(--r-sm);
 }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+
+/* ── Routes ─────────────────────────────────────────────────────────────
+   A route card carries a shape and a profile rather than a zone bar: what a
+   rider is choosing between is roads, and the two thumbnails are the fastest
+   way to tell one road from another. Both come from the listing, so a grid of
+   fifty of them still costs one small JSON and no GPX at all. */
+
+.section-head {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  letter-spacing: 0.02em;
+  color: var(--fg-1);
+  margin: var(--s-6, 24px) 0 var(--s-3, 12px);
+}
+
+.route-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--s-4, 16px);
+}
+
+.route-card {
+  display: flex;
+  gap: var(--s-3, 12px);
+  align-items: flex-start;
+  padding: var(--s-4, 16px);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-md, 12px);
+  background: var(--bg-1);
+  text-decoration: none;
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+
+.route-card:hover {
+  border-color: var(--line-3);
+  transform: translateY(-1px);
+}
+
+.route-card h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--fg-1);
+}
+
+.route-card-body { min-width: 0; flex: 1; }
+
+.route-place {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--fg-3);
+}
+
+.route-card .meta {
+  margin: var(--s-2, 8px) 0 var(--s-2, 8px);
+  font-size: 0.82rem;
+  color: var(--fg-2);
+}
+
+.route-shape {
+  flex: 0 0 auto;
+  background: var(--bg-2);
+  border-radius: var(--r-sm, 8px);
+}
+
+.spark { display: block; width: 100%; height: auto; }
+
+/* ── Route detail ─────────────────────────────────────────────────────── */
+.route-detail-graphics {
+  display: flex;
+  gap: var(--s-4, 16px);
+  flex-wrap: wrap;
+  align-items: stretch;
+  margin-bottom: var(--s-4, 16px);
+}
+
+.route-detail-graphics .route-shape { flex: 0 0 220px; }
+
+.route-detail-graphics .spark {
+  flex: 1 1 320px;
+  min-width: 260px;
+  background: var(--bg-2);
+  border-radius: var(--r-sm, 8px);
+}
+
+.route-estimate {
+  color: var(--fg-3);
+  font-size: 0.85rem;
+  max-width: 66ch;
+  margin: var(--s-4, 16px) 0;
+}
+
+.route-actions {
+  display: flex;
+  gap: var(--s-2, 8px);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-4, 16px);
+}
+
+.route-credit {
+  color: var(--fg-4);
+  font-size: 0.78rem;
+  margin: 0;
+}
+
+.route-credit a { color: var(--fg-3); }

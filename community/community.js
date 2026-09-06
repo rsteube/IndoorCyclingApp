@@ -1,9 +1,10 @@
 /* ============================================================
    Indoor Bike - community browser
-   Three views (registry → repo → workout) routed via URL hash:
+   Four views (registry → repo → workout | route) routed via hash:
      #                       → registry list
-     #repo=<id>              → repo detail
+     #repo=<id>              → repo detail (workouts and routes)
      #repo=<id>&workout=<id> → workout preview
+     #repo=<id>&route=<id>   → route preview
    No backend; fetches static JSON files served from the same site.
    Workouts hand off to the editor / share page via #wz= URLs that
    reuse the gzip+base64url encoding the editor and Android app
@@ -117,6 +118,7 @@
   // page's job once the workout is on the user's phone.
   let registryPromise = null;
   const manifestCache = new Map(); // repoId → manifest
+  const routeCache = new Map();    // repoId → route listing
 
   async function loadRegistry() {
     if (registryPromise) return registryPromise;
@@ -142,6 +144,17 @@
   // duration and power, so an unrendered cadence field costs a visitor nothing
   // - leaving this at 1 would hide otherwise-perfectly-browsable workouts.
   const MAX_WORKOUT_SCHEMA = 2;
+  // Routes version independently of the manifest, so an older page still
+  // renders a repo that publishes newer routes - it just skips those entries.
+  const MAX_ROUTE_BUNDLE_SCHEMA = 1;
+  const MAX_ROUTE_SCHEMA = 1;
+
+  // The rider the website estimates ride times for. The app uses the rider's
+  // own FTP and weight; a web visitor has not told us either, so the number is
+  // labelled as being for this reference rider rather than quietly implying it
+  // is theirs.
+  const REFERENCE_FTP = 200;
+  const REFERENCE_WEIGHT_KG = 75;
 
   /**
    * Load a repo: fetch the small manifest, then fetch each referenced bundle
@@ -185,6 +198,39 @@
     return data;
   }
 
+  /**
+   * Load a repo's routes. Separate from loadManifest because a route bundle is
+   * a *listing*: none of the GPX files behind it are fetched, and a repo with
+   * fifty routes costs one small JSON either way. A repo with no routeBundles
+   * resolves to an empty list rather than failing, since most repos are
+   * workouts-only and always will be.
+   */
+  async function loadRoutes(repoId, manifest, manifestUrl) {
+    if (routeCache.has(repoId)) return routeCache.get(repoId);
+    const bundles = Array.isArray(manifest.routeBundles) ? manifest.routeBundles : [];
+    const supported = bundles.filter((b) => (b.schemaVersion ?? 1) <= MAX_ROUTE_BUNDLE_SCHEMA);
+    const results = await Promise.all(supported.map(async (b) => {
+      const bundleUrl = resolveBundleUrl(b.url, manifestUrl);
+      try {
+        const res = await fetch(bundleUrl, { cache: 'default' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!Array.isArray(data)) throw new Error('Route bundle must be a JSON array');
+        return data
+          .filter((r) => r && (r.schemaVersion ?? 1) <= MAX_ROUTE_SCHEMA && r.id && r.gpxUrl)
+          // Resolve each GPX URL against the bundle it came from, so a link
+          // works wherever the visitor happens to be reading this page.
+          .map((r) => Object.assign({}, r, { gpxUrl: resolveBundleUrl(r.gpxUrl, bundleUrl) }));
+      } catch (err) {
+        console.warn(`Route bundle "${b.id}" failed: ${err.message || err}`);
+        return [];
+      }
+    }));
+    const routes = results.flat();
+    routeCache.set(repoId, routes);
+    return routes;
+  }
+
   function resolveBundleUrl(bundleUrl, manifestUrl) {
     if (/^https?:\/\//i.test(bundleUrl)) return bundleUrl;
     const baseEnd = manifestUrl.lastIndexOf('/');
@@ -202,15 +248,16 @@
     }
     return params;
   }
-  function hashFor({ repo, workout }) {
+  function hashFor({ repo, workout, route }) {
     const parts = [];
     if (repo) parts.push(`repo=${encodeURIComponent(repo)}`);
     if (workout) parts.push(`workout=${encodeURIComponent(workout)}`);
+    if (route) parts.push(`route=${encodeURIComponent(route)}`);
     return parts.length ? '#' + parts.join('&') : '#';
   }
 
   // ── Crumbs ─────────────────────────────────────────────────────────────
-  function renderCrumbs({ repo, repoName, workoutName }) {
+  function renderCrumbs({ repo, repoName, workoutName, routeName }) {
     const crumbs = $('#crumbs');
     clear(crumbs);
     crumbs.appendChild(el('a', { href: '#' }, 'Community'));
@@ -218,9 +265,10 @@
       crumbs.appendChild(el('span', { class: 'sep' }, '›'));
       crumbs.appendChild(el('a', { href: hashFor({ repo }) }, repoName || repo));
     }
-    if (workoutName) {
+    const leaf = workoutName || routeName;
+    if (leaf) {
       crumbs.appendChild(el('span', { class: 'sep' }, '›'));
-      crumbs.appendChild(el('span', {}, workoutName));
+      crumbs.appendChild(el('span', {}, leaf));
     }
   }
 
@@ -346,19 +394,218 @@
       meta.appendChild(el('a', { href: manifest.homepage, target: '_blank', rel: 'noopener' }, 'Homepage'));
     }
     const workouts = Array.isArray(manifest.workouts) ? manifest.workouts : [];
-    if (workouts.length === 0) {
-      stage.appendChild(el('div', { class: 'status' }, 'This repository has no workouts yet.'));
+    // Routes are a second, independent listing. A failure to load them must
+    // not cost the visitor the workouts, so this never rejects.
+    let routes = [];
+    try { routes = await loadRoutes(entry.id, manifest, entry.manifestUrl); }
+    catch (err) { console.warn(`Routes failed: ${err.message || err}`); }
+
+    if (workouts.length === 0 && routes.length === 0) {
+      stage.appendChild(el('div', { class: 'status' }, 'This repository has no workouts or routes yet.'));
       return;
     }
-    // Add count to meta line now that we know it.
-    meta.appendChild(el('span', {}, `${workouts.length} workout${workouts.length === 1 ? '' : 's'}`));
+
+    const counts = [];
+    if (workouts.length) counts.push(`${workouts.length} workout${workouts.length === 1 ? '' : 's'}`);
+    if (routes.length) counts.push(`${routes.length} route${routes.length === 1 ? '' : 's'}`);
+    meta.appendChild(el('span', {}, counts.join(' · ')));
     if (manifest.updatedEpoch) {
       meta.appendChild(el('span', {}, `· updated ${formatRelativeDate(manifest.updatedEpoch)}`));
     }
 
-    const grid = el('div', { class: 'workout-grid' });
-    for (const w of workouts) grid.appendChild(buildWorkoutCard(entry.id, w));
-    stage.appendChild(grid);
+    if (routes.length) {
+      // Routes first when a repo has both: they are the rarer thing, and a
+      // visitor who came for a road should not have to scroll past intervals.
+      stage.appendChild(el('h2', { class: 'section-head' }, 'Routes'));
+      const routeGrid = el('div', { class: 'route-grid' });
+      for (const r of routes) routeGrid.appendChild(buildRouteCard(entry.id, r));
+      stage.appendChild(routeGrid);
+    }
+
+    if (workouts.length) {
+      if (routes.length) stage.appendChild(el('h2', { class: 'section-head' }, 'Workouts'));
+      const grid = el('div', { class: 'workout-grid' });
+      for (const w of workouts) grid.appendChild(buildWorkoutCard(entry.id, w));
+      stage.appendChild(grid);
+    }
+  }
+
+  // ── Route cards and detail ───────────────────────────────────
+  function buildRouteCard(repoId, r) {
+    const seconds = RouteLib.estimateSeconds(
+      r, REFERENCE_FTP, REFERENCE_WEIGHT_KG, RouteLib.DEFAULT_BIKE_MASS_KG);
+    const tags = Array.isArray(r.tags) ? r.tags.slice(0, 3) : [];
+    return el('a',
+      { class: 'route-card', href: hashFor({ repo: repoId, route: r.id }) },
+      buildShapeSvg(r.shape, 96, 64),
+      el('div', { class: 'route-card-body' },
+        el('h3', {}, r.name || r.id),
+        r.place ? el('p', { class: 'route-place' }, r.place) : null,
+        el('p', { class: 'meta' },
+          `${RouteLib.formatDistance(r.distanceMeters)} · ${Math.round(r.ascentMeters || 0)} m up · ${RouteLib.formatDuration(seconds)}`),
+        buildProfileSvg(r.profile, 240, 34),
+        tags.length ? el('div', { class: 'workout-tags' }, ...tags.map((t) => el('span', { class: 'tag-chip' }, t))) : null
+      )
+    );
+  }
+
+  async function renderRoute(repoId, routeId) {
+    showView('view-route');
+    const stage = $('#route-state');
+    clear(stage);
+    stage.appendChild(el('div', { class: 'status' }, 'Loading…'));
+
+    let registry;
+    try { registry = await loadRegistry(); }
+    catch (err) {
+      clear(stage);
+      stage.appendChild(el('div', { class: 'status is-error' },
+        `Could not load the registry: ${err.message || err}`));
+      return;
+    }
+    const entry = (registry.repositories || []).find((r) => r.id === repoId);
+    if (!entry) {
+      routeNotFound(stage, repoId, 'Repository not found', '#');
+      return;
+    }
+
+    let manifest, routes;
+    try {
+      manifest = await loadManifest(entry.id, entry.manifestUrl);
+      routes = await loadRoutes(entry.id, manifest, entry.manifestUrl);
+    } catch (err) {
+      clear(stage);
+      stage.appendChild(el('div', { class: 'status is-error' },
+        `Could not load the repository: ${err.message || err}`));
+      return;
+    }
+
+    const route = routes.find((r) => r.id === routeId);
+    if (!route) {
+      routeNotFound(stage, entry.name, 'Route not found', hashFor({ repo: entry.id }));
+      return;
+    }
+
+    $('#route-eyebrow').textContent = entry.name;
+    $('#route-title').textContent = route.name || route.id;
+    $('#route-description').textContent = route.description || '';
+    renderCrumbs({ repo: entry.id, repoName: entry.name, routeName: route.name || route.id });
+
+    clear(stage);
+    stage.appendChild(buildRouteDetail(route));
+  }
+
+  function routeNotFound(stage, eyebrow, title, backHref) {
+    $('#route-eyebrow').textContent = eyebrow || '';
+    $('#route-title').textContent = title;
+    $('#route-description').textContent = '';
+    renderCrumbs({ routeName: 'Not found' });
+    clear(stage);
+    stage.appendChild(el('div', { class: 'status' },
+      el('a', { class: 'btn btn-secondary', href: backHref }, '← Back')
+    ));
+  }
+
+  function buildRouteDetail(r) {
+    const seconds = RouteLib.estimateSeconds(
+      r, REFERENCE_FTP, REFERENCE_WEIGHT_KG, RouteLib.DEFAULT_BIKE_MASS_KG);
+    const attribution = r.attribution || {};
+    const credit = [attribution.source, attribution.licence].filter(Boolean).join(' · ');
+
+    return el('div', { class: 'route-detail' },
+      el('div', { class: 'route-detail-graphics' },
+        buildShapeSvg(r.shape, 220, 150),
+        buildProfileSvg(r.profile, 640, 150)
+      ),
+      el('div', { class: 'detail-stats' },
+        statTile('DISTANCE', RouteLib.formatDistance(r.distanceMeters)),
+        statTile('CLIMBING', `${Math.round(r.ascentMeters || 0)} m`),
+        statTile('MAX GRADIENT', `${(r.maxGradientPercent || 0).toFixed(1)} %`),
+        statTile('SHAPE', r.loop ? 'Loop' : 'Point to point')
+      ),
+      el('p', { class: 'route-estimate' },
+        `About ${RouteLib.formatDuration(seconds)} for a ${REFERENCE_WEIGHT_KG} kg rider at ${REFERENCE_FTP} W FTP, `,
+        `riding at ${Math.round(RouteLib.ESTIMATE_FTP_FRACTION * 100)} % of threshold. `,
+        'In the app this is recomputed for your own FTP and weight.'
+      ),
+      el('div', { class: 'route-actions' },
+        el('a', { class: 'btn btn-secondary', href: r.gpxUrl, target: '_blank', rel: 'noopener' }, 'Download GPX')
+      ),
+      credit ? el('p', { class: 'route-credit' },
+        'Route data: ',
+        attribution.url
+          ? el('a', { href: attribution.url, target: '_blank', rel: 'noopener' }, credit)
+          : credit,
+        attribution.modified ? ' (modified)' : ''
+      ) : null
+    );
+  }
+
+  /**
+   * Inline SVG rather than canvas: these are static, they scale on a
+   * high-density screen for free, and a card can hold one without the page
+   * having to manage a drawing context per card.
+   */
+  function buildProfileSvg(profile, width, height) {
+    if (!Array.isArray(profile) || profile.length < 2) return null;
+    const low = Math.min(...profile);
+    const high = Math.max(...profile);
+    const span = Math.max(high - low, RouteLib.PROFILE_MIN_SPAN_METERS);
+    const stepX = width / (profile.length - 1);
+    const y = (v) => (height - ((v - low) / span) * (height - 4) - 2).toFixed(2);
+
+    const line = profile.map((v, i) => `${(i * stepX).toFixed(2)},${y(v)}`).join(' ');
+    const area = `0,${height} ${line} ${width},${height}`;
+
+    return svgEl('svg', {
+      class: 'spark', viewBox: `0 0 ${width} ${height}`,
+      preserveAspectRatio: 'none', 'aria-hidden': 'true',
+    },
+      svgEl('polygon', { points: area, fill: 'rgba(244,122,31,0.18)' }),
+      svgEl('polyline', {
+        points: line, fill: 'none', stroke: '#F47A1F',
+        'stroke-width': '2', 'stroke-linejoin': 'round', 'vector-effect': 'non-scaling-stroke',
+      })
+    );
+  }
+
+  function buildShapeSvg(shape, width, height) {
+    const points = RouteLib.decodePolyline(shape);
+    if (points.length < 2) return null;
+    const lats = points.map((p) => p[0]);
+    const lons = points.map((p) => p[1]);
+    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+    const minLon = Math.min(...lons), maxLon = Math.max(...lons);
+    // A degree of longitude is shorter than a degree of latitude away from the
+    // equator; without this correction every European route looks stretched.
+    const squeeze = Math.cos(((minLat + maxLat) / 2) * Math.PI / 180);
+    const spanLat = Math.max(maxLat - minLat, 1e-9);
+    const spanLon = Math.max((maxLon - minLon) * squeeze, 1e-9);
+
+    const inset = 6;
+    const scale = Math.min((width - inset * 2) / spanLon, (height - inset * 2) / spanLat);
+    const offsetX = (width - spanLon * scale) / 2;
+    const offsetY = (height - spanLat * scale) / 2;
+    const px = (lon) => (offsetX + (lon - minLon) * squeeze * scale).toFixed(2);
+    const py = (lat) => (height - offsetY - (lat - minLat) * scale).toFixed(2);
+
+    const line = points.map(([lat, lon]) => `${px(lon)},${py(lat)}`).join(' ');
+    return svgEl('svg', {
+      class: 'route-shape', viewBox: `0 0 ${width} ${height}`, 'aria-hidden': 'true',
+    },
+      svgEl('polyline', {
+        points: line, fill: 'none', stroke: '#C2B5A1', 'stroke-width': '2',
+        'stroke-linejoin': 'round', 'stroke-linecap': 'round',
+      }),
+      svgEl('circle', { cx: px(points[0][1]), cy: py(points[0][0]), r: '3', fill: '#F47A1F' })
+    );
+  }
+
+  function svgEl(tag, attrs, ...kids) {
+    const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+    for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+    for (const kid of kids) if (kid) node.appendChild(kid);
+    return node;
   }
 
   function buildWorkoutCard(repoId, w) {
@@ -545,7 +792,9 @@
   // ── Boot ───────────────────────────────────────────────────────────────
   function route() {
     const params = parseHash();
-    if (params.workout && params.repo) {
+    if (params.route && params.repo) {
+      renderRoute(params.repo, params.route);
+    } else if (params.workout && params.repo) {
       renderWorkout(params.repo, params.workout);
     } else if (params.repo) {
       renderRepo(params.repo);
