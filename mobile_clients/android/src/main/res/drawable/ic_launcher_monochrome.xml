@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Monochrome layer for Android 13+ themed icons. The system tints this with
-  the user's monochrome theme, so use a single color (white) and skip detail
-  that would muddy at small sizes — drop the topo ridge and spoke marks,
-  keep frame + wheels + handlebar.
+  Monochrome layer for the themed icon on Android 13+. The launcher recolours
+  it wholesale, so everything here is one flat white and the ridge cannot be
+  told apart by hue - it has to survive on shape alone. Hence the simplified
+  frame: no saddle, no seat stay, and a heavier stroke so the mark still reads
+  once the launcher shrinks and tints it.
+
+  Converted by hand from slate-design-system/logo/app-icon-monochrome.svg.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -11,37 +14,50 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
     <group
-        android:translateX="18"
-        android:translateY="18"
-        android:scaleX="1.125"
-        android:scaleY="1.125">
+        android:translateX="28"
+        android:translateY="28"
+        android:scaleX="0.8125"
+        android:scaleY="0.8125">
 
+        <!-- Ridge -->
         <path
-            android:pathData="M 8 48 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0"
+            android:pathData="M4,26 L14,16 L22,22 L32,10 L44,20 L54,14 L60,20"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.6" />
-        <path
-            android:pathData="M 40 48 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.6" />
-
-        <path
-            android:pathData="M 32 48 L 28 32 L 44 30 M 32 48 L 44 38 M 32 48 L 16 48 L 28 32 M 44 30 L 44 38 L 48 48"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.4"
+            android:strokeWidth="3.5"
             android:strokeLineCap="round"
-            android:strokeLineJoin="round" />
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
 
+        <!-- Front wheel -->
         <path
-            android:pathData="M 40 28 Q 44 26 48 28 Q 50 30 49 33"
+            android:pathData="M40,48 A8,8 0 1,0 56,48 A8,8 0 1,0 40,48 Z"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.4"
-            android:strokeLineCap="round" />
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
 
+        <!-- Frame, simplified -->
         <path
-            android:pathData="M 24 32 L 32 32"
+            android:pathData="M32,48 L28,32 L44,30 L44,38 L48,48 M32,48 L16,48 L28,32 M24,32 L32,32"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.4"
-            android:strokeLineCap="round" />
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
+
+        <!-- Trainer flywheel -->
+        <path
+            android:pathData="M9,48 A7,7 0 1,0 23,48 A7,7 0 1,0 9,48 Z"
+            android:fillColor="#FFFFFF" />
+
+        <!-- Trainer leg and foot -->
+        <path
+            android:pathData="M16,55 L16,58 M6,58 L26,58"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="3.5"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
     </group>
 </vector>

@@ -8,6 +8,12 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Changed
 
+- **A new mark.** The same ridge and frame, recoloured to Slate and drawn at one
+  stroke weight, with the rear wheel replaced by the flywheel of a direct-drive
+  trainer - which is what the app actually talks to. It replaces the orange mark
+  everywhere: the launcher icon and its themed and debug variants, the
+  notification icon, the site's header, favicon and link badges, and the
+  wordmark on a shared ride card.
 - **The whole app was redrawn in a new design system, Slate.** Five slate-blue
   surfaces, three cool whites, one typeface, and no accent colour at all: the
   power zones are now the only saturated colour anywhere, so a colour on screen

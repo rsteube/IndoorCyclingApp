@@ -20,7 +20,7 @@ The companion website lives at [indoorbike.app](https://indoorbike.app), with an
 - **Local progression** - streaks, rider levels, badges, week-grouped history, and time-in-zone - all computed on-device from saved rides.
 - **FIT export and optional Intervals.icu sync** - strict opt-in. Manual upload from the post-ride screen or auto-upload after a ride; nothing leaves the device unless you configure credentials.
 - **No Google, no tracking** - no Google Play Services, no analytics, no crash reporters, no proprietary blobs. It runs on a phone with no Google services on it at all: a de-Googled ROM, a Huawei handset, an emulator image without GApps. Auth0 / CleverCloud sync are entirely optional and lazily loaded.
-- **Side-by-side debug + release installs** - different application IDs and a grayscale launcher icon for debug, so you can ride against production while developing.
+- **Side-by-side debug + release installs** - different application IDs and a differently coloured launcher icon for debug, so you can ride against production while developing.
 
 ## Status
 

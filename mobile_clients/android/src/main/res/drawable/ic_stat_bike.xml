@@ -1,8 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Status-bar notification icon. Must be a single-color (white) silhouette;
-  Android tints it per the device theme. Mirrors the launcher monochrome
-  bicycle but recentered for a 24dp viewport.
+  Status-bar notification icon. Must be a single-colour (white) silhouette;
+  Android tints it per the device theme and draws it small, so this is the
+  launcher mark's bike without the ridge, which would be an indistinguishable
+  zigzag at 24 dp.
+
+  Same geometry as the launcher foreground, recentred for the 56-unit viewport
+  and simplified the way the mark's small sizes are: no saddle, no seat stay.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -10,36 +14,39 @@
     android:viewportWidth="56"
     android:viewportHeight="56">
     <group
-        android:translateX="-4"
-        android:translateY="-13">
+        android:translateX="-3"
+        android:translateY="-12">
+
+        <!-- Front wheel -->
         <path
-            android:pathData="M 8 48 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0"
+            android:pathData="M40,48 A8,8 0 1,0 56,48 A8,8 0 1,0 40,48 Z"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.6"
-            android:fillColor="#00000000" />
-        <path
-            android:pathData="M 40 48 a 8 8 0 1 0 16 0 a 8 8 0 1 0 -16 0"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.6"
-            android:fillColor="#00000000" />
-        <path
-            android:pathData="M 32 48 L 28 32 L 44 30 M 32 48 L 44 38 M 32 48 L 16 48 L 28 32 M 44 30 L 44 38 L 48 48"
-            android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.4"
+            android:strokeWidth="2.8"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:fillColor="#00000000" />
+
+        <!-- Frame -->
         <path
-            android:pathData="M 40 28 Q 44 26 48 28 Q 50 30 49 33"
+            android:pathData="M32,48 L28,32 L44,30 L44,38 L48,48 M32,48 L16,48 L28,32 M24,32 L32,32"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.4"
+            android:strokeWidth="2.8"
             android:strokeLineCap="round"
+            android:strokeLineJoin="round"
             android:fillColor="#00000000" />
+
+        <!-- Trainer flywheel, on the rear axle -->
         <path
-            android:pathData="M 24 32 L 32 32"
+            android:pathData="M9,48 A7,7 0 1,0 23,48 A7,7 0 1,0 9,48 Z"
+            android:fillColor="#FFFFFF" />
+
+        <!-- Trainer leg and foot -->
+        <path
+            android:pathData="M16,55 L16,58 M6,58 L26,58"
             android:strokeColor="#FFFFFF"
-            android:strokeWidth="2.4"
+            android:strokeWidth="2.8"
             android:strokeLineCap="round"
+            android:strokeLineJoin="round"
             android:fillColor="#00000000" />
     </group>
 </vector>

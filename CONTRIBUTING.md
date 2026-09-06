@@ -34,7 +34,7 @@ The `:shared` module's compile task is `:shared:compileDebugKotlinAndroid` - the
 
 ### Build variants
 
-- **Debug** - `applicationId = app.indoorbike.debug`, `versionName = 1.0-debug`, label "Indoor Bike Debug", grayscale launcher icon (resource overlay in `src/debug/res/`).
+- **Debug** - `applicationId = app.indoorbike.debug`, `versionName = 1.0-debug`, label "Indoor Bike Debug", launcher icon on a grey background (resource overlay in `src/debug/res/`).
 - **Release** - `applicationId = app.indoorbike`, `versionName = 1.0`, label "Indoor Bike", brand-orange icon.
 
 Both can sit side-by-side on the same device. They have separate DataStore + SQLDelight databases, so a `pm clear app.indoorbike.debug` gives you a true first-run on the next launch.

@@ -39,6 +39,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
@@ -563,20 +566,47 @@ private fun Wordmark() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Brand mark — a pulse glyph in the one colour the system has.
-        Canvas(modifier = Modifier.size(width = 60.dp, height = 40.dp)) {
-            val w = size.width
-            val h = size.height
-            val p = Path().apply {
-                moveTo(0f, h * 0.55f)
-                lineTo(w * 0.18f, h * 0.30f)
-                lineTo(w * 0.32f, h * 0.50f)
-                lineTo(w * 0.50f, h * 0.10f)
-                lineTo(w * 0.68f, h * 0.50f)
-                lineTo(w * 0.84f, h * 0.30f)
-                lineTo(w, h * 0.55f)
+        // The brand mark, drawn from the same 64-unit grid as the launcher icon
+        // and the site's logo-mark.svg: ridge over a bike whose rear wheel is
+        // the flywheel of a direct-drive trainer. Drawn rather than loaded
+        // because this card is rendered off-screen into a bitmap, and a vector
+        // drawable would be one more thing to keep in step with the SVG.
+        Canvas(modifier = Modifier.size(44.dp)) {
+            val u = size.minDimension / 64f
+            fun p(vararg pts: Float) = Path().apply {
+                moveTo(pts[0] * u, pts[1] * u)
+                for (i in 2 until pts.size step 2) lineTo(pts[i] * u, pts[i + 1] * u)
             }
-            drawPath(path = p, color = CadenceColors.Fg1, style = Stroke(width = 5f))
+            val stroke = Stroke(
+                width = 3f * u,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+            drawPath(
+                path = p(4f, 26f, 14f, 16f, 22f, 22f, 32f, 10f, 44f, 20f, 54f, 14f, 60f, 20f),
+                color = CadenceColors.Fg3,
+                style = stroke
+            )
+            drawCircle(
+                color = CadenceColors.Fg1,
+                radius = 8f * u,
+                center = Offset(48f * u, 48f * u),
+                style = stroke
+            )
+            drawPath(
+                path = p(32f, 48f, 28f, 32f, 44f, 30f, 44f, 38f, 48f, 48f),
+                color = CadenceColors.Fg1,
+                style = stroke
+            )
+            drawPath(path = p(32f, 48f, 16f, 48f, 28f, 32f), color = CadenceColors.Fg1, style = stroke)
+            drawPath(path = p(24f, 32f, 32f, 32f), color = CadenceColors.Fg1, style = stroke)
+            drawCircle(
+                color = CadenceColors.Fg1,
+                radius = 7f * u,
+                center = Offset(16f * u, 48f * u)
+            )
+            drawPath(path = p(16f, 55f, 16f, 58f), color = CadenceColors.Fg1, style = stroke)
+            drawPath(path = p(6f, 58f, 26f, 58f), color = CadenceColors.Fg1, style = stroke)
         }
         Text(
             text = "Indoor",

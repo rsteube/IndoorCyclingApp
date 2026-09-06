@@ -36,20 +36,19 @@
   // slack for a fallback face that measures wider than Manrope
   var SLACK = 1.05;
 
-  // The chainring + pulse mark, always on a dark slate tile.
+  // The Slate mark, always on a dark slate tile. At badge size this is the
+  // mark's own 32 px simplification: no saddle, no seat stay, and a heavier
+  // stroke, because both are a pixel of noise inside a 26 px tile.
   function markMarkup() {
     return ''
-      + '<path d="M 4 28 L 14 18 L 22 24 L 32 12 L 44 22 L 54 16 L 60 22" stroke="#9AA1B0" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
-      + '<circle cx="16" cy="48" r="8" stroke="#F2F4F7" stroke-width="2.6" fill="none"/>'
-      + '<circle cx="48" cy="48" r="8" stroke="#F2F4F7" stroke-width="2.6" fill="none"/>'
-      + '<g stroke="#F2F4F7" stroke-width="1" stroke-linecap="round" opacity="0.7">'
-      + '<line x1="16" y1="38" x2="16" y2="40"/><line x1="16" y1="56" x2="16" y2="58"/><line x1="6" y1="48" x2="8" y2="48"/><line x1="24" y1="48" x2="26" y2="48"/>'
-      + '<line x1="48" y1="38" x2="48" y2="40"/><line x1="48" y1="56" x2="48" y2="58"/><line x1="38" y1="48" x2="40" y2="48"/><line x1="56" y1="48" x2="58" y2="48"/></g>'
-      + '<g stroke="#F2F4F7" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">'
-      + '<line x1="32" y1="48" x2="28" y2="32"/><line x1="28" y1="32" x2="44" y2="30"/><line x1="32" y1="48" x2="44" y2="38"/><line x1="32" y1="48" x2="16" y2="48"/>'
-      + '<line x1="16" y1="48" x2="28" y2="32"/><line x1="44" y1="30" x2="44" y2="38"/><line x1="44" y1="38" x2="48" y2="48"/></g>'
-      + '<path d="M 40 28 Q 44 26 48 28 Q 50 30 49 33" stroke="#F2F4F7" stroke-width="2.4" stroke-linecap="round" fill="none"/>'
-      + '<line x1="24" y1="32" x2="32" y2="32" stroke="#F2F4F7" stroke-width="2.4" stroke-linecap="round"/>';
+      + '<g fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M4 26 14 16 22 22 32 10 44 20 54 14 60 20" stroke="#9AA1B0"/>'
+      + '<g stroke="#F2F4F7">'
+      + '<circle cx="48" cy="48" r="8"/>'
+      + '<path d="M32 48 28 32 44 30 44 38 48 48 M32 48 16 48 28 32 M24 32 32 32"/>'
+      + '<circle cx="16" cy="48" r="7" fill="#F2F4F7" stroke="none"/>'
+      + '<path d="M16 55 16 58 M6 58 26 58"/>'
+      + '</g></g>';
   }
 
   // label -> text content (sentence case; Slate has no shouting)
