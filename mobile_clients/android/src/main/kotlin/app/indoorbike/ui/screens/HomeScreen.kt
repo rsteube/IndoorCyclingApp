@@ -186,6 +186,7 @@ fun HomeScreen(
                     title = "Route",
                     body = "A real road, with its hills under the wheel.",
                     onClick = onChooseRoute,
+                    beta = true,
                 )
             }
             item(key = "mode-free") {
@@ -239,6 +240,8 @@ private fun ModeCard(
     title: String,
     body: String,
     onClick: () -> Unit,
+    /** Marks a mode still being built, so nobody meets a rough edge unwarned. */
+    beta: Boolean = false,
 ) {
     Row(
         Modifier
@@ -260,7 +263,13 @@ private fun ModeCard(
             Icon(icon, contentDescription = null, tint = CadenceColors.Fg1, modifier = Modifier.size(24.dp))
         }
         Column(Modifier.weight(1f)) {
-            Text(title, style = CadenceType.h3, color = CadenceColors.Fg1)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = CadenceType.h3, color = CadenceColors.Fg1)
+                if (beta) {
+                    Spacer(Modifier.width(Spacing.s2))
+                    BetaTag()
+                }
+            }
             Spacer(Modifier.height(3.dp))
             Text(
                 body,
@@ -275,6 +284,24 @@ private fun ModeCard(
             modifier = Modifier.size(22.dp),
         )
     }
+}
+
+/**
+ * Says a feature is not finished yet. Bg2 rather than a colour of its own: the
+ * palette keeps saturation for power zones, and a label that shouted would be
+ * competing with the ride the rider came here to start.
+ */
+@Composable
+private fun BetaTag() {
+    Text(
+        text = "Beta",
+        style = CadenceType.micro,
+        color = CadenceColors.Fg3,
+        modifier = Modifier
+            .clip(CircleShape)
+            .background(CadenceColors.Bg2)
+            .padding(horizontal = Spacing.s2, vertical = 2.dp),
+    )
 }
 
 // ─── Repositories ────────────────────────────────────────────────────────────
