@@ -20,13 +20,24 @@ there, and the last thing they can see is 2.0.1.
   fall back to the **debug** key and the APK is not a valid update (ObtainX
   will reject it as a different signer). Always verify the signer after building
   (step 4).
-- `CODEFLOE_TOKEN` is set in the environment **with the `write:repository`
-  scope**, or pass `-Token` to the publish script. Never print or commit it. A
-  read-only token gets all the way to step 8 before failing with "user should
-  have a permission to write to a repo", so it is worth checking first:
-  `curl -s -H "Authorization: token $CODEFLOE_TOKEN"
-  https://codefloe.com/api/v1/repos/SnappTechnology/IndoorCyclingApp` should
-  report `"push": true`.
+- `forge.properties` exists at the repo root, gitignored beside
+  `keystore.properties`, holding a token with the **`write:repository`** scope:
+
+  ```properties
+  codefloeToken=<token>
+  ```
+
+  Put it in the file rather than in an environment variable. A variable set
+  with `setx` or the System Properties dialog does not reach a process that is
+  already running, so any shell, editor or agent started before the change goes
+  on reading the old value - which looks exactly like a bad token from the
+  outside, and cost this project two releases. The file has no such problem,
+  which is why the signing key has never had one.
+
+  The publish script checks `-Token`, then `forge.properties`, then
+  `CODEFLOE_TOKEN` in the User scope, then the process environment, and it
+  confirms write access before it builds anything, naming the source it used.
+  Never print or commit the token.
 - Working tree is clean and all the changes you intend to ship are committed to
   `main`. `git status` snapshots in the harness prompt can be stale, so confirm
   with a fresh `git status --short`.

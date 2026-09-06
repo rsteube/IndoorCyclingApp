@@ -19,6 +19,7 @@ shared/build/
 build/
 mobile_clients/android/src/main/assets/workouts_private*.json
 keystore.properties
+forge.properties
 *.jks
 *.keystore
 # Scratch git worktrees created by Claude Code for isolated work. The rest of
