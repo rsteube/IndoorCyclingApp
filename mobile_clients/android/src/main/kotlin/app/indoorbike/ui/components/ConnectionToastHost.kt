@@ -21,13 +21,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.BluetoothConnected
 import androidx.compose.material3.Icon
@@ -44,7 +43,6 @@ import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
-import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
@@ -83,15 +81,13 @@ fun ConnectionToastHost(modifier: Modifier = Modifier) {
         exit = fadeOut() + slideOutVertically { -it },
         modifier = modifier,
     ) {
-        val shape = RoundedCornerShape(Radii.md)
         Row(
             modifier = Modifier
                 .statusBarsPadding()
                 .padding(horizontal = Spacing.s4, vertical = Spacing.s3)
-                .clip(shape)
+                .clip(CircleShape)
                 .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Success.copy(alpha = 0.5f), shape)
-                .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+                .padding(horizontal = Spacing.s5, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {

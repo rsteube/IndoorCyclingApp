@@ -19,7 +19,6 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -179,9 +178,9 @@ fun SimulationHud(
                     modifier = Modifier.fillMaxHeight(),
                 )
                 FlankMetric(
-                    label = "HEART RATE",
+                    label = "Heart rate",
                     value = if (isHrStale) "--" else heartRate.toString(),
-                    unit = "BPM",
+                    unit = "bpm",
                     isStale = isHrStale,
                     valueColor = hrColor,
                     // On a landscape phone this row is the last thing to fit,
@@ -309,7 +308,6 @@ private fun RouteMapPanel(
     Box(
         modifier = modifier
             .clip(shape)
-            .border(1.dp, CadenceColors.Line2, shape)
     ) {
         RouteMapView(
             route = route,
@@ -323,14 +321,13 @@ private fun RouteMapPanel(
                 .padding(Spacing.s2)
                 .clip(RoundedCornerShape(50))
                 .background(CadenceColors.Bg0.copy(alpha = 0.78f))
-                .border(1.dp, CadenceColors.Line3, RoundedCornerShape(50))
                 .clickable { followRider = !followRider }
                 .padding(horizontal = 12.dp, vertical = 6.dp),
         ) {
             Text(
-                text = if (followRider) "FOLLOWING" else "WHOLE ROUTE",
+                text = if (followRider) "Following" else "Whole route",
                 style = CadenceType.eyebrow,
-                color = if (followRider) CadenceColors.Brand500 else CadenceColors.Fg2,
+                color = if (followRider) CadenceColors.Fg1 else CadenceColors.Fg2,
             )
         }
         Text(
@@ -379,7 +376,7 @@ private fun SimulationPowerReadout(
     )
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = "POWER", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = "Power", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
                 text = if (isStale) "--" else animatedPower.toString(),

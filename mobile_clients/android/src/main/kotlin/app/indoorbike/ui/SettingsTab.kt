@@ -47,6 +47,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.TextRange
@@ -60,6 +61,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -75,6 +78,13 @@ import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.sync.SyncStatus
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.tabRootBottomPadding
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.CardDivider
+import app.indoorbike.ui.components.ListCard
+import app.indoorbike.ui.components.NavRow
+import app.indoorbike.ui.components.SectionLabel
+import app.indoorbike.ui.components.SlateCard
 import app.indoorbike.ui.components.DeviceStatusCard
 import app.indoorbike.ui.components.controllerStatusColor
 import app.indoorbike.ui.components.controllerStatusLine
@@ -88,6 +98,9 @@ import app.indoorbike.ui.components.trainerTitle
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.components.UnfinishedRideBanner
+import app.indoorbike.ui.components.SheetHandle
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SheetShape
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -106,94 +119,77 @@ fun SettingsTab(
 ) {
     var sheetTarget by remember { mutableStateOf<DeviceSheetTarget?>(null) }
 
+    val header = rememberCollapsingHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
     ) {
-        AppBar(title = "Settings", eyebrow = "Preferences")
+        AppBar(title = "Settings", eyebrow = "Preferences", header = header)
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.s5)
         ) {
-            Spacer(modifier = Modifier.height(Spacing.s3))
+            Spacer(modifier = Modifier.height(Spacing.s4))
 
             UnfinishedRideBanner()
 
-            Spacer(modifier = Modifier.height(Spacing.s5))
-
-            SectionHeader("PROFILE")
+            SectionHeader("Profile")
             // One card, three rows: the fields form a single logical unit, so
-            // they share chrome instead of floating as three separate boxes.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.md))
-                    .background(CadenceColors.Bg1)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-            ) {
+            // they share a surface instead of floating as three separate boxes.
+            ListCard {
                 FtpRow()
-                HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+                CardDivider()
                 WeightRow()
-                HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+                CardDivider()
                 MaxHrRow()
             }
 
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            SectionHeader("DEVICES")
+            SectionHeader("Devices")
             DeviceStatusCard(
                 onTrainerClick = { sheetTarget = DeviceSheetTarget.Trainer },
                 onHrmClick = { sheetTarget = DeviceSheetTarget.Hrm },
-                onControllerClick = { sheetTarget = DeviceSheetTarget.Controller }
+                onControllerClick = { sheetTarget = DeviceSheetTarget.Controller },
+                showChevrons = true
             )
 
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            SectionHeader("CONNECTIONS")
-            // The services a ride can be sent to live on their own page: the
-            // list only grows, and each needs enough setup that Settings would
-            // stop being readable at a glance.
-            NavRow(
-                icon = Icons.Outlined.CloudUpload,
-                title = "Connections",
-                subtitle = connectionsSummary(),
-                onClick = onNavigateToConnections
-            )
-
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            SectionHeader("SIMULATION")
-            // The bike, rather than the rider. Only a route ride reads these,
-            // so they sit behind their own page instead of adding two rows to
-            // a Settings screen that is about the person on the pedals.
-            NavRow(
-                icon = Icons.Outlined.Terrain,
-                title = "Bike & gearing",
-                subtitle = simulationSummary(),
-                onClick = onNavigateToSimulationSettings
-            )
-
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            SectionHeader("BACKUP & SYNC")
+            SectionHeader("More")
+            // Everything that has a page of its own. The services a ride can be
+            // sent to only grow in number, and the bike is the machine rather
+            // than the rider, so neither belongs inline on a screen about the
+            // person on the pedals.
+            ListCard {
+                NavRow(
+                    icon = Icons.Outlined.CloudUpload,
+                    title = "Connections",
+                    subtitle = connectionsSummary(),
+                    onClick = onNavigateToConnections
+                )
+                CardDivider()
+                NavRow(
+                    icon = Icons.Outlined.Terrain,
+                    title = "Bike & gearing",
+                    subtitle = simulationSummary(),
+                    onClick = onNavigateToSimulationSettings
+                )
+            }
+            Spacer(modifier = Modifier.height(Spacing.s3))
             BackupSyncCard()
 
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            SectionHeader("ABOUT")
+            SectionHeader("About")
             AboutCard()
 
-            Spacer(modifier = Modifier.height(Spacing.s6))
-
-            SectionHeader("FEEDBACK")
+            SectionHeader("Feedback")
             ReportProblemCard()
 
-            Spacer(modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-            Spacer(modifier = Modifier.height(Spacing.s5))
+            // The scroll runs under the floating tab bar, so the tail has to
+            // clear it rather than stopping above it.
+            Spacer(modifier = Modifier.height(tabRootBottomPadding()))
         }
     }
 
@@ -240,48 +236,10 @@ private fun connectionsSummary(): String {
 }
 
 @Composable
-private fun NavRow(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    val shape = RoundedCornerShape(Radii.md)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .clickable(onClick = onClick)
-            .padding(Spacing.s5),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(icon, contentDescription = null, tint = CadenceColors.Brand500, modifier = Modifier.size(18.dp))
-        }
-        Spacer(Modifier.width(Spacing.s3))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            Text(text = subtitle, style = CadenceType.tick, color = CadenceColors.Fg3)
-        }
-        Text(text = "›", style = CadenceType.h3, color = CadenceColors.Fg3)
-    }
-}
-
-@Composable
 private fun SectionHeader(text: String) {
-    Text(
+    SectionLabel(
         text = text,
-        style = CadenceType.eyebrow,
-        color = CadenceColors.Fg3,
-        modifier = Modifier.padding(bottom = Spacing.s3)
+        modifier = Modifier.padding(top = Spacing.s5, bottom = Spacing.s3)
     )
 }
 
@@ -303,7 +261,6 @@ internal fun ExpandableCard(
     onToggle: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.md)
     val chevron by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (expanded) 90f else 0f,
         label = "chevron"
@@ -311,50 +268,43 @@ internal fun ExpandableCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
+            .padding(vertical = 6.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onToggle)
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+                .padding(horizontal = Spacing.s5, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(iconTint.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = CadenceColors.Fg2,
+                modifier = Modifier.size(22.dp)
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(text = statusText, style = CadenceType.small, color = statusColor)
             }
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
                 contentDescription = if (expanded) "Collapse" else "Expand",
-                tint = CadenceColors.Fg4,
+                tint = CadenceColors.Fg3,
                 modifier = Modifier
-                    .size(20.dp)
+                    .size(22.dp)
                     .graphicsLayer { rotationZ = chevron }
             )
         }
         androidx.compose.animation.AnimatedVisibility(visible = expanded) {
             Column(
                 modifier = Modifier.padding(
-                    start = Spacing.s4, end = Spacing.s4,
-                    bottom = Spacing.s4
+                    start = Spacing.s5, end = Spacing.s5,
+                    top = Spacing.s2, bottom = Spacing.s4
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s3),
                 content = content
@@ -381,6 +331,9 @@ private fun DeviceSheet(
         sheetState = sheetState,
         containerColor = CadenceColors.Bg1,
         contentColor = CadenceColors.Fg1,
+        shape = SheetShape,
+        scrimColor = SheetScrim,
+        dragHandle = { SheetHandle() },
     ) {
         when (target) {
             DeviceSheetTarget.Trainer -> TrainerSheetContent(
@@ -415,7 +368,7 @@ private fun TrainerSheetContent(
 
     SheetBody(
         icon = Icons.Outlined.Bluetooth,
-        iconTint = CadenceColors.Brand500,
+        iconTint = CadenceColors.Fg1,
         title = trainerTitle(state, name, isMock),
         statusLine = trainerStatusLine(state, isMock),
         helper = "Smart trainers using FTMS or Cycling Power Service. " +
@@ -426,7 +379,7 @@ private fun TrainerSheetContent(
             TrainerConnectionState.Connecting,
             TrainerConnectionState.Disconnecting -> {
                 SecondaryBtn(
-                    text = if (state == TrainerConnectionState.Connecting) "Cancel Connection" else "Disconnect",
+                    text = if (state == TrainerConnectionState.Connecting) "Cancel connection" else "Disconnect",
                     onClick = {
                         scope.launch { trainerManager.disconnect() }
                     },
@@ -435,7 +388,7 @@ private fun TrainerSheetContent(
             }
             else -> {
                 PrimaryBtn(
-                    text = "Pair Trainer",
+                    text = "Pair trainer",
                     leadingIcon = Icons.AutoMirrored.Outlined.BluetoothSearching,
                     onClick = onPair,
                     modifier = Modifier.fillMaxWidth()
@@ -445,7 +398,7 @@ private fun TrainerSheetContent(
         if (pairedId != null || isMock) {
             Spacer(modifier = Modifier.height(Spacing.s3))
             SecondaryBtn(
-                text = "Forget Trainer",
+                text = "Forget trainer",
                 onClick = {
                     trainerManager.forgetTrainer()
                     container.userSettings.setPairedTrainerId(null)
@@ -473,7 +426,7 @@ private fun HrmSheetContent(
 
     SheetBody(
         icon = Icons.Outlined.MonitorHeart,
-        iconTint = CadenceColors.Danger,
+        iconTint = CadenceColors.Fg1,
         title = hrmTitle(state, name),
         statusLine = hrmStatusLine(state, heartRate, sensorSilent),
         helper = if (sensorSilent) {
@@ -498,7 +451,7 @@ private fun HrmSheetContent(
             }
             else -> {
                 PrimaryBtn(
-                    text = "Pair Heart Rate Monitor",
+                    text = "Pair heart rate monitor",
                     leadingIcon = Icons.Outlined.MonitorHeart,
                     onClick = onPair,
                     modifier = Modifier.fillMaxWidth()
@@ -508,7 +461,7 @@ private fun HrmSheetContent(
         if (pairedId != null) {
             Spacer(modifier = Modifier.height(Spacing.s3))
             SecondaryBtn(
-                text = "Forget HRM",
+                text = "Forget monitor",
                 onClick = {
                     hrm.forgetDevice()
                     container.userSettings.setPairedHrmId(null)
@@ -535,7 +488,7 @@ private fun ControllerSheetContent(
 
     SheetBody(
         icon = Icons.Outlined.SettingsRemote,
-        iconTint = CadenceColors.Brand500,
+        iconTint = CadenceColors.Fg1,
         title = controllerTitle(state, name),
         statusLine = controllerStatusLine(state, keypadSilent),
         // Plus increases the workout's target power, minus decreases it. Same
@@ -558,7 +511,7 @@ private fun ControllerSheetContent(
             }
             else -> {
                 PrimaryBtn(
-                    text = "Pair Controller",
+                    text = "Pair controller",
                     leadingIcon = Icons.Outlined.SettingsRemote,
                     onClick = onPair,
                     modifier = Modifier.fillMaxWidth()
@@ -568,7 +521,7 @@ private fun ControllerSheetContent(
         if (pairedId != null) {
             Spacer(modifier = Modifier.height(Spacing.s3))
             SecondaryBtn(
-                text = "Forget Controller",
+                text = "Forget controller",
                 onClick = {
                     controller.forgetDevice()
                     container.userSettings.setPairedControllerId(null)
@@ -603,19 +556,20 @@ private fun SheetBody(
             Box(
                 modifier = Modifier
                     .size(48.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(iconTint.copy(alpha = 0.12f)),
+                    .clip(CircleShape)
+                    .background(CadenceColors.Bg2),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = iconTint,
+                    tint = CadenceColors.Fg1,
                     modifier = Modifier.size(24.dp)
                 )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = title, style = CadenceType.h3, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(text = statusLine, style = CadenceType.small, color = CadenceColors.Fg3)
             }
         }
@@ -700,7 +654,7 @@ private fun WeightRow() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(horizontal = Spacing.s5, vertical = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -708,9 +662,9 @@ private fun WeightRow() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Body Weight", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = "Used for W/kg and XP scoring", style = CadenceType.body, color = CadenceColors.Fg3)
+                Text(text = "Body weight", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = "For W/kg and XP", style = CadenceType.small, color = CadenceColors.Fg3)
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -733,7 +687,11 @@ private fun WeightRow() {
                         else TextFieldValue(filtered, TextRange(filtered.length))
                     persistIfValid(filtered)
                 },
-                textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
+                textStyle = CadenceType.bodyStrong.copy(
+                    fontSize = 18.sp,
+                    color = CadenceColors.Fg1,
+                    textAlign = TextAlign.End
+                ),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal,
                     imeAction = ImeAction.Done
@@ -743,7 +701,7 @@ private fun WeightRow() {
                 ),
                 singleLine = true,
                 modifier = Modifier
-                    .width(110.dp)
+                    .width(112.dp)
                     .onFocusChanged { state ->
                         focused = state.isFocused
                         if (!state.isFocused) commit()
@@ -753,15 +711,29 @@ private fun WeightRow() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.End,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(Radii.sm))
+                            .clip(RoundedCornerShape(Radii.md))
                             .background(CadenceColors.Bg2)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .then(
+                                if (focused) Modifier.border(
+                                    2.dp,
+                                    CadenceColors.Fg1,
+                                    RoundedCornerShape(Radii.md)
+                                ) else Modifier
+                            )
+                            .padding(horizontal = Spacing.s4, vertical = 10.dp)
                     ) {
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                             innerTextField()
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("kg", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                        Text(
+                            "kg",
+                            style = CadenceType.body.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = CadenceColors.Fg3
+                        )
                     }
                 }
             )
@@ -829,7 +801,7 @@ private fun FtpRow() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(horizontal = Spacing.s5, vertical = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -837,9 +809,9 @@ private fun FtpRow() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Functional Threshold Power (FTP)", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = "Used to calculate your power zones", style = CadenceType.body, color = CadenceColors.Fg3)
+                Text(text = "FTP", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(text = "Sets your power zones", style = CadenceType.small, color = CadenceColors.Fg3)
             }
 
             Spacer(modifier = Modifier.width(16.dp))
@@ -853,7 +825,11 @@ private fun FtpRow() {
                         else TextFieldValue(cleaned, TextRange(cleaned.length))
                     persistIfValid(cleaned)
                 },
-                textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
+                textStyle = CadenceType.bodyStrong.copy(
+                    fontSize = 18.sp,
+                    color = CadenceColors.Fg1,
+                    textAlign = TextAlign.End
+                ),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
                     imeAction = ImeAction.Done
@@ -863,7 +839,7 @@ private fun FtpRow() {
                 ),
                 singleLine = true,
                 modifier = Modifier
-                    .width(110.dp)
+                    .width(112.dp)
                     .onFocusChanged { state ->
                         focused = state.isFocused
                         if (!state.isFocused) commit()
@@ -873,15 +849,29 @@ private fun FtpRow() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.End,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(Radii.sm))
+                            .clip(RoundedCornerShape(Radii.md))
                             .background(CadenceColors.Bg2)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .then(
+                                if (focused) Modifier.border(
+                                    2.dp,
+                                    CadenceColors.Fg1,
+                                    RoundedCornerShape(Radii.md)
+                                ) else Modifier
+                            )
+                            .padding(horizontal = Spacing.s4, vertical = 10.dp)
                     ) {
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                             innerTextField()
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("W", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                        Text(
+                            "W",
+                            style = CadenceType.body.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = CadenceColors.Fg3
+                        )
                     }
                 }
             )
@@ -946,7 +936,7 @@ private fun MaxHrRow() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp)
+            .padding(horizontal = Spacing.s5, vertical = 14.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -954,11 +944,11 @@ private fun MaxHrRow() {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = "Maximum heart rate", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = "Max heart rate", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Used to colour the live HR readout by zone",
-                    style = CadenceType.body,
+                    text = "Colours the live HR by zone",
+                    style = CadenceType.small,
                     color = CadenceColors.Fg3
                 )
             }
@@ -974,8 +964,12 @@ private fun MaxHrRow() {
                         else TextFieldValue(cleaned, TextRange(cleaned.length))
                     persistIfValid(cleaned)
                 },
-                textStyle = CadenceType.h2.copy(color = CadenceColors.Danger, textAlign = TextAlign.End),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Danger),
+                textStyle = CadenceType.bodyStrong.copy(
+                    fontSize = 18.sp,
+                    color = CadenceColors.Fg1,
+                    textAlign = TextAlign.End
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Fg1),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Done
@@ -983,7 +977,7 @@ private fun MaxHrRow() {
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { commit() }),
                 singleLine = true,
                 modifier = Modifier
-                    .width(110.dp)
+                    .width(112.dp)
                     .onFocusChanged { state ->
                         focused = state.isFocused
                         if (!state.isFocused) commit()
@@ -993,15 +987,29 @@ private fun MaxHrRow() {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.End,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(Radii.sm))
+                            .clip(RoundedCornerShape(Radii.md))
                             .background(CadenceColors.Bg2)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .then(
+                                if (focused) Modifier.border(
+                                    2.dp,
+                                    CadenceColors.Fg1,
+                                    RoundedCornerShape(Radii.md)
+                                ) else Modifier
+                            )
+                            .padding(horizontal = Spacing.s4, vertical = 10.dp)
                     ) {
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                             innerTextField()
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("BPM", style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
+                        Text(
+                            "bpm",
+                            style = CadenceType.body.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = CadenceColors.Fg3
+                        )
                     }
                 }
             )
@@ -1013,15 +1021,7 @@ private fun MaxHrRow() {
 
 @Composable
 private fun AboutCard() {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s2)
-    ) {
+    SlateCard(padding = PaddingValues(Spacing.s5)) {
         AboutRow(
             label = "App version",
             value = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"
@@ -1040,7 +1040,7 @@ private fun AboutCard() {
 @Composable
 private fun AboutRow(label: String, value: String) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(text = label, style = CadenceType.body, color = CadenceColors.Fg2)
@@ -1064,13 +1064,12 @@ private fun ReportProblemCard() {
     // confirmation dialog, right before anything happens - which is where a
     // rider actually reads it. A three-paragraph card plus a full-width
     // button was Settings' single biggest block of text.
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable { showDialog = true }
             .padding(horizontal = 14.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1080,13 +1079,13 @@ private fun ReportProblemCard() {
             modifier = Modifier
                 .size(36.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+                .background(CadenceColors.Bg2),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Outlined.BugReport,
                 contentDescription = null,
-                tint = CadenceColors.Brand500,
+                tint = CadenceColors.Fg1,
                 modifier = Modifier.size(18.dp)
             )
         }
@@ -1140,7 +1139,7 @@ internal fun IntervalsIcuCard() {
 
     ExpandableCard(
         icon = Icons.Outlined.CloudUpload,
-        iconTint = CadenceColors.Brand500,
+        iconTint = CadenceColors.Fg1,
         title = "Intervals.icu",
         statusText = when {
             configured && autoUpload -> "Configured · auto-upload on"
@@ -1160,7 +1159,7 @@ internal fun IntervalsIcuCard() {
         )
 
         IntervalsTextField(
-            label = "ATHLETE ID",
+            label = "Athlete ID",
             placeholder = "i12345",
             value = athleteId.orEmpty(),
             onValueChange = { settings.setIntervalsAthleteId(it) },
@@ -1214,7 +1213,7 @@ internal fun IntervalsIcuCard() {
                 onCheckedChange = { settings.setIntervalsAutoUpload(it) },
                 colors = SwitchDefaults.colors(
                     checkedThumbColor = CadenceColors.OnBrand,
-                    checkedTrackColor = CadenceColors.Brand500,
+                    checkedTrackColor = CadenceColors.Fg1,
                     uncheckedThumbColor = CadenceColors.Fg3,
                     uncheckedTrackColor = CadenceColors.Bg2,
                     uncheckedBorderColor = CadenceColors.Line2,
@@ -1241,7 +1240,6 @@ internal fun IntervalsTextField(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Radii.sm))
                 .background(CadenceColors.Bg2)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.sm))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -1250,7 +1248,7 @@ internal fun IntervalsTextField(
                 onValueChange = onValueChange,
                 singleLine = true,
                 textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Brand500),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Fg1),
                 visualTransformation = visualTransformation,
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = keyboardType,
@@ -1332,7 +1330,7 @@ private fun BackupSyncCard() {
         !configured -> "Not configured · optional" to CadenceColors.Fg3
         paused || statusNow is SyncStatus.NeedsReview ->
             "Paused · needs review" to CadenceColors.Warning
-        statusNow is SyncStatus.Syncing -> "Syncing…" to CadenceColors.Brand500
+        statusNow is SyncStatus.Syncing -> "Syncing…" to CadenceColors.Fg1
         statusNow is SyncStatus.Failed -> "Couldn't sync" to CadenceColors.Danger
         statusNow is SyncStatus.Success ->
             "Synced ${formatRelativeTime(statusNow.syncedAtEpoch)}" to CadenceColors.Success
@@ -1341,7 +1339,7 @@ private fun BackupSyncCard() {
 
     ExpandableCard(
         icon = Icons.Outlined.Folder,
-        iconTint = CadenceColors.Brand500,
+        iconTint = CadenceColors.Fg1,
         title = "Backup & sync",
         statusText = headerStatus,
         statusColor = headerColor,
@@ -1410,7 +1408,7 @@ private fun BackupSyncCard() {
                 Text(
                     text = "Restore from backup",
                     style = CadenceType.bodyStrong,
-                    color = CadenceColors.Brand500,
+                    color = CadenceColors.Fg1,
                     modifier = Modifier
                         .clickable(enabled = status !is SyncStatus.Syncing) {
                             scope.launch { engine.resolveRestoreFromBackup() }
@@ -1474,7 +1472,6 @@ private fun SyncReviewBlock(
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Warning.copy(alpha = 0.10f))
-            .border(1.dp, CadenceColors.Warning.copy(alpha = 0.5f), shape)
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
@@ -1540,7 +1537,7 @@ private fun FolderRow(uri: String, onChange: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "FOLDER", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Text(text = "Folder", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
             Text(
                 text = folderName,
                 style = CadenceType.bodyStrong,
@@ -1552,7 +1549,7 @@ private fun FolderRow(uri: String, onChange: () -> Unit) {
         Text(
             text = "Change",
             style = CadenceType.bodyStrong,
-            color = CadenceColors.Brand500,
+            color = CadenceColors.Fg1,
             modifier = Modifier
                 .clickable(onClick = onChange)
                 .padding(start = Spacing.s3, top = 6.dp, bottom = 6.dp)
@@ -1575,13 +1572,12 @@ private fun DeviceLabelField(value: String, onValueChange: (String) -> Unit) {
     DisposableEffect(Unit) { onDispose { commitOnExit() } }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(text = "DEVICE NAME", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = "Device name", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Radii.sm))
                 .background(CadenceColors.Bg2)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.sm))
                 .padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -1595,7 +1591,7 @@ private fun DeviceLabelField(value: String, onValueChange: (String) -> Unit) {
                 },
                 singleLine = true,
                 textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Brand500),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(CadenceColors.Fg1),
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
                     keyboardType = KeyboardType.Text,
                     imeAction = ImeAction.Done
@@ -1626,7 +1622,7 @@ private fun DeviceLabelField(value: String, onValueChange: (String) -> Unit) {
 private fun SyncStatusLine(status: SyncStatus) {
     val (text, color) = when (status) {
         SyncStatus.Idle -> "Not synced yet · tap Sync now" to CadenceColors.Fg3
-        SyncStatus.Syncing -> "Syncing…" to CadenceColors.Brand500
+        SyncStatus.Syncing -> "Syncing…" to CadenceColors.Fg1
         is SyncStatus.Success -> {
             val ago = formatRelativeTime(status.syncedAtEpoch)
             val devices = "${status.devicesSeen} device" + if (status.devicesSeen == 1) "" else "s"

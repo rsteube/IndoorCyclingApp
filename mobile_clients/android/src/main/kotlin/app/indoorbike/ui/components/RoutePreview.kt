@@ -56,7 +56,7 @@ private const val PROFILE_MIN_SPAN_METERS = 30.0
 fun RouteProfileSpark(
     profile: List<Double>,
     modifier: Modifier = Modifier,
-    color: Color = CadenceColors.Brand500,
+    color: Color = CadenceColors.Fg1,
 ) {
     if (profile.size < 2) return
     Canvas(modifier) {
@@ -150,7 +150,7 @@ fun RouteShapeThumb(
         // Mark the start so a loop is not a shape with no way in.
         val first = points.first()
         drawCircle(
-            color = CadenceColors.Brand500,
+            color = CadenceColors.Fg1,
             radius = 3f,
             center = Offset(
                 offsetX + ((first.second - minLon) * squeeze * scale).toFloat(),

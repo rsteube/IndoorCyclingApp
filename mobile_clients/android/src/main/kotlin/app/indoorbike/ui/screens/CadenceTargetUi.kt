@@ -30,6 +30,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -38,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import app.indoorbike.shared.workout.CadenceCue
 import app.indoorbike.shared.workout.CadenceTarget
 import app.indoorbike.ui.theme.CadenceColors
+import app.indoorbike.ui.theme.CadenceType
 
 /**
  * How the rider is doing against the cadence target, as a colour.
@@ -60,10 +64,10 @@ fun cadenceCueColor(cue: CadenceCue?): Color = when (cue) {
  * which a bare pair of numbers is not.
  */
 fun cadenceCueLabel(target: CadenceTarget, cue: CadenceCue?): String = when (cue) {
-    CadenceCue.Below -> "▲ ${target.label}"
-    CadenceCue.Above -> "▼ ${target.label}"
-    CadenceCue.OnTarget -> "✓ ${target.label}"
-    null -> target.label
+    CadenceCue.Below -> "▲ Target ${target.label}"
+    CadenceCue.Above -> "▼ Target ${target.label}"
+    CadenceCue.OnTarget -> "✓ Target ${target.label}"
+    null -> "Target ${target.label}"
 }
 
 /** Spoken description of the same thing, for riders using TalkBack. */
@@ -85,10 +89,11 @@ fun cadenceCueContentDescription(target: CadenceTarget, cue: CadenceCue?): Strin
  * A thin track showing where the rider's cadence sits relative to the segment's
  * target band.
  *
- * The number above already says what the cadence *is* and the arrow says which
- * way to move; this adds the third thing a rider wants mid-interval, which is
- * *how far off* they are. Being 2 rpm under and 30 rpm under call for different
- * responses, and no amount of colour conveys that on its own.
+ * The number above already says what the cadence *is*; this adds the thing a
+ * rider wants mid-interval, which is *how far off* they are. Being 2 rpm under
+ * and 30 rpm under call for different responses, and no amount of colour
+ * conveys that on its own - which is just as well, because on this screen
+ * colour is spoken for by the power zone.
  *
  * Sized and shaped after [WattsPerKgBar] in the power hero so the two read as
  * the same instrument.
@@ -99,7 +104,7 @@ fun CadenceTargetBar(
     currentRpm: Int,
     cue: CadenceCue?,
     modifier: Modifier = Modifier,
-    height: Dp = 6.dp,
+    height: Dp = 4.dp,
 ) {
     // Animate along the track rather than snapping: cadence is sampled about
     // once a second, and an unsmoothed marker reads as broken rather than live.
@@ -110,32 +115,33 @@ fun CadenceTargetBar(
     )
     val bandStart = target.barPositionOf(target.lowBoundRpm)
     val bandEnd = target.barPositionOf(target.highBoundRpm)
-    val cueColor = cadenceCueColor(cue)
 
+    // The marker stands proud of the track, so the row is as tall as the marker
+    // and the track sits centred inside it.
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
-            .height(height)
-            .clip(RoundedCornerShape(height / 2))
-            .background(CadenceColors.Bg2.copy(alpha = 0.6f))
+            .height(MARKER_HEIGHT),
+        contentAlignment = Alignment.Center
     ) {
         val trackWidth = maxWidth
 
-        // The target band. Tinted green whenever the rider is in it, so the
-        // "you're there" signal lands even in peripheral vision.
         Box(
             modifier = Modifier
-                .offset(x = trackWidth * bandStart)
-                .width(trackWidth * (bandEnd - bandStart))
-                .fillMaxHeight()
-                .background(
-                    if (cue == CadenceCue.OnTarget) {
-                        CadenceColors.Success.copy(alpha = 0.55f)
-                    } else {
-                        CadenceColors.Success.copy(alpha = 0.22f)
-                    }
-                )
-        )
+                .fillMaxWidth()
+                .height(height)
+                .clip(RoundedCornerShape(height / 2))
+                .background(CadenceColors.Bg2)
+        ) {
+            // The band the rider is aiming for.
+            Box(
+                modifier = Modifier
+                    .offset(x = trackWidth * bandStart)
+                    .width(trackWidth * (bandEnd - bandStart))
+                    .fillMaxHeight()
+                    .background(CadenceColors.Fg3)
+            )
+        }
 
         // The rider. Hidden when there's no reading to place - a marker parked
         // at zero would read as "you have stopped", which isn't what a silent
@@ -143,17 +149,22 @@ fun CadenceTargetBar(
         if (cue != null) {
             Box(
                 modifier = Modifier
-                    .offset(x = (trackWidth * position - MARKER_WIDTH / 2).coerceIn(0.dp, trackWidth - MARKER_WIDTH))
+                    .align(Alignment.CenterStart)
+                    .offset(
+                        x = (trackWidth * position - MARKER_WIDTH / 2)
+                            .coerceIn(0.dp, trackWidth - MARKER_WIDTH)
+                    )
                     .width(MARKER_WIDTH)
-                    .fillMaxHeight()
+                    .height(MARKER_HEIGHT)
                     .clip(RoundedCornerShape(MARKER_WIDTH / 2))
-                    .background(cueColor)
+                    .background(CadenceColors.Fg1)
             )
         }
     }
 }
 
-private val MARKER_WIDTH = 4.dp
+private val MARKER_WIDTH = 3.dp
+private val MARKER_HEIGHT = 10.dp
 
 /**
  * The cadence readout with its target, as shown on the ride screen.
@@ -171,26 +182,34 @@ fun CadenceFlankMetric(
 ) {
     val cue = target?.cueFor(rpm)
     FlankMetric(
-        label = "CADENCE",
+        label = "Cadence",
         value = rpm.toString(),
-        unit = "RPM",
-        // Only let the target drive the colour. Without a target there's
-        // nothing to be right or wrong about, so the number stays neutral.
-        valueColor = if (target == null) CadenceColors.Fg1 else cadenceCueColor(cue),
-        sublabel = target?.let { cadenceCueLabel(it, cue) },
-        sublabelColor = target?.let { cadenceCueColor(cue) },
+        unit = "rpm",
+        // The zone owns colour on this screen, and it is already spending it on
+        // the power number. The cue survives as the arrow in the footer and as
+        // the marker's distance from the band, which is the more useful half of
+        // it anyway.
+        valueColor = CadenceColors.Fg1,
         contentDescription = target?.let { cadenceCueContentDescription(it, cue) },
         cardWidth = cardWidth,
         valueFontSize = valueFontSize,
         modifier = modifier,
         footer = target?.let {
             {
-                CadenceTargetBar(
-                    target = it,
-                    currentRpm = rpm,
-                    cue = cue,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CadenceTargetBar(
+                        target = it,
+                        currentRpm = rpm,
+                        cue = cue,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
+                    Text(
+                        text = cadenceCueLabel(it, cue),
+                        style = CadenceType.micro,
+                        color = CadenceColors.Fg3,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                }
             }
         },
     )

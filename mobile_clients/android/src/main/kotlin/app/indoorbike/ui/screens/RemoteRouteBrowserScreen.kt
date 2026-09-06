@@ -17,7 +17,6 @@ package app.indoorbike.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +51,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -65,6 +65,8 @@ import app.indoorbike.shared.repo.RouteEntry
 import app.indoorbike.shared.route.RouteEstimate
 import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.RouteProfileSpark
@@ -130,10 +132,17 @@ fun RemoteRouteBrowserScreen(
         installed.mapTo(mutableSetOf()) { it.id } + justAdded
     }
 
-    Column(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    val header = rememberCollapsingHeaderState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         AppBar(
+            header = header,
             title = (fetchState as? RouteFetchState.Loaded)?.manifest?.name ?: "Routes",
-            eyebrow = "COMMUNITY",
+            eyebrow = "Community",
             leading = {
                 IconBtn(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onClick = onBack)
             },
@@ -141,7 +150,7 @@ fun RemoteRouteBrowserScreen(
 
         when (val state = fetchState) {
             is RouteFetchState.Loading -> CentredMessage {
-                CircularProgressIndicator(color = CadenceColors.Brand500)
+                CircularProgressIndicator(color = CadenceColors.Fg1)
             }
 
             is RouteFetchState.Failed -> CentredMessage {
@@ -189,7 +198,12 @@ fun RemoteRouteBrowserScreen(
                 }
 
                 LazyColumn(
-                    contentPadding = PaddingValues(Spacing.s4),
+                    contentPadding = PaddingValues(
+                        start = Spacing.s4,
+                        end = Spacing.s4,
+                        top = Spacing.s4,
+                        bottom = listBottomPadding(Spacing.s4)
+                    ),
                     verticalArrangement = Arrangement.spacedBy(Spacing.s3),
                 ) {
                     items(visible, key = { it.id }) { entry ->
@@ -246,7 +260,6 @@ private fun RouteEntryCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
             .padding(Spacing.s4),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -272,7 +285,7 @@ private fun RouteEntryCard(
             Spacer(Modifier.width(Spacing.s2))
             when {
                 adding -> CircularProgressIndicator(
-                    color = CadenceColors.Brand500,
+                    color = CadenceColors.Fg1,
                     modifier = Modifier.size(20.dp),
                     strokeWidth = 2.dp,
                 )
@@ -297,11 +310,11 @@ private fun RouteEntryCard(
 
         Spacer(Modifier.height(Spacing.s3))
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s5)) {
-            RouteStat("DISTANCE", formatKm(entry.distanceMeters))
-            RouteStat("CLIMBING", "${entry.ascentMeters.roundToInt()} m")
+            RouteStat("Distance", formatKm(entry.distanceMeters))
+            RouteStat("Climbing", "${entry.ascentMeters.roundToInt()} m")
             // No weight or FTP in Settings means no honest answer, and the
             // stat is dropped rather than filled with a guessed rider.
-            RouteStat("TIME", estimateSeconds?.let { formatDurationPretty(it.toInt()) } ?: "--")
+            RouteStat("Time", estimateSeconds?.let { formatDurationPretty(it.toInt()) } ?: "--")
         }
 
         entry.description?.takeIf { it.isNotBlank() }?.let {

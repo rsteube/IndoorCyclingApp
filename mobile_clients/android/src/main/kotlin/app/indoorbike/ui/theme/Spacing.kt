@@ -30,11 +30,16 @@ object Spacing {
     val s10 = 72.dp
 }
 
+/**
+ * Slate has three radii and a pill. Cards and sheets are 20 dp, inputs and
+ * small tiles 12 dp, streak boxes 6 dp; everything a finger presses is a pill
+ * or a circle.
+ */
 object Radii {
     val xs = 4.dp
-    val sm = 8.dp
+    val sm = 6.dp
     val md = 12.dp
-    val lg = 16.dp
-    val xl = 24.dp
+    val lg = 20.dp
+    val xl = 28.dp
     val pill = 999.dp
 }

@@ -111,7 +111,7 @@ class WorkoutLibrary(
         val imports = withIO { importer.loadUserWorkouts() }
         // Hydrate per-import provenance from the sidecar meta files. Absent
         // sidecar = plain file-import; the resulting Imported() with null repo
-        // fields renders as "IMPORTED" attribution.
+        // fields renders as an "Imported" attribution.
         val importedEntries = withIO {
             imports.map { workout ->
                 val meta = importer.loadImportMeta(workout.id)

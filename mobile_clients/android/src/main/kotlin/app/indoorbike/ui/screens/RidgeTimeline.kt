@@ -22,11 +22,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.indoorbike.shared.Workout
@@ -34,11 +34,14 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.zones.PowerZone
 
 /**
- * Replaces the old block-rectangle ActiveWorkoutGraph with a continuous
- * elevation-profile ridge: the workout drawn as terrain seen from above. Each
- * segment gets a zone-tinted vertical gradient fill; a bright crest line
- * traces the top; a brand-colored vertical cursor + dot marks current position
- * along the ridge.
+ * The workout as a row of bars, one per step, height by power and colour by
+ * zone. Steps already ridden and the one being ridden are at full strength;
+ * what is still ahead sits at 45 %, so the rider reads how far in they are from
+ * the colour alone. A 2 dp Fg1 cursor marks the exact position.
+ *
+ * It used to be a continuous gradient-filled ridge with a crest line, which
+ * looked like terrain but made the step boundaries - the thing a rider is
+ * actually counting down to - the hardest edges on it to find.
  */
 @Composable
 fun RidgeTimeline(
@@ -46,111 +49,66 @@ fun RidgeTimeline(
     currentSegIdx: Int,
     elapsedInSeg: Int,
     modifier: Modifier = Modifier,
-    height: Dp = 72.dp,
+    height: Dp = 56.dp,
 ) {
     Box(modifier = modifier.fillMaxWidth().height(height)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
             val segments = workout.segments
+            if (segments.isEmpty()) return@Canvas
             val totalSeconds = segments.sumOf { it.lengthInSeconds }.coerceAtLeast(1)
             val maxPct = (segments.maxOfOrNull { it.powerPercentFTP } ?: 100).coerceAtLeast(60)
+            val gap = 2.dp.toPx()
+            val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
 
-            // Pre-compute per-segment x range and y at peak.
-            data class Seg(val x0: Float, val x1: Float, val y: Float, val color: Color)
-            val segs = mutableListOf<Seg>()
             var cumSec = 0
-            for (seg in segments) {
+            segments.forEachIndexed { i, seg ->
                 val x0 = (cumSec.toFloat() / totalSeconds) * w
                 cumSec += seg.lengthInSeconds
                 val x1 = (cumSec.toFloat() / totalSeconds) * w
+                val barWidth = (x1 - x0 - gap).coerceAtLeast(1f)
                 val ratio = (seg.powerPercentFTP.toFloat() / maxPct).coerceIn(0.18f, 1f)
-                val y = h - ratio * (h - 6f) // leave 6px headroom for cursor visibility
-                segs += Seg(x0, x1, y, PowerZone.fromFtpPercent(seg.powerPercentFTP).color)
-            }
-
-            // Per-segment fills with vertical gradient.
-            segs.forEachIndexed { i, seg ->
-                val isPast = i < currentSegIdx
-                val isCurrent = i == currentSegIdx
-                val fillAlpha = when {
-                    isCurrent -> 0.85f
-                    isPast -> 0.45f
-                    else -> 0.22f
-                }
-                val crestAlpha = when {
-                    isCurrent -> 1f
-                    isPast -> 0.7f
-                    else -> 0.45f
-                }
-                val path = Path().apply {
-                    moveTo(seg.x0, h)
-                    lineTo(seg.x0, seg.y)
-                    lineTo(seg.x1, seg.y)
-                    lineTo(seg.x1, h)
-                    close()
-                }
+                val barHeight = ratio * h
+                // Upcoming steps are the same colour, half-lit. Anything the
+                // rider has already done, including the step under way, is full
+                // strength.
+                val alpha = if (i <= currentSegIdx) 1f else 0.45f
+                // Rounded on top only: the bars stand on the baseline, and a
+                // rounded foot would lift them off it.
                 drawPath(
-                    path = path,
-                    brush = Brush.verticalGradient(
-                        colors = listOf(
-                            seg.color.copy(alpha = fillAlpha),
-                            seg.color.copy(alpha = fillAlpha * 0.15f)
-                        ),
-                        startY = seg.y,
-                        endY = h
-                    )
+                    path = topRoundedBar(x0, h - barHeight, barWidth, barHeight, radius.x),
+                    color = PowerZone.fromFtpPercent(seg.powerPercentFTP).color.copy(alpha = alpha)
                 )
-                // Crest line on top
-                drawLine(
-                    color = seg.color.copy(alpha = crestAlpha),
-                    start = Offset(seg.x0, seg.y),
-                    end = Offset(seg.x1, seg.y),
-                    strokeWidth = 1.8f
-                )
-                // Vertical step risers between adjacent segments — thin so the ridge feels connected.
-                if (i > 0) {
-                    val prev = segs[i - 1]
-                    drawLine(
-                        color = seg.color.copy(alpha = crestAlpha * 0.55f),
-                        start = Offset(seg.x0, prev.y),
-                        end = Offset(seg.x0, seg.y),
-                        strokeWidth = 1.2f
-                    )
-                }
             }
 
-            // Baseline hairline.
-            drawLine(
-                color = CadenceColors.Line2,
-                start = Offset(0f, h - 0.5f),
-                end = Offset(w, h - 0.5f),
-                strokeWidth = 1f
+            val elapsedTotal =
+                segments.take(currentSegIdx).sumOf { it.lengthInSeconds } + elapsedInSeg
+            val progress = (elapsedTotal.toFloat() / totalSeconds).coerceIn(0f, 1f)
+            val cursorWidth = 2.dp.toPx()
+            drawRoundRect(
+                color = CadenceColors.Fg1,
+                topLeft = Offset(
+                    (progress * w).coerceIn(0f, w - cursorWidth),
+                    -4.dp.toPx()
+                ),
+                size = Size(cursorWidth, h + 4.dp.toPx()),
+                cornerRadius = CornerRadius(cursorWidth / 2, cursorWidth / 2)
             )
-
-            // Progress cursor — a thin brand line plus a dot anchored to the ridge.
-            if (segs.isNotEmpty()) {
-                val elapsedTotal = workout.segments.take(currentSegIdx).sumOf { it.lengthInSeconds } + elapsedInSeg
-                val progress = (elapsedTotal.toFloat() / totalSeconds).coerceIn(0f, 1f)
-                val x = progress * w
-                drawLine(
-                    color = CadenceColors.Brand500,
-                    start = Offset(x, 0f),
-                    end = Offset(x, h),
-                    strokeWidth = 2f
-                )
-                val cursorY = segs.getOrNull(currentSegIdx)?.y ?: (h - 6f)
-                drawCircle(
-                    color = CadenceColors.Brand500,
-                    radius = 4.5f,
-                    center = Offset(x, cursorY)
-                )
-                drawCircle(
-                    color = CadenceColors.Bg0,
-                    radius = 2.2f,
-                    center = Offset(x, cursorY)
-                )
-            }
         }
+    }
+}
+
+/** A bar with its two top corners rounded and its foot square. */
+private fun topRoundedBar(x: Float, y: Float, width: Float, height: Float, radius: Float): Path {
+    val r = radius.coerceAtMost(minOf(width, height) / 2f)
+    return Path().apply {
+        moveTo(x, y + height)
+        lineTo(x, y + r)
+        arcTo(Rect(x, y, x + 2 * r, y + 2 * r), 180f, 90f, false)
+        lineTo(x + width - r, y)
+        arcTo(Rect(x + width - 2 * r, y, x + width, y + 2 * r), 270f, 90f, false)
+        lineTo(x + width, y + height)
+        close()
     }
 }

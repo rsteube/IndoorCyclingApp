@@ -16,7 +16,6 @@
 package app.indoorbike.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -35,7 +35,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -61,19 +61,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.CardDivider
+import app.indoorbike.ui.components.DestructiveBtn
 import app.indoorbike.ui.components.IconBtn
+import app.indoorbike.ui.components.ListCard
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
+import app.indoorbike.ui.components.SectionLabel
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SlateCard
+import app.indoorbike.ui.components.Stat
 import app.indoorbike.ui.components.ZoneBadge
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -141,11 +150,17 @@ fun WorkoutDetailScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
 
+    val header = rememberCollapsingHeaderState()
     Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         AppBar(
+            header = header,
             title = workout.name,
-            eyebrow = summary.tag,
+            eyebrow = "${summary.tag} · ${formatDurationPretty(summary.totalSeconds)}",
             leading = {
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
             },
@@ -158,10 +173,10 @@ fun WorkoutDetailScreen(
                         IconBtn(
                             icon = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
                             contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
-                            // Brand-tinted gold so the filled star reads as a clear
-                            // "starred" affordance without colliding with the
-                            // ember red the HRM heart uses elsewhere.
-                            tint = if (isFavourite) CadenceColors.Brand500 else CadenceColors.Fg2,
+                            // Full-strength white when starred, secondary when
+                            // not. With no accent left, the filled glyph and the
+                            // step up in contrast carry the state on their own.
+                            tint = if (isFavourite) CadenceColors.Fg1 else CadenceColors.Fg2,
                             onClick = {
                                 container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
                             }
@@ -201,39 +216,43 @@ fun WorkoutDetailScreen(
 
         LazyColumn(
             modifier = Modifier.weight(1f),
-            contentPadding = PaddingValues(horizontal = Spacing.s5),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s5)
+            contentPadding = PaddingValues(
+                start = Spacing.s5, end = Spacing.s5,
+                top = Spacing.s5, bottom = Spacing.s4
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s3)
         ) {
             item { ZoneProfileCard(summary) }
-            item { StatsGrid(summary) }
             item {
-                Text(
-                    text = "STEPS · $totalSteps",
-                    style = CadenceType.eyebrow,
-                    color = CadenceColors.Fg3
+                SectionLabel(
+                    text = "Steps · $totalSteps",
+                    modifier = Modifier.padding(top = Spacing.s3)
                 )
             }
-            itemsIndexed(visibleSteps) { _, segment ->
-                StepRow(segment, ftp)
-            }
-            if (!stepsExpanded && totalSteps > stepCutoff) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { stepsExpanded = true }
-                            .padding(vertical = Spacing.s2),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "+ ${totalSteps - stepCutoff} more · tap to expand",
-                            style = CadenceType.small,
-                            color = CadenceColors.Fg3
-                        )
+            item {
+                ListCard {
+                    visibleSteps.forEachIndexed { index, segment ->
+                        StepRow(segment, ftp)
+                        if (index != visibleSteps.lastIndex) CardDivider()
+                    }
+                    if (!stepsExpanded && totalSteps > stepCutoff) {
+                        CardDivider()
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { stepsExpanded = true }
+                                .padding(vertical = Spacing.s3),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+ ${totalSteps - stepCutoff} more · tap to expand",
+                                style = CadenceType.small,
+                                color = CadenceColors.Fg3
+                            )
+                        }
                     }
                 }
             }
-            item { Spacer(Modifier.height(Spacing.s4)) }
         }
 
         when (mode) {
@@ -282,8 +301,9 @@ private fun RenameWorkoutDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f))
-            .clickable(onClick = onCancel),
+            .background(SheetScrim)
+            .clickable(onClick = onCancel)
+            .imePadding(),
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -291,12 +311,11 @@ private fun RenameWorkoutDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
                 .clickable(enabled = false, onClick = {})
-                .padding(Spacing.s5),
+                .padding(Spacing.s6),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
-            Text("Rename workout", style = CadenceType.h3, color = CadenceColors.Fg1)
+            Text("Rename workout", style = CadenceType.h2, color = CadenceColors.Fg1)
             BasicTextField(
                 value = input,
                 onValueChange = { input = it },
@@ -311,28 +330,19 @@ private fun RenameWorkoutDialog(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Radii.md))
                     .background(CadenceColors.Bg2)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-                    .padding(horizontal = 14.dp, vertical = 14.dp)
+                    .padding(horizontal = 18.dp, vertical = 14.dp)
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
                 SecondaryBtn(text = "Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
                 val trimmed = input.trim()
                 val canSave = trimmed.isNotEmpty() && trimmed != currentName
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (canSave) CadenceColors.Brand500 else CadenceColors.Bg2)
-                        .clickable(enabled = canSave, onClick = { onConfirm(trimmed) })
-                        .padding(horizontal = 20.dp, vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "Save",
-                        style = CadenceType.bodyStrong,
-                        color = if (canSave) CadenceColors.OnBrand else CadenceColors.Fg3
-                    )
-                }
+                PrimaryBtn(
+                    text = "Save",
+                    onClick = { onConfirm(trimmed) },
+                    leadingIcon = null,
+                    enabled = canSave,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
@@ -347,7 +357,7 @@ private fun DeleteWorkoutDialog(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f))
+            .background(SheetScrim)
             .clickable(onClick = onCancel),
         contentAlignment = Alignment.Center
     ) {
@@ -356,12 +366,11 @@ private fun DeleteWorkoutDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
                 .clickable(enabled = false, onClick = {})
-                .padding(Spacing.s5),
+                .padding(Spacing.s6),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
-            Text("Delete \"$workoutName\"?", style = CadenceType.h3, color = CadenceColors.Fg1)
+            Text("Delete \"$workoutName\"?", style = CadenceType.h2, color = CadenceColors.Fg1)
             Text(
                 "The workout file will be removed from your device. Past rides of this workout stay in your history.",
                 style = CadenceType.body,
@@ -369,63 +378,49 @@ private fun DeleteWorkoutDialog(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
                 SecondaryBtn(text = "Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(CadenceColors.Danger)
-                        .clickable(onClick = onConfirm)
-                        .padding(horizontal = 20.dp, vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Delete", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                }
+                DestructiveBtn(
+                    text = "Delete",
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
+/**
+ * The workout in one card: its shape, then the four numbers that describe it.
+ *
+ * The chart and the stats used to be two cards, which read as two subjects.
+ * They are one subject - what this session is - so they share a surface, and
+ * the numbers sit under the profile they are derived from.
+ */
 @Composable
 private fun ZoneProfileCard(summary: WorkoutSummary) {
-    val shape = RoundedCornerShape(14.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(18.dp)
-    ) {
+    SlateCard {
+        SteppedZoneChart(summary, chartHeight = 110)
+        Spacer(Modifier.height(Spacing.s5))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Bottom
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
         ) {
-            Column {
-                Text(text = "WORKOUT PROFILE", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = formatDurationPretty(summary.totalSeconds),
-                    style = CadenceType.h2.copy(fontSize = 22.sp),
-                    color = CadenceColors.Fg1
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(text = "NORMALIZED", style = CadenceType.tick, color = CadenceColors.Fg3)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = "${summary.normalizedPowerWatts} W",
-                    style = CadenceType.h2.copy(fontSize = 22.sp),
-                    color = CadenceColors.Brand500
-                )
-            }
-        }
-        Spacer(Modifier.height(14.dp))
-        SteppedZoneChart(summary, chartHeight = 110)
-        Spacer(Modifier.height(6.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(text = "0:00", style = CadenceType.tick.copy(fontSize = 10.sp), color = CadenceColors.Fg3)
-            Text(text = formatDurationPretty(summary.totalSeconds), style = CadenceType.tick.copy(fontSize = 10.sp), color = CadenceColors.Fg3)
+            Stat(
+                label = "NP",
+                value = summary.normalizedPowerWatts.toString(),
+                unit = "W",
+                modifier = Modifier.weight(1f)
+            )
+            Stat(label = "TSS", value = summary.tss.toString(), modifier = Modifier.weight(1f))
+            Stat(
+                label = "IF",
+                value = "%.2f".format(summary.intensityFactor),
+                modifier = Modifier.weight(1f)
+            )
+            Stat(
+                label = "kJ",
+                value = summary.kilojoules.toString(),
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -438,7 +433,7 @@ private fun SteppedZoneChart(summary: WorkoutSummary, chartHeight: Int) {
             .fillMaxWidth()
             .height(chartHeight.dp),
         verticalAlignment = Alignment.Bottom,
-        horizontalArrangement = Arrangement.spacedBy(1.dp)
+        horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         summary.workout.segments.forEach { seg ->
             val zone = ZonePalette.fromFtpPercent(seg.powerPercentFTP)
@@ -447,38 +442,9 @@ private fun SteppedZoneChart(summary: WorkoutSummary, chartHeight: Int) {
                 modifier = Modifier
                     .weight(seg.lengthInSeconds.toFloat().coerceAtLeast(1f))
                     .fillMaxHeight(heightFraction)
-                    .background(zone.color, RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                    .background(zone.color, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
             )
         }
-    }
-}
-
-@Composable
-private fun StatsGrid(summary: WorkoutSummary) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        StatCell(label = "TSS", value = summary.tss.toString(), modifier = Modifier.weight(1f))
-        StatCell(label = "IF", value = "%.2f".format(summary.intensityFactor), modifier = Modifier.weight(1f))
-        StatCell(label = "kJ", value = summary.kilojoules.toString(), modifier = Modifier.weight(1f))
-    }
-}
-
-@Composable
-private fun StatCell(label: String, value: String, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(horizontal = 14.dp, vertical = 12.dp)
-    ) {
-        Text(
-            text = label.uppercase(),
-            style = CadenceType.tick.copy(letterSpacing = 0.08.em),
-            color = CadenceColors.Fg3
-        )
-        Spacer(Modifier.height(2.dp))
-        Text(text = value, style = CadenceType.h2.copy(fontSize = 22.sp), color = CadenceColors.Fg1)
     }
 }
 
@@ -488,49 +454,47 @@ private fun StepRow(segment: PowerZone, ftp: Int) {
     val watts = (segment.powerPercentFTP / 100.0 * ftp).roundToInt()
     val mins = segment.lengthInSeconds / 60
     val secs = segment.lengthInSeconds % 60
-    val durLabel = when {
-        mins == 0 -> "${secs}s"
-        secs == 0 -> "${mins}m"
-        else -> "${mins}m ${secs}s"
-    }
-    val shape = RoundedCornerShape(10.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line1, shape)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = Spacing.s5, vertical = Spacing.s3),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
     ) {
-        Box(
-            modifier = Modifier
-                .width(4.dp)
-                .height(28.dp)
-                .background(zone.color, RoundedCornerShape(2.dp))
-        )
         ZoneBadge(zone = zone)
+        Text(
+            text = zone.label,
+            style = CadenceType.body.copy(fontWeight = FontWeight.SemiBold),
+            color = CadenceColors.Fg2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
         // Cadence is the segment's second ask, so it earns its own chip rather
         // than being appended to the power line — a rider scanning the list
         // before starting wants to spot which intervals have one.
         segment.cadenceTarget?.let { target ->
             Text(
                 text = "${target.label} rpm",
-                style = CadenceType.tick.copy(fontSize = 11.sp),
+                style = CadenceType.tick,
                 color = CadenceColors.Fg2,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(6.dp))
+                    .clip(RoundedCornerShape(Radii.sm))
                     .background(CadenceColors.Bg2)
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             )
         }
         Text(
-            text = "$durLabel · $watts W",
-            style = CadenceType.tick.copy(fontSize = 12.sp),
-            color = CadenceColors.Fg2,
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.End
+            text = "%d:%02d".format(mins, secs),
+            style = CadenceType.bodyStrong,
+            color = CadenceColors.Fg1
+        )
+        Text(
+            text = "$watts W",
+            style = CadenceType.small.copy(fontSize = 14.sp, fontWeight = FontWeight.SemiBold),
+            color = CadenceColors.Fg3,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(56.dp)
         )
     }
 }
@@ -551,17 +515,16 @@ private fun AddToLibraryCta(
         modifier = Modifier
             .fillMaxWidth()
             .background(CadenceColors.Bg0)
-            .border(1.dp, CadenceColors.Line1)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
+            .padding(start = Spacing.s5, end = Spacing.s5, top = Spacing.s3, bottom = Spacing.s6)
     ) {
         if (isAlreadyAdded) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(CadenceColors.Success.copy(alpha = 0.18f))
-                    .padding(vertical = 14.dp),
+                    .height(56.dp)
+                    .clip(CircleShape)
+                    .background(CadenceColors.Bg2),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
@@ -569,13 +532,13 @@ private fun AddToLibraryCta(
                     imageVector = Icons.Outlined.Check,
                     contentDescription = null,
                     tint = CadenceColors.Success,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(20.dp)
                 )
                 Spacer(Modifier.width(Spacing.s2))
                 Text(
                     text = "Added to your library",
-                    style = CadenceType.bodyStrong,
-                    color = CadenceColors.Success
+                    style = CadenceType.bodyStrong.copy(fontSize = 16.sp),
+                    color = CadenceColors.Fg1
                 )
             }
         } else {
@@ -583,8 +546,7 @@ private fun AddToLibraryCta(
                 text = "Add to my library",
                 leadingIcon = Icons.Outlined.CloudDownload,
                 onClick = onAdd,
-                modifier = Modifier.fillMaxWidth(),
-                glow = true
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }
@@ -600,16 +562,14 @@ private fun StartCta(
         modifier = Modifier
             .fillMaxWidth()
             .background(CadenceColors.Bg0)
-            .border(1.dp, CadenceColors.Line1)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
+            .padding(start = Spacing.s5, end = Spacing.s5, top = Spacing.s3, bottom = Spacing.s6)
     ) {
         if (isTrainerReady) {
             PrimaryBtn(
                 text = "Start workout",
                 onClick = onStart,
-                modifier = Modifier.fillMaxWidth(),
-                glow = true
+                modifier = Modifier.fillMaxWidth()
             )
         } else {
             Text(
@@ -617,17 +577,16 @@ private fun StartCta(
                     "Pair a smart trainer (or use the mock trainer) before starting a ride."
                 else
                     "Pair a smart trainer before starting a ride.",
-                style = CadenceType.small,
+                style = CadenceType.body.copy(fontSize = 14.sp),
                 color = CadenceColors.Fg3,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.s2)
+                modifier = Modifier.fillMaxWidth().padding(bottom = Spacing.s3)
             )
             PrimaryBtn(
                 text = "Pair a trainer to ride",
                 leadingIcon = Icons.AutoMirrored.Outlined.BluetoothSearching,
                 onClick = onPairTrainer,
-                modifier = Modifier.fillMaxWidth(),
-                glow = true
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

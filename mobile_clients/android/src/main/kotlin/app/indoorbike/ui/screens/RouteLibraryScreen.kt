@@ -16,7 +16,6 @@
 package app.indoorbike.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,6 +54,7 @@ import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.route.RouteTrack
 import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.RouteProfileSpark
 import app.indoorbike.ui.components.RouteShapeThumb
@@ -110,10 +111,17 @@ fun RouteLibraryScreen(
         routes.associate { it.id to RouteStats.entryFor(it, gpxUrl = "local") }
     }
 
-    Column(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    val header = rememberCollapsingHeaderState()
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         AppBar(
+            header = header,
             title = "Routes",
-            eyebrow = "SIMULATION",
+            eyebrow = "Simulation",
             leading = { IconBtn(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onClick = onBack) },
         )
 
@@ -182,7 +190,6 @@ private fun InstalledRouteCard(
             .fillMaxWidth()
             .clip(cardShape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, cardShape)
             .clickable(onClick = onClick)
             .padding(Spacing.s4),
     ) {
@@ -209,7 +216,7 @@ private fun InstalledRouteCard(
                     fontWeight = FontWeight.SemiBold,
                 )
             }
-            Text("›", style = CadenceType.h2, color = CadenceColors.Brand500)
+            Text("›", style = CadenceType.h2, color = CadenceColors.Fg1)
         }
 
         if (profile.size >= 2) {
@@ -219,10 +226,10 @@ private fun InstalledRouteCard(
 
         Spacer(Modifier.height(Spacing.s3))
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s5)) {
-            RouteLibraryStat("DISTANCE", formatKm(route.totalDistanceMeters))
-            RouteLibraryStat("CLIMBING", "${route.totalAscentMeters.roundToInt()} m")
+            RouteLibraryStat("Distance", formatKm(route.totalDistanceMeters))
+            RouteLibraryStat("Climbing", "${route.totalAscentMeters.roundToInt()} m")
             RouteLibraryStat(
-                "TIME",
+                "Time",
                 estimateSeconds?.let { formatDurationPretty(it.toInt()) } ?: "--",
             )
         }

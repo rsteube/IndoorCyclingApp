@@ -27,7 +27,6 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -122,8 +121,8 @@ fun QrScannerScreen(
 
     Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
         AppBar(
-            title = "Scan QR",
-            eyebrow = "IMPORT FROM WEB EDITOR",
+            title = "Scan a QR code",
+            eyebrow = "Import from web editor",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -266,7 +265,6 @@ private fun ScannerOverlay() {
             modifier = Modifier
                 .size(240.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .border(2.dp, CadenceColors.Brand500, RoundedCornerShape(20.dp))
         )
     }
 }

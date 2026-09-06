@@ -83,7 +83,7 @@ fun RouteMapView(
     /** Follow the rider, or frame the whole route. */
     followRider: Boolean,
     modifier: Modifier = Modifier,
-    accent: Color = CadenceColors.Brand500,
+    accent: Color = CadenceColors.Fg1,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current

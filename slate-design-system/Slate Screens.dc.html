@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&display=block">
+<style>
+body{margin:0;background:#232b38;color:#F2F4F7;font-family:Manrope,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#F2F4F7}a:hover{color:#C5CAD6}
+.ms{font-family:'Material Symbols Outlined';font-weight:400;font-style:normal;line-height:1;display:inline-block;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;font-feature-settings:'liga';font-variation-settings:'wght' 300}
+</style>
+</helmet>
+<div style="padding:40px;display:flex;flex-direction:column;gap:20px;width:2020px">
+<div style="font:600 13px Manrope;color:#9AA1B0">Indoor Bike · Slate · redesigned screens · <a href="Slate Components.dc.html">component sheet</a></div>
+<div style="display:flex;flex-wrap:wrap;gap:28px;align-items:flex-start">
+
+<!-- HOME -->
+<div data-screen-label="Home" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 24px 8px">
+    <div><div style="font:600 13px Manrope;color:#9AA1B0">Tuesday</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">What are you riding?</div></div>
+    <div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:20px">qr_code_scanner</span></div>
+  </div>
+  <div style="flex:1;overflow:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:12px">
+    <div style="display:flex;align-items:center;gap:16px;padding:20px;background:#3a435e;border-radius:20px"><div style="width:48px;height:48px;border-radius:50%;background:#455561;display:grid;place-items:center"><span class="ms" style="font-size:24px">directions_bike</span></div><div style="flex:1"><div style="font:700 18px/1.2 Manrope">Workout</div><div style="font:500 14px/1.4 Manrope;color:#C5CAD6;margin-top:3px">Intervals the trainer holds for you.</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+    <div style="display:flex;align-items:center;gap:16px;padding:20px;background:#3a435e;border-radius:20px"><div style="width:48px;height:48px;border-radius:50%;background:#455561;display:grid;place-items:center"><span class="ms" style="font-size:24px">terrain</span></div><div style="flex:1"><div style="font:700 18px/1.2 Manrope">Route</div><div style="font:500 14px/1.4 Manrope;color:#C5CAD6;margin-top:3px">A real road, with its hills under the wheel.</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+    <div style="display:flex;align-items:center;gap:16px;padding:20px;background:#3a435e;border-radius:20px"><div style="width:48px;height:48px;border-radius:50%;background:#455561;display:grid;place-items:center"><span class="ms" style="font-size:24px">speed</span></div><div style="flex:1"><div style="font:700 18px/1.2 Manrope">Just ride</div><div style="font:500 14px/1.4 Manrope;color:#C5CAD6;margin-top:3px">No plan. Set the resistance yourself.</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;padding:20px 4px 0">Before you start</div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">bluetooth</span><div style="flex:1"><div style="font:700 15px Manrope">KICKR CORE 1F2A</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Connected</div></div><div style="width:8px;height:8px;border-radius:50%;background:#1FB373"></div></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">monitor_heart</span><div style="flex:1"><div style="font:700 15px Manrope">Heart rate monitor</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Not paired</div></div><div style="width:8px;height:8px;border-radius:50%;background:#6c6f7f"></div></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">settings_remote</span><div style="flex:1"><div style="font:700 15px Manrope">Controller</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Not paired · use in-app ± buttons</div></div><div style="width:8px;height:8px;border-radius:50%;background:#6c6f7f"></div></div>
+    </div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;padding:20px 4px 0">Repositories</div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><div style="flex:1"><div style="font:700 15px Manrope">Indoor Bike starter pack</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">2 workouts you do not have</div></div><span style="padding:6px 12px;border-radius:999px;background:#F2F4F7;color:#313e50;font:700 12px Manrope">2 new</span></div>
+    </div>
+  </div>
+  <div style="margin:12px 16px 20px;background:#3a435e;border-radius:999px;padding:6px;display:flex">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#313e50;background:#F2F4F7;border-radius:999px"><span class="ms" style="font-size:22px;font-variation-settings:'wght' 500">directions_bike</span><span style="font:700 11px Manrope">Ride</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">schedule</span><span style="font:600 11px Manrope">History</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">trending_up</span><span style="font:600 11px Manrope">Progress</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">settings</span><span style="font:600 11px Manrope">Settings</span></div>
+  </div>
+</div>
+
+<!-- WORKOUT PICKER -->
+<div data-screen-label="Workouts" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="display:flex;align-items:center;padding:8px 16px 0"><div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">arrow_back</span></div></div>
+  <div style="padding:16px 24px 0"><div style="font:600 13px Manrope;color:#9AA1B0">Choose a ride</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">Workouts</div></div>
+  <div style="flex:1;overflow:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:10px">
+    <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:#3a435e;border-radius:999px"><span class="ms" style="font-size:20px;color:#9AA1B0">search</span><span style="font:500 15px Manrope;color:#9AA1B0">Search workouts</span></div>
+    <div style="display:flex;gap:6px;overflow:hidden;padding:4px 0 6px">
+      <span style="padding:10px 16px;border-radius:999px;background:#F2F4F7;color:#313e50;font:700 13px Manrope;white-space:nowrap">All</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope;white-space:nowrap">≤ 30 min</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope;white-space:nowrap">30-60</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope;white-space:nowrap">60+</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope;white-space:nowrap">Endurance</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope;white-space:nowrap">Tempo</span>
+    </div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <sc-for list="{{ workouts }}" as="w" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 12px 14px 20px">
+          <div style="flex:1;min-width:0"><div style="font:700 15px Manrope;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ w.name }}</div><div style="display:flex;gap:2px;height:6px;border-radius:3px;overflow:hidden;margin-top:8px">{{ w.bar }}</div></div>
+          <div style="text-align:right"><div style="font:700 13px Manrope;font-variant-numeric:tabular-nums">{{ w.dur }}</div><div style="font:500 12px Manrope;color:#9AA1B0;margin-top:2px;font-variant-numeric:tabular-nums">TSS {{ w.tss }}</div></div>
+          <div style="width:36px;height:36px;display:grid;place-items:center"><span class="ms" style="font-size:20px;color:#9AA1B0">star</span></div>
+        </div>
+        <div style="height:1px;background:#455561;margin:0 20px"></div>
+      </sc-for>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;padding:18px 20px;border:1px dashed #5c6672;border-radius:20px"><span class="ms" style="font-size:24px;color:#C5CAD6">library_books</span><div style="flex:1"><div style="font:700 15px Manrope">Want more workouts?</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Community library, QR code, or a file.</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+  </div>
+</div>
+
+<!-- WORKOUT DETAIL -->
+<div data-screen-label="Workout detail" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 16px 0"><div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">arrow_back</span></div><div style="flex:1"></div><div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px;color:#C5CAD6">star</span></div></div>
+  <div style="padding:16px 24px 0"><div style="font:600 13px Manrope;color:#9AA1B0">Tempo · 15 min</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">First Spin</div></div>
+  <div style="flex:1;overflow:hidden;padding:20px 20px 0;display:flex;flex-direction:column;gap:12px">
+    <div style="background:#3a435e;border-radius:20px;padding:20px">
+      <div style="display:flex;align-items:flex-end;gap:2px;height:110px"><div style="flex:3;height:50%;background:#6B8AA8;border-radius:4px 4px 0 0"></div><div style="flex:2;height:62%;background:#2E7BFF;border-radius:4px 4px 0 0"></div><div style="flex:1.5;height:84%;background:#1FB373;border-radius:4px 4px 0 0"></div><div style="flex:1;height:56%;background:#6B8AA8;border-radius:4px 4px 0 0"></div><div style="flex:1.5;height:100%;background:#F0C419;border-radius:4px 4px 0 0"></div><div style="flex:1;height:56%;background:#6B8AA8;border-radius:4px 4px 0 0"></div><div style="flex:1.5;height:92%;background:#1FB373;border-radius:4px 4px 0 0"></div><div style="flex:1;height:56%;background:#6B8AA8;border-radius:4px 4px 0 0"></div><div style="flex:2.5;height:45%;background:#6B8AA8;border-radius:4px 4px 0 0"></div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:20px">
+        <div><div style="font:600 12px Manrope;color:#9AA1B0">NP</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">130<span style="font:600 12px Manrope;color:#9AA1B0"> W</span></div></div>
+        <div><div style="font:600 12px Manrope;color:#9AA1B0">TSS</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">11</div></div>
+        <div><div style="font:600 12px Manrope;color:#9AA1B0">IF</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">0.65</div></div>
+        <div><div style="font:600 12px Manrope;color:#9AA1B0">kJ</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">117</div></div>
+      </div>
+    </div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;padding:12px 4px 0">Steps · 9</div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <sc-for list="{{ steps }}" as="s" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 20px"><span style="padding:4px 10px;border-radius:999px;background:{{ s.bg }};color:{{ s.color }};font:700 12px Manrope">{{ s.z }}</span><span style="flex:1;font:600 15px Manrope;color:#C5CAD6">{{ s.label }}</span><span style="font:700 15px Manrope;font-variant-numeric:tabular-nums">{{ s.dur }}</span><span style="font:600 14px Manrope;color:#9AA1B0;width:56px;text-align:right;font-variant-numeric:tabular-nums">{{ s.w }}</span></div>
+        <div style="height:1px;background:#455561;margin:0 20px"></div>
+      </sc-for>
+      <div style="padding:12px 20px;text-align:center;font:600 13px Manrope;color:#9AA1B0">+ 5 more · tap to expand</div>
+    </div>
+  </div>
+  <div style="padding:12px 20px 24px"><div style="display:flex;align-items:center;justify-content:center;gap:8px;height:56px;background:#F2F4F7;border-radius:999px;color:#313e50;font:700 16px Manrope"><span class="ms" style="font-size:20px;font-variation-settings:'FILL' 1">play_arrow</span>Start workout</div></div>
+</div>
+
+<!-- RIDE SUMMARY -->
+<div data-screen-label="Ride summary" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 16px 0"><div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">arrow_back</span></div><div style="flex:1"></div><div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">share</span></div></div>
+  <div style="padding:16px 24px 0"><div style="font:600 13px Manrope;color:#9AA1B0">Ride complete · Tue 2 Sep, 18:42</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">First Spin</div></div>
+  <div style="flex:1;overflow:hidden;padding:20px 20px 0;display:flex;flex-direction:column;gap:12px">
+    <div style="background:#3a435e;border-radius:20px;padding:24px;display:flex;align-items:flex-end;justify-content:space-between">
+      <div><div style="font:600 13px Manrope;color:#9AA1B0">Duration</div><div style="font:800 48px/1.1 Manrope;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums">15:00</div></div>
+      <div style="text-align:right"><div style="font:600 13px Manrope;color:#9AA1B0">Avg power</div><div style="font:800 48px/1.1 Manrope;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums">126<span style="font:600 16px Manrope;color:#9AA1B0"> W</span></div></div>
+    </div>
+    <div style="background:#3a435e;border-radius:20px;padding:20px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px 8px">
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">Cadence</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">87<span style="font:600 12px Manrope;color:#9AA1B0"> rpm</span></div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">Heart rate</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">138<span style="font:600 12px Manrope;color:#9AA1B0"> bpm</span></div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">NP</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">130<span style="font:600 12px Manrope;color:#9AA1B0"> W</span></div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">IF</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">0.65</div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">TSS</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">11</div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">kJ</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">113</div></div>
+    </div>
+    <div style="background:#3a435e;border-radius:20px;padding:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span style="font:700 15px Manrope">Power adherence</span><span style="font:500 13px Manrope;color:#9AA1B0">target · actual</span></div>
+      <div style="position:relative;height:120px;margin-top:16px">
+        <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px"><div style="flex:3;height:50%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:2;height:62%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1.5;height:84%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1;height:56%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1.5;height:100%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1;height:56%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1.5;height:92%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1;height:56%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:2.5;height:45%;background:#455561;border-radius:3px 3px 0 0"></div></div>
+        <div style="position:absolute;inset:0">{{ adherenceLine }}</div>
+      </div>
+    </div>
+    <div style="background:#3a435e;border-radius:20px;padding:20px">
+      <div style="font:700 15px Manrope">Time in zone</div>
+      <div style="display:flex;gap:6px;align-items:flex-end;height:56px;margin-top:16px">
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:70%;background:#6B8AA8;border-radius:4px"></div></div>
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:30%;background:#2E7BFF;border-radius:4px"></div></div>
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:40%;background:#1FB373;border-radius:4px"></div></div>
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:20%;background:#F0C419;border-radius:4px"></div></div>
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:4px;background:#455561;border-radius:4px"></div></div>
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:4px;background:#455561;border-radius:4px"></div></div>
+        <div style="flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end"><div style="height:4px;background:#455561;border-radius:4px"></div></div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:8px;font:600 11px Manrope;color:#9AA1B0;text-align:center"><span style="flex:1">Z1</span><span style="flex:1">Z2</span><span style="flex:1">Z3</span><span style="flex:1">Z4</span><span style="flex:1">Z5</span><span style="flex:1">Z6</span><span style="flex:1">Z7</span></div>
+    </div>
+  </div>
+  <div style="padding:12px 20px 24px"><div style="display:flex;align-items:center;justify-content:center;height:56px;background:#F2F4F7;border-radius:999px;color:#313e50;font:700 16px Manrope">Done</div></div>
+</div>
+
+<!-- HISTORY -->
+<div data-screen-label="History" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="padding:20px 24px 8px"><div style="font:600 13px Manrope;color:#9AA1B0">Past activity</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">History</div></div>
+  <div style="flex:1;overflow:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:10px">
+    <div style="background:#3a435e;border-radius:20px;padding:20px;display:grid;grid-template-columns:repeat(3,1fr)">
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">Rides</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">12</div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">Time</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">7h 40m</div></div>
+      <div><div style="font:600 12px Manrope;color:#9AA1B0">kJ</div><div style="font:800 22px/1.1 Manrope;margin-top:2px;font-variant-numeric:tabular-nums">4,812</div></div>
+    </div>
+    <sc-for list="{{ weeks }}" as="wk" hint-placeholder-count="2">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;padding:14px 4px 2px"><span style="font:600 13px Manrope;color:#9AA1B0">{{ wk.label }}</span><span style="font:500 12px Manrope;color:#9AA1B0;font-variant-numeric:tabular-nums">{{ wk.meta }}</span></div>
+      <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+        <sc-for list="{{ wk.rides }}" as="r" hint-placeholder-count="2">
+          <div style="display:flex;align-items:center;gap:14px;padding:12px 16px 12px 20px">
+            <div style="width:44px;height:48px;border-radius:12px;background:#455561;display:flex;flex-direction:column;align-items:center;justify-content:center"><span style="font:600 10px Manrope;color:#9AA1B0">{{ r.wd }}</span><span style="font:800 18px/1.1 Manrope;font-variant-numeric:tabular-nums">{{ r.day }}</span></div>
+            <div style="flex:1;min-width:0"><div style="font:700 15px Manrope;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums">{{ r.meta }}</div></div>
+            <span style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#455561;font:700 13px Manrope"><span class="ms" style="font-size:16px">replay</span>Again</span>
+          </div>
+          <div style="height:1px;background:#455561;margin:0 20px"></div>
+        </sc-for>
+      </div>
+    </sc-for>
+  </div>
+  <div style="margin:12px 16px 20px;background:#3a435e;border-radius:999px;padding:6px;display:flex">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">directions_bike</span><span style="font:600 11px Manrope">Ride</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#313e50;background:#F2F4F7;border-radius:999px"><span class="ms" style="font-size:22px;font-variation-settings:'wght' 500">schedule</span><span style="font:700 11px Manrope">History</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">trending_up</span><span style="font:600 11px Manrope">Progress</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">settings</span><span style="font:600 11px Manrope">Settings</span></div>
+  </div>
+</div>
+
+<!-- PROGRESS -->
+<div data-screen-label="Progress" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="padding:20px 24px 8px"><div style="font:600 13px Manrope;color:#9AA1B0">Stats &amp; XP</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">Your progress</div></div>
+  <div style="flex:1;overflow:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:12px">
+    <div style="background:#3a435e;border-radius:20px;padding:24px">
+      <div style="display:flex;align-items:center;gap:16px"><div style="width:64px;height:64px;border-radius:50%;background:#455561;display:grid;place-items:center;font:800 28px Manrope;font-variant-numeric:tabular-nums">2</div><div><div style="font:600 13px Manrope;color:#9AA1B0">Rider level</div><div style="font:800 20px/1.2 Manrope;margin-top:2px">Weekend Warrior</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">142 XP total</div></div></div>
+      <div style="height:10px;background:#455561;margin-top:20px;border-radius:999px;overflow:hidden"><div style="width:58%;height:100%;background:#F2F4F7;border-radius:999px"></div></div>
+      <div style="display:flex;justify-content:space-between;margin-top:10px;font:600 13px Manrope;color:#C5CAD6;font-variant-numeric:tabular-nums"><span>58 XP to level 3</span><span>58%</span></div>
+      <div style="font:500 13px/1.45 Manrope;color:#9AA1B0;margin-top:12px">XP = watt-minutes per kilogram. Harder efforts and longer rides earn more.</div>
+    </div>
+    <div style="background:#3a435e;border-radius:20px;padding:24px">
+      <div style="display:flex;align-items:flex-end;justify-content:space-between"><div><div style="font:600 13px Manrope;color:#9AA1B0">Weekly streak</div><div style="font:800 28px/1.15 Manrope;margin-top:4px;font-variant-numeric:tabular-nums">3 <span style="font:600 16px Manrope;color:#9AA1B0">weeks</span></div></div><span style="font:600 13px Manrope;color:#9AA1B0">Best · 5</span></div>
+      <div style="display:flex;gap:6px;margin-top:16px">{{ streakBoxes }}</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;padding:12px 4px 0"><span style="font:600 13px Manrope;color:#9AA1B0">Badges</span><span style="font:600 13px Manrope;color:#9AA1B0">2 / 6</span></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div style="background:#3a435e;border-radius:20px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center"><div style="width:48px;height:48px;border-radius:50%;background:#F2F4F7;display:grid;place-items:center"><span class="ms" style="font-size:24px;color:#313e50">flag</span></div><div><div style="font:700 15px Manrope">First Ride</div><div style="font:500 12px Manrope;color:#9AA1B0;margin-top:2px">Earned 12 Aug</div></div></div>
+      <div style="background:#3a435e;border-radius:20px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center"><div style="width:48px;height:48px;border-radius:50%;background:#F2F4F7;display:grid;place-items:center"><span class="ms" style="font-size:24px;color:#313e50">emoji_events</span></div><div><div style="font:700 15px Manrope">Five Strong</div><div style="font:500 12px Manrope;color:#9AA1B0;margin-top:2px">Earned 3 Sep</div></div></div>
+      <div style="border:1px dashed #5c6672;border-radius:20px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center"><div style="width:48px;height:48px;border-radius:50%;background:#3a435e;display:grid;place-items:center"><span class="ms" style="font-size:24px;color:#9AA1B0">lock</span></div><div><div style="font:700 15px Manrope;color:#C5CAD6">First Hour</div><div style="font:500 12px Manrope;color:#9AA1B0;margin-top:2px">1 h total saddle time</div></div></div>
+      <div style="border:1px dashed #5c6672;border-radius:20px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center"><div style="width:48px;height:48px;border-radius:50%;background:#3a435e;display:grid;place-items:center"><span class="ms" style="font-size:24px;color:#9AA1B0">lock</span></div><div><div style="font:700 15px Manrope;color:#C5CAD6">Kilojoule Club</div><div style="font:500 12px Manrope;color:#9AA1B0;margin-top:2px">Burn 1,000 kJ</div></div></div>
+    </div>
+  </div>
+  <div style="margin:12px 16px 20px;background:#3a435e;border-radius:999px;padding:6px;display:flex">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">directions_bike</span><span style="font:600 11px Manrope">Ride</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">schedule</span><span style="font:600 11px Manrope">History</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#313e50;background:#F2F4F7;border-radius:999px"><span class="ms" style="font-size:22px;font-variation-settings:'wght' 500">trending_up</span><span style="font:700 11px Manrope">Progress</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">settings</span><span style="font:600 11px Manrope">Settings</span></div>
+  </div>
+</div>
+
+<!-- SETTINGS -->
+<div data-screen-label="Settings" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="padding:20px 24px 8px"><div style="font:600 13px Manrope;color:#9AA1B0">Preferences</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">Settings</div></div>
+  <div style="flex:1;overflow:hidden;padding:16px 20px 0;display:flex;flex-direction:column;gap:10px">
+    <div style="font:600 13px Manrope;color:#9AA1B0;padding:0 4px">Profile</div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 20px"><div style="flex:1"><div style="font:700 15px Manrope">FTP</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Sets your power zones</div></div><div style="display:flex;align-items:center;gap:6px;padding:10px 16px;background:#455561;border-radius:12px;min-width:96px;justify-content:flex-end;box-sizing:border-box"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">200</span><span style="font:600 14px Manrope;color:#9AA1B0">W</span></div></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 20px"><div style="flex:1"><div style="font:700 15px Manrope">Body weight</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">For W/kg and XP</div></div><div style="display:flex;align-items:center;gap:6px;padding:10px 16px;background:#455561;border-radius:12px;min-width:96px;justify-content:flex-end;box-sizing:border-box"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">80</span><span style="font:600 14px Manrope;color:#9AA1B0">kg</span></div></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:16px;padding:14px 20px"><div style="flex:1"><div style="font:700 15px Manrope">Max heart rate</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Colours the live HR by zone</div></div><div style="display:flex;align-items:center;gap:6px;padding:10px 16px;background:#455561;border-radius:12px;min-width:96px;justify-content:flex-end;box-sizing:border-box"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">185</span><span style="font:600 14px Manrope;color:#9AA1B0">bpm</span></div></div>
+    </div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;padding:14px 4px 0">Devices</div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">bluetooth</span><div style="flex:1"><div style="font:700 15px Manrope">KICKR CORE 1F2A</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Connected</div></div><div style="width:8px;height:8px;border-radius:50%;background:#1FB373"></div><span class="ms" style="font-size:22px;color:#9AA1B0;margin-left:6px">chevron_right</span></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">monitor_heart</span><div style="flex:1"><div style="font:700 15px Manrope">Heart rate monitor</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Not paired</div></div><div style="width:8px;height:8px;border-radius:50%;background:#6c6f7f"></div><span class="ms" style="font-size:22px;color:#9AA1B0;margin-left:6px">chevron_right</span></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">settings_remote</span><div style="flex:1"><div style="font:700 15px Manrope">Controller</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Not paired</div></div><div style="width:8px;height:8px;border-radius:50%;background:#6c6f7f"></div><span class="ms" style="font-size:22px;color:#9AA1B0;margin-left:6px">chevron_right</span></div>
+    </div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;padding:14px 4px 0">More</div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">cloud_upload</span><div style="flex:1"><div style="font:700 15px Manrope">Connections</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Nothing connected</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">terrain</span><div style="flex:1"><div style="font:700 15px Manrope">Bike &amp; gearing</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Road double · 8.5 kg bike</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">backup</span><div style="flex:1"><div style="font:700 15px Manrope">Backup &amp; sync</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Local only</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+    </div>
+  </div>
+  <div style="margin:12px 16px 20px;background:#3a435e;border-radius:999px;padding:6px;display:flex">
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">directions_bike</span><span style="font:600 11px Manrope">Ride</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">schedule</span><span style="font:600 11px Manrope">History</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">trending_up</span><span style="font:600 11px Manrope">Progress</span></div>
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#313e50;background:#F2F4F7;border-radius:999px"><span class="ms" style="font-size:22px;font-variation-settings:'wght' 500">settings</span><span style="font:700 11px Manrope">Settings</span></div>
+  </div>
+</div>
+
+<!-- TRAINER PAIRING -->
+<div data-screen-label="Trainer pairing" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="display:flex;align-items:center;padding:8px 16px 0"><div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">arrow_back</span></div></div>
+  <div style="padding:16px 24px 0"><div style="font:600 13px Manrope;color:#9AA1B0">Pairing</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">Connect a trainer</div></div>
+  <div style="flex:1;padding:24px 20px 0;display:flex;flex-direction:column;gap:12px">
+    <div style="background:#3a435e;border-radius:20px;padding:28px 24px;display:flex;flex-direction:column;align-items:center;text-align:center">
+      <div style="width:96px;height:96px;border-radius:50%;background:#455561;display:grid;place-items:center">{{ scanRing }}</div>
+      <div style="font:700 18px Manrope;margin-top:20px">Scanning · 2 found</div>
+      <div style="font:500 14px/1.45 Manrope;color:#9AA1B0;margin-top:6px;text-wrap:pretty">Make sure your smart trainer is plugged in and awake.</div>
+    </div>
+    <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">bluetooth_searching</span><div style="flex:1"><div style="font:700 15px Manrope">KICKR CORE 1F2A</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">FTMS · strong signal</div></div><span style="padding:8px 16px;border-radius:999px;background:#F2F4F7;color:#313e50;font:700 13px Manrope">Connect</span></div>
+      <div style="height:1px;background:#455561;margin:0 20px"></div>
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">bluetooth_searching</span><div style="flex:1"><div style="font:700 15px Manrope">Tacx NEO 2T 44810</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">FTMS · weak signal</div></div><span style="padding:8px 16px;border-radius:999px;background:#455561;font:700 13px Manrope">Connect</span></div>
+    </div>
+  </div>
+  <div style="padding:12px 20px 24px;display:flex;flex-direction:column;gap:10px"><div style="display:flex;align-items:center;justify-content:center;height:56px;background:#455561;border-radius:999px;font:700 16px Manrope">Stop scanning</div></div>
+</div>
+
+<!-- RIDE HUD (landscape) -->
+<div data-screen-label="Ride HUD" style="width:892px;height:412px;background:#313e50;border-radius:28px;overflow:hidden;position:relative;box-shadow:0 0 0 1px #4a5568">
+  <div style="position:absolute;inset:0">{{ ridge }}</div>
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;gap:12px;padding:16px 20px 0">
+      <div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">arrow_back</span></div>
+      <div style="font:700 18px Manrope">First Spin</div>
+      <div style="flex:1"></div>
+      <div style="font:700 18px Manrope;font-variant-numeric:tabular-nums;color:#C5CAD6">6:14 <span style="color:#9AA1B0">/ 15:00</span></div>
+      <div style="width:12px"></div>
+      <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 18px;background:#3a435e;border-radius:999px;font:700 15px Manrope"><span class="ms" style="font-size:18px">skip_next</span>Skip</div>
+      <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 18px;background:#F2F4F7;color:#313e50;border-radius:999px;font:700 15px Manrope"><span class="ms" style="font-size:18px;font-variation-settings:'FILL' 1">pause</span>Pause</div>
+    </div>
+    <div style="flex:1;display:flex;align-items:center;justify-content:space-between;padding:0 32px">
+      <div style="width:170px;background:rgba(58,67,94,.7);border-radius:20px;padding:16px 20px;text-align:center"><div style="font:600 12px Manrope;color:#9AA1B0">Cadence</div><div style="font:800 40px/1.1 Manrope;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums">89<span style="font:600 14px Manrope;color:#9AA1B0"> rpm</span></div><div style="height:4px;border-radius:2px;background:#455561;margin-top:10px;position:relative"><div style="position:absolute;left:35%;right:35%;top:0;bottom:0;background:#9AA1B0;border-radius:2px"></div><div style="position:absolute;left:52%;top:-3px;width:3px;height:10px;background:#F2F4F7;border-radius:2px"></div></div><div style="font:600 11px Manrope;color:#9AA1B0;margin-top:6px">Target 85–95</div></div>
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div style="display:flex;align-items:center;gap:8px;font:600 13px Manrope;color:#1FB373"><span style="width:8px;height:8px;border-radius:50%;background:#1FB373"></span>Power · on target</div>
+        <div style="display:flex;align-items:baseline;gap:6px;font-variant-numeric:tabular-nums"><span style="font:800 132px/1 Manrope;letter-spacing:-.04em;color:#1FB373">168</span><span style="font:700 28px Manrope;color:#C5CAD6">W</span></div>
+        <div style="width:220px;height:3px;border-radius:2px;background:#455561;margin-top:6px"><div style="width:42%;height:100%;background:#F2F4F7;border-radius:2px"></div></div>
+        <div style="font:600 12px Manrope;color:#9AA1B0;margin-top:6px;font-variant-numeric:tabular-nums">2.10 W/kg</div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:12px">
+          <div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%;font:700 22px Manrope">−</div>
+          <div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 18px;background:#3a435e;border-radius:999px"><span style="font:600 13px Manrope;color:#9AA1B0">Target</span><span style="font:800 18px Manrope;font-variant-numeric:tabular-nums">170 W</span><span style="font:600 12px Manrope;color:#9AA1B0">· 0%</span></div>
+          <div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%;font:700 22px Manrope">+</div>
+        </div>
+      </div>
+      <div style="width:170px;background:rgba(58,67,94,.7);border-radius:20px;padding:16px 20px;text-align:center"><div style="font:600 12px Manrope;color:#9AA1B0">Heart rate</div><div style="font:800 40px/1.1 Manrope;letter-spacing:-.02em;margin-top:2px;font-variant-numeric:tabular-nums">140<span style="font:600 14px Manrope;color:#9AA1B0"> bpm</span></div><div style="display:inline-flex;margin-top:10px;padding:4px 10px;border-radius:999px;background:rgba(31,179,115,.2);color:#1FB373;font:700 12px Manrope">Z3 · Aerobic</div></div>
+    </div>
+    <div style="padding:0 20px 16px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="width:10px;height:10px;border-radius:2px;background:#1FB373"></span>
+        <span style="font:700 15px Manrope">Tempo · 83% FTP</span>
+        <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border-radius:999px;background:#3a435e;font:700 14px Manrope;font-variant-numeric:tabular-nums"><span class="ms" style="font-size:16px;color:#9AA1B0">timer</span>0:46</span>
+        <span style="flex:1"></span>
+        <span style="font:600 13px Manrope;color:#9AA1B0">Up next · <span style="color:#6B8AA8">Z1 Recovery</span> 1:00</span>
+      </div>
+      <div style="position:relative;height:56px;margin-top:10px">
+        <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:2px"><div style="flex:3;height:50%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:2;height:62%;background:#455561;border-radius:3px 3px 0 0"></div><div style="flex:1.5;height:84%;background:#1FB373;border-radius:3px 3px 0 0"></div><div style="flex:1;height:56%;background:rgba(107,138,168,.45);border-radius:3px 3px 0 0"></div><div style="flex:1.5;height:100%;background:rgba(240,196,25,.45);border-radius:3px 3px 0 0"></div><div style="flex:1;height:56%;background:rgba(107,138,168,.45);border-radius:3px 3px 0 0"></div><div style="flex:1.5;height:92%;background:rgba(31,179,115,.45);border-radius:3px 3px 0 0"></div><div style="flex:1;height:56%;background:rgba(107,138,168,.45);border-radius:3px 3px 0 0"></div><div style="flex:2.5;height:45%;background:rgba(107,138,168,.45);border-radius:3px 3px 0 0"></div></div>
+        <div style="position:absolute;left:41.5%;top:-4px;bottom:0;width:2px;background:#F2F4F7;border-radius:1px"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ONBOARDING -->
+<div data-screen-label="Onboarding" style="width:412px;height:892px;background:#313e50;border-radius:28px;overflow:hidden;display:flex;flex-direction:column;position:relative;box-shadow:0 0 0 1px #4a5568">
+  <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font:700 15px Manrope"><span>23:44</span><span class="ms" style="font-size:16px">bluetooth</span></div>
+  <div style="padding:20px 24px 8px"><div style="font:600 13px Manrope;color:#9AA1B0">Tuesday</div><div style="font:800 28px/1.15 Manrope;letter-spacing:-.02em;margin-top:2px">What are you riding?</div></div>
+  <div style="padding:16px 20px">
+    <div style="background:#F2F4F7;color:#313e50;border-radius:20px;padding:24px">
+      <div style="font:600 13px Manrope;color:#5c6672">Welcome</div>
+      <div style="font:800 22px/1.2 Manrope;letter-spacing:-.02em;margin-top:4px">Welcome to Indoor Bike</div>
+      <div style="font:500 15px/1.45 Manrope;color:#455561;margin-top:8px;text-wrap:pretty">Power-zone workouts for your smart trainer. Set your FTP and weight so the targets match you - takes about 30 seconds.</div>
+      <div style="display:flex;align-items:center;justify-content:center;height:52px;background:#313e50;color:#F2F4F7;border-radius:999px;font:700 16px Manrope;margin-top:20px">Get started</div>
+    </div>
+  </div>
+  <div style="position:absolute;inset:0;background:rgba(21,27,36,.55)"></div>
+  <div style="position:absolute;left:0;right:0;bottom:0;background:#3a435e;border-radius:28px 28px 0 0;padding:12px 24px 28px">
+    <div style="width:36px;height:4px;border-radius:2px;background:#6c6f7f;margin:0 auto 20px"></div>
+    <div style="font:600 13px Manrope;color:#9AA1B0">Step 1 of 2 · About you</div>
+    <div style="font:800 22px/1.2 Manrope;letter-spacing:-.02em;margin-top:4px">Set your FTP and weight</div>
+    <div style="font:500 15px/1.45 Manrope;color:#C5CAD6;margin-top:8px;text-wrap:pretty">We use these to scale every workout to your fitness. You can change them anytime in Settings.</div>
+    <div style="margin-top:24px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:700 15px Manrope">Functional Threshold Power</span><span style="font:500 13px Manrope;color:#9AA1B0">Sustainable hour power</span></div><div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#455561;border-radius:12px;margin-top:10px;box-shadow:0 0 0 2px #F2F4F7"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">200</span><span style="font:600 15px Manrope;color:#9AA1B0">W</span></div><div style="font:600 13px Manrope;color:#C5CAD6;margin-top:10px;text-decoration:underline;text-underline-offset:3px">Don't know your FTP? Start at 150 W</div></div>
+    <div style="margin-top:20px"><div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font:700 15px Manrope">Body weight</span><span style="font:500 13px Manrope;color:#9AA1B0">For W/kg and XP</span></div><div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#455561;border-radius:12px;margin-top:10px"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">80</span><span style="font:600 15px Manrope;color:#9AA1B0">kg</span></div></div>
+    <div style="display:flex;align-items:center;justify-content:center;height:56px;background:#F2F4F7;color:#313e50;border-radius:999px;font:700 16px Manrope;margin-top:24px">Continue</div>
+  </div>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const Z = {1:['#6B8AA8','rgba(107,138,168,.2)','Recovery'],2:['#2E7BFF','rgba(46,123,255,.2)','Endurance'],3:['#1FB373','rgba(31,179,115,.2)','Tempo'],4:['#F0C419','rgba(240,196,25,.2)','Threshold'],5:['#FF8A1F','rgba(255,138,31,.2)','VO2'],6:['#EB3B3B','rgba(235,59,59,.2)','Anaerobic'],7:['#C53BFF','rgba(197,59,255,.2)','Neuro']};
+    const bar = segs => segs.map(([z,w],i)=>React.createElement('div',{key:i,style:{flex:w,background:Z[z][0]}}));
+    const workouts = [
+      {name:'First Spin',dur:'15 min',tss:11,bar:bar([[1,3],[2,2],[3,1.5],[1,1],[4,1.5],[1,1],[3,1.5],[1,1],[1,2.5]])},
+      {name:'Endurance Base Builder',dur:'30 min',tss:18,bar:bar([[1,2],[2,8],[1,2]])},
+      {name:'Sweet Spot 2x15',dur:'45 min',tss:52,bar:bar([[1,2],[2,3],[3,6],[1,2],[3,6],[1,3]])},
+      {name:'Threshold 2x20',dur:'1 h',tss:78,bar:bar([[1,2],[2,4],[4,8],[1,2],[4,8],[1,3]])},
+      {name:'VO2 30/30s',dur:'40 min',tss:61,bar:bar([[1,3],[2,3],[5,1],[1,1],[5,1],[1,1],[5,1],[1,1],[5,1],[1,1],[2,3],[1,2]])},
+      {name:'Recovery Spin',dur:'20 min',tss:8,bar:bar([[1,10]])},
+    ];
+    const steps = [[1,'3:00','100 W'],[2,'2:00','120 W'],[3,'1:30','170 W'],[1,'1:00','110 W']].map(([z,dur,w])=>({z:'Z'+z,label:Z[z][2],color:Z[z][0],bg:Z[z][1],dur,w}));
+    const weeks = [
+      {label:'This week',meta:'2 rides · 1h 15m · 812 kJ',rides:[
+        {wd:'TUE',day:'2',name:'Sweet Spot 2x15',meta:'18:42 · 45m · 168 W · 454 kJ'},
+        {wd:'SUN',day:'31',name:'Endurance Base Builder',meta:'08:10 · 30m · 132 W · 238 kJ'}]},
+      {label:'Last week',meta:'3 rides · 2h 05m · 1,340 kJ',rides:[
+        {wd:'FRI',day:'28',name:'Threshold 2x20',meta:'19:05 · 1h · 190 W · 684 kJ'},
+        {wd:'WED',day:'26',name:'First Spin',meta:'18:30 · 15m · 126 W · 113 kJ'}]},
+    ];
+    const streak = [0,0,0,0,0,0,0,0,0,3,2,4];
+    const streakBoxes = streak.map((d,i)=>React.createElement('div',{key:i,style:{flex:1,height:32,borderRadius:6,background:'#455561',position:'relative',overflow:'hidden'}},
+      d?React.createElement('div',{style:{position:'absolute',bottom:0,left:0,right:0,height:(d/7*100)+'%',background:'#F2F4F7'}}):null));
+    const adherenceLine = React.createElement('svg',{viewBox:'0 0 100 100',preserveAspectRatio:'none',style:{width:'100%',height:'100%',display:'block'}},
+      React.createElement('polyline',{points:'0,52 8,49 18,47 22,40 28,38 32,20 36,17 40,47 42,44 46,6 50,2 52,4 56,46 58,42 64,12 68,9 72,46 74,42 82,56 90,54 100,58',fill:'none',stroke:'#F2F4F7',strokeWidth:1.6,vectorEffect:'non-scaling-stroke',strokeLinejoin:'round'}));
+    const scanRing = React.createElement('div',{style:{width:72,height:72,borderRadius:'50%',border:'3px solid #5c6672',borderTopColor:'#F2F4F7',animation:'spin 1.2s linear infinite',display:'grid',placeItems:'center'}},
+      React.createElement('style',null,'@keyframes spin{to{transform:rotate(360deg)}}'),
+      React.createElement('span',{className:'ms',style:{fontSize:28,color:'#F2F4F7'}},'bluetooth'));
+    // Horizon ridge backdrop (RideHero.kt): far ridge, mid ridge = workout profile, near silhouette. Slate tones, zone tint on the crest only.
+    const ridge = React.createElement('svg',{viewBox:'0 0 892 412',preserveAspectRatio:'none',style:{width:'100%',height:'100%',display:'block'}},
+      React.createElement('path',{d:'M0,412 L0,322 C120,300 200,314 300,296 C420,276 520,300 640,288 C740,278 820,300 892,292 L892,412 Z',fill:'#3a435e',opacity:.55}),
+      React.createElement('path',{d:'M0,412 L0,270 L100,262 L170,248 L230,225 L280,236 L330,190 L380,186 L430,232 L470,210 L520,238 L580,246 L660,266 L760,272 L892,278 L892,412 Z',fill:'#455561',opacity:.5}),
+      React.createElement('path',{d:'M0,270 L100,262 L170,248 L230,225 L280,236 L330,190 L380,186 L430,232 L470,210 L520,238 L580,246 L660,266 L760,272 L892,278',fill:'none',stroke:'#1FB373',strokeWidth:1.2,opacity:.55}),
+      React.createElement('path',{d:'M0,412 L0,382 L120,374 L260,388 L400,372 L540,386 L700,370 L892,384 L892,412 Z',fill:'#313e50',opacity:.9}));
+    return { workouts, steps, weeks, streakBoxes, adherenceLine, scanRing, ridge };
+  }
+}
+</script>
+</body>
+</html>

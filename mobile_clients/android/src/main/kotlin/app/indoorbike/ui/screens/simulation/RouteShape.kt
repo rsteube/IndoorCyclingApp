@@ -56,7 +56,7 @@ fun RouteShape(
     /** How far along the route the ride reached, in metres. */
     riddenMeters: Double,
     modifier: Modifier = Modifier,
-    accent: Color = CadenceColors.Brand500,
+    accent: Color = CadenceColors.Fg1,
     remainingColor: Color = CadenceColors.Fg4,
     strokeWidth: Float = 6f,
 ) {

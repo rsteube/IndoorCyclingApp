@@ -24,141 +24,152 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import app.indoorbike.R
 
-// Bundled OFL fonts: no Google Fonts CDN, no downloadable-font provider, no
-// runtime fetch. The app has to render on a device with no Google services.
-// Bebas Neue (static), Inter (variable wght), JetBrains Mono (variable wght).
-val DisplayFontFamily: FontFamily = FontFamily(
-    Font(R.font.bebas_neue_regular, FontWeight.Normal)
+// One bundled OFL family: Manrope, variable on wght. No Google Fonts CDN, no
+// downloadable-font provider, no runtime fetch. The app has to render on a
+// device with no Google services.
+//
+// Slate has no display face and no mono. A single family across the whole app
+// means the only typographic variables left are size and weight, which is what
+// the design leans on: 800 for anything that carries a number, 500 for prose.
+private fun manrope(weight: FontWeight) = Font(
+    R.font.manrope_variable,
+    weight = weight,
+    variationSettings = FontVariation.Settings(FontVariation.weight(weight.weight))
 )
 
-val BodyFontFamily: FontFamily = FontFamily(
-    Font(
-        R.font.inter_variable,
-        weight = FontWeight.Normal,
-        variationSettings = FontVariation.Settings(FontVariation.weight(400))
-    ),
-    Font(
-        R.font.inter_variable,
-        weight = FontWeight.Medium,
-        variationSettings = FontVariation.Settings(FontVariation.weight(500))
-    ),
-    Font(
-        R.font.inter_variable,
-        weight = FontWeight.SemiBold,
-        variationSettings = FontVariation.Settings(FontVariation.weight(600))
-    ),
-    Font(
-        R.font.inter_variable,
-        weight = FontWeight.Bold,
-        variationSettings = FontVariation.Settings(FontVariation.weight(700))
-    )
+val SlateFontFamily: FontFamily = FontFamily(
+    manrope(FontWeight.Normal),
+    manrope(FontWeight.Medium),
+    manrope(FontWeight.SemiBold),
+    manrope(FontWeight.Bold),
+    manrope(FontWeight.ExtraBold)
 )
 
-val MonoFontFamily: FontFamily = FontFamily(
-    Font(
-        R.font.jetbrains_mono_variable,
-        weight = FontWeight.Normal,
-        variationSettings = FontVariation.Settings(FontVariation.weight(400))
-    ),
-    Font(
-        R.font.jetbrains_mono_variable,
-        weight = FontWeight.Medium,
-        variationSettings = FontVariation.Settings(FontVariation.weight(500))
-    )
-)
+// The old three-family names, kept so call sites outside the theme compile.
+// They all resolve to Manrope now.
+val DisplayFontFamily: FontFamily = SlateFontFamily
+val BodyFontFamily: FontFamily = SlateFontFamily
+val MonoFontFamily: FontFamily = SlateFontFamily
+
+// Tabular figures on every style that carries a number, so a ticking clock or a
+// changing power reading does not shuffle the digits beside it.
+private const val TNUM = "tnum"
 
 object CadenceType {
+    /** Ride HUD power number, landscape. The biggest thing in the app. */
     val displayXl = TextStyle(
-        fontFamily = DisplayFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 72.sp,
-        lineHeight = (72 * 1.05f).sp,
-        letterSpacing = 0.01.em
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 132.sp,
+        lineHeight = 132.sp,
+        letterSpacing = (-0.04).em,
+        fontFeatureSettings = TNUM
     )
+
+    /** Ride-summary hero: duration, average power. */
     val displayL = TextStyle(
-        fontFamily = DisplayFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 56.sp,
-        lineHeight = (56 * 1.05f).sp,
-        letterSpacing = 0.01.em
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 48.sp,
+        lineHeight = 53.sp,
+        letterSpacing = (-0.02).em,
+        fontFeatureSettings = TNUM
     )
+
+    /** HUD flank values: cadence, heart rate. */
     val displayM = TextStyle(
-        fontFamily = DisplayFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.ExtraBold,
         fontSize = 40.sp,
-        lineHeight = (40 * 1.2f).sp,
-        letterSpacing = 0.02.em
+        lineHeight = 44.sp,
+        letterSpacing = (-0.02).em,
+        fontFeatureSettings = TNUM
     )
+
+    /** Screen titles. Sentence case. */
     val h1 = TextStyle(
-        fontFamily = DisplayFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 32.sp,
-        lineHeight = (32 * 1.2f).sp,
-        letterSpacing = 0.02.em
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 28.sp,
+        lineHeight = 32.sp,
+        letterSpacing = (-0.02).em
     )
+
+    /** Stat values, sheet titles. */
     val h2 = TextStyle(
-        fontFamily = DisplayFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 24.sp,
-        lineHeight = (24 * 1.2f).sp,
-        letterSpacing = 0.03.em
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.ExtraBold,
+        fontSize = 22.sp,
+        lineHeight = 25.sp,
+        fontFeatureSettings = TNUM
     )
+
+    /** Card titles, HUD workout name. */
     val h3 = TextStyle(
-        fontFamily = BodyFontFamily,
+        fontFamily = SlateFontFamily,
         fontWeight = FontWeight.Bold,
-        fontSize = 20.sp,
-        lineHeight = (20 * 1.2f).sp,
-        letterSpacing = (-0.01).em
+        fontSize = 18.sp,
+        lineHeight = 22.sp
     )
+
     val body = TextStyle(
-        fontFamily = BodyFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = (16 * 1.45f).sp
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 15.sp,
+        lineHeight = 22.sp
     )
+
+    /** Row titles, button labels. */
     val bodyStrong = TextStyle(
-        fontFamily = BodyFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 16.sp,
-        lineHeight = (16 * 1.45f).sp
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.Bold,
+        fontSize = 15.sp,
+        lineHeight = 22.sp
     )
+
+    /** Row sub-lines. */
     val small = TextStyle(
-        fontFamily = BodyFontFamily,
-        fontWeight = FontWeight.Normal,
-        fontSize = 14.sp,
-        lineHeight = (14 * 1.45f).sp
-    )
-    val micro = TextStyle(
-        fontFamily = BodyFontFamily,
+        fontFamily = SlateFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 12.sp,
-        lineHeight = (12 * 1.2f).sp,
-        letterSpacing = 0.04.em
+        fontSize = 13.sp,
+        lineHeight = 18.sp
     )
-    val eyebrow = TextStyle(
-        fontFamily = BodyFontFamily,
+
+    /** Tab labels, chart axis. */
+    val micro = TextStyle(
+        fontFamily = SlateFontFamily,
         fontWeight = FontWeight.SemiBold,
         fontSize = 11.sp,
-        lineHeight = (11 * 1.2f).sp,
-        letterSpacing = 0.12.em,
-        textDecoration = TextDecoration.None
+        lineHeight = 14.sp
     )
+
+    /** Section labels. Sentence case now: no capitals, no tracking. */
+    val eyebrow = TextStyle(
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 13.sp,
+        lineHeight = 16.sp
+    )
+
+    /** Stat labels, week-header totals, units. Formerly JetBrains Mono. */
     val tick = TextStyle(
-        fontFamily = MonoFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
-        letterSpacing = 0.04.em
-    )
-    val mono = TextStyle(
-        fontFamily = MonoFontFamily,
-        fontWeight = FontWeight.Normal,
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.SemiBold,
         fontSize = 12.sp,
-        letterSpacing = 0.04.em
+        lineHeight = 16.sp,
+        fontFeatureSettings = TNUM
+    )
+
+    val mono = TextStyle(
+        fontFamily = SlateFontFamily,
+        fontWeight = FontWeight.Medium,
+        fontSize = 13.sp,
+        lineHeight = 18.sp,
+        fontFeatureSettings = TNUM
     )
 }
 

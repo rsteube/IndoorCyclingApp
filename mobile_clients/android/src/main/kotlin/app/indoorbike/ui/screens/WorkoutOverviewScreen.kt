@@ -16,7 +16,6 @@
 package app.indoorbike.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -35,11 +34,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
@@ -59,9 +59,16 @@ import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.ui.screens.simulation.RouteSummaryPanel
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.DestructiveBtn
 import app.indoorbike.ui.components.IconBtn
+import app.indoorbike.ui.components.ListCard
+import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SlateCard
+import app.indoorbike.ui.components.Stat
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -129,14 +136,20 @@ fun WorkoutOverviewScreen(
         }
     }
 
+    val header = rememberCollapsingHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
-            title = session?.workoutName ?: "Loading...",
-            eyebrow = session?.let { formatEpochToDate(it.startTimeEpoch) } ?: "",
+            header = header,
+            title = session?.workoutName ?: "Loading…",
+            eyebrow = session?.let {
+                val stamp = formatEpochToDate(it.startTimeEpoch)
+                if (fromRide) "Ride complete · $stamp" else stamp
+            } ?: "",
             leading = {
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
             },
@@ -268,44 +281,44 @@ fun WorkoutOverviewScreen(
         ) {
             Spacer(modifier = Modifier.height(Spacing.s5))
 
-            // Headline metrics: duration, kJ, avg/np
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
-            ) {
-                OverviewGlassCard(
-                    modifier = Modifier.weight(1f),
-                    label = "DURATION",
-                    value = formatClock(activeSession.durationSeconds.toInt()),
-                    unit = "",
-                    valueColor = CadenceColors.Fg1
-                )
-                OverviewGlassCard(
-                    modifier = Modifier.weight(1f),
-                    label = "AVG POWER",
-                    value = activeSession.avgPower.toString(),
-                    unit = "W",
-                    valueColor = CadenceColors.Brand500
-                )
+            // The two numbers a rider looks for first, at a size nothing else
+            // on the screen competes with.
+            SlateCard(padding = PaddingValues(Spacing.s6)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    HeroStat(
+                        label = "Duration",
+                        value = formatClock(activeSession.durationSeconds.toInt())
+                    )
+                    HeroStat(
+                        label = "Avg power",
+                        value = activeSession.avgPower.toString(),
+                        unit = "W",
+                        alignEnd = true
+                    )
+                }
             }
-            Spacer(modifier = Modifier.height(Spacing.s4))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
-            ) {
-                OverviewGlassCard(
-                    modifier = Modifier.weight(1f),
-                    label = "AVG CADENCE",
-                    value = activeSession.avgCadence.toString(),
-                    unit = "RPM",
-                    valueColor = CadenceColors.Fg1
-                )
-                OverviewGlassCard(
-                    modifier = Modifier.weight(1f),
-                    label = "AVG HR",
-                    value = activeSession.avgHeartRate.toString(),
-                    unit = "BPM",
-                    valueColor = CadenceColors.Danger
+
+            Spacer(modifier = Modifier.height(Spacing.s3))
+
+            // Everything else, in one grid. Nothing here is tinted: a heart
+            // rate is not more urgent than a cadence, and colouring it red only
+            // made the card look like a warning.
+            SlateCard {
+                StatGrid(
+                    buildList {
+                        add(Triple("Cadence", activeSession.avgCadence.toString(), "rpm"))
+                        add(Triple("Heart rate", activeSession.avgHeartRate.toString(), "bpm"))
+                        if (telemetry.isNotEmpty()) {
+                            add(Triple("NP", stats.normalizedPowerWatts.toString(), "W"))
+                            add(Triple("IF", "%.2f".format(stats.intensityFactor), null))
+                            add(Triple("TSS", stats.tss.toString(), null))
+                            add(Triple("kJ", stats.kilojoules.toString(), null))
+                        }
+                    }
                 )
             }
 
@@ -316,7 +329,7 @@ fun WorkoutOverviewScreen(
             val routeId = simulationRouteId(activeSession.workoutId)
             val riddenRoute = routeId?.let { container.routeCatalog.find(it) }
             if (riddenRoute != null) {
-                Spacer(modifier = Modifier.height(Spacing.s4))
+                Spacer(modifier = Modifier.height(Spacing.s3))
                 RouteSummaryPanel(
                     route = riddenRoute,
                     riddenMeters = activeSession.routeDistanceMeters,
@@ -329,45 +342,20 @@ fun WorkoutOverviewScreen(
             // power rather than readings. Absent entirely when the rider has no
             // weight set, since there is then nothing to estimate from.
             if (stats.distanceMeters > 0) {
-                Spacer(modifier = Modifier.height(Spacing.s4))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
-                ) {
-                    OverviewGlassCard(
-                        modifier = Modifier.weight(1f),
-                        label = "DISTANCE",
-                        value = "%.2f".format(stats.distanceMeters / 1000f),
-                        unit = "KM",
-                        valueColor = CadenceColors.Fg1
+                Spacer(modifier = Modifier.height(Spacing.s3))
+                SlateCard {
+                    StatGrid(
+                        listOf(
+                            Triple("Distance", "%.2f".format(stats.distanceMeters / 1000f), "km"),
+                            Triple("Avg speed", "%.1f".format(stats.avgSpeedKmh), "km/h"),
+                        )
                     )
-                    OverviewGlassCard(
-                        modifier = Modifier.weight(1f),
-                        label = "AVG SPEED",
-                        value = "%.1f".format(stats.avgSpeedKmh),
-                        unit = "KM/H",
-                        valueColor = CadenceColors.Fg1
+                    Spacer(modifier = Modifier.height(Spacing.s3))
+                    Text(
+                        text = "Estimated from power on a flat virtual road.",
+                        style = CadenceType.small,
+                        color = CadenceColors.Fg3
                     )
-                }
-                Spacer(modifier = Modifier.height(Spacing.s2))
-                Text(
-                    text = "Estimated from power on a flat virtual road.",
-                    style = CadenceType.tick,
-                    color = CadenceColors.Fg3
-                )
-            }
-
-            // Computed stats: NP / IF / TSS / kJ
-            if (telemetry.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(Spacing.s4))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
-                ) {
-                    StatPill(label = "NP", value = "${stats.normalizedPowerWatts}", suffix = "W", modifier = Modifier.weight(1f))
-                    StatPill(label = "IF", value = "%.2f".format(stats.intensityFactor), modifier = Modifier.weight(1f))
-                    StatPill(label = "TSS", value = stats.tss.toString(), modifier = Modifier.weight(1f))
-                    StatPill(label = "kJ", value = stats.kilojoules.toString(), modifier = Modifier.weight(1f))
                 }
             }
 
@@ -380,44 +368,53 @@ fun WorkoutOverviewScreen(
             val hadAPlan = activeSession.workoutId != FREE_RIDE_WORKOUT_ID &&
                 simulationRouteId(activeSession.workoutId) == null
             if (hadAPlan) {
-                Spacer(modifier = Modifier.height(Spacing.s6))
-                Text("Power Adherence", style = CadenceType.h3, color = CadenceColors.Fg1)
                 Spacer(modifier = Modifier.height(Spacing.s3))
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(200.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(CadenceColors.Bg1)
-                        .border(1.dp, CadenceColors.Line2, RoundedCornerShape(12.dp))
-                ) {
-                    if (targetWorkout != null && telemetry.isNotEmpty()) {
-                        ChartOverlay(
-                            workout = targetWorkout!!,
-                            telemetry = telemetry,
-                            ftp = ftp
+                SlateCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            "Power adherence",
+                            style = CadenceType.bodyStrong,
+                            color = CadenceColors.Fg1
                         )
-                    } else {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No chart data available.", color = CadenceColors.Fg3, style = CadenceType.body)
+                        Text("target · actual", style = CadenceType.small, color = CadenceColors.Fg3)
+                    }
+                    Spacer(modifier = Modifier.height(Spacing.s4))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                    ) {
+                        if (targetWorkout != null && telemetry.isNotEmpty()) {
+                            ChartOverlay(
+                                workout = targetWorkout!!,
+                                telemetry = telemetry,
+                                ftp = ftp
+                            )
+                        } else {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Text("No chart data available.", color = CadenceColors.Fg3, style = CadenceType.body)
+                            }
                         }
                     }
                 }
             }
 
             if (telemetry.isNotEmpty() && ttz.any { it > 0 }) {
-                Spacer(modifier = Modifier.height(Spacing.s6))
+                Spacer(modifier = Modifier.height(Spacing.s3))
                 TimeInZoneCard(ttzSeconds = ttz, totalSeconds = activeSession.durationSeconds.toInt())
             }
 
             if (telemetry.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(Spacing.s6))
+                Spacer(modifier = Modifier.height(Spacing.s3))
                 ExportFileCard(onExport = { showExportSheet = true })
             }
 
             if (intervalsConfigured) {
-                Spacer(modifier = Modifier.height(Spacing.s6))
+                Spacer(modifier = Modifier.height(Spacing.s3))
                 UploadCard(
                     service = "Intervals.icu",
                     uploading = uploading,
@@ -428,7 +425,7 @@ fun WorkoutOverviewScreen(
             }
 
             if (ftConfigured) {
-                Spacer(modifier = Modifier.height(Spacing.s4))
+                Spacer(modifier = Modifier.height(Spacing.s3))
                 UploadCard(
                     service = "FitTrackee",
                     uploading = ftUploading,
@@ -446,16 +443,19 @@ fun WorkoutOverviewScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(CadenceColors.Bg0)
-                    .border(1.dp, CadenceColors.Line1)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(horizontal = Spacing.s5, vertical = Spacing.s3)
+                    .padding(
+                        start = Spacing.s5,
+                        end = Spacing.s5,
+                        top = Spacing.s3,
+                        bottom = Spacing.s6
+                    )
             ) {
                 PrimaryBtn(
                     text = "Done",
                     leadingIcon = null,
                     onClick = onDone,
-                    modifier = Modifier.fillMaxWidth(),
-                    glow = true
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         } else {
@@ -512,90 +512,117 @@ fun WorkoutOverviewScreen(
     }
 }
 
+/** Duration and average power: the summary's two headline numbers. */
 @Composable
-private fun StatPill(label: String, value: String, suffix: String = "", modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        modifier = modifier
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line1, shape)
-            .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(label, style = CadenceType.tick, color = CadenceColors.Fg3)
+private fun HeroStat(
+    label: String,
+    value: String,
+    unit: String? = null,
+    alignEnd: Boolean = false,
+) {
+    Column(horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
+        Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Spacer(modifier = Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(value, style = CadenceType.h3, color = CadenceColors.Fg1)
-            if (suffix.isNotEmpty()) {
+            Text(text = value, style = CadenceType.displayL, color = CadenceColors.Fg1)
+            if (unit != null) {
                 Text(
-                    " $suffix",
-                    style = CadenceType.tick,
+                    text = " $unit",
+                    style = CadenceType.bodyStrong.copy(fontSize = 16.sp),
                     color = CadenceColors.Fg3,
-                    modifier = Modifier.padding(bottom = 2.dp)
+                    modifier = Modifier.padding(bottom = 6.dp)
                 )
             }
         }
     }
 }
 
+/** Label, value, optional unit - laid out three to a row. */
+@Composable
+private fun StatGrid(entries: List<Triple<String, String, String?>>) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
+        entries.chunked(3).forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
+            ) {
+                row.forEach { (label, value, unit) ->
+                    Stat(
+                        label = label,
+                        value = value,
+                        unit = unit,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                // Keep a short last row aligned with the columns above it.
+                repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            }
+        }
+    }
+}
+
+/**
+ * Where the ride's time went. One bar per zone rather than a stacked list, so
+ * the shape of the effort is readable in a glance; a zone with no time in it
+ * keeps a Bg2 stub so the axis stays seven wide.
+ */
 @Composable
 private fun TimeInZoneCard(ttzSeconds: IntArray, totalSeconds: Int) {
-    val shape = RoundedCornerShape(Radii.lg)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s5)
-    ) {
-        Text(
-            text = "TIME IN ZONE",
-            style = CadenceType.eyebrow,
-            color = CadenceColors.Fg3
-        )
-        Spacer(modifier = Modifier.height(Spacing.s3))
-        val total = (ttzSeconds.sum().takeIf { it > 0 } ?: totalSeconds).coerceAtLeast(1)
-        ttzSeconds.forEachIndexed { idx, secs ->
-            if (secs <= 0) return@forEachIndexed
-            val zone = ZonePalette.entries[idx]
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
-                modifier = Modifier.padding(vertical = 4.dp)
-            ) {
-                Text(
-                    text = "Z${zone.number}",
-                    style = CadenceType.tick.copy(fontSize = 12.sp),
-                    color = CadenceColors.Fg2,
-                    modifier = Modifier.width(28.dp)
-                )
+    SlateCard {
+        Text(text = "Time in zone", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+        Spacer(modifier = Modifier.height(Spacing.s4))
+        val peak = (ttzSeconds.maxOrNull() ?: 0).coerceAtLeast(1)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ZonePalette.entries.forEachIndexed { idx, zone ->
+                val secs = ttzSeconds.getOrElse(idx) { 0 }
                 Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(CadenceColors.Bg0)
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                    contentAlignment = Alignment.BottomCenter
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth(secs.toFloat() / total)
-                            .fillMaxHeight()
-                            .background(zone.color)
+                            .fillMaxWidth()
+                            .then(
+                                if (secs > 0)
+                                    Modifier.fillMaxHeight((secs.toFloat() / peak).coerceIn(0.08f, 1f))
+                                else Modifier.height(4.dp)
+                            )
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(if (secs > 0) zone.color else CadenceColors.Bg2)
                     )
                 }
+            }
+        }
+        Spacer(modifier = Modifier.height(Spacing.s2))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            ZonePalette.entries.forEach { zone ->
                 Text(
-                    text = formatClock(secs),
-                    style = CadenceType.tick,
-                    color = CadenceColors.Fg2,
-                    modifier = Modifier.width(56.dp)
+                    text = "Z${zone.number}",
+                    style = CadenceType.micro,
+                    color = CadenceColors.Fg3,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
     }
 }
 
+/**
+ * The plan behind the ride: target steps as Bg2 ghosts, what the rider actually
+ * did as a single Fg1 line over them. The targets were zone-coloured once,
+ * which turned the card into a second zone chart and made the line - the only
+ * thing this chart is about - the least visible mark on it.
+ */
 @Composable
 fun ChartOverlay(
     workout: Workout,
@@ -612,16 +639,18 @@ fun ChartOverlay(
         Row(
             modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(0.dp)
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             workout.segments.forEach { seg ->
-                val zone = ZonePalette.fromFtpPercent(seg.powerPercentFTP)
                 val h = (seg.powerPercentFTP.toFloat() / maxChartPct).coerceIn(0.05f, 1f)
                 Box(
                     modifier = Modifier
                         .weight(seg.lengthInSeconds.toFloat().coerceAtLeast(1f))
                         .fillMaxHeight(h)
-                        .background(zone.color.copy(alpha = 0.30f))
+                        .background(
+                            CadenceColors.Bg2,
+                            RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)
+                        )
                 )
             }
         }
@@ -651,47 +680,9 @@ fun ChartOverlay(
             }
             drawPath(
                 path = path,
-                color = CadenceColors.Brand500,
-                style = Stroke(width = 4f)
+                color = CadenceColors.Fg1,
+                style = Stroke(width = 1.6.dp.toPx(), join = StrokeJoin.Round)
             )
-        }
-    }
-}
-
-@Composable
-private fun OverviewGlassCard(
-    modifier: Modifier = Modifier,
-    label: String,
-    value: String,
-    unit: String,
-    valueColor: Color
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(CadenceColors.Bg1.copy(alpha = 0.4f))
-            .border(1.dp, CadenceColors.Line2.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-            .padding(16.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    text = value,
-                    fontSize = 32.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = valueColor
-                )
-                if (unit.isNotEmpty()) {
-                    Text(
-                        text = " $unit",
-                        style = CadenceType.bodyStrong,
-                        color = CadenceColors.Fg3,
-                        modifier = Modifier.padding(bottom = 4.dp)
-                    )
-                }
-            }
         }
     }
 }
@@ -701,7 +692,7 @@ private fun DeleteConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.6f))
+            .background(SheetScrim)
             .clickable(onClick = onCancel),
         contentAlignment = Alignment.Center
     ) {
@@ -710,12 +701,11 @@ private fun DeleteConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
                 .clickable(enabled = false, onClick = {})
-                .padding(Spacing.s5),
+                .padding(Spacing.s6),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
-            Text("Delete this ride?", style = CadenceType.h3, color = CadenceColors.Fg1)
+            Text("Delete this ride?", style = CadenceType.h2, color = CadenceColors.Fg1)
             Text(
                 "Telemetry and stats for this session will be removed. This can't be undone.",
                 style = CadenceType.body,
@@ -723,24 +713,18 @@ private fun DeleteConfirmDialog(onCancel: () -> Unit, onConfirm: () -> Unit) {
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
                 SecondaryBtn(text = "Cancel", onClick = onCancel, modifier = Modifier.weight(1f))
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(CircleShape.let { RoundedCornerShape(14.dp) })
-                        .background(CadenceColors.Danger)
-                        .clickable(onClick = onConfirm)
-                        .padding(horizontal = 20.dp, vertical = 13.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("Delete", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                }
+                DestructiveBtn(
+                    text = "Delete",
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
 }
 
 private fun formatEpochToDate(epoch: Long): String {
-    val fmt = SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault())
+    val fmt = SimpleDateFormat("d MMM yyyy · HH:mm", Locale.getDefault())
     return fmt.format(Date(epoch))
 }
 
@@ -755,114 +739,96 @@ private fun UploadCard(
     service: String,
     uploading: Boolean,
     autoEnabled: Boolean,
-    /** When Intervals.icu last accepted this ride, or 0 for never. */
+    /** When the service last accepted this ride, or 0 for never. */
     uploadedEpoch: Long,
     onUpload: () -> Unit
 ) {
     val uploaded = uploadedEpoch > 0L
-    val shape = RoundedCornerShape(Radii.md)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s5),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
+    ListCard {
+        Row(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.s5, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = Icons.Outlined.CloudUpload,
                 contentDescription = null,
-                tint = CadenceColors.Brand500,
-                modifier = Modifier.size(18.dp)
+                tint = CadenceColors.Fg2,
+                modifier = Modifier.size(22.dp)
             )
-        }
-        Spacer(Modifier.width(Spacing.s3))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = service, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            if (uploaded) {
-                // The tick carries the state at a glance; the button's wording
-                // has to agree with it, or the rider is left reading the small
-                // print to find out whether they already sent this ride.
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Outlined.CheckCircle,
-                        contentDescription = null,
-                        tint = CadenceColors.Success,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = service, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(Modifier.height(2.dp))
+                if (uploaded) {
+                    // The tick carries the state at a glance; the button's
+                    // wording has to agree with it, or the rider is left reading
+                    // the small print to find out whether they already sent this
+                    // ride.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Outlined.CheckCircle,
+                            contentDescription = null,
+                            tint = CadenceColors.Success,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "Uploaded · ${formatEpochToDate(uploadedEpoch)}",
+                            style = CadenceType.small,
+                            color = CadenceColors.Fg3
+                        )
+                    }
+                } else {
                     Text(
-                        text = "Uploaded · ${formatEpochToDate(uploadedEpoch)}",
-                        style = CadenceType.tick,
-                        color = CadenceColors.Success
+                        text = if (autoEnabled) "Auto-upload is on. Tap to re-send."
+                        else "Tap to upload this ride.",
+                        style = CadenceType.small,
+                        color = CadenceColors.Fg3
                     )
                 }
-            } else {
-                Text(
-                    text = if (autoEnabled) "Auto-upload is on. Tap to re-send."
-                    else "Tap to upload this ride.",
-                    style = CadenceType.tick,
-                    color = CadenceColors.Fg3
-                )
             }
+            Spacer(Modifier.width(Spacing.s3))
+            MetaPill(
+                text = when {
+                    uploading -> "Uploading…"
+                    uploaded -> "Re-upload"
+                    else -> "Upload"
+                },
+                onClick = { if (!uploading) onUpload() }
+            )
         }
-        SecondaryBtn(
-            text = when {
-                uploading -> "Uploading…"
-                uploaded -> "Re-upload"
-                else -> "Upload"
-            },
-            onClick = { if (!uploading) onUpload() }
-        )
     }
 }
 
 @Composable
 private fun ExportFileCard(onExport: () -> Unit) {
-    val shape = RoundedCornerShape(Radii.md)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(Spacing.s5),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
+    ListCard {
+        Row(
             modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .padding(horizontal = Spacing.s5, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = Icons.Outlined.SaveAlt,
                 contentDescription = null,
-                tint = CadenceColors.Brand500,
-                modifier = Modifier.size(18.dp)
+                tint = CadenceColors.Fg2,
+                modifier = Modifier.size(22.dp)
             )
+            Spacer(Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Export file", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "Save or share this ride as FIT or TCX.",
+                    style = CadenceType.small,
+                    color = CadenceColors.Fg3
+                )
+            }
+            Spacer(Modifier.width(Spacing.s3))
+            MetaPill(text = "Export", onClick = onExport)
         }
-        Spacer(Modifier.width(Spacing.s3))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = "Export file", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            Text(
-                text = "Save or share this ride as FIT or TCX.",
-                style = CadenceType.tick,
-                color = CadenceColors.Fg3
-            )
-        }
-        SecondaryBtn(
-            text = "Export",
-            onClick = onExport
-        )
     }
 }

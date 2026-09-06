@@ -17,7 +17,6 @@ package app.indoorbike.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -35,6 +34,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,6 +47,7 @@ import app.indoorbike.ui.ExpandableCard
 import app.indoorbike.ui.IntervalsIcuCard
 import app.indoorbike.ui.IntervalsTextField
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
@@ -69,14 +70,17 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun ConnectionsScreen(onBack: () -> Unit) {
+    val header = rememberCollapsingHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
+            header = header,
             title = "Connections",
-            eyebrow = "SEND RIDES TO",
+            eyebrow = "Send rides to",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -89,6 +93,7 @@ fun ConnectionsScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.s5)
         ) {
@@ -149,7 +154,7 @@ private fun FitTrackeeCard() {
 
     ExpandableCard(
         icon = Icons.Outlined.Dns,
-        iconTint = CadenceColors.Brand500,
+        iconTint = CadenceColors.Fg1,
         title = "FitTrackee",
         statusText = when {
             connected && autoUpload -> "Connected · auto-upload on"
@@ -189,18 +194,17 @@ private fun FitTrackeeCard() {
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Radii.sm))
                     .background(CadenceColors.Bg2)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.sm))
                     .padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = FitTrackeeUploader.REDIRECT_URI,
                     style = CadenceType.bodyStrong,
-                    color = CadenceColors.Brand300,
+                    color = CadenceColors.Fg1,
                     modifier = Modifier.weight(1f)
                 )
                 Text(
-                    text = "COPY",
+                    text = "Copy",
                     style = CadenceType.eyebrow,
                     color = CadenceColors.Fg3,
                     modifier = Modifier.clickable {
@@ -220,7 +224,7 @@ private fun FitTrackeeCard() {
             // browser can get this app killed, and a client id that only lived
             // in a text field would not survive to redeem the code.
             IntervalsTextField(
-                label = "SERVER ADDRESS",
+                label = "Server address",
                 placeholder = "https://fittrackee.example.org",
                 value = url.orEmpty(),
                 onValueChange = { settings.setFitTrackeeUrl(it) },
@@ -228,7 +232,7 @@ private fun FitTrackeeCard() {
                 visualTransformation = VisualTransformation.None,
             )
             IntervalsTextField(
-                label = "CLIENT ID",
+                label = "Client ID",
                 placeholder = "From your FitTrackee app",
                 value = clientId.orEmpty(),
                 onValueChange = { settings.setFitTrackeeClientId(it) },
@@ -236,7 +240,7 @@ private fun FitTrackeeCard() {
                 visualTransformation = VisualTransformation.None,
             )
             IntervalsTextField(
-                label = "CLIENT SECRET",
+                label = "Client secret",
                 placeholder = "From your FitTrackee app",
                 value = clientSecret.orEmpty(),
                 onValueChange = { settings.setFitTrackeeClientSecret(it) },
@@ -268,8 +272,7 @@ private fun FitTrackeeCard() {
                         Toast.makeText(context, "No browser to open", Toast.LENGTH_LONG).show()
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-                glow = false
+                modifier = Modifier.fillMaxWidth()
             )
         } else {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -284,7 +287,7 @@ private fun FitTrackeeCard() {
             }
 
             Spacer(Modifier.height(Spacing.s4))
-            Text(text = "SPORT", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Text(text = "Sport", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
             Spacer(Modifier.height(Spacing.s2))
             if (sports.isEmpty()) {
                 // Not an error. Reading the list needs a scope FitTrackee's
@@ -307,11 +310,6 @@ private fun FitTrackeeCard() {
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(Radii.sm))
                                 .background(if (selected) CadenceColors.Bg2 else CadenceColors.Bg1)
-                                .border(
-                                    1.dp,
-                                    if (selected) CadenceColors.Brand500 else CadenceColors.Line2,
-                                    RoundedCornerShape(Radii.sm)
-                                )
                                 .clickable { settings.setFitTrackeeSportId(sport.id) }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -326,7 +324,7 @@ private fun FitTrackeeCard() {
                                 Icon(
                                     imageVector = Icons.Outlined.CheckCircle,
                                     contentDescription = "Selected",
-                                    tint = CadenceColors.Brand500,
+                                    tint = CadenceColors.Fg1,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
@@ -356,7 +354,7 @@ private fun FitTrackeeCard() {
                     onCheckedChange = { settings.setFitTrackeeAutoUpload(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = CadenceColors.OnBrand,
-                        checkedTrackColor = CadenceColors.Brand500,
+                        checkedTrackColor = CadenceColors.Fg1,
                         uncheckedThumbColor = CadenceColors.Fg3,
                         uncheckedTrackColor = CadenceColors.Bg2,
                         uncheckedBorderColor = CadenceColors.Line2,

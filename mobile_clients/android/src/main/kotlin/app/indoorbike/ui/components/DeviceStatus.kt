@@ -16,7 +16,6 @@
 package app.indoorbike.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,13 +27,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.SettingsRemote
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,15 +42,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
-import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 
 /**
@@ -76,6 +72,7 @@ fun DeviceStatusCard(
     onTrainerClick: () -> Unit,
     onHrmClick: () -> Unit,
     onControllerClick: () -> Unit,
+    showChevrons: Boolean = false,
 ) {
     val container = LocalAppContainer.current
     val trainerState by container.trainerManager.connectionState.collectAsState()
@@ -89,75 +86,72 @@ fun DeviceStatusCard(
     val controllerName by container.controllerManager.connectedDeviceName.collectAsState()
     val controllerSilent by container.controllerManager.keypadSilent.collectAsState()
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-    ) {
+    ListCard {
         DeviceRow(
             icon = Icons.Outlined.Bluetooth,
-            iconTint = CadenceColors.Brand500,
             title = trainerTitle(trainerState, trainerName, isMockTrainer),
             statusLine = trainerStatusLine(trainerState, isMockTrainer),
             statusColor = trainerStatusColor(trainerState),
+            showChevron = showChevrons,
             onClick = onTrainerClick
         )
-        HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+        CardDivider()
         DeviceRow(
             icon = Icons.Outlined.MonitorHeart,
-            iconTint = CadenceColors.Danger,
             title = hrmTitle(hrmState, hrmName),
             statusLine = hrmStatusLine(hrmState, hrmHeartRate, hrmSilent),
             statusColor = hrmStatusColor(hrmState, hrmSilent),
+            showChevron = showChevrons,
             onClick = onHrmClick
         )
-        HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
+        CardDivider()
         DeviceRow(
             icon = Icons.Outlined.SettingsRemote,
-            iconTint = CadenceColors.Brand500,
             title = controllerTitle(controllerState, controllerName),
             statusLine = controllerStatusLine(controllerState, controllerSilent),
             statusColor = controllerStatusColor(controllerState, controllerSilent),
+            showChevron = showChevrons,
             onClick = onControllerClick
         )
     }
 }
 
+/**
+ * One device. The leading glyph is a plain Fg2 icon with no well behind it: in
+ * a monochrome system a tinted tile around every icon is three more surfaces
+ * per card doing no work. What carries the meaning is the dot on the right.
+ */
 @Composable
 private fun DeviceRow(
     icon: ImageVector,
-    iconTint: Color,
     title: String,
     statusLine: String,
     statusColor: Color,
+    showChevron: Boolean,
     onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(horizontal = Spacing.s5, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(iconTint.copy(alpha = 0.10f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(18.dp)
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = CadenceColors.Fg2,
+            modifier = Modifier.size(22.dp)
+        )
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Text(
+                text = title,
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
             Text(text = statusLine, style = CadenceType.small, color = CadenceColors.Fg3)
         }
         Box(
@@ -166,13 +160,15 @@ private fun DeviceRow(
                 .clip(CircleShape)
                 .background(statusColor)
         )
-        Spacer(modifier = Modifier.width(Spacing.s2))
-        Icon(
-            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-            contentDescription = null,
-            tint = CadenceColors.Fg4,
-            modifier = Modifier.size(20.dp)
-        )
+        if (showChevron) {
+            Spacer(modifier = Modifier.width(6.dp))
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                contentDescription = null,
+                tint = CadenceColors.Fg3,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 
@@ -184,7 +180,7 @@ internal fun trainerTitle(
     isMock: Boolean,
 ): String = when {
     state == TrainerConnectionState.Connected && name != null -> name
-    isMock -> "Mock Trainer"
+    isMock -> "Mock trainer"
     else -> "Trainer"
 }
 
@@ -207,7 +203,7 @@ internal fun trainerStatusColor(state: TrainerConnectionState): Color = when (st
 }
 
 internal fun hrmTitle(state: HrmConnectionState, name: String?): String =
-    if (state == HrmConnectionState.Connected && name != null) name else "Heart Rate Monitor"
+    if (state == HrmConnectionState.Connected && name != null) name else "Heart rate monitor"
 
 internal fun hrmStatusLine(
     state: HrmConnectionState,
@@ -217,7 +213,7 @@ internal fun hrmStatusLine(
     HrmConnectionState.Scanning -> "Scanning…"
     HrmConnectionState.Connecting -> "Connecting…"
     HrmConnectionState.Connected -> when {
-        heartRate > 0 -> "$heartRate BPM"
+        heartRate > 0 -> "$heartRate bpm"
         // "Waiting" implies patience will fix it. Once the monitor has given up
         // retrying, it won't, and the rider needs to act. See
         // HeartRateMonitor.sensorSilent.

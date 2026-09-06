@@ -65,7 +65,7 @@ fun ReportProblemDialog(
             Text(
                 text = "Open email draft",
                 style = CadenceType.bodyStrong,
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg1,
                 modifier = Modifier
                     .clickable {
                         BugReport.launchEmailDraft(context, errorContext)

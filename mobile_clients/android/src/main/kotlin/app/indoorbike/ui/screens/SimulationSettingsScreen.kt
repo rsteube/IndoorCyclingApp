@@ -16,7 +16,6 @@
 package app.indoorbike.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,6 +45,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -55,6 +55,7 @@ import app.indoorbike.shared.settings.MAX_BIKE_WEIGHT_KG
 import app.indoorbike.shared.settings.MIN_BIKE_WEIGHT_KG
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.screens.simulation.formatOneDecimal
 import app.indoorbike.ui.theme.CadenceColors
@@ -85,14 +86,17 @@ fun SimulationSettingsScreen(onBack: () -> Unit) {
     val drivetrainId by settings.drivetrainId.collectAsState()
     val selected = Drivetrain.byId(drivetrainId)
 
+    val header = rememberCollapsingHeaderState()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
-            title = "Simulation",
-            eyebrow = "Settings",
+            header = header,
+            title = "Bike & gearing",
+            eyebrow = "Simulation",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -116,13 +120,12 @@ fun SimulationSettingsScreen(onBack: () -> Unit) {
             )
 
             Spacer(Modifier.height(Spacing.s6))
-            SectionLabel("BIKE WEIGHT")
+            SectionLabel("Bike weight")
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.md))
+                    .clip(RoundedCornerShape(Radii.lg))
                     .background(CadenceColors.Bg1)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
                     .padding(Spacing.s5)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -173,13 +176,12 @@ fun SimulationSettingsScreen(onBack: () -> Unit) {
             }
 
             Spacer(Modifier.height(Spacing.s6))
-            SectionLabel("GEARING")
+            SectionLabel("Gearing")
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.md))
+                    .clip(RoundedCornerShape(Radii.lg))
                     .background(CadenceColors.Bg1)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
             ) {
                 Drivetrain.ALL.forEachIndexed { index, drivetrain ->
                     if (index > 0) HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
@@ -238,12 +240,7 @@ private fun DrivetrainRow(
                 .size(20.dp)
                 .clip(CircleShape)
                 .background(
-                    if (selected) CadenceColors.Brand500 else CadenceColors.Bg2
-                )
-                .border(
-                    1.5.dp,
-                    if (selected) CadenceColors.Brand500 else CadenceColors.Line3,
-                    CircleShape,
+                    if (selected) CadenceColors.Fg1 else CadenceColors.Bg2
                 ),
             contentAlignment = Alignment.Center,
         ) {
@@ -282,20 +279,15 @@ private fun PresetWeight(
     Box(
         modifier = modifier
             .clip(shape)
-            .background(if (active) CadenceColors.Brand500.copy(alpha = 0.18f) else CadenceColors.Bg2)
-            .border(
-                1.dp,
-                if (active) CadenceColors.Brand500.copy(alpha = 0.6f) else CadenceColors.Line2,
-                shape,
-            )
+            .background(if (active) CadenceColors.Fg1 else CadenceColors.Bg2)
             .clickable { onPick(kg) }
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = "$label ${kg.roundToInt()}",
             style = CadenceType.tick,
-            color = if (active) CadenceColors.Brand500 else CadenceColors.Fg2,
+            color = if (active) CadenceColors.OnBrand else CadenceColors.Fg2,
             maxLines = 1,
         )
     }
@@ -313,11 +305,6 @@ private fun Stepper(
             .size(40.dp)
             .clip(CircleShape)
             .background(CadenceColors.Bg2)
-            .border(
-                1.5.dp,
-                if (enabled) CadenceColors.Brand500.copy(alpha = 0.45f) else CadenceColors.Line2,
-                CircleShape,
-            )
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
@@ -325,7 +312,7 @@ private fun Stepper(
         Text(
             text = label,
             style = CadenceType.h3,
-            color = if (enabled) CadenceColors.Brand500 else CadenceColors.Fg4,
+            color = if (enabled) CadenceColors.Fg1 else CadenceColors.Fg4,
         )
     }
 }

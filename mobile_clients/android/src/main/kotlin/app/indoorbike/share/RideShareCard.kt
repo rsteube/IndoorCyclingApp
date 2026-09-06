@@ -70,7 +70,7 @@ const val SHARE_CARD_SIZE_PX: Int = 1080
  * `peakPowerWatts` is the fallback when no workout structure is available.
  */
 data class ShareHighlight(
-    val title: String,           // e.g. "TOUGHEST INTERVAL" / "PEAK POWER"
+    val title: String,           // e.g. "Toughest interval" / "Peak power"
     val name: String,            // e.g. "Z4 · 12:00"
     val statA: Pair<String, String>?, // label -> value, e.g. "% FTP" -> "98%"
     val statB: Pair<String, String>?,
@@ -103,14 +103,15 @@ fun RideShareCard(
             .size(SHARE_CARD_SIZE_PX.dp)
             .background(CadenceColors.Bg0)
     ) {
-        // Subtle ember halo top-left, echoing the in-ride zone halo.
+        // A slate wash top-left, so the card has some depth without any
+        // colour in it that does not mean a power zone.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color(0xFFF47A1F).copy(alpha = 0.18f),
+                            CadenceColors.Bg1,
                             Color.Transparent
                         ),
                         radius = 720f
@@ -197,7 +198,7 @@ private fun HeaderBlock(session: WorkoutSession) {
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = session.workoutName.uppercase(),
+            text = session.workoutName,
             style = TextStyle(
                 fontFamily = DisplayFontFamily,
                 fontWeight = FontWeight.Normal,
@@ -222,16 +223,16 @@ private fun KpiRow(stats: RideStats, durationSeconds: Int) {
         horizontalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         Kpi(
-            label = "DURATION",
+            label = "Duration",
             value = formatDuration(durationSeconds),
             valueColor = CadenceColors.Fg1,
             modifier = Modifier.weight(1f)
         )
         Kpi(
-            label = "AVG POWER",
+            label = "Avg power",
             value = "${stats.avgPowerWatts}",
             unit = "W",
-            valueColor = CadenceColors.Brand500,
+            valueColor = CadenceColors.Fg1,
             modifier = Modifier.weight(1f)
         )
         Kpi(
@@ -256,7 +257,6 @@ private fun Kpi(
         modifier = modifier
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .padding(horizontal = 24.dp, vertical = 24.dp)
     ) {
         Text(
@@ -315,7 +315,6 @@ private fun ChartPanel(
         modifier = modifier
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
             Row(
@@ -324,7 +323,7 @@ private fun ChartPanel(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "POWER",
+                    text = "Power",
                     style = TextStyle(
                         fontFamily = BodyFontFamily,
                         fontWeight = FontWeight.SemiBold,
@@ -410,7 +409,7 @@ private fun ChartBody(
                     lineTo(w, h)
                     close()
                 }
-                drawPath(path = area, color = CadenceColors.Brand500.copy(alpha = 0.18f))
+                drawPath(path = area, color = CadenceColors.Fg1.copy(alpha = 0.18f))
             }
         }
 
@@ -454,7 +453,6 @@ private fun HighlightCallout(h: ShareHighlight) {
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .padding(horizontal = 32.dp, vertical = 24.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(24.dp)
@@ -465,7 +463,6 @@ private fun HighlightCallout(h: ShareHighlight) {
                 .size(56.dp)
                 .clip(CircleShape)
                 .background(h.accent.copy(alpha = 0.18f))
-                .border(1.dp, h.accent.copy(alpha = 0.6f), CircleShape)
         ) {
             Box(
                 modifier = Modifier
@@ -566,13 +563,10 @@ private fun Wordmark() {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Brand mark — a simple ember-gradient pulse glyph.
+        // Brand mark — a pulse glyph in the one colour the system has.
         Canvas(modifier = Modifier.size(width = 60.dp, height = 40.dp)) {
             val w = size.width
             val h = size.height
-            val brush = Brush.linearGradient(
-                colors = listOf(Color(0xFFFF9847), Color(0xFFD54F0A))
-            )
             val p = Path().apply {
                 moveTo(0f, h * 0.55f)
                 lineTo(w * 0.18f, h * 0.30f)
@@ -582,27 +576,27 @@ private fun Wordmark() {
                 lineTo(w * 0.84f, h * 0.30f)
                 lineTo(w, h * 0.55f)
             }
-            drawPath(path = p, brush = brush, style = Stroke(width = 5f))
+            drawPath(path = p, color = CadenceColors.Fg1, style = Stroke(width = 5f))
         }
         Text(
-            text = "INDOOR",
+            text = "Indoor",
             style = TextStyle(
                 fontFamily = DisplayFontFamily,
-                fontWeight = FontWeight.Normal,
-                fontSize = 36.sp,
-                letterSpacing = 0.06.em
+                fontWeight = FontWeight.Medium,
+                fontSize = 32.sp,
+                letterSpacing = (-0.02).em
             ),
-            color = CadenceColors.Fg1
+            color = CadenceColors.Fg2
         )
         Text(
-            text = "BIKE",
+            text = "Bike",
             style = TextStyle(
                 fontFamily = DisplayFontFamily,
-                fontWeight = FontWeight.Normal,
-                fontSize = 36.sp,
-                letterSpacing = 0.06.em
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 32.sp,
+                letterSpacing = (-0.02).em
             ),
-            color = CadenceColors.Brand500
+            color = CadenceColors.Fg1
         )
     }
 }
@@ -628,26 +622,26 @@ fun deriveHighlight(
 
         val zone = PowerZone.fromFtpPercent(candidate.powerPercentFTP)
         return ShareHighlight(
-            title = "TOUGHEST INTERVAL",
+            title = "Toughest interval",
             name = "Z${zone.number} · ${formatDuration(candidate.lengthInSeconds)}",
             statA = "% FTP" to "${candidate.powerPercentFTP}%",
-            statB = "ZONE" to zone.label.uppercase(),
+            statB = "Zone" to zone.label,
             accent = zone.color
         )
     }
     val peak = telemetry.maxOfOrNull { it.power } ?: 0L
     return ShareHighlight(
-        title = "PEAK POWER",
+        title = "Peak power",
         name = "$peak W",
         statA = null,
         statB = null,
-        accent = CadenceColors.Brand500
+        accent = CadenceColors.Fg1
     )
 }
 
 private fun formatDate(epochMs: Long): String {
     val fmt = SimpleDateFormat("MMM d, yyyy", Locale.getDefault())
-    return fmt.format(Date(epochMs)).uppercase()
+    return fmt.format(Date(epochMs))
 }
 
 private fun formatDuration(totalSeconds: Int): String {

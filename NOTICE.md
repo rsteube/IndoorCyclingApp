@@ -23,9 +23,7 @@ All fonts ship as static / variable TTF files in [mobile_clients/android/src/mai
 
 | Font | License | Source |
 | --- | --- | --- |
-| Bebas Neue | SIL Open Font License 1.1 | https://github.com/dharmatype/Bebas-Neue |
-| Inter (variable) | SIL Open Font License 1.1 | https://github.com/rsms/inter |
-| JetBrains Mono (variable) | SIL Open Font License 1.1 | https://github.com/JetBrains/JetBrainsMono |
+| Manrope (variable) | SIL Open Font License 1.1 | https://github.com/sharanda/manrope |
 
 The SIL Open Font License is available at https://openfontlicense.org/.
 

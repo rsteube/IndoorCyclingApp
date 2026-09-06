@@ -184,7 +184,7 @@ fun computeBadges(
     out += Badge(
         id = "first-ride",
         title = "First Ride",
-        subtitle = "Welcome to Cadence",
+        subtitle = "Welcome to Indoor Bike",
         iconHint = "flag",
         unlockedAtEpochMs = sortedAsc.first().startTimeEpoch
     )

@@ -17,7 +17,6 @@ package app.indoorbike.share
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,8 +53,12 @@ import androidx.compose.ui.unit.dp
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
+import app.indoorbike.ui.components.SheetHandle
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SheetShape
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
+import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -87,6 +90,9 @@ fun ExportSheet(
         sheetState = sheetState,
         containerColor = CadenceColors.Bg1,
         contentColor = CadenceColors.Fg1,
+        shape = SheetShape,
+        scrimColor = SheetScrim,
+        dragHandle = { SheetHandle() },
     ) {
         Column(
             modifier = Modifier
@@ -95,7 +101,7 @@ fun ExportSheet(
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .padding(bottom = Spacing.s5),
         ) {
-            Text(text = "EXPORT FILE", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Text(text = "Export file", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
             Spacer(Modifier.height(Spacing.s2))
             Text(
                 text = "Save or share this ride as a standard activity file. Pick a format:",
@@ -133,7 +139,7 @@ fun ExportSheet(
             if (busy) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(
-                        color = CadenceColors.Brand500,
+                        color = CadenceColors.Fg1,
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(16.dp),
                     )
@@ -151,35 +157,30 @@ private fun FormatRow(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(12.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg2)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(Spacing.s4),
+            .padding(horizontal = Spacing.s5, vertical = Spacing.s4),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Download,
-                contentDescription = null,
-                tint = CadenceColors.Brand500,
-                modifier = Modifier.size(18.dp),
-            )
-        }
-        Spacer(Modifier.width(Spacing.s3))
+        Icon(
+            imageVector = Icons.Outlined.Download,
+            contentDescription = null,
+            tint = CadenceColors.Fg2,
+            modifier = Modifier.size(22.dp),
+        )
+        Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(text = "${format.label} (.${format.ext})", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            Text(text = format.blurb, style = CadenceType.tick, color = CadenceColors.Fg3)
+            Text(
+                text = "${format.label} (.${format.ext})",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(text = format.blurb, style = CadenceType.small, color = CadenceColors.Fg3)
         }
     }
 }

@@ -18,7 +18,6 @@ package app.indoorbike.ui.screens
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -55,6 +54,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -68,6 +68,8 @@ import app.indoorbike.shared.workout.WorkoutSummary
 import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.components.FilterChip
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -171,12 +173,19 @@ fun RemoteRepoBrowserScreen(
         return
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    val header = rememberCollapsingHeaderState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         val title = (fetchState as? FetchState.Loaded)?.manifest?.name ?: "Loading…"
-        val eyebrow = (fetchState as? FetchState.Loaded)?.manifest?.author?.uppercase()
+        val eyebrow = (fetchState as? FetchState.Loaded)?.manifest?.author
         AppBar(
+            header = header,
             title = title,
-            eyebrow = eyebrow ?: "REMOTE REPOSITORY",
+            eyebrow = eyebrow ?: "Remote repository",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -251,7 +260,7 @@ private fun LoadingState() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg1,
                 strokeWidth = 2.dp,
                 modifier = Modifier.size(28.dp)
             )
@@ -381,7 +390,7 @@ private fun LoadedState(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = Spacing.s5, end = Spacing.s5,
-                top = Spacing.s2, bottom = Spacing.s5
+                top = Spacing.s2, bottom = listBottomPadding()
             ),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
@@ -404,19 +413,18 @@ private fun RemoteWorkoutCard(
     onClick: () -> Unit,
     onAdd: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(Radii.lg)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onClick)
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2)
     ) {
         Text(
-            text = summary.tag.uppercase(),
+            text = summary.tag,
             style = CadenceType.eyebrow,
             color = CadenceColors.Fg3
         )
@@ -489,7 +497,7 @@ private fun AddButton(isAdded: Boolean, onAdd: () -> Unit) {
         Row(
             modifier = Modifier
                 .clip(CircleShape)
-                .background(CadenceColors.Brand500.copy(alpha = 0.18f))
+                .background(CadenceColors.Bg2)
                 .clickable(onClick = onAdd)
                 .padding(horizontal = Spacing.s3, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -497,7 +505,7 @@ private fun AddButton(isAdded: Boolean, onAdd: () -> Unit) {
             Icon(
                 imageVector = Icons.Outlined.CloudDownload,
                 contentDescription = null,
-                tint = CadenceColors.Brand500,
+                tint = CadenceColors.Fg1,
                 modifier = Modifier.size(14.dp)
             )
             Spacer(Modifier.width(4.dp))
@@ -506,7 +514,7 @@ private fun AddButton(isAdded: Boolean, onAdd: () -> Unit) {
                 style = CadenceType.bodyStrong.copy(fontSize = 12.sp, fontWeight = FontWeight.SemiBold),
                 maxLines = 1,
                 softWrap = false,
-                color = CadenceColors.Brand500
+                color = CadenceColors.Fg1
             )
         }
     }

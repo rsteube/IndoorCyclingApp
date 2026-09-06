@@ -21,7 +21,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -37,11 +36,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.GridItemSpan
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -49,7 +44,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Bluetooth
@@ -75,8 +70,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -102,12 +99,13 @@ import app.indoorbike.shared.workout.freeRideStartWatts
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.listBottomPadding
+import app.indoorbike.ui.components.CardDivider
 import app.indoorbike.ui.components.FilterChip
-import app.indoorbike.ui.components.HrmHeartIndicator
-import app.indoorbike.ui.components.MetaPill
-import app.indoorbike.ui.components.PrimaryBtn
-import app.indoorbike.ui.components.UnfinishedRideBanner
+import app.indoorbike.ui.components.ListCard
 import app.indoorbike.ui.components.ZoneBar
+import app.indoorbike.ui.components.dashedOutline
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -213,10 +211,17 @@ fun WorkoutPickerScreen(
         }
     }
 
-    Column(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    val header = rememberCollapsingHeaderState()
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         AppBar(
+            header = header,
             title = "Workouts",
-            eyebrow = "CHOOSE A RIDE",
+            eyebrow = "Choose a ride",
             leading = {
                 IconBtn(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onClick = onBack)
             },
@@ -232,17 +237,15 @@ fun WorkoutPickerScreen(
             },
         )
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 340.dp),
+        LazyColumn(
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(
                 start = Spacing.s5, end = Spacing.s5,
-                top = Spacing.s2, bottom = Spacing.s5
+                top = Spacing.s4, bottom = listBottomPadding()
             ),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            item(key = "search", span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "search") {
                 Column {
                     SearchField(
                         query = searchQuery,
@@ -267,28 +270,37 @@ fun WorkoutPickerScreen(
             }
 
             if (visible.isEmpty()) {
-                item(key = "no-results", span = { GridItemSpan(maxLineSpan) }) {
+                item(key = "no-results") {
                     NoResultsHint(query = searchQuery.trim())
                 }
             } else {
-                items(visible, key = { it.workout.id }) { summary ->
-                    val starred = summary.workout.id in favouriteIds
-                    WorkoutRow(
-                        summary = summary,
-                        starred = starred,
-                        onClick = { onPick(summary.workout) },
-                        onToggleStar = {
-                            container.userSettings.setWorkoutFavourite(
-                                summary.workout.id, !starred
+                // One card for the whole list, rows divided rather than
+                // separated. A card per row turned a library of forty workouts
+                // into forty floating objects; this way the list is one object
+                // and the rows are its contents.
+                item(key = "workout-list") {
+                    ListCard {
+                        visible.forEachIndexed { index, summary ->
+                            val starred = summary.workout.id in favouriteIds
+                            WorkoutRow(
+                                summary = summary,
+                                starred = starred,
+                                onClick = { onPick(summary.workout) },
+                                onToggleStar = {
+                                    container.userSettings.setWorkoutFavourite(
+                                        summary.workout.id, !starred
+                                    )
+                                }
                             )
+                            if (index != visible.lastIndex) CardDivider()
                         }
-                    )
+                    }
                 }
             }
 
             // Trailing "add more" card. Catches riders who scrolled the whole
             // list looking for something that is not there yet.
-            item(key = "add-more-workouts", span = { GridItemSpan(maxLineSpan) }) {
+            item(key = "add-more-workouts") {
                 AddMoreWorkoutsCard(onClick = onOpenLibrary)
             }
         }
@@ -304,28 +316,27 @@ private fun SearchField(
     query: String,
     onQueryChange: (String) -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.md)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
+            .clip(CircleShape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = 18.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         Icon(
             imageVector = Icons.Outlined.Search,
             contentDescription = null,
             tint = CadenceColors.Fg3,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(20.dp)
         )
         BasicTextField(
             value = query,
             onValueChange = onQueryChange,
             singleLine = true,
             textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
+            cursorBrush = SolidColor(CadenceColors.Fg1),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(),
             modifier = Modifier.weight(1f),
@@ -334,7 +345,7 @@ private fun SearchField(
                     Text(
                         text = "Search workouts",
                         style = CadenceType.body,
-                        color = CadenceColors.Fg4
+                        color = CadenceColors.Fg3
                     )
                 }
                 inner()
@@ -346,7 +357,7 @@ private fun SearchField(
                 contentDescription = "Clear search",
                 tint = CadenceColors.Fg3,
                 modifier = Modifier
-                    .size(16.dp)
+                    .size(20.dp)
                     .clickable { onQueryChange("") }
             )
         }
@@ -384,34 +395,30 @@ private fun WorkoutRow(
     onClick: () -> Unit,
     onToggleStar: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(12.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onClick)
-            .padding(start = Spacing.s4, end = Spacing.s2, top = Spacing.s3, bottom = Spacing.s3),
+            .padding(start = Spacing.s5, end = Spacing.s3, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = summary.workout.name,
-                style = CadenceType.bodyStrong.copy(fontSize = 14.sp),
+                style = CadenceType.bodyStrong,
                 color = CadenceColors.Fg1,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(7.dp))
-            ZoneBar(segments = summary.zoneSegments(), height = 5.dp)
+            Spacer(Modifier.height(Spacing.s2))
+            ZoneBar(segments = summary.zoneSegments(), height = 6.dp)
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                text = formatDurationPretty(summary.totalSeconds).uppercase(),
-                style = CadenceType.tick,
-                color = CadenceColors.Fg2
+                text = formatDurationPretty(summary.totalSeconds),
+                style = CadenceType.small.copy(fontWeight = FontWeight.Bold),
+                color = CadenceColors.Fg1
             )
             Spacer(Modifier.height(2.dp))
             Text(
@@ -432,93 +439,58 @@ private fun WorkoutRow(
             Icon(
                 imageVector = if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 contentDescription = if (starred) "Remove from favourites" else "Add to favourites",
-                tint = if (starred) CadenceColors.Brand500 else CadenceColors.Fg4,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Skeleton / banners
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun SkeletonCard() {
-    val shape = RoundedCornerShape(14.dp)
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line1, shape)
-            .padding(Spacing.s4),
-        verticalArrangement = Arrangement.spacedBy(Spacing.s3)
-    ) {
-        Box(
-            modifier = Modifier
-                .height(14.dp)
-                .fillMaxWidth(0.4f)
-                .clip(RoundedCornerShape(4.dp))
-                .background(CadenceColors.Bg2)
-        )
-        Box(
-            modifier = Modifier
-                .height(20.dp)
-                .fillMaxWidth(0.7f)
-                .clip(RoundedCornerShape(4.dp))
-                .background(CadenceColors.Bg2)
-        )
-        Box(
-            modifier = Modifier
-                .height(8.dp)
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(4.dp))
-                .background(CadenceColors.Bg2)
-        )
-    }
-}
-
-@Composable
-private fun AddMoreWorkoutsCard(onClick: () -> Unit) {
-    val shape = RoundedCornerShape(14.dp)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1.copy(alpha = 0.5f))
-            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.4f), shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Outlined.LibraryBooks,
-                contentDescription = null,
-                tint = CadenceColors.Brand500,
+                tint = if (starred) CadenceColors.Fg1 else CadenceColors.Fg3,
                 modifier = Modifier.size(20.dp)
             )
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Banners
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Not a card: a dashed outline on the canvas, the shape the app uses for
+ * anything that is a gap rather than a thing. There is nothing here yet, and
+ * the outline says so without pretending to be content.
+ */
+@Composable
+private fun AddMoreWorkoutsCard(onClick: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radii.lg))
+            .dashedOutline()
+            .clickable(onClick = onClick)
+            .padding(horizontal = Spacing.s5, vertical = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.LibraryBooks,
+            contentDescription = null,
+            tint = CadenceColors.Fg2,
+            modifier = Modifier.size(24.dp)
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = "Want more workouts?",
                 style = CadenceType.bodyStrong,
                 color = CadenceColors.Fg1
             )
+            Spacer(Modifier.height(2.dp))
             Text(
-                text = "Browse the community library, scan a QR, or import a file.",
-                style = CadenceType.tick,
+                text = "Community library, QR code, or a file.",
+                style = CadenceType.small,
                 color = CadenceColors.Fg3
             )
         }
-        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
+        Icon(
+            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = CadenceColors.Fg3,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }

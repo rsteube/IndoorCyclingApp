@@ -144,7 +144,7 @@ Screenshot "launch-welcome"
 
 # ── Phase 3: onboarding ──────────────────────────────────────────────────────
 
-if (Tap-Text "Get Started") {
+if (Tap-Text "Get started") {
     Wait 1200
     Screenshot "onboarding-sheet"
 
@@ -155,7 +155,7 @@ if (Tap-Text "Get Started") {
         Screenshot "onboarding-ftp-150"
     }
 
-    if (Tap-Text "Save & Continue") {
+    if (Tap-Text "Continue") {
         Wait 1200
         Screenshot "post-onboarding"
     }
@@ -173,11 +173,11 @@ if (Tap-Text "Settings") {
         Wait 1000
         Screenshot "trainer-sheet"
 
-        if (Tap-Text "Pair Trainer") {
+        if (Tap-Text "Pair trainer") {
             Wait 1500
             Screenshot "trainer-pairing-screen"
 
-            if (Tap-Text "Use Mock Trainer") {
+            if (Tap-Text "Use mock trainer") {
                 Wait 1500
                 Screenshot "trainer-mock-connected"
             }

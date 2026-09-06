@@ -1,0 +1,78 @@
+/* ============================================================
+   INDOOR BIKE — SLATE DESIGN SYSTEM
+   Dark, monochrome, telemetry-first. One family: Manrope.
+   Palette: Charcoal Blue · Twilight Indigo · Charcoal Blue 2 · Blue Slate · Slate Grey
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  /* ---------- TYPE ---------- */
+  --font: "Manrope", system-ui, sans-serif;     /* the only family; numerals via tabular-nums */
+
+  --t-display:  48px;  /* streak count, ride-summary hero */
+  --t-h1:       28px;  /* screen title */
+  --t-h2:       22px;  /* stat values */
+  --t-h3:       18px;  /* card titles */
+  --t-body:     15px;
+  --t-small:    13px;  /* secondary lines, section labels */
+  --t-micro:    11px;  /* tab labels, chart ticks */
+
+  --lh-tight: 1.1;  --lh-snug: 1.2;  --lh-normal: 1.45;
+  --tr-tight: -0.02em;
+
+  /* ---------- SURFACES (the five slates, ascending) ---------- */
+  --bg-0: #313e50;  /* Charcoal Blue   — canvas */
+  --bg-1: #3a435e;  /* Twilight Indigo — cards, sheets, tab bar */
+  --bg-2: #455561;  /* Charcoal Blue 2 — icon wells, inputs, inactive bars, in-card dividers */
+  --bg-3: #5c6672;  /* Blue Slate      — pressed, strong border, dashed outline */
+  --bg-4: #6c6f7f;  /* Slate Grey      — disabled ink, inactive status dot */
+
+  --line-1: #455561;  /* dividers inside a card */
+  --line-2: #5c6672;  /* card outline when needed (locked state) */
+
+  /* ---------- FOREGROUND ---------- */
+  --fg-1: #F2F4F7;  /* primary text, primary button fill */
+  --fg-2: #C5CAD6;  /* secondary text, inactive tab */
+  --fg-3: #9AA1B0;  /* tertiary: labels, hints, chevrons */
+  --fg-4: #6c6f7f;  /* disabled */
+  --on-inverse: #313e50;  /* text on fg-1 fills */
+
+  /* ---------- POWER ZONES (unchanged) ---------- */
+  --zone-1: #6B8AA8; --zone-2: #2E7BFF; --zone-3: #1FB373; --zone-4: #F0C419;
+  --zone-5: #FF8A1F; --zone-6: #EB3B3B; --zone-7: #C53BFF;
+  --zone-1-bg: rgba(107,138,168,.20); --zone-2-bg: rgba(46,123,255,.20); --zone-3-bg: rgba(31,179,115,.20);
+  --zone-4-bg: rgba(240,196,25,.20);  --zone-5-bg: rgba(255,138,31,.20);  --zone-6-bg: rgba(235,59,59,.20);
+  --zone-7-bg: rgba(197,59,255,.20);
+
+  /* ---------- SEMANTIC ---------- */
+  --success: var(--zone-3);
+  --warning: var(--zone-4);
+  --danger:  var(--zone-6);
+
+  /* ---------- SPACING ---------- */
+  --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 20px; --s-6: 24px; --s-7: 32px; --s-8: 40px;
+
+  /* ---------- RADII ---------- */
+  --r-sm: 6px;     /* streak boxes */
+  --r-md: 12px;    /* inputs, small tiles */
+  --r-lg: 20px;    /* cards, sheets */
+  --r-pill: 999px; /* buttons, chips, tab bar, badges */
+
+  /* ---------- MOTION ---------- */
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms; --dur-base: 200ms; --dur-slow: 320ms;
+}
+
+/* ---------- TYPE STYLES ---------- */
+.t-display { font: 800 var(--t-display)/var(--lh-tight) var(--font); letter-spacing: var(--tr-tight); font-variant-numeric: tabular-nums; }
+.t-h1      { font: 800 var(--t-h1)/1.15 var(--font); letter-spacing: var(--tr-tight); }
+.t-h2      { font: 800 var(--t-h2)/var(--lh-tight) var(--font); font-variant-numeric: tabular-nums; }
+.t-h3      { font: 700 var(--t-h3)/var(--lh-snug) var(--font); }
+.t-body    { font: 500 var(--t-body)/var(--lh-normal) var(--font); }
+.t-strong  { font: 700 var(--t-body)/var(--lh-normal) var(--font); }
+.t-small   { font: 500 var(--t-small)/var(--lh-normal) var(--font); }
+.t-label   { font: 600 var(--t-small)/var(--lh-snug) var(--font); color: var(--fg-3); }  /* section heads: sentence case, no caps */
+.t-micro   { font: 600 var(--t-micro)/var(--lh-snug) var(--font); }
+.t-num     { font-variant-numeric: tabular-nums; }
+
+html, body { background: var(--bg-0); color: var(--fg-1); font: 500 var(--t-body)/var(--lh-normal) var(--font); -webkit-font-smoothing: antialiased; }

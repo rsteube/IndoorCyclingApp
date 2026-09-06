@@ -5,8 +5,8 @@ Thanks for your interest. This is a spare-time project, so issues and small PRs 
 ## Project layout
 
 - `shared/` - Kotlin Multiplatform module with all core logic: workout parsing, BLE managers (trainer / HRM / controller), session timing, persistence schema, FIT writer, progression math. Pure Kotlin, unit-tested.
-- `mobile_clients/android/` - Android client. Jetpack Compose UI, Material 3, the in-house Cadence design system. Composables read singletons through `LocalAppContainer` (see [`IndoorBikeApp.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/IndoorBikeApp.kt)).
-- `cadence-design-system/` - design tokens and component documentation.
+- `mobile_clients/android/` - Android client. Jetpack Compose UI, Material 3, the in-house Slate design system. Composables read singletons through `LocalAppContainer` (see [`IndoorBikeApp.kt`](mobile_clients/android/src/main/kotlin/app/indoorbike/IndoorBikeApp.kt)).
+- `slate-design-system/` - design tokens, the component sheet and the screen designs, as handed off from Claude Design.
 - `website/` - static marketing site for indoorbike.app and the in-browser workout editor.
 - `docs/ARCHITECTURE.md` - architecture overview, kept in step with the code.
 - `docs/RELEASE.md` - step-by-step process for cutting a signed release.

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -82,6 +83,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.WorkoutEntry
@@ -107,6 +111,9 @@ import app.indoorbike.ui.components.HrmHeartIndicator
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.UnfinishedRideBanner
+import app.indoorbike.ui.components.SheetHandle
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SheetShape
 import app.indoorbike.ui.components.ZoneBar
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -126,41 +133,55 @@ import java.util.Locale
  * been sharing a file with the library UI.
  */
 
+/**
+ * The welcome card inverts: an Fg1 fill with slate text on it, rather than the
+ * usual slate card with white text. With no accent colour to promote a surface,
+ * swapping figure and ground is what is left, and it only has to work once - a
+ * rider sees this card on their first launch and never again.
+ */
 @Composable
 fun WelcomeBanner(onGetStarted: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(Radii.lg)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Brand500.copy(alpha = 0.12f))
-            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.6f), shape)
-            .padding(Spacing.s5)
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(CadenceColors.Fg1)
+            .padding(Spacing.s6)
     ) {
         Text(
-            text = "WELCOME",
+            text = "Welcome",
             style = CadenceType.eyebrow,
-            color = CadenceColors.Brand500
+            color = CadenceColors.Bg3
         )
-        Spacer(Modifier.height(6.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = "Welcome to Indoor Bike",
             style = CadenceType.h2,
-            color = CadenceColors.Fg1
+            color = CadenceColors.OnBrand
         )
         Spacer(Modifier.height(Spacing.s2))
         Text(
             text = "Power-zone workouts for your smart trainer. Set your FTP and weight so the targets match you - takes about 30 seconds.",
             style = CadenceType.body,
-            color = CadenceColors.Fg2
+            color = CadenceColors.Bg2
         )
-        Spacer(Modifier.height(Spacing.s4))
-        PrimaryBtn(
-            text = "Get Started",
-            leadingIcon = null,
-            onClick = onGetStarted,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Spacer(Modifier.height(Spacing.s5))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp)
+                .clip(CircleShape)
+                .background(CadenceColors.Bg0)
+                .clickable(onClick = onGetStarted),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Get started",
+                style = CadenceType.bodyStrong.copy(fontSize = 16.sp),
+                color = CadenceColors.Fg1
+            )
+        }
     }
 }
 
@@ -193,6 +214,9 @@ fun OnboardingSheet(
         sheetState = sheetState,
         containerColor = CadenceColors.Bg1,
         contentColor = CadenceColors.Fg1,
+        shape = SheetShape,
+        scrimColor = SheetScrim,
+        dragHandle = { SheetHandle() },
     ) {
         when (step) {
             OnboardingStep.Profile -> ProfileStep(
@@ -224,21 +248,22 @@ private fun ProfileStep(onSaved: (Int, Float) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .imePadding()
             .padding(horizontal = Spacing.s5)
             .padding(bottom = Spacing.s5)
     ) {
-        StepHeader(eyebrow = "STEP 1 OF 2 · ABOUT YOU", title = "Set your FTP and weight")
+        StepHeader(eyebrow = "Step 1 of 2 · About you", title = "Set your FTP and weight")
         Spacer(Modifier.height(Spacing.s2))
         Text(
             text = "We use these to scale every workout to your fitness. You can change them anytime in Settings.",
             style = CadenceType.body,
-            color = CadenceColors.Fg3
+            color = CadenceColors.Fg2
         )
         Spacer(Modifier.height(Spacing.s5))
 
         OnboardingNumberField(
             label = "Functional Threshold Power",
-            sublabel = "Your sustainable hour-long power",
+            sublabel = "Sustainable hour power",
             value = ftpInput,
             onValueChange = { v -> ftpInput = v.filter { it.isDigit() }.take(4) },
             unit = "W",
@@ -247,8 +272,11 @@ private fun ProfileStep(onSaved: (Int, Float) -> Unit) {
         Spacer(Modifier.height(Spacing.s2))
         Text(
             text = "Don't know your FTP? Start at ${UNKNOWN_FTP_DEFAULT}W",
-            style = CadenceType.small,
-            color = CadenceColors.Brand500,
+            style = CadenceType.small.copy(
+                fontWeight = FontWeight.SemiBold,
+                textDecoration = TextDecoration.Underline
+            ),
+            color = CadenceColors.Fg2,
             modifier = Modifier
                 .clickable { ftpInput = UNKNOWN_FTP_DEFAULT.toString() }
                 .padding(vertical = 4.dp)
@@ -257,8 +285,8 @@ private fun ProfileStep(onSaved: (Int, Float) -> Unit) {
         Spacer(Modifier.height(Spacing.s4))
 
         OnboardingNumberField(
-            label = "Body Weight",
-            sublabel = "Used for W/kg and XP",
+            label = "Body weight",
+            sublabel = "For W/kg and XP",
             value = weightInput,
             onValueChange = { v ->
                 val filtered = buildString {
@@ -324,12 +352,12 @@ private fun PermissionsStep(onDone: () -> Unit) {
             .padding(horizontal = Spacing.s5)
             .padding(bottom = Spacing.s5)
     ) {
-        StepHeader(eyebrow = "STEP 2 OF 2 · CONNECT", title = "Allow trainer access")
+        StepHeader(eyebrow = "Step 2 of 2 · Connect", title = "Allow trainer access")
         Spacer(Modifier.height(Spacing.s2))
         Text(
             text = "Indoor Bike talks to your smart trainer over Bluetooth. No internet, no account, no data leaves your phone.",
             style = CadenceType.body,
-            color = CadenceColors.Fg3
+            color = CadenceColors.Fg2
         )
 
         Spacer(Modifier.height(Spacing.s5))
@@ -372,8 +400,8 @@ private fun PermissionsStep(onDone: () -> Unit) {
 
 @Composable
 private fun StepHeader(eyebrow: String, title: String) {
-    Text(text = eyebrow, style = CadenceType.eyebrow, color = CadenceColors.Brand500)
-    Spacer(Modifier.height(6.dp))
+    Text(text = eyebrow, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+    Spacer(Modifier.height(4.dp))
     Text(text = title, style = CadenceType.h2, color = CadenceColors.Fg1)
 }
 
@@ -388,25 +416,16 @@ private fun PermissionRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.md))
             .background(CadenceColors.Bg2)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-            .padding(14.dp),
+            .padding(horizontal = Spacing.s4, vertical = 14.dp),
         verticalAlignment = Alignment.Top,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = CadenceColors.Brand500,
-                modifier = Modifier.size(18.dp)
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = CadenceColors.Fg2,
+            modifier = Modifier.size(22.dp)
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
             Spacer(Modifier.height(2.dp))
@@ -415,6 +434,11 @@ private fun PermissionRow(
     }
 }
 
+/**
+ * Label row over a full-width well. The label sits above rather than beside the
+ * field because a sheet is narrow, and a hint pushed into the same line as a
+ * three-digit input has nowhere to go.
+ */
 @Composable
 private fun OnboardingNumberField(
     label: String,
@@ -424,54 +448,61 @@ private fun OnboardingNumberField(
     unit: String,
     keyboardType: KeyboardType,
 ) {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg2)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-            .padding(16.dp)
-    ) {
+    var focused by remember { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Bottom
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = label, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                Spacer(Modifier.height(4.dp))
-                Text(text = sublabel, style = CadenceType.small, color = CadenceColors.Fg3)
-            }
-            Spacer(Modifier.width(16.dp))
-            BasicTextField(
-                value = value,
-                onValueChange = onValueChange,
-                textStyle = CadenceType.h2.copy(color = CadenceColors.Brand500, textAlign = TextAlign.End),
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = keyboardType,
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(),
-                singleLine = true,
-                modifier = Modifier
-                    .width(110.dp)
-                    .onFocusChanged { },
-                decorationBox = { inner ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.End,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(Radii.sm))
-                            .background(CadenceColors.Bg0)
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) { inner() }
-                        Spacer(Modifier.width(4.dp))
-                        Text(unit, style = CadenceType.bodyStrong, color = CadenceColors.Fg3)
-                    }
-                }
-            )
+            Text(text = label, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+            Spacer(Modifier.width(Spacing.s2))
+            Text(text = sublabel, style = CadenceType.small, color = CadenceColors.Fg3)
         }
+        Spacer(Modifier.height(10.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            textStyle = CadenceType.bodyStrong.copy(
+                fontSize = 18.sp,
+                color = CadenceColors.Fg1
+            ),
+            cursorBrush = SolidColor(CadenceColors.Fg1),
+            keyboardOptions = KeyboardOptions(
+                keyboardType = keyboardType,
+                imeAction = ImeAction.Done
+            ),
+            keyboardActions = KeyboardActions(),
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .onFocusChanged { focused = it.isFocused },
+            decorationBox = { inner ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(Radii.md))
+                        .background(CadenceColors.Bg2)
+                        .then(
+                            if (focused) Modifier.border(
+                                2.dp,
+                                CadenceColors.Fg1,
+                                RoundedCornerShape(Radii.md)
+                            ) else Modifier
+                        )
+                        .padding(horizontal = 18.dp, vertical = 14.dp)
+                ) {
+                    Box(modifier = Modifier.weight(1f)) { inner() }
+                    Spacer(Modifier.width(Spacing.s2))
+                    Text(
+                        unit,
+                        style = CadenceType.body.copy(fontWeight = FontWeight.SemiBold),
+                        color = CadenceColors.Fg3
+                    )
+                }
+            }
+        )
     }
 }
 

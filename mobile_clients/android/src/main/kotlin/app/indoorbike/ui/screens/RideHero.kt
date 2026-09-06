@@ -26,7 +26,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -42,9 +41,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -63,16 +62,15 @@ import kotlin.random.Random
 /**
  * Layered horizon-ridge backdrop for the ride screen.
  *
- * Three planes:
- *  - Far ridge: procedural, low-amplitude, very faint — pure atmosphere.
- *  - Mid ridge: derived from the actual workout segment power profile, so the
- *    rider's effort profile is literally drawn as the horizon. Tinted by the
- *    current zone color and smoothly animated when the zone changes.
- *  - Near ridge: a darker silhouette anchored to the bottom edge, gives the
- *    "I'm in a valley looking up" depth cue.
+ * Three planes, all slate:
+ *  - Far ridge: procedural, low-amplitude, Bg1 at 55 % - pure atmosphere.
+ *  - Mid ridge: the workout's own power profile drawn as terrain, Bg2 at 50 %,
+ *    with a crest line that is the one thing here the zone colour touches.
+ *  - Near silhouette: Bg0 at 90 %, anchoring the bottom edge.
  *
- * Above all three: a small scattering of "stars" in the upper-left, tuned for
- * the gravel-night feel without competing with the metrics.
+ * The star field and the dashed contour rule are gone. Both were texture on a
+ * screen whose whole job is one number, and neither survived a palette where
+ * the background and the foreground are the same family of blues.
  */
 @Composable
 fun HorizonRidgeBackdrop(
@@ -85,7 +83,6 @@ fun HorizonRidgeBackdrop(
 
     // Cache the procedural far-ridge points so they don't re-randomize every recomposition.
     val farPeaks = remember(workout.id) { generateFarPeaks(seed = workout.id.hashCode()) }
-    val starField = remember(workout.id) { generateStars(seed = workout.id.hashCode() xor 0x5A) }
     val workoutProfile = remember(workout) {
         workout.segments.flatMap { seg ->
             // Sample segment power level at a few points so smoothing has data to work with.
@@ -96,15 +93,6 @@ fun HorizonRidgeBackdrop(
     Canvas(modifier = modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
-
-        // Star scatter — subtle, top quartile.
-        starField.forEach { (xN, yN, alpha) ->
-            drawCircle(
-                color = CadenceColors.Fg2.copy(alpha = alpha),
-                radius = 1.4f,
-                center = Offset(xN * w, yN * h * 0.45f)
-            )
-        }
 
         // FAR ridge — slow procedural sine, very low contrast, low on screen.
         run {
@@ -120,17 +108,7 @@ fun HorizonRidgeBackdrop(
                 lineTo(w, h)
                 close()
             }
-            drawPath(
-                path = path,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        animatedTint.copy(alpha = 0.10f),
-                        Color.Transparent
-                    ),
-                    startY = ridgeBase - amplitude,
-                    endY = h
-                )
-            )
+            drawPath(path = path, color = CadenceColors.Bg1.copy(alpha = 0.55f))
         }
 
         // MID ridge — the workout's own effort profile as terrain.
@@ -150,19 +128,9 @@ fun HorizonRidgeBackdrop(
             }
             path.lineTo(w, h)
             path.close()
-            drawPath(
-                path = path,
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        animatedTint.copy(alpha = 0.34f),
-                        animatedTint.copy(alpha = 0.05f),
-                        Color.Transparent
-                    ),
-                    startY = ridgeBase - amplitudeMax,
-                    endY = h
-                )
-            )
-            // Crest line — the bright edge of the ridge.
+            drawPath(path = path, color = CadenceColors.Bg2.copy(alpha = 0.5f))
+
+            // Crest line — the only place on the backdrop the zone reaches.
             val crest = Path()
             crest.moveTo(0f, firstY)
             for (i in 1 until pts.size) {
@@ -173,7 +141,7 @@ fun HorizonRidgeBackdrop(
             drawPath(
                 path = crest,
                 color = animatedTint.copy(alpha = 0.55f),
-                style = Stroke(width = 1.2f)
+                style = Stroke(width = 1.2.dp.toPx())
             )
         }
 
@@ -193,23 +161,7 @@ fun HorizonRidgeBackdrop(
             }
             path.lineTo(w, h)
             path.close()
-            drawPath(
-                path = path,
-                color = CadenceColors.Bg0.copy(alpha = 0.85f)
-            )
-        }
-
-        // Faint topographic contour line near the upper third — the "altitude rule".
-        run {
-            val y = h * 0.34f
-            val dashEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 14f), 0f)
-            drawLine(
-                color = CadenceColors.Line2.copy(alpha = 0.7f),
-                start = Offset(w * 0.06f, y),
-                end = Offset(w * 0.94f, y),
-                strokeWidth = 0.8f,
-                pathEffect = dashEffect
-            )
+            drawPath(path = path, color = CadenceColors.Bg0.copy(alpha = 0.9f))
         }
     }
 }
@@ -223,13 +175,6 @@ private fun generateFarPeaks(seed: Int, count: Int = 12): List<Float> {
         val sineB = (cos(phase * 2.3f + 0.4f) + 1f) * 0.20f
         val noise = rng.nextFloat() * 0.20f
         (sineA + sineB + noise).coerceIn(0f, 1f)
-    }
-}
-
-private fun generateStars(seed: Int, count: Int = 18): List<Triple<Float, Float, Float>> {
-    val rng = Random(seed)
-    return (0 until count).map {
-        Triple(rng.nextFloat(), rng.nextFloat(), 0.20f + rng.nextFloat() * 0.45f)
     }
 }
 
@@ -256,8 +201,13 @@ private fun smoothProfile(values: List<Float>, window: Int = 3): List<Float> {
 }
 
 /**
- * The big power-readout block — Bebas Neue, very large, with a thin altitude-bar
- * that grows with current power and a small "ERG LOCKED" status.
+ * The big power-readout block: the current wattage at a size nothing else on
+ * the screen approaches, in the current zone's colour.
+ *
+ * This is the one place in the app where colour lands on type. A rider on a
+ * trainer is reading this from a metre away, out of the corner of an eye, while
+ * breathing hard - so the number says both how hard they are going and which
+ * zone that is, without them having to look anywhere else.
  */
 @Composable
 fun HeroPowerReadout(
@@ -283,8 +233,8 @@ fun HeroPowerReadout(
     // Sizes default to the phone HUD; the ride screen passes larger values on
     // expanded-width screens (landscape tablets / unfolded foldables) so the
     // power number stays glanceable from across a room.
-    powerFontSize: TextUnit = 112.sp,
-    numberWidth: Dp = 280.dp,
+    powerFontSize: TextUnit = 132.sp,
+    numberWidth: Dp = 320.dp,
     wkgBarWidth: Dp = 220.dp,
 ) {
     // Smoothly tween power and W/kg across 1-second BLE samples. We tween W/kg
@@ -334,15 +284,15 @@ fun HeroPowerReadout(
         ) {
             Box(
                 modifier = Modifier
-                    .size(7.dp)
+                    .size(8.dp)
                     .clip(CircleShape)
                     .background(if (ergLocked) zoneColor else CadenceColors.Fg4)
             )
             Text(
                 text = when {
-                    onTarget -> "POWER · ON TARGET"
-                    ergLocked -> "POWER · ERG LOCKED"
-                    else -> "POWER · ERG IDLE"
+                    onTarget -> "Power · on target"
+                    ergLocked -> "Power · ERG locked"
+                    else -> "Power · ERG idle"
                 },
                 style = CadenceType.eyebrow,
                 color = if (ergLocked) zoneColor else CadenceColors.Fg3
@@ -369,21 +319,27 @@ fun HeroPowerReadout(
                         )
                 )
             }
+            // Baseline-aligned, not bottom-aligned: at 132 sp the digits' own
+            // descender space is 20 dp of it, and a unit hung off the box's
+            // bottom edge floats well below the number it belongs to.
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = if (isStale) "--" else animatedPower.toString(),
-                    fontSize = powerFontSize,
-                    lineHeight = powerFontSize,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = app.indoorbike.ui.theme.DisplayFontFamily,
-                    fontStyle = FontStyle.Normal,
-                    color = zoneColor
+                    style = CadenceType.displayXl.copy(
+                        fontSize = powerFontSize,
+                        lineHeight = powerFontSize
+                    ),
+                    color = zoneColor,
+                    modifier = Modifier.alignByBaseline()
                 )
                 Text(
                     text = " W",
-                    style = CadenceType.h1,
+                    style = CadenceType.h1.copy(
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.sp
+                    ),
                     color = CadenceColors.Fg2,
-                    modifier = Modifier.padding(bottom = 14.dp)
+                    modifier = Modifier.alignByBaseline()
                 )
             }
         }
@@ -398,9 +354,9 @@ fun HeroPowerReadout(
         ) {
             val decreaseLabel = if (freeRide) "Decrease target power" else "Decrease difficulty"
             val increaseLabel = if (freeRide) "Increase target power" else "Increase difficulty"
-            StepperPill(label = "−", contentDescription = decreaseLabel, zoneColor = zoneColor) { onAdjust(-1) }
-            TargetPill(targetWatts = targetWatts, biasPercent = biasPercent, ergLocked = ergLocked, zoneColor = zoneColor)
-            StepperPill(label = "+", contentDescription = increaseLabel, zoneColor = zoneColor) { onAdjust(1) }
+            StepperPill(label = "−", contentDescription = decreaseLabel) { onAdjust(-1) }
+            TargetPill(targetWatts = targetWatts, biasPercent = biasPercent)
+            StepperPill(label = "+", contentDescription = increaseLabel) { onAdjust(1) }
         }
     }
 }
@@ -409,6 +365,9 @@ fun HeroPowerReadout(
  * Thin power-to-weight indicator. Bar fills at 5.0 W/kg (the rough boundary
  * into "elite-amateur" sustained-power territory) so the typical training
  * range sits in the middle third.
+ *
+ * Flat Fg1 on Bg2: the zone is already stated by the number above it, twice
+ * over, and a third zone-tinted element under it only competed.
  *
  * @param wkgCenti current W/kg expressed as integer centiwatts/kg (e.g. 245 = 2.45 W/kg).
  *   Using ints keeps the animator stable and avoids float-tween jitter at 1 Hz.
@@ -423,23 +382,20 @@ internal fun WattsPerKgBar(wkgCenti: Int, zoneColor: Color, barWidth: Dp = 220.d
             .width(barWidth)
             .height(3.dp)
             .clip(RoundedCornerShape(2.dp))
-            .background(CadenceColors.Bg2.copy(alpha = 0.6f))
+            .background(CadenceColors.Bg2)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(fraction)
                 .height(3.dp)
-                .background(
-                    Brush.horizontalGradient(
-                        listOf(zoneColor.copy(alpha = 0.4f), zoneColor)
-                    )
-                )
+                .background(CadenceColors.Fg1)
         )
     }
     Text(
         text = if (safe > 0) "${formatWkg(safe)} W/kg" else "--",
-        style = CadenceType.tick.copy(fontSize = 10.sp),
+        style = CadenceType.tick,
         color = CadenceColors.Fg3,
+        modifier = Modifier.padding(top = 6.dp)
     )
 }
 
@@ -451,44 +407,46 @@ private fun formatWkg(centi: Int): String {
 }
 
 @Composable
-private fun StepperPill(label: String, contentDescription: String, zoneColor: Color, onClick: () -> Unit) {
+private fun StepperPill(label: String, contentDescription: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(38.dp)
+            .size(44.dp)
             .clip(CircleShape)
-            .background(CadenceColors.Bg2)
-            .border(1.5.dp, zoneColor.copy(alpha = 0.45f), CircleShape)
-            .clickable(onClick = onClick),
+            .background(CadenceColors.Bg1)
+            .clickable(onClick = onClick)
+            .semantics { this.contentDescription = contentDescription },
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = label,
-            style = CadenceType.h2,
-            color = zoneColor
+            style = CadenceType.h2.copy(fontWeight = FontWeight.Bold),
+            color = CadenceColors.Fg1
         )
     }
 }
 
 @Composable
-private fun TargetPill(targetWatts: Int, biasPercent: Int, ergLocked: Boolean, zoneColor: Color) {
+private fun TargetPill(targetWatts: Int, biasPercent: Int) {
     val biasLabel = when {
-        biasPercent > 0 -> " · +$biasPercent%"
-        biasPercent < 0 -> " · $biasPercent%"
-        else -> ""
+        biasPercent > 0 -> "+$biasPercent%"
+        biasPercent < 0 -> "$biasPercent%"
+        else -> "0%"
     }
-    Box(
+    Row(
         modifier = Modifier
-            .widthIn(min = 130.dp)
-            .clip(RoundedCornerShape(50))
+            .height(44.dp)
+            .clip(CircleShape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, zoneColor.copy(alpha = if (ergLocked) 0.5f else 0.2f), RoundedCornerShape(50))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        contentAlignment = Alignment.Center
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
+        Text(text = "Target", style = CadenceType.small, color = CadenceColors.Fg3)
         Text(
-            text = "TARGET $targetWatts W$biasLabel",
-            style = CadenceType.bodyStrong.copy(fontSize = 13.sp),
+            text = "$targetWatts W",
+            style = CadenceType.h3.copy(fontWeight = FontWeight.ExtraBold),
             color = CadenceColors.Fg1
         )
+        Text(text = "· $biasLabel", style = CadenceType.tick, color = CadenceColors.Fg3)
     }
 }

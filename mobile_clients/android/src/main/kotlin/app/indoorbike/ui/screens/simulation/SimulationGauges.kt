@@ -21,7 +21,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -57,6 +56,7 @@ import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.DisplayFontFamily
+import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -92,13 +92,12 @@ fun GradientReadout(
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1.copy(alpha = 0.85f))
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(14.dp))
             .padding(horizontal = Spacing.s3, vertical = if (compact) Spacing.s2 else Spacing.s3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = "GRADIENT", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = "Gradient", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Spacer(Modifier.height(2.dp))
         Row(verticalAlignment = Alignment.Bottom) {
             // Fixed width: the gradient runs from "-10.4" to "8.1" and back
@@ -201,17 +200,16 @@ fun GearShifter(
 ) {
     val askedCadence = drivetrain.cadenceRpmFor(speedMps, gearIndex)
     val gear = drivetrain.gearAt(gearIndex)
-    val accent = if (enabled) CadenceColors.Brand500 else CadenceColors.Fg4
+    val accent = if (enabled) CadenceColors.Fg1 else CadenceColors.Fg4
 
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1.copy(alpha = 0.85f))
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(14.dp))
             .padding(horizontal = Spacing.s3, vertical = if (compact) Spacing.s2 else Spacing.s3),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text(text = "GEAR", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = "Gear", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         Spacer(Modifier.height(2.dp))
         // The two buttons are fixed-size and the readout between them takes
         // whatever is left. Sizing the readout instead would let it push a
@@ -328,7 +326,6 @@ private fun ShiftButton(
             .size(46.dp)
             .clip(CircleShape)
             .background(CadenceColors.Bg2)
-            .border(1.5.dp, accent.copy(alpha = if (enabled) 0.5f else 0.15f), CircleShape)
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
@@ -375,10 +372,10 @@ fun RouteProgressStrip(
             verticalAlignment = Alignment.Bottom,
         ) {
             ProgressStat(
-                label = "SPEED",
+                label = "Speed",
                 value = formatOneDecimal(speedKmh),
                 unit = "km/h",
-                accent = CadenceColors.Brand400,
+                accent = CadenceColors.Fg1,
                 valueWidth = 54.dp,
                 modifier = Modifier.weight(1f),
             )
@@ -391,7 +388,7 @@ fun RouteProgressStrip(
                 modifier = Modifier.weight(1f),
             )
             ProgressStat(
-                label = "CLIMBED",
+                label = "Climbed",
                 value = "${elevationGainMeters.roundToInt()}",
                 unit = "/ ${totalAscentMeters.roundToInt()} m",
                 accent = CadenceColors.Fg1,
@@ -411,7 +408,7 @@ fun RouteProgressStrip(
                 modifier = Modifier
                     .fillMaxWidth(fraction)
                     .height(4.dp)
-                    .background(CadenceColors.Brand500),
+                    .background(CadenceColors.Fg1),
             )
         }
     }

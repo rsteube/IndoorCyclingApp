@@ -16,7 +16,6 @@
 package app.indoorbike.ui.screens.simulation
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,14 +86,13 @@ fun RouteSummaryPanel(
             .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)
             .clip(RoundedCornerShape(16.dp))
             .background(background)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(16.dp))
             .padding(Spacing.s4),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "VIRTUAL ROUTE",
+                text = "Virtual route",
                 style = CadenceType.eyebrow.copy(fontSize = titleSize * 0.72f),
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg1,
                 modifier = Modifier.weight(1f),
             )
             if (completed) {
@@ -105,7 +103,7 @@ fun RouteSummaryPanel(
                         .padding(horizontal = 10.dp, vertical = 3.dp),
                 ) {
                     Text(
-                        text = "COMPLETED",
+                        text = "Completed",
                         style = CadenceType.eyebrow.copy(fontSize = titleSize * 0.66f),
                         color = CadenceColors.Success,
                     )
@@ -141,14 +139,14 @@ fun RouteSummaryPanel(
                 verticalArrangement = Arrangement.Center,
             ) {
                 RouteStat(
-                    label = "RIDDEN",
+                    label = "Ridden",
                     value = formatDistance(riddenMeters),
                     detail = "of ${formatDistance(route.totalDistanceMeters)}",
                     size = statSize,
                 )
                 Spacer(Modifier.height(Spacing.s3))
                 RouteStat(
-                    label = "CLIMBED",
+                    label = "Climbed",
                     value = "${elevationGainMeters.roundToInt()} m",
                     detail = "of ${route.totalAscentMeters.roundToInt()} m",
                     size = statSize,

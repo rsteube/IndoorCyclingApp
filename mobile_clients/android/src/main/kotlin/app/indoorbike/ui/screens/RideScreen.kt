@@ -56,7 +56,10 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.SkipNext
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.material.icons.outlined.Stop
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
@@ -100,11 +103,14 @@ import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.ui.components.IconBtn
+import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.ZoneBadge
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.zones.HeartRateZone
 import app.indoorbike.ui.zones.PowerZone
 
 @Composable
@@ -349,6 +355,9 @@ fun RideScreen(
     }
     val nextZone = if (isFreeRide || isSimulation) null
         else nextSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) }
+    // How long the next interval lasts, so "up next" says what is coming and
+    // for how long rather than only naming it.
+    val nextSeconds = if (isFreeRide || isSimulation) null else nextSeg?.lengthInSeconds
     // What the TARGET pill reads. On a free ride that's the rider's setting,
     // not the trainer's live target: the trainer sits at 0 W until the ride
     // goes active, and a pill stuck on "TARGET 0 W" would make the ± buttons
@@ -529,7 +538,12 @@ fun RideScreen(
                 val expanded = maxWidth >= 840.dp && tall
 
                 val ergLocked = state == WorkoutState.Active && targetPower > 0
-                val segLabel = currentSeg?.intervalType ?: "Segment"
+                // Interval types come out of the workout file in whatever case
+                // its author wrote them ("CONSTANT", "ramp"); the HUD says them
+                // in the app's voice.
+                val segLabel = (currentSeg?.intervalType ?: "Segment")
+                    .lowercase()
+                    .replaceFirstChar { it.uppercase() }
                 val segPower = currentSeg?.powerPercentFTP ?: 0
 
                 val route = simulationRoute
@@ -557,7 +571,7 @@ fun RideScreen(
                         isHrStale = showStaleHr,
                         hrColor = hrZone?.color ?: CadenceColors.Danger,
                         hrSublabel = if (showStaleHr) null
-                            else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                            else hrZone?.let { "Z${it.number} · ${it.label}" },
                         zoneColor = animatedZoneColor,
                         onShiftDown = { simulationEngine.shiftDown() },
                         onShiftUp = { simulationEngine.shiftUp() },
@@ -575,24 +589,29 @@ fun RideScreen(
                     // metrics row without the bottom pill clipping into the
                     // timeline. A landscape phone is genuinely short (~330-410dp),
                     // hence the small bottom tier; tablets get the big numbers.
-                    val flankWidth = if (expanded) 240.dp else 168.dp
+                    val flankWidth = if (expanded) 240.dp else 170.dp
                     val flankFont: TextUnit = when {
                         expanded -> 56.sp
-                        maxHeight >= 440.dp -> 30.sp
-                        else -> 26.sp
+                        maxHeight >= 440.dp -> 40.sp
+                        else -> 34.sp
                     }
-                    val heroFont: TextUnit = when {
-                        expanded -> 176.sp
-                        maxHeight >= 560.dp -> 120.sp
-                        maxHeight >= 440.dp -> 92.sp
-                        else -> 68.sp
-                    }
-                    val heroNumberWidth = if (expanded) 440.dp else 240.dp
-                    val heroWkgBarWidth = if (expanded) 320.dp else 190.dp
+                    // The number takes whatever the flanks leave, capped so it
+                    // stays a number and not a banner. Deriving the type size
+                    // from that width as well as from the height is what lets a
+                    // landscape phone carry the design's 132 sp without the
+                    // digits running under the cadence card.
+                    val heroSidePad = if (expanded) Spacing.s8 else Spacing.s5
+                    val heroNumberWidth = (maxWidth - heroSidePad * 2 - flankWidth * 2 - Spacing.s4)
+                        .coerceIn(180.dp, if (expanded) 560.dp else 340.dp)
+                    // Manrope ExtraBold runs about 0.62 em per digit; three
+                    // digits plus the unit fit in roughly 2.4 em.
+                    val heroWidthCap = (heroNumberWidth.value / 2.4f)
+                    val heroDesignCap = if (expanded) 176f else 132f
+                    val heroWkgBarWidth = if (expanded) 320.dp else 220.dp
                     val wideTimelineHeight = when {
                         expanded -> 112.dp
                         maxHeight >= 440.dp -> 64.dp
-                        else -> 48.dp
+                        else -> 56.dp
                     }
 
                     // Live average power for the stats strip; only computed when
@@ -603,11 +622,29 @@ fun RideScreen(
                     } else 0
 
                     Column(modifier = Modifier.fillMaxSize()) {
+                        // The number is sized from the height this row actually
+                        // gets, not from the screen's. Everything under the row
+                        // - the speed line, the segment row, the timeline - is
+                        // laid out first, and what is left is what the hero has
+                        // to fit its status line, W/kg bar and stepper into
+                        // around the digits. Size the digits from the screen
+                        // instead and the stepper is the thing that falls off
+                        // the bottom, which is the one control on this screen a
+                        // rider uses mid-interval.
+                        BoxWithConstraints(
+                            modifier = Modifier.weight(1f).fillMaxWidth()
+                        ) {
+                        val heroFont: TextUnit = minOf(
+                            heroWidthCap,
+                            // Status line, W/kg bar and its label, stepper row
+                            // and the gaps between them.
+                            (this@BoxWithConstraints.maxHeight - 124.dp).value,
+                            heroDesignCap
+                        ).coerceAtLeast(48f).sp
                         Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                                .padding(horizontal = if (expanded) Spacing.s8 else Spacing.s5),
+                                .fillMaxSize()
+                                .padding(horizontal = heroSidePad),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -633,23 +670,22 @@ fun RideScreen(
                                 wkgBarWidth = heroWkgBarWidth
                             )
                             FlankMetric(
-                                label = "HEART RATE",
+                                label = "Heart rate",
                                 value = if (showStaleHr) "--" else animatedHr.toString(),
-                                unit = "BPM",
+                                unit = "bpm",
                                 isStale = showStaleHr,
-                                valueColor = hrZone?.color ?: CadenceColors.Danger,
-                                sublabel = if (showStaleHr) null
-                                    else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                                valueColor = CadenceColors.Fg1,
+                                zoneBadge = if (showStaleHr) null else hrZone,
                                 cardWidth = flankWidth,
                                 valueFontSize = flankFont
                             )
+                        }
                         }
 
                         if (showVirtualSpeed && state != WorkoutState.Countdown) {
                             VirtualSpeedReadout(
                                 speedKmh = virtualSpeedKmh,
                                 distanceMeters = virtualDistanceMeters,
-                                accent = animatedZoneColor,
                                 modifier = Modifier.padding(bottom = Spacing.s3)
                             )
                         }
@@ -660,7 +696,7 @@ fun RideScreen(
                                 avgPowerWatts = avgPowerWatts,
                                 // A free ride has a single endless interval, so
                                 // the tile shows the wattage being held instead.
-                                thirdLabel = if (isFreeRide) "TARGET" else "INTERVAL",
+                                thirdLabel = if (isFreeRide) "Target" else "Interval",
                                 thirdValue = if (isFreeRide) {
                                     displayTarget.toString()
                                 } else {
@@ -668,7 +704,6 @@ fun RideScreen(
                                     "$shown / ${workout!!.segments.size}"
                                 },
                                 thirdUnit = if (isFreeRide) "W" else "",
-                                zoneColor = animatedZoneColor,
                                 modifier = Modifier.padding(bottom = Spacing.s3)
                             )
                         }
@@ -682,6 +717,7 @@ fun RideScreen(
                                 segPower = segPower,
                                 remainingInSeg = remainingInSeg,
                                 nextZone = nextZone,
+                                nextSeconds = nextSeconds,
                                 zoneColor = animatedZoneColor,
                                 timelineHeight = wideTimelineHeight
                             )
@@ -735,27 +771,25 @@ fun RideScreen(
                                     rpm = animatedCadence,
                                     target = cadenceTarget,
                                     cardWidth = flankWidth,
-                                    valueFontSize = 30.sp,
+                                    valueFontSize = 34.sp,
                                     modifier = Modifier.fillMaxHeight()
                                 )
                                 FlankMetric(
-                                    label = "HEART RATE",
+                                    label = "Heart rate",
                                     value = if (showStaleHr) "--" else animatedHr.toString(),
-                                    unit = "BPM",
+                                    unit = "bpm",
                                     isStale = showStaleHr,
-                                    valueColor = hrZone?.color ?: CadenceColors.Danger,
-                                    sublabel = if (showStaleHr) null
-                                        else hrZone?.let { "Z${it.number} · ${it.label.uppercase()}" },
+                                    valueColor = CadenceColors.Fg1,
+                                    zoneBadge = if (showStaleHr) null else hrZone,
                                     cardWidth = flankWidth,
-                                    valueFontSize = 30.sp,
+                                    valueFontSize = 34.sp,
                                     modifier = Modifier.fillMaxHeight()
                                 )
                             }
                             if (showVirtualSpeed && state != WorkoutState.Countdown) {
                                 VirtualSpeedReadout(
                                     speedKmh = virtualSpeedKmh,
-                                    distanceMeters = virtualDistanceMeters,
-                                    accent = animatedZoneColor
+                                    distanceMeters = virtualDistanceMeters
                                 )
                             }
                         }
@@ -768,6 +802,7 @@ fun RideScreen(
                                 segPower = segPower,
                                 remainingInSeg = remainingInSeg,
                                 nextZone = nextZone,
+                                nextSeconds = nextSeconds,
                                 zoneColor = animatedZoneColor,
                                 timelineHeight = 88.dp,
                                 compact = true
@@ -816,7 +851,7 @@ fun RideScreen(
                         text = if (isGo) "GO!" else value.toString(),
                         fontSize = if (isGo) 160.sp else 200.sp,
                         fontWeight = FontWeight.Black,
-                        color = if (isGo) CadenceColors.Success else CadenceColors.Brand500,
+                        color = if (isGo) CadenceColors.Success else CadenceColors.Fg1,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
@@ -853,46 +888,30 @@ fun RideScreen(
                             Box(
                                 modifier = Modifier
                                     .size(120.dp + 140.dp * ring)
-                                    .border(
-                                        2.dp,
-                                        CadenceColors.Brand500.copy(alpha = (1f - ring) * 0.5f),
-                                        CircleShape
-                                    )
                             )
                         }
                         Icon(
                             imageVector = Icons.Outlined.EmojiEvents,
                             contentDescription = "Finished",
-                            tint = CadenceColors.Brand500,
+                            tint = CadenceColors.Fg1,
                             modifier = Modifier
-                                .size(120.dp)
+                                .size(96.dp)
                                 .scale(0.4f + 0.6f * trophyPop.value)
                         )
                     }
                     Spacer(modifier = Modifier.height(20.dp))
                     Text(
-                        text = "FINISHED!",
-                        style = CadenceType.h1.copy(fontSize = 56.sp, fontWeight = FontWeight.Black),
+                        text = "Finished",
+                        style = CadenceType.h1,
                         color = CadenceColors.Fg1
                     )
                     Spacer(modifier = Modifier.height(28.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(CadenceColors.Brand500)
-                            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                            .clickable(
-                                enabled = !continueRequested,
-                                onClick = { continueRequested = true }
-                            )
-                            .padding(horizontal = 28.dp, vertical = 14.dp)
-                    ) {
-                        Text(
-                            text = if (continueRequested) "Saving…" else "View Summary",
-                            style = CadenceType.bodyStrong,
-                            color = CadenceColors.OnBrand
-                        )
-                    }
+                    PrimaryBtn(
+                        text = if (continueRequested) "Saving…" else "View summary",
+                        leadingIcon = null,
+                        enabled = !continueRequested,
+                        onClick = { continueRequested = true }
+                    )
                 }
             }
         }
@@ -921,20 +940,15 @@ private fun RideHeader(
     /** Skipping ahead only means something when there's a next interval. */
     canSkip: Boolean = true,
 ) {
-    val timeText = if (openEnded) {
-        formatClock(elapsed)
-    } else {
-        "${formatClock(elapsed)}  /  ${formatClock(totalDuration)}"
-    }
     val stateText: String? = when (state) {
         // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
         // a ride in progress, not the initial "pedal to start" standby.
         WorkoutState.Standby ->
-            if (canEndAndSave) "AUTO-PAUSED · PEDAL TO RESUME" else "STANDBY · PEDAL TO START"
-        WorkoutState.Paused -> "PAUSED · TRAINER AT 0 W"
+            if (canEndAndSave) "Auto-paused · pedal to resume" else "Standby · pedal to start"
+        WorkoutState.Paused -> "Paused · trainer at 0 W"
         else -> null
     }
-    val stateColor = if (state == WorkoutState.Paused || canEndAndSave) CadenceColors.Warning else CadenceColors.Brand500
+    val stateColor = if (state == WorkoutState.Paused || canEndAndSave) CadenceColors.Warning else CadenceColors.Fg3
 
     if (compact) {
         // Portrait: two rows so nothing has to share a single narrow line.
@@ -972,13 +986,13 @@ private fun RideHeader(
             ) {
                 Text(
                     text = stateText.orEmpty(),
-                    style = CadenceType.tick,
+                    style = CadenceType.small,
                     color = stateColor,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
-                Text(text = timeText, style = CadenceType.bodyStrong, color = CadenceColors.Fg1, maxLines = 1)
+                RideClock(elapsed = elapsed, totalDuration = totalDuration, openEnded = openEnded)
             }
         }
         return
@@ -989,46 +1003,67 @@ private fun RideHeader(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = Spacing.s5, vertical = Spacing.s3),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         verticalAlignment = Alignment.CenterVertically
     ) {
         IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
 
-        // The ride name is intentionally omitted in the wide layout: with the back
-        // button, clock and controls on a single row there isn't room for it, and a
-        // growing elapsed clock would otherwise wrap to two lines and flicker. Only
-        // the live state (STANDBY / PAUSED) is kept here.
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.weight(1f).padding(horizontal = Spacing.s4)
-        ) {
-            if (stateText != null) {
-                Text(stateText, style = CadenceType.tick, color = stateColor, maxLines = 1)
-            }
+        // The ride name earns its place back now the controls are 44 dp pills
+        // rather than full-height buttons. It ellipsises rather than wraps: the
+        // row has a growing clock in it and must stay one line tall.
+        Text(
+            text = workoutName,
+            style = CadenceType.h3,
+            color = CadenceColors.Fg1,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+
+        if (stateText != null) {
+            Text(stateText, style = CadenceType.small, color = stateColor, maxLines = 1)
         }
 
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-            verticalAlignment = Alignment.CenterVertically
+        Spacer(Modifier.weight(1f))
+
+        // Fixed width so the elapsed clock ticking from "0:00" → "1:23:45" doesn't
+        // resize the time block and shove the buttons around. softWrap = false +
+        // maxLines = 1 guarantee the clock stays on one line (no wrap flicker).
+        Box(
+            modifier = Modifier.width(150.dp),
+            contentAlignment = Alignment.CenterEnd
         ) {
-            // Fixed width so the elapsed clock ticking from "0:00" → "1:23:45" doesn't
-            // resize the time block and shove the buttons around. softWrap = false +
-            // maxLines = 1 guarantee the clock stays on one line (no wrap flicker).
-            Box(
-                modifier = Modifier.width(220.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                Text(
-                    text = timeText,
-                    style = CadenceType.h3,
-                    color = CadenceColors.Fg1,
-                    maxLines = 1,
-                    softWrap = false
-                )
-            }
-            RideControls(
-                state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-                canEndAndSave, onEndAndSave, canSkip, compact = false
+            RideClock(elapsed = elapsed, totalDuration = totalDuration, openEnded = openEnded)
+        }
+        RideControls(
+            state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
+            canEndAndSave, onEndAndSave, canSkip, compact = false
+        )
+    }
+}
+
+/**
+ * Elapsed over total, with the total in the quieter ink. Which half is which
+ * matters at a glance on a trainer: the number that is moving is the one the
+ * rider is watching.
+ */
+@Composable
+private fun RideClock(elapsed: Int, totalDuration: Int, openEnded: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = formatClock(elapsed),
+            style = CadenceType.h3.copy(fontFeatureSettings = "tnum"),
+            color = CadenceColors.Fg2,
+            maxLines = 1,
+            softWrap = false
+        )
+        if (!openEnded) {
+            Text(
+                text = " / ${formatClock(totalDuration)}",
+                style = CadenceType.h3.copy(fontFeatureSettings = "tnum"),
+                color = CadenceColors.Fg3,
+                maxLines = 1,
+                softWrap = false
             )
         }
     }
@@ -1056,27 +1091,81 @@ private fun RideControls(
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isMockTrainer) {
-            SecondaryBtn(text = "Mock", onClick = onMockToggle)
+            HudPill(text = "Mock", onClick = onMockToggle)
         }
         // Hidden on a free ride: its single segment is the whole session, so
         // skipping it would silently end the ride rather than move it on.
         if (canSkip && (state == WorkoutState.Active || state == WorkoutState.Paused)) {
-            SecondaryBtn(text = "Skip", leadingIcon = Icons.Outlined.SkipNext, onClick = onSkipStep)
+            HudPill(text = "Skip", icon = Icons.Outlined.SkipNext, onClick = onSkipStep)
         }
+        // The pause control is the ride's primary action, so it takes the white
+        // fill - the same rule as a bottom-of-screen primary button.
         if (state == WorkoutState.Active) {
-            SecondaryBtn(text = "Pause", onClick = onPauseToggle)
+            HudPill(
+                text = "Pause",
+                icon = Icons.Filled.Pause,
+                primary = true,
+                onClick = onPauseToggle
+            )
         } else if (state == WorkoutState.Paused) {
-            SecondaryBtn(text = "Resume", onClick = onPauseToggle)
+            HudPill(
+                text = "Resume",
+                icon = Icons.Filled.PlayArrow,
+                primary = true,
+                onClick = onPauseToggle
+            )
         }
         // Explicit way to finish a paused/auto-paused ride and keep the data —
         // otherwise the only save path is riding all the way to completion.
         if (canEndAndSave) {
-            SecondaryBtn(
+            HudPill(
                 text = if (compact) "End" else "End & save",
-                leadingIcon = Icons.Outlined.Stop,
+                icon = Icons.Outlined.Stop,
                 onClick = onEndAndSave
             )
         }
+    }
+}
+
+/**
+ * A 44 dp control for the ride header. Shorter than the 56 dp buttons the rest
+ * of the app uses: the HUD header shares one line with a name and a clock, and
+ * on a landscape phone every dp of height there comes off the power number.
+ */
+@Composable
+private fun HudPill(
+    text: String,
+    modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
+    primary: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val fg = if (primary) CadenceColors.OnBrand else CadenceColors.Fg1
+    Row(
+        modifier = modifier
+            .height(44.dp)
+            .clip(CircleShape)
+            .background(if (primary) CadenceColors.Fg1 else CadenceColors.Bg1)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = fg,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Text(
+            text = text,
+            style = CadenceType.bodyStrong,
+            color = fg,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
@@ -1092,7 +1181,6 @@ private fun EndRideConfirmDialog(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(14.dp)
     Dialog(
         onDismissRequest = onCancel,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -1102,13 +1190,12 @@ private fun EndRideConfirmDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
-                .padding(Spacing.s5),
+                .padding(Spacing.s6),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
             Text(
                 text = "End ride now?",
-                style = CadenceType.h3,
+                style = CadenceType.h2,
                 color = CadenceColors.Fg1
             )
             Text(
@@ -1118,29 +1205,17 @@ private fun EndRideConfirmDialog(
                 color = CadenceColors.Fg2
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .clip(shape)
-                        .background(CadenceColors.Bg2)
-                        .border(1.dp, CadenceColors.Line2, shape)
-                        .clickable(onClick = onCancel),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "Keep riding", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(44.dp)
-                        .clip(shape)
-                        .background(CadenceColors.Brand500)
-                        .clickable(onClick = onConfirm),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(text = "End & save", style = CadenceType.bodyStrong, color = CadenceColors.OnBrand)
-                }
+                SecondaryBtn(
+                    text = "Keep riding",
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                )
+                PrimaryBtn(
+                    text = "End & save",
+                    leadingIcon = null,
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
@@ -1155,12 +1230,13 @@ private fun SegmentAndTimeline(
     segPower: Int,
     remainingInSeg: Int,
     nextZone: PowerZone?,
+    nextSeconds: Int?,
     zoneColor: Color,
     timelineHeight: Dp,
     compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val upNext: String? = nextZone?.let { "UP NEXT · Z${it.number} ${it.label.uppercase()}" }
+    val upNext: String? = nextZone?.let { "Z${it.number} ${it.label}" }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1170,9 +1246,15 @@ private fun SegmentAndTimeline(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Topographic peak glyph in zone color.
-            Text(text = "▲", style = CadenceType.bodyStrong, color = zoneColor)
-            Spacer(Modifier.width(6.dp))
+            // A square of the zone's colour: the same mark the timeline uses,
+            // so the row and the chart agree at a glance.
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(zoneColor)
+            )
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = "$segLabel · $segPower% FTP",
                 style = CadenceType.bodyStrong,
@@ -1187,24 +1269,19 @@ private fun SegmentAndTimeline(
             // Timer attached to the segment label as a chip — reads as
             // "this segment, ending in 4:25".
             SegmentTimerChip(remainingSeconds = remainingInSeg, zoneColor = zoneColor)
-            // Wide layout: "UP NEXT" sits inline on the right.
+            // Wide layout: "up next" sits inline on the right.
             if (!compact && upNext != null) {
                 Spacer(Modifier.weight(1f))
-                Text(text = upNext, style = CadenceType.tick, color = nextZone.color, maxLines = 1)
+                UpNextLabel(zoneLabel = upNext, zoneColor = nextZone.color, seconds = nextSeconds)
             }
         }
 
-        // Compact (portrait): "UP NEXT" gets its own line so it can't be squeezed
+        // Compact (portrait): "up next" gets its own line so it can't be squeezed
         // into a vertical one-letter sliver on a narrow screen.
         if (compact && upNext != null) {
-            Text(
-                text = upNext,
-                style = CadenceType.tick,
-                color = nextZone.color,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            Box(modifier = Modifier.padding(top = 4.dp)) {
+                UpNextLabel(zoneLabel = upNext, zoneColor = nextZone.color, seconds = nextSeconds)
+            }
         }
 
         Spacer(modifier = Modifier.height(10.dp))
@@ -1215,6 +1292,23 @@ private fun SegmentAndTimeline(
             elapsedInSeg = elapsedInSeg,
             height = timelineHeight
         )
+    }
+}
+
+/** "Up next · Z1 Recovery 1:00", with only the zone name carrying colour. */
+@Composable
+private fun UpNextLabel(zoneLabel: String, zoneColor: Color, seconds: Int?) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = "Up next · ", style = CadenceType.small, color = CadenceColors.Fg3, maxLines = 1)
+        Text(text = zoneLabel, style = CadenceType.small, color = zoneColor, maxLines = 1)
+        if (seconds != null) {
+            Text(
+                text = " ${formatClock(seconds)}",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+                maxLines = 1
+            )
+        }
     }
 }
 
@@ -1231,28 +1325,27 @@ private fun SegmentTimerChip(remainingSeconds: Int, zoneColor: Color) {
             beat.animateTo(1f, tween(durationMillis = 380, easing = FastOutSlowInEasing))
         }
     }
-    Box(
+    Row(
         modifier = Modifier
-            .widthIn(min = 76.dp)
+            .height(30.dp)
             .scale(beat.value)
-            .clip(RoundedCornerShape(50))
-            .background(zoneColor.copy(alpha = if (urgent) 0.30f else 0.18f))
-            .border(1.dp, zoneColor.copy(alpha = if (urgent) 0.75f else 0.4f), RoundedCornerShape(50))
-            .padding(horizontal = 10.dp, vertical = 4.dp),
-        contentAlignment = Alignment.Center
+            .clip(CircleShape)
+            .background(CadenceColors.Bg1)
+            .padding(horizontal = Spacing.s3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                text = "⏱ ",
-                style = CadenceType.tick,
-                color = zoneColor
-            )
-            Text(
-                text = formatClock(remainingSeconds.coerceAtLeast(0)),
-                style = CadenceType.bodyStrong.copy(fontSize = 14.sp),
-                color = CadenceColors.Fg1
-            )
-        }
+        Icon(
+            imageVector = Icons.Outlined.Timer,
+            contentDescription = null,
+            tint = if (urgent) zoneColor else CadenceColors.Fg3,
+            modifier = Modifier.size(16.dp)
+        )
+        Text(
+            text = formatClock(remainingSeconds.coerceAtLeast(0)),
+            style = CadenceType.bodyStrong.copy(fontSize = 14.sp),
+            color = CadenceColors.Fg1
+        )
     }
 }
 
@@ -1264,10 +1357,12 @@ internal fun FlankMetric(
     valueColor: Color,
     modifier: Modifier = Modifier,
     isStale: Boolean = false,
-    /** Small caption under the number — e.g. "Z3 · AEROBIC" for the HR zone. */
+    /** Small caption under the number. */
     sublabel: String? = null,
-    /** Sublabel tint; defaults to [valueColor], which is what the HR zone wants. */
+    /** Sublabel tint; defaults to [valueColor]. */
     sublabelColor: Color? = null,
+    /** Zone pill under the number, for the live heart-rate zone. */
+    zoneBadge: HeartRateZone? = null,
     /**
      * Replaces the whole card's spoken text. Set it when the visual shorthand
      * (an arrow, a bar) wouldn't survive being read out field by field.
@@ -1277,18 +1372,19 @@ internal fun FlankMetric(
     footer: (@Composable () -> Unit)? = null,
     // Default to the phone HUD; the ride screen passes larger values on
     // expanded-width screens so the flanking metrics stay legible.
-    cardWidth: Dp = 150.dp,
-    valueFontSize: TextUnit = 32.sp,
+    cardWidth: Dp = 170.dp,
+    valueFontSize: TextUnit = 40.sp,
 ) {
-    // Fixed width so 2-digit ↔ 3-digit transitions don't reflow the row.
+    // Translucent so the ridge behind it still reads as one continuous
+    // backdrop, and fixed width so 2-digit to 3-digit transitions don't reflow
+    // the row.
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
             .width(cardWidth)
-            .clip(RoundedCornerShape(12.dp))
-            .background(CadenceColors.Bg1.copy(alpha = 0.35f))
-            .border(1.dp, CadenceColors.Line2.copy(alpha = 0.25f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(CadenceColors.Bg1.copy(alpha = 0.7f))
+            .padding(horizontal = Spacing.s5, vertical = Spacing.s4)
             .then(
                 if (contentDescription != null) {
                     Modifier.semantics(mergeDescendants = true) {
@@ -1299,7 +1395,7 @@ internal fun FlankMetric(
                 }
             )
     ) {
-        Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = label, style = CadenceType.tick, color = CadenceColors.Fg3)
         Box(
             modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center
@@ -1307,16 +1403,26 @@ internal fun FlankMetric(
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
                     text = value,
-                    fontSize = valueFontSize,
-                    fontWeight = FontWeight.Bold,
+                    style = CadenceType.displayM.copy(
+                        fontSize = valueFontSize,
+                        lineHeight = valueFontSize * 1.1f
+                    ),
                     color = valueColor
                 )
                 Text(
                     text = " $unit",
-                    style = CadenceType.bodyStrong,
+                    style = CadenceType.body.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
                     color = CadenceColors.Fg3,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
+            }
+        }
+        if (zoneBadge != null) {
+            Box(modifier = Modifier.padding(top = 10.dp)) {
+                ZoneBadge(zone = zoneBadge, includeLabel = true)
             }
         }
         if (sublabel != null) {
@@ -1344,7 +1450,6 @@ internal fun FlankMetric(
 private fun VirtualSpeedReadout(
     speedKmh: Double,
     distanceMeters: Double,
-    accent: Color,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -1352,26 +1457,26 @@ private fun VirtualSpeedReadout(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom
     ) {
-        InlineStat("SPEED", "%.1f".format(speedKmh), "KM/H", accent)
+        InlineStat("Speed", "%.1f".format(speedKmh), "km/h")
         Text(
             text = "  ·  ",
             style = CadenceType.tick,
             color = CadenceColors.Fg3
         )
-        InlineStat("DIST", "%.2f".format(distanceMeters / 1000.0), "KM", accent)
+        InlineStat("Distance", "%.2f".format(distanceMeters / 1000.0), "km")
     }
 }
 
 @Composable
-private fun InlineStat(label: String, value: String, unit: String, accent: Color) {
+private fun InlineStat(label: String, value: String, unit: String) {
     Row(verticalAlignment = Alignment.Bottom) {
         Text(
             text = label,
-            style = CadenceType.eyebrow,
+            style = CadenceType.tick,
             color = CadenceColors.Fg3,
             modifier = Modifier.padding(end = 6.dp, bottom = 2.dp)
         )
-        Text(text = value, style = CadenceType.bodyStrong, color = accent)
+        Text(text = value, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
         Text(
             text = " $unit",
             style = CadenceType.tick,
@@ -1397,7 +1502,6 @@ private fun RideStatsStrip(
     thirdLabel: String,
     thirdValue: String,
     thirdUnit: String,
-    zoneColor: Color,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -1405,9 +1509,9 @@ private fun RideStatsStrip(
         horizontalArrangement = Arrangement.Center
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-            StatTile("ELAPSED", formatClock(elapsedSeconds), accent = zoneColor)
-            StatTile("AVG", avgPowerWatts.toString(), unit = "W", accent = zoneColor)
-            StatTile(thirdLabel, thirdValue, unit = thirdUnit, accent = zoneColor)
+            StatTile("Elapsed", formatClock(elapsedSeconds))
+            StatTile("Avg power", avgPowerWatts.toString(), unit = "W")
+            StatTile(thirdLabel, thirdValue, unit = thirdUnit)
         }
     }
 }
@@ -1416,34 +1520,32 @@ private fun RideStatsStrip(
 private fun StatTile(
     label: String,
     value: String,
-    accent: Color,
     modifier: Modifier = Modifier,
     unit: String = "",
 ) {
     Column(
         modifier = modifier
             .width(220.dp)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1.copy(alpha = 0.35f))
-            .border(1.dp, CadenceColors.Line2.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
             .padding(horizontal = 16.dp, vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .width(30.dp)
-                .height(3.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(accent)
-        )
-        Text(text = label, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = label, style = CadenceType.tick, color = CadenceColors.Fg3)
         Row(verticalAlignment = Alignment.Bottom) {
-            Text(text = value, fontSize = 34.sp, fontWeight = FontWeight.Bold, color = CadenceColors.Fg1)
+            Text(
+                text = value,
+                style = CadenceType.displayM.copy(fontSize = 34.sp, lineHeight = 38.sp),
+                color = CadenceColors.Fg1
+            )
             if (unit.isNotEmpty()) {
                 Text(
                     text = " $unit",
-                    style = CadenceType.bodyStrong,
+                    style = CadenceType.body.copy(
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
                     color = CadenceColors.Fg3,
                     modifier = Modifier.padding(bottom = 4.dp)
                 )
@@ -1474,7 +1576,6 @@ private fun ForegroundServiceFailureBanner(
             .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
             .clip(shape)
             .background(CadenceColors.Danger.copy(alpha = 0.15f))
-            .border(1.dp, CadenceColors.Danger.copy(alpha = 0.4f), shape)
             .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
@@ -1503,7 +1604,7 @@ private fun ForegroundServiceFailureBanner(
                 Text(
                     text = "Retry",
                     style = CadenceType.bodyStrong,
-                    color = CadenceColors.Brand500,
+                    color = CadenceColors.Fg1,
                     modifier = Modifier
                         .clickable(onClick = onRetry)
                         .padding(vertical = 4.dp, horizontal = 6.dp)
@@ -1511,7 +1612,7 @@ private fun ForegroundServiceFailureBanner(
                 Text(
                     text = "Report",
                     style = CadenceType.bodyStrong,
-                    color = CadenceColors.Brand500,
+                    color = CadenceColors.Fg1,
                     modifier = Modifier
                         .clickable(onClick = onReport)
                         .padding(vertical = 4.dp, horizontal = 6.dp)
@@ -1554,7 +1655,6 @@ private fun ErgModeErrorBanner(
             .padding(horizontal = Spacing.s4, vertical = Spacing.s2)
             .clip(shape)
             .background(CadenceColors.Danger.copy(alpha = 0.15f))
-            .border(1.dp, CadenceColors.Danger.copy(alpha = 0.4f), shape)
             .padding(horizontal = Spacing.s3, vertical = Spacing.s3),
         verticalAlignment = Alignment.Top,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
@@ -1582,7 +1682,7 @@ private fun ErgModeErrorBanner(
             Text(
                 text = "Report",
                 style = CadenceType.bodyStrong,
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg1,
                 modifier = Modifier
                     .clickable(onClick = onReport)
                     .padding(vertical = 4.dp, horizontal = 6.dp)

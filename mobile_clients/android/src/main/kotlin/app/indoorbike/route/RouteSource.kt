@@ -47,8 +47,8 @@ sealed class RouteSource {
     /** Short label for the route card, matching how workout cards are tagged. */
     val label: String
         get() = when (this) {
-            is Bundled -> "BUNDLED"
-            is Imported -> sourceRepoName?.uppercase() ?: "IMPORTED"
+            is Bundled -> "Bundled"
+            is Imported -> sourceRepoName ?: "Imported"
         }
 
     /**

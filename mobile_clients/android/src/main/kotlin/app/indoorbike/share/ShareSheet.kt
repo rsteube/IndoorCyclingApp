@@ -73,6 +73,9 @@ import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
+import app.indoorbike.ui.components.SheetHandle
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SheetShape
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Spacing
@@ -145,7 +148,10 @@ fun ShareSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = CadenceColors.Bg1,
-        contentColor = CadenceColors.Fg1
+        contentColor = CadenceColors.Fg1,
+        shape = SheetShape,
+        scrimColor = SheetScrim,
+        dragHandle = { SheetHandle() },
     ) {
         Column(
             modifier = Modifier
@@ -155,7 +161,7 @@ fun ShareSheet(
                 .padding(bottom = Spacing.s5)
         ) {
             Text(
-                text = "SHARE RIDE",
+                text = "Share ride",
                 style = CadenceType.eyebrow,
                 color = CadenceColors.Fg3
             )
@@ -208,7 +214,6 @@ fun ShareSheet(
                         pendingAction = PendingAction.Share
                         performShare(context, graphicsLayer, session, { busy = it }, scope)
                     },
-                    glow = false,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -221,7 +226,7 @@ fun ShareSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     CircularProgressIndicator(
-                        color = CadenceColors.Brand500,
+                        color = CadenceColors.Fg1,
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(16.dp)
                     )

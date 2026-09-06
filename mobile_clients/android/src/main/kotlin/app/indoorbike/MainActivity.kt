@@ -18,8 +18,22 @@ package app.indoorbike
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import app.indoorbike.ui.components.LocalTabBarHeight
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.navigationevent.NavigationEvent
+import app.indoorbike.ui.theme.SlateMotion
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -30,16 +44,17 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.AccessTime
-import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -155,6 +170,15 @@ class MainActivity : ComponentActivity() {
         // tears down or interrupts an in-progress ride.
 
         enableEdgeToEdge()
+        // enableEdgeToEdge turns contrast enforcement on, which paints a
+        // translucent scrim behind a three-button navigation bar. The canvas is
+        // already dark and the tab bar is a floating pill that deliberately
+        // stops short of the bottom edge, so that scrim shows up as a lighter
+        // band across the bottom of every screen rather than as protection for
+        // anything.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
 
         val container = (application as IndoorBikeApp).container
 
@@ -323,10 +347,27 @@ class MainActivity : ComponentActivity() {
 }
 
 
+/**
+ * Switching tabs is a move between peers, not a move deeper, so the tab roots
+ * cross-fade instead of pushing. A push would claim a hierarchy the tab bar
+ * does not have, and it reads as "you went forward" when you went sideways.
+ */
+private val TabTransition: Map<String, Any> =
+    NavDisplay.transitionSpec {
+        fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) togetherWith
+            fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing))
+    } + NavDisplay.popTransitionSpec {
+        fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) togetherWith
+            fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing))
+    } + NavDisplay.predictivePopTransitionSpec {
+        fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) togetherWith
+            fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing))
+    }
+
 private val TOP_LEVEL_ROUTES = mapOf<NavKey, TabItem>(
     TabRides to TabItem("rides", Icons.AutoMirrored.Outlined.DirectionsBike, "Ride"),
     TabHistory to TabItem("history", Icons.Outlined.AccessTime, "History"),
-    TabProgress to TabItem("progress", Icons.Outlined.EmojiEvents, "Progress"),
+    TabProgress to TabItem("progress", Icons.AutoMirrored.Outlined.TrendingUp, "Progress"),
     TabSettings to TabItem("settings", Icons.Outlined.Settings, "Settings")
 )
 
@@ -382,7 +423,7 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
     }
 
     val entryProvider = entryProvider<NavKey> {
-        entry<TabRides> { _ ->
+        entry<TabRides>(metadata = TabTransition) { _ ->
             HomeScreen(
                 eyebrow = eyebrow,
                 onChooseWorkout = { navigator.navigate(RouteWorkoutPicker) },
@@ -514,7 +555,7 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 LaunchedEffect(Unit) { navigator.goBack() }
             }
         }
-        entry<TabHistory> { _ ->
+        entry<TabHistory>(metadata = TabTransition) { _ ->
             HistoryTab(
                 onNavigateToOverview = { sessionId ->
                     navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = false))
@@ -525,12 +566,12 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 }
             )
         }
-        entry<TabProgress> { _ ->
+        entry<TabProgress>(metadata = TabTransition) { _ ->
             ProgressTab(
                 onNavigateToRides = { navigator.navigate(TabRides) }
             )
         }
-        entry<TabSettings> { _ ->
+        entry<TabSettings>(metadata = TabTransition) { _ ->
             SettingsTab(
                 onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) },
                 onNavigateToHrmPairing = { navigator.navigate(RouteHrmPairing) },
@@ -582,34 +623,31 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
         val atTabRoot = navigationState.topLevelRoute in TOP_LEVEL_ROUTES.keys &&
             navigationState.backStacks[navigationState.topLevelRoute]?.size == 1
         val widthDp = LocalConfiguration.current.screenWidthDp
+        // Slate's tab bar is a floating pill inset from the screen edges, which
+        // is not a shape a Material NavigationBar can take, so on phones we lay
+        // it out ourselves under the content and tell the suite there is no
+        // navigation chrome. The rail is still Material: a vertical pill would
+        // be a different component, not the same one turned sideways.
+        val useSlateTabBar = atTabRoot && widthDp < 600
         val navLayoutType = when {
-            !atTabRoot -> NavigationSuiteType.None
-            widthDp >= 600 -> NavigationSuiteType.NavigationRail
-            else -> NavigationSuiteType.NavigationBar
+            !atTabRoot || useSlateTabBar -> NavigationSuiteType.None
+            else -> NavigationSuiteType.NavigationRail
         }
         val activeTabId = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides"
 
         // Color computations are @Composable, so they must be hoisted out of the
         // (non-composable) navigationSuiteItems builder lambda below.
         val navItemColors = NavigationSuiteDefaults.itemColors(
-            navigationBarItemColors = NavigationBarItemDefaults.colors(
-                selectedIconColor = CadenceColors.Brand500,
-                selectedTextColor = CadenceColors.Brand500,
-                unselectedIconColor = CadenceColors.Fg3,
-                unselectedTextColor = CadenceColors.Fg3,
-                indicatorColor = CadenceColors.Brand500.copy(alpha = 0.15f),
-            ),
             navigationRailItemColors = NavigationRailItemDefaults.colors(
-                selectedIconColor = CadenceColors.Brand500,
-                selectedTextColor = CadenceColors.Brand500,
-                unselectedIconColor = CadenceColors.Fg3,
-                unselectedTextColor = CadenceColors.Fg3,
-                indicatorColor = CadenceColors.Brand500.copy(alpha = 0.15f),
+                selectedIconColor = CadenceColors.OnBrand,
+                selectedTextColor = CadenceColors.Fg1,
+                unselectedIconColor = CadenceColors.Fg2,
+                unselectedTextColor = CadenceColors.Fg2,
+                indicatorColor = CadenceColors.Fg1,
             ),
         )
         val navSuiteColors = NavigationSuiteDefaults.colors(
-            navigationBarContainerColor = CadenceColors.Bg1,
-            navigationRailContainerColor = CadenceColors.Bg1,
+            navigationRailContainerColor = CadenceColors.Bg0,
         )
 
         NavigationSuiteScaffold(
@@ -628,14 +666,110 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 }
             },
         ) {
+            // The tab bar floats over the content rather than sitting beside it
+            // in a column. A pill inset from three edges only reads as floating
+            // if the list runs underneath it; boxed off above it, it is just a
+            // wall with rounded corners and a strip of dead canvas below.
+            var tabBarHeight by remember { mutableStateOf(0.dp) }
+            val density = LocalDensity.current
             Box(modifier = Modifier.fillMaxSize()) {
-                NavDisplay(
-                    entries = navigationState.toDecoratedEntries(entryProvider),
-                    onBack = { navigator.goBack() }
-                )
-                // Transient "device connected" banner, overlaid at the top so it
-                // shows on any screen (including silent auto-reconnects).
+                CompositionLocalProvider(LocalTabBarHeight provides tabBarHeight) {
+                    NavDisplay(
+                        entries = navigationState.toDecoratedEntries(entryProvider),
+                        // Going deeper pushes the new screen in from the
+                        // trailing edge; coming back sends it out the way it
+                        // came. The default is a cross-fade in both directions,
+                        // which tells a rider that the screen changed but not
+                        // whether they went in or came out - the one thing the
+                        // animation is there to say.
+                        transitionSpec = {
+                            (
+                                slideInHorizontally(
+                                    animationSpec = tween(
+                                        SlateMotion.Base,
+                                        easing = SlateMotion.Easing
+                                    ),
+                                    initialOffsetX = { it / 6 }
+                                ) + fadeIn(
+                                    tween(SlateMotion.Base, easing = SlateMotion.Easing)
+                                )
+                            ) togetherWith fadeOut(
+                                tween(SlateMotion.Fast, easing = SlateMotion.Easing)
+                            )
+                        },
+                        popTransitionSpec = {
+                            fadeIn(
+                                tween(SlateMotion.Base, easing = SlateMotion.Easing)
+                            ) togetherWith (
+                                slideOutHorizontally(
+                                    animationSpec = tween(
+                                        SlateMotion.Base,
+                                        easing = SlateMotion.Easing
+                                    ),
+                                    targetOffsetX = { it / 6 }
+                                ) + fadeOut(
+                                    tween(SlateMotion.Base, easing = SlateMotion.Easing)
+                                )
+                            )
+                        },
+                        // A back gesture drives this one frame by frame, so the
+                        // screen follows the finger off whichever edge it came
+                        // from and the rider can see what they are going back to
+                        // before they commit.
+                        predictivePopTransitionSpec = { edge ->
+                            fadeIn(
+                                tween(SlateMotion.Base, easing = SlateMotion.Easing)
+                            ) togetherWith (
+                                slideOutHorizontally(
+                                    animationSpec = tween(
+                                        SlateMotion.Base,
+                                        easing = SlateMotion.Easing
+                                    ),
+                                    targetOffsetX = {
+                                        if (edge == NavigationEvent.EDGE_RIGHT) -it / 4 else it / 4
+                                    }
+                                ) + fadeOut(
+                                    tween(SlateMotion.Base, easing = SlateMotion.Easing)
+                                )
+                            )
+                        },
+                        onBack = { navigator.goBack() }
+                    )
+                }
+                // Transient "device connected" banner, overlaid at the top so
+                // it shows on any screen (including silent auto-reconnects).
                 ConnectionToastHost(modifier = Modifier.align(Alignment.TopCenter))
+                // Now that it floats, it leaves the way it arrived - downward,
+                // off the bottom edge - rather than collapsing a row that no
+                // longer exists.
+                AnimatedVisibility(
+                    visible = useSlateTabBar,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    enter = slideInVertically(
+                        animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+                        initialOffsetY = { it }
+                    ) + fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)),
+                    exit = slideOutVertically(
+                        animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+                        targetOffsetY = { it }
+                    ) + fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing)),
+                ) {
+                    TabBar(
+                        active = activeTabId,
+                        tabs = TOP_LEVEL_ROUTES.values.toList(),
+                        onTabSelected = { id ->
+                            TOP_LEVEL_ROUTES.entries
+                                .firstOrNull { it.value.id == id }
+                                ?.let { navigator.navigate(it.key) }
+                        },
+                        // Published so a tab root's list knows how much of its
+                        // own tail the bar is covering.
+                        modifier = Modifier.onSizeChanged {
+                            val measured = with(density) { it.height.toDp() }
+                            if (measured > tabBarHeight) tabBarHeight = measured
+                        }
+                    )
+                }
             }
         }
     }

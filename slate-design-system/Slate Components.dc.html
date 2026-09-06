@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0&display=block">
+<style>
+body{margin:0;background:#313e50;color:#F2F4F7;font-family:Manrope,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#F2F4F7}a:hover{color:#C5CAD6}
+.ms{font-family:'Material Symbols Outlined';font-weight:400;font-style:normal;line-height:1;display:inline-block;letter-spacing:normal;text-transform:none;white-space:nowrap;direction:ltr;font-feature-settings:'liga';font-variation-settings:'wght' 300}
+</style>
+</helmet>
+<div style="max-width:1100px;margin:0 auto;padding:48px 32px 96px;display:flex;flex-direction:column;gap:56px">
+  <div><div style="font:600 13px Manrope;color:#9AA1B0">Indoor Bike · Slate design system</div><div style="font:800 36px/1.1 Manrope;letter-spacing:-.02em;margin-top:6px">Components</div><div style="font:500 15px/1.5 Manrope;color:#C5CAD6;margin-top:10px;max-width:640px;text-wrap:pretty">Five slates for surfaces, a cool white for every action, power zones as the only colour. Tokens in <a href="slate/tokens.css">slate/tokens.css</a>; rationale and Compose adoption notes in <a href="slate/README.md">slate/README.md</a>.</div></div>
+
+  <div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;margin-bottom:16px">Palette</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+      <div style="background:#313e50;border:1px dashed #5c6672;border-radius:12px;padding:16px;height:120px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font:700 14px Manrope">bg-0 · Canvas</div><div style="font:500 12px Manrope;color:#9AA1B0">#313e50</div></div>
+      <div style="background:#3a435e;border-radius:12px;padding:16px;height:120px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font:700 14px Manrope">bg-1 · Card</div><div style="font:500 12px Manrope;color:#9AA1B0">#3a435e</div></div>
+      <div style="background:#455561;border-radius:12px;padding:16px;height:120px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font:700 14px Manrope">bg-2 · Well</div><div style="font:500 12px Manrope;color:#C5CAD6">#455561</div></div>
+      <div style="background:#5c6672;border-radius:12px;padding:16px;height:120px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font:700 14px Manrope">bg-3 · Pressed</div><div style="font:500 12px Manrope;color:#F2F4F7">#5c6672</div></div>
+      <div style="background:#6c6f7f;border-radius:12px;padding:16px;height:120px;display:flex;flex-direction:column;justify-content:flex-end"><div style="font:700 14px Manrope">bg-4 · Disabled</div><div style="font:500 12px Manrope;color:#F2F4F7">#6c6f7f</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:12px">
+      <div style="background:#F2F4F7;border-radius:12px;padding:16px;height:80px;display:flex;flex-direction:column;justify-content:flex-end;color:#313e50"><div style="font:700 14px Manrope">fg-1</div><div style="font:500 12px Manrope">#F2F4F7</div></div>
+      <div style="background:#C5CAD6;border-radius:12px;padding:16px;height:80px;display:flex;flex-direction:column;justify-content:flex-end;color:#313e50"><div style="font:700 14px Manrope">fg-2</div><div style="font:500 12px Manrope">#C5CAD6</div></div>
+      <div style="background:#9AA1B0;border-radius:12px;padding:16px;height:80px;display:flex;flex-direction:column;justify-content:flex-end;color:#313e50"><div style="font:700 14px Manrope">fg-3</div><div style="font:500 12px Manrope">#9AA1B0</div></div>
+      <div style="border-radius:12px;padding:16px;height:80px;display:flex;flex-direction:column;justify-content:flex-end;background:linear-gradient(90deg,#6B8AA8 0 14.3%,#2E7BFF 0 28.6%,#1FB373 0 42.9%,#F0C419 0 57.2%,#FF8A1F 0 71.5%,#EB3B3B 0 85.8%,#C53BFF 0);color:#fff"><div style="font:700 14px Manrope;text-shadow:0 1px 2px rgba(0,0,0,.4)">Zones Z1–Z7 · unchanged</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;margin-bottom:16px">Type · Manrope only, tabular numerals</div>
+    <div style="background:#3a435e;border-radius:20px;padding:28px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;align-items:baseline;gap:24px"><span style="font:800 48px/1.1 Manrope;letter-spacing:-.02em;font-variant-numeric:tabular-nums">248<span style="font:600 16px Manrope;color:#9AA1B0"> W</span></span><span style="font:500 13px Manrope;color:#9AA1B0">display · 48 / 800</span></div>
+      <div style="display:flex;align-items:baseline;gap:24px"><span style="font:800 28px/1.15 Manrope;letter-spacing:-.02em">Your progress</span><span style="font:500 13px Manrope;color:#9AA1B0">h1 · 28 / 800</span></div>
+      <div style="display:flex;align-items:baseline;gap:24px"><span style="font:800 22px/1.1 Manrope;font-variant-numeric:tabular-nums">0.65</span><span style="font:500 13px Manrope;color:#9AA1B0">h2 · 22 / 800 · stat values</span></div>
+      <div style="display:flex;align-items:baseline;gap:24px"><span style="font:700 18px/1.2 Manrope">Sweet Spot 2x15</span><span style="font:500 13px Manrope;color:#9AA1B0">h3 · 18 / 700</span></div>
+      <div style="display:flex;align-items:baseline;gap:24px"><span style="font:500 15px/1.45 Manrope">Pair a smart trainer before starting a ride.</span><span style="font:500 13px Manrope;color:#9AA1B0">body · 15 / 500</span></div>
+      <div style="display:flex;align-items:baseline;gap:24px"><span style="font:600 13px Manrope;color:#9AA1B0">Before you start</span><span style="font:500 13px Manrope;color:#9AA1B0">label · 13 / 600 · sentence case, no tracking</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;margin-bottom:16px">Buttons</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;height:56px;padding:0 28px;background:#F2F4F7;border-radius:999px;color:#313e50;font:700 16px Manrope"><span class="ms" style="font-size:20px;font-variation-settings:'FILL' 1">play_arrow</span>Start workout</div>
+      <div style="display:flex;align-items:center;justify-content:center;height:56px;padding:0 28px;background:#455561;border-radius:999px;font:700 16px Manrope">Disconnect</div>
+      <div style="display:flex;align-items:center;justify-content:center;height:56px;padding:0 28px;background:#455561;border-radius:999px;font:700 16px Manrope;color:#6c6f7f">Continue</div>
+      <div style="display:flex;align-items:center;justify-content:center;height:56px;padding:0 28px;background:#EB3B3B;border-radius:999px;font:700 16px Manrope">Delete</div>
+      <div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px">arrow_back</span></div>
+      <div style="width:44px;height:44px;display:grid;place-items:center;background:#3a435e;border-radius:50%"><span class="ms" style="font-size:22px;font-variation-settings:'FILL' 1">star</span></div>
+    </div>
+    <div style="font:500 13px Manrope;color:#9AA1B0;margin-top:12px">Primary · Secondary · Disabled · Destructive · Icon buttons (44 px)</div>
+  </div>
+
+  <div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;margin-bottom:16px">Chips, badges, pills</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+      <span style="padding:10px 16px;border-radius:999px;background:#F2F4F7;color:#313e50;font:700 13px Manrope">All</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope">≤ 30 min</span>
+      <span style="padding:10px 16px;border-radius:999px;background:#455561;color:#C5CAD6;font:600 13px Manrope">Endurance</span>
+      <span style="width:16px"></span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(107,138,168,.2);color:#6B8AA8;font:700 12px Manrope">Z1</span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(46,123,255,.2);color:#2E7BFF;font:700 12px Manrope">Z2</span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(31,179,115,.2);color:#1FB373;font:700 12px Manrope">Z3</span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(240,196,25,.2);color:#F0C419;font:700 12px Manrope">Z4</span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(255,138,31,.2);color:#FF8A1F;font:700 12px Manrope">Z5</span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(235,59,59,.2);color:#EB3B3B;font:700 12px Manrope">Z6</span>
+      <span style="padding:4px 10px;border-radius:999px;background:rgba(197,59,255,.2);color:#C53BFF;font:700 12px Manrope">Z7</span>
+      <span style="width:16px"></span>
+      <span style="display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:999px;background:#455561;font:700 13px Manrope"><span class="ms" style="font-size:16px">replay</span>Again</span>
+      <span style="padding:6px 12px;border-radius:999px;background:#F2F4F7;color:#313e50;font:700 12px Manrope">3 new</span>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;margin-bottom:16px">Cards and rows</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
+      <div style="background:#3a435e;border-radius:20px;padding:6px 0">
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">bluetooth</span><div style="flex:1"><div style="font:700 15px Manrope">KICKR CORE 1F2A</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Connected</div></div><div style="width:8px;height:8px;border-radius:50%;background:#1FB373"></div></div>
+        <div style="height:1px;background:#455561;margin:0 20px"></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">monitor_heart</span><div style="flex:1"><div style="font:700 15px Manrope">Heart rate monitor</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Not paired</div></div><div style="width:8px;height:8px;border-radius:50%;background:#6c6f7f"></div></div>
+        <div style="height:1px;background:#455561;margin:0 20px"></div>
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 20px"><span class="ms" style="font-size:22px;color:#C5CAD6">cloud_upload</span><div style="flex:1"><div style="font:700 15px Manrope">Connections</div><div style="font:500 13px Manrope;color:#9AA1B0;margin-top:2px">Nothing connected</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:16px;padding:20px;background:#3a435e;border-radius:20px"><div style="width:48px;height:48px;border-radius:50%;background:#455561;display:grid;place-items:center"><span class="ms" style="font-size:24px">directions_bike</span></div><div style="flex:1"><div style="font:700 18px/1.2 Manrope">Workout</div><div style="font:500 14px/1.4 Manrope;color:#C5CAD6;margin-top:3px">Intervals the trainer holds for you.</div></div><span class="ms" style="font-size:22px;color:#9AA1B0">chevron_right</span></div>
+        <div style="display:flex;gap:12px">
+          <div style="flex:1;background:#3a435e;border-radius:20px;padding:20px"><div style="font:600 12px Manrope;color:#9AA1B0">Avg power</div><div style="font:800 28px/1.1 Manrope;margin-top:4px;font-variant-numeric:tabular-nums">126<span style="font:600 13px Manrope;color:#9AA1B0"> W</span></div></div>
+          <div style="flex:1;border:1px dashed #5c6672;border-radius:20px;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center"><span class="ms" style="font-size:22px;color:#9AA1B0">lock</span><div style="font:700 14px Manrope;color:#C5CAD6">Locked</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:600 13px Manrope;color:#9AA1B0;margin-bottom:16px">Inputs and tab bar</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start">
+      <div style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px;padding:14px 18px;background:#3a435e;border-radius:999px"><span class="ms" style="font-size:20px;color:#9AA1B0">search</span><span style="font:500 15px Manrope;color:#9AA1B0">Search workouts</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#455561;border-radius:12px"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">200</span><span style="font:600 15px Manrope;color:#9AA1B0">W</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#455561;border-radius:12px;box-shadow:0 0 0 2px #F2F4F7"><span style="font:700 18px Manrope;font-variant-numeric:tabular-nums">80</span><span style="font:600 15px Manrope;color:#9AA1B0">kg</span></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px"><span style="font:600 15px Manrope">Auto-upload after a ride</span><div style="width:48px;height:28px;border-radius:999px;background:#F2F4F7;position:relative"><div style="position:absolute;top:3px;right:3px;width:22px;height:22px;border-radius:50%;background:#313e50"></div></div></div>
+      </div>
+      <div style="background:#3a435e;border-radius:999px;padding:6px;display:flex;max-width:380px">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#313e50;background:#F2F4F7;border-radius:999px"><span class="ms" style="font-size:22px;font-variation-settings:'wght' 500">directions_bike</span><span style="font:700 11px Manrope">Ride</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">schedule</span><span style="font:600 11px Manrope">History</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">trending_up</span><span style="font:600 11px Manrope">Progress</span></div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;color:#C5CAD6"><span class="ms" style="font-size:22px">settings</span><span style="font:600 11px Manrope">Settings</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

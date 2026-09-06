@@ -8,6 +8,48 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Changed
 
+- **The whole app was redrawn in a new design system, Slate.** Five slate-blue
+  surfaces, three cool whites, one typeface, and no accent colour at all: the
+  power zones are now the only saturated colour anywhere, so a colour on screen
+  always means an intensity. The ember orange is gone, and with it the tinted
+  icon wells, the gradient fills and the outlines around cards - a card is a
+  surface one step lighter than the canvas and nothing else. Every label is
+  sentence case. Bebas Neue, Inter and JetBrains Mono are replaced by Manrope,
+  bundled as before, with tabular figures so a ticking number does not shuffle
+  the digits beside it.
+- The tab bar is a floating pill above the canvas, and Progress is a trend line
+  rather than a trophy.
+- In a ride, the power number is now the biggest thing on the screen by a long
+  way and carries the zone colour, so intensity reads from across a room. The
+  timeline under it is one bar per step: ridden steps at full strength, what is
+  still to come at half. The horizon backdrop stayed, in slate, with only its
+  crest line tinted by zone.
+- The three pairing screens share one status card, put their actions at the
+  bottom edge and scroll their content, so nothing falls off a landscape screen.
+  A scan you started can now be stopped from the screen that started it.
+- **Screen titles collapse as you scroll.** A 28 sp title over a section label
+  is the right thing to land on and the wrong thing to keep: on the workout and
+  route lists it was costing a row and a half of list the whole time you were
+  reading one. It now folds into the row the back button already occupies, and
+  comes back when you scroll to the top.
+- **The tab bar sits at the bottom edge again, and the list runs underneath it.**
+  It was adding the design's 20 dp gap on top of the system's own 24 dp one and
+  floating 47 dp up, and it was boxed off above the content, which left a strip
+  of dead canvas below every screen. It now floats over the content the way a
+  pill is meant to: the list scrolls under it and fades into the canvas as it
+  goes, and the two bottom gaps are treated as the one gap they are.
+- **Screens slide rather than cross-fade.** Going deeper pushes the new screen
+  in from the trailing edge and coming back sends it out the way it came, so the
+  animation says which direction you went; a back gesture drags the screen off
+  the edge your finger came from. Switching tabs still cross-fades, because that
+  is a move sideways and not a move deeper.
+- Fixed the keyboard covering text fields. Drawing edge to edge means the window
+  no longer shrinks when the keyboard opens, so Settings, Connections, the
+  onboarding sheet, the add-by-URL sheet and the rename dialog now make room for
+  it themselves.
+- Fixed the last row of the workout, route and repository lists sitting under the
+  navigation bar, and the system's translucent scrim showing as a band across the
+  bottom on three-button navigation.
 - **The home screen asks what you are riding, instead of listing workouts.**
   Workout, Route, or Just ride; you pick the kind first and the specific one on
   the screen after. A list of workouts was the right home screen when a workout

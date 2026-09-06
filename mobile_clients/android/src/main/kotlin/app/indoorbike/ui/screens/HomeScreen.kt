@@ -16,7 +16,6 @@
 package app.indoorbike.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -35,6 +34,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.CloudSync
@@ -52,6 +52,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -62,8 +63,14 @@ import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.RepoStatus
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.tabRootBottomPadding
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.CardDivider
+import app.indoorbike.ui.components.CountPill
 import app.indoorbike.ui.components.DeviceStatusCard
 import app.indoorbike.ui.components.IconBtn
+import app.indoorbike.ui.components.ListCard
+import app.indoorbike.ui.components.SectionLabel
 import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -128,12 +135,23 @@ fun HomeScreen(
 
     val showFirstRide = hasCompletedOnboarding && !dismissedStarter && sessions.isEmpty()
 
-    Column(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
-        AppBar(title = "Ride", eyebrow = eyebrow)
+    val header = rememberCollapsingHeaderState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
+        AppBar(title = "What are you riding?", eyebrow = eyebrow, header = header)
 
         LazyColumn(
-            contentPadding = PaddingValues(Spacing.s4),
-            verticalArrangement = Arrangement.spacedBy(Spacing.s4),
+            contentPadding = PaddingValues(
+                start = Spacing.s5,
+                end = Spacing.s5,
+                top = Spacing.s4,
+                bottom = tabRootBottomPadding(),
+            ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
             // Resuming beats starting: a rider with a ride still on disk almost
             // never wants to begin a second one. The item is only emitted when
@@ -153,8 +171,6 @@ fun HomeScreen(
                     )
                 }
             }
-
-            item(key = "chooser-head") { SectionHead("WHAT ARE YOU RIDING?") }
 
             item(key = "mode-workout") {
                 ModeCard(
@@ -182,7 +198,9 @@ fun HomeScreen(
                 )
             }
 
-            item(key = "devices-head") { SectionHead("BEFORE YOU START") }
+            item(key = "devices-head") {
+                SectionLabel("Before you start", Modifier.padding(top = Spacing.s5))
+            }
             item(key = "devices") {
                 DeviceStatusCard(
                     onTrainerClick = onOpenTrainerPairing,
@@ -192,9 +210,10 @@ fun HomeScreen(
             }
 
             item(key = "repos-head") {
-                SectionHead(
-                    title = "REPOSITORIES",
-                    hint = if (refreshing) "checking…" else null,
+                SectionLabel(
+                    text = "Repositories",
+                    modifier = Modifier.padding(top = Spacing.s5),
+                    hint = if (refreshing) "Checking…" else null,
                 )
             }
             item(key = "repos") {
@@ -221,33 +240,40 @@ private fun ModeCard(
     body: String,
     onClick: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.lg)
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(shape)
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onClick)
-            .padding(Spacing.s4),
+            .padding(Spacing.s5),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s4),
     ) {
         Box(
             Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.15f)),
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(CadenceColors.Bg2),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(icon, contentDescription = null, tint = CadenceColors.Brand500, modifier = Modifier.size(22.dp))
+            Icon(icon, contentDescription = null, tint = CadenceColors.Fg1, modifier = Modifier.size(24.dp))
         }
         Column(Modifier.weight(1f)) {
             Text(title, style = CadenceType.h3, color = CadenceColors.Fg1)
-            Spacer(Modifier.height(2.dp))
-            Text(body, style = CadenceType.small, color = CadenceColors.Fg3)
+            Spacer(Modifier.height(3.dp))
+            Text(
+                body,
+                style = CadenceType.body.copy(fontSize = 14.sp, lineHeight = 20.sp),
+                color = CadenceColors.Fg2,
+            )
         }
-        Text("›", style = CadenceType.h2, color = CadenceColors.Brand500)
+        Icon(
+            Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = CadenceColors.Fg3,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 
@@ -266,25 +292,18 @@ private fun RepositoriesCard(
     onOpenRepo: (String) -> Unit,
     onManage: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.md)
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape),
-    ) {
+    ListCard {
         if (followed.isEmpty()) {
-            Column(Modifier.padding(Spacing.s4)) {
+            Column(Modifier.padding(horizontal = Spacing.s5, vertical = 14.dp)) {
                 Text(
                     "Not following any repositories.",
                     style = CadenceType.bodyStrong,
                     color = CadenceColors.Fg1,
                 )
-                Spacer(Modifier.height(Spacing.s1))
+                Spacer(Modifier.height(2.dp))
                 Text(
                     "Follow one and this tells you when it publishes a workout or a road you do not have yet.",
-                    style = CadenceType.tick,
+                    style = CadenceType.small,
                     color = CadenceColors.Fg3,
                 )
             }
@@ -295,6 +314,7 @@ private fun RepositoriesCard(
                     status = status[repoId],
                     onClick = { onOpenRepo(repoId) },
                 )
+                CardDivider()
             }
         }
 
@@ -302,30 +322,35 @@ private fun RepositoriesCard(
             Modifier
                 .fillMaxWidth()
                 .clickable(onClick = onManage)
-                .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+                .padding(horizontal = Spacing.s5, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 Icons.AutoMirrored.Outlined.LibraryBooks,
                 contentDescription = null,
-                tint = CadenceColors.Fg3,
-                modifier = Modifier.size(16.dp),
+                tint = CadenceColors.Fg2,
+                modifier = Modifier.size(22.dp),
             )
-            Spacer(Modifier.width(Spacing.s2))
+            Spacer(Modifier.width(14.dp))
             Text(
                 if (followed.isEmpty()) "Find repositories" else "Manage repositories",
                 style = CadenceType.bodyStrong,
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg1,
                 modifier = Modifier.weight(1f),
             )
             if (refreshing) {
                 CircularProgressIndicator(
-                    color = CadenceColors.Brand500,
-                    modifier = Modifier.size(14.dp),
+                    color = CadenceColors.Fg3,
+                    modifier = Modifier.size(16.dp),
                     strokeWidth = 2.dp,
                 )
             } else {
-                Text("›", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
+                Icon(
+                    Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = CadenceColors.Fg3,
+                    modifier = Modifier.size(22.dp),
+                )
             }
         }
     }
@@ -337,37 +362,33 @@ private fun RepoRow(name: String, status: RepoStatus?, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+            .padding(horizontal = Spacing.s5, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(
                 name,
-                style = CadenceType.bodyStrong.copy(fontSize = 14.sp),
+                style = CadenceType.bodyStrong,
                 color = CadenceColors.Fg1,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Spacer(Modifier.height(2.dp))
             Text(
                 repoStatusLine(status),
-                style = CadenceType.tick,
+                style = CadenceType.small,
                 color = repoStatusColor(status),
             )
         }
         val total = status?.total ?: 0
         if (total > 0) {
-            Box(
-                Modifier
-                    .clip(CircleShape)
-                    .background(CadenceColors.Brand500)
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-            ) {
-                Text("$total new", style = CadenceType.tick, color = CadenceColors.Bg0)
-            }
+            Spacer(Modifier.width(Spacing.s3))
+            CountPill("$total new")
         } else if (status is RepoStatus.Checking) {
+            Spacer(Modifier.width(Spacing.s3))
             CircularProgressIndicator(
-                color = CadenceColors.Fg4,
-                modifier = Modifier.size(12.dp),
+                color = CadenceColors.Fg3,
+                modifier = Modifier.size(14.dp),
                 strokeWidth = 2.dp,
             )
         }
@@ -401,7 +422,9 @@ private fun describeNew(status: RepoStatus): String {
 
 private fun repoStatusColor(status: RepoStatus?): Color = when {
     status is RepoStatus.Failed && status.total == 0 -> CadenceColors.Danger
-    (status?.total ?: 0) > 0 -> CadenceColors.Brand500
+    // No accent to promote a line with: what marks "something new" is the count
+    // pill beside it, so the sub-line only has to step up out of Fg3.
+    (status?.total ?: 0) > 0 -> CadenceColors.Fg2
     else -> CadenceColors.Fg3
 }
 
@@ -418,41 +441,40 @@ private fun relativeTime(epoch: Long): String {
 
 // ─── First ride ──────────────────────────────────────────────────────────────
 
+/**
+ * The one card in the app that inverts. With no accent colour left, a promoted
+ * card cannot be tinted into prominence, so it swaps ground for figure instead:
+ * an Fg1 fill on the slate canvas, which is louder than anything else on the
+ * screen and still part of the same two-colour system.
+ */
 @Composable
 private fun FirstRideCard(onStart: () -> Unit, onDismiss: () -> Unit) {
-    val shape = RoundedCornerShape(Radii.lg)
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(shape)
-            .background(CadenceColors.Brand500.copy(alpha = 0.10f))
-            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.45f), shape)
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(CadenceColors.Fg1)
             .clickable(onClick = onStart)
-            .padding(Spacing.s4),
+            .padding(start = Spacing.s5, top = Spacing.s5, end = Spacing.s3, bottom = Spacing.s5),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("START HERE · YOUR FIRST RIDE", style = CadenceType.eyebrow, color = CadenceColors.Brand500)
+            Text("Start here · your first ride", style = CadenceType.eyebrow, color = CadenceColors.Bg3)
             Spacer(Modifier.height(Spacing.s1))
-            Text("First Spin", style = CadenceType.h3, color = CadenceColors.Fg1)
+            Text("First Spin", style = CadenceType.h3, color = CadenceColors.OnBrand)
+            Spacer(Modifier.height(2.dp))
             Text(
                 "Fifteen minutes, easy, with a taste of each zone.",
-                style = CadenceType.tick,
-                color = CadenceColors.Fg2,
+                style = CadenceType.small,
+                color = CadenceColors.Bg2,
             )
         }
-        IconBtn(Icons.Outlined.Close, "Dismiss", onClick = onDismiss, tint = CadenceColors.Fg3)
-    }
-}
-
-// ─── Shared bits ─────────────────────────────────────────────────────────────
-
-@Composable
-private fun SectionHead(title: String, hint: String? = null) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(title, style = CadenceType.eyebrow, color = CadenceColors.Fg3, modifier = Modifier.weight(1f))
-        if (hint != null) {
-            Text(hint, style = CadenceType.tick, color = CadenceColors.Fg4)
-        }
+        IconBtn(
+            Icons.Outlined.Close,
+            "Dismiss",
+            onClick = onDismiss,
+            background = Color.Transparent,
+            tint = CadenceColors.Bg2,
+        )
     }
 }

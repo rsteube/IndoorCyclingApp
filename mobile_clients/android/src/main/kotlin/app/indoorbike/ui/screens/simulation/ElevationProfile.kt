@@ -130,8 +130,8 @@ private fun DrawScope.drawProfile(
         drawRect(
             brush = Brush.horizontalGradient(
                 colors = listOf(
-                    CadenceColors.Brand500.copy(alpha = 0.05f),
-                    CadenceColors.Brand500.copy(alpha = 0.18f),
+                    CadenceColors.Fg1.copy(alpha = 0.05f),
+                    CadenceColors.Fg1.copy(alpha = 0.18f),
                 ),
                 startX = 0f,
                 endX = progressX,
@@ -147,13 +147,13 @@ private fun DrawScope.drawProfile(
     val index = ((progressX / columnWidth).toInt()).coerceIn(0, columns - 1)
     val riderY = yFor(elevations[index])
     drawLine(
-        color = CadenceColors.Brand400.copy(alpha = 0.85f),
+        color = CadenceColors.Fg1.copy(alpha = 0.85f),
         start = Offset(progressX, top * 0.4f),
         end = Offset(progressX, baseline),
         strokeWidth = 2f,
     )
     drawCircle(
-        color = CadenceColors.Brand400,
+        color = CadenceColors.Fg1,
         radius = 5f,
         center = Offset(progressX, riderY),
     )
@@ -181,8 +181,8 @@ fun gradientColor(gradient: Double): Color {
         percent < 1.5 -> CadenceColors.Fg3
         percent < 4.0 -> CadenceColors.Success
         percent < 7.0 -> CadenceColors.Warning
-        percent < 10.0 -> CadenceColors.Brand500
-        percent < 14.0 -> CadenceColors.Ember600
+        percent < 10.0 -> CadenceColors.Fg1
+        percent < 14.0 -> CadenceColors.Fg2
         else -> CadenceColors.Danger
     }
 }

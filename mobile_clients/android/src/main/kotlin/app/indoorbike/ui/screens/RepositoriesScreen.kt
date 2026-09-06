@@ -17,7 +17,6 @@ package app.indoorbike.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -26,6 +25,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -52,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -67,6 +68,8 @@ import app.indoorbike.library.RepoStatus
 import app.indoorbike.shared.repo.ManifestParser
 import app.indoorbike.shared.repo.RegistryEntry
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
+import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -122,15 +125,22 @@ fun RepositoriesScreen(
         index?.repositories.orEmpty().filterNot { it.id in followedIds }
     }
 
-    Column(Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    val header = rememberCollapsingHeaderState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         AppBar(
+            header = header,
             title = "Repositories",
-            eyebrow = "COMMUNITY",
+            eyebrow = "Community",
             leading = { IconBtn(Icons.AutoMirrored.Outlined.ArrowBack, "Back", onClick = onBack) },
             trailing = {
                 if (refreshing) {
                     CircularProgressIndicator(
-                        color = CadenceColors.Brand500,
+                        color = CadenceColors.Fg1,
                         modifier = Modifier.size(18.dp),
                         strokeWidth = 2.dp,
                     )
@@ -150,12 +160,18 @@ fun RepositoriesScreen(
         )
 
         LazyColumn(
-            contentPadding = PaddingValues(Spacing.s4),
+            modifier = Modifier.imePadding(),
+            contentPadding = PaddingValues(
+                start = Spacing.s4,
+                end = Spacing.s4,
+                top = Spacing.s4,
+                bottom = listBottomPadding(Spacing.s4)
+            ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
             item(key = "following-head") {
                 Text(
-                    if (followed.isEmpty()) "NOT FOLLOWING ANYTHING YET" else "FOLLOWING",
+                    if (followed.isEmpty()) "Not following anything yet" else "Following",
                     style = CadenceType.eyebrow,
                     color = CadenceColors.Fg3,
                 )
@@ -211,7 +227,7 @@ fun RepositoriesScreen(
             if (suggestions.isNotEmpty()) {
                 item(key = "suggest-head") {
                     Spacer(Modifier.height(Spacing.s2))
-                    Text("FROM THE COMMUNITY", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+                    Text("From the community", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
                 }
                 items(suggestions, key = { "s-${it.id}" }) { entry ->
                     SuggestionRow(
@@ -272,13 +288,12 @@ private fun FollowedRow(
     onOpen: () -> Unit,
     onUnfollow: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onOpen)
             .padding(Spacing.s4),
         verticalAlignment = Alignment.CenterVertically,
@@ -303,7 +318,7 @@ private fun FollowedRow(
                     else -> "Up to date"
                 },
                 style = CadenceType.tick,
-                color = if (total > 0) CadenceColors.Brand500 else CadenceColors.Fg3,
+                color = if (total > 0) CadenceColors.Fg1 else CadenceColors.Fg3,
             )
         }
         Text(
@@ -319,13 +334,12 @@ private fun FollowedRow(
 
 @Composable
 private fun SuggestionRow(entry: RegistryEntry, onFollow: () -> Unit) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line1, shape)
             .padding(Spacing.s4),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -350,13 +364,12 @@ private fun AddByUrlRow(
     onUrlChange: (String) -> Unit,
     onAdd: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Row(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .padding(horizontal = Spacing.s4, vertical = Spacing.s2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -365,7 +378,7 @@ private fun AddByUrlRow(
             onValueChange = onUrlChange,
             singleLine = true,
             textStyle = CadenceType.body.copy(color = CadenceColors.Fg1),
-            cursorBrush = SolidColor(CadenceColors.Brand500),
+            cursorBrush = SolidColor(CadenceColors.Fg1),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = ImeAction.Go),
             keyboardActions = androidx.compose.foundation.text.KeyboardActions(onGo = { onAdd() }),
             modifier = Modifier.weight(1f).padding(vertical = Spacing.s2),
@@ -383,7 +396,7 @@ private fun AddByUrlRow(
         )
         if (busy) {
             CircularProgressIndicator(
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg1,
                 modifier = Modifier.size(18.dp),
                 strokeWidth = 2.dp,
             )

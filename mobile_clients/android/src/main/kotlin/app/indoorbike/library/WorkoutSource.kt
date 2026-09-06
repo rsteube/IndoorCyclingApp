@@ -42,8 +42,8 @@ sealed class WorkoutSource {
 
     val attribution: String
         get() = when (this) {
-            is Bundled -> "BUNDLED"
-            is Imported -> sourceRepoName?.uppercase() ?: "IMPORTED"
+            is Bundled -> "Bundled"
+            is Imported -> sourceRepoName ?: "Imported"
         }
 }
 

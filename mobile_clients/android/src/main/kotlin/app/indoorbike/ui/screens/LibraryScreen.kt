@@ -19,7 +19,6 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +28,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -62,11 +62,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.ImportResult
@@ -75,8 +77,12 @@ import app.indoorbike.shared.repo.ImportKind
 import app.indoorbike.shared.repo.ManifestParser
 import app.indoorbike.shared.repo.RegistryEntry
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.SheetHandle
+import app.indoorbike.ui.components.SheetScrim
+import app.indoorbike.ui.components.SheetShape
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -152,10 +158,17 @@ fun LibraryScreen(
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    val header = rememberCollapsingHeaderState()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            .nestedScroll(header.nestedScrollConnection)
+    ) {
         AppBar(
+            header = header,
             title = "Get workouts",
-            eyebrow = "ADD TO YOUR LIBRARY",
+            eyebrow = "Add to your library",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -296,24 +309,22 @@ private fun ScanHeroCard(onClick: () -> Unit) {
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .background(CadenceColors.Brand500.copy(alpha = 0.05f))
-            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.55f), shape)
             .clickable(onClick = onClick)
-            .padding(Spacing.s4),
+            .padding(Spacing.s5),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s4)
     ) {
         Box(
             modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(CadenceColors.Brand500.copy(alpha = 0.16f)),
+                .size(48.dp)
+                .clip(CircleShape)
+                .background(CadenceColors.Bg2),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Outlined.QrCodeScanner,
                 contentDescription = null,
-                tint = CadenceColors.Brand500,
+                tint = CadenceColors.Fg1,
                 modifier = Modifier.size(26.dp)
             )
         }
@@ -330,7 +341,7 @@ private fun ScanHeroCard(onClick: () -> Unit) {
                 color = CadenceColors.Fg3
             )
         }
-        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Brand500)
+        Text(text = "›", style = CadenceType.h2, color = CadenceColors.Fg1)
     }
 }
 
@@ -364,18 +375,17 @@ private fun ActionTile(
 ) {
     // Line2 border (not brand) so these read as secondary next to the
     // scan hero above them.
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Column(
         modifier = modifier
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onClick)
             .padding(vertical = Spacing.s4),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.s2)
     ) {
-        Icon(icon, contentDescription = null, tint = CadenceColors.Brand500, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = null, tint = CadenceColors.Fg1, modifier = Modifier.size(24.dp))
         Text(label, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
     }
 }
@@ -387,7 +397,7 @@ private fun ActionTile(
 @Composable
 private fun SectionHeader(title: String, subtitle: String?) {
     Column(modifier = Modifier.padding(top = Spacing.s4)) {
-        Text(text = title.uppercase(), style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Text(text = title, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         if (!subtitle.isNullOrBlank()) {
             Spacer(Modifier.height(2.dp))
             Text(text = subtitle, style = CadenceType.small, color = CadenceColors.Fg3)
@@ -405,13 +415,12 @@ private fun ManageImportedRow(
     expanded: Boolean,
     onToggle: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onToggle)
             .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
         verticalAlignment = Alignment.CenterVertically
@@ -438,13 +447,12 @@ private fun ManageImportedRow(
 
 @Composable
 private fun ImportedWorkoutRow(name: String, onDelete: () -> Unit) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -505,19 +513,18 @@ private fun RegistryEntryCard(
     onBrowse: () -> Unit,
     onBrowseRoutes: () -> Unit = {}
 ) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, shape)
             .clickable(onClick = onBrowse)
             .padding(Spacing.s4),
         verticalArrangement = Arrangement.spacedBy(Spacing.s2)
     ) {
         entry.author?.let { author ->
-            Text(text = author.uppercase(), style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Text(text = author, style = CadenceType.eyebrow, color = CadenceColors.Fg3)
         }
         Text(text = entry.name, style = CadenceType.h3, color = CadenceColors.Fg1)
         entry.description?.takeIf { it.isNotBlank() }?.let { desc ->
@@ -558,14 +565,16 @@ private fun RegistryEntryCard(
                 Row(
                     modifier = Modifier
                         .clip(CircleShape)
-                        .background(CadenceColors.Brand500.copy(alpha = 0.18f))
+                        .background(CadenceColors.Fg1)
                         .clickable(onClick = onBrowse)
                         .padding(horizontal = Spacing.s4, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "Browse", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
-                    Spacer(Modifier.size(6.dp))
-                    Text(text = "›", style = CadenceType.bodyStrong, color = CadenceColors.Brand500)
+                    Text(
+                        text = "Browse",
+                        style = CadenceType.small.copy(fontWeight = FontWeight.Bold),
+                        color = CadenceColors.OnBrand
+                    )
                 }
             }
         }
@@ -580,7 +589,7 @@ private fun LoadingRow() {
         verticalAlignment = Alignment.CenterVertically
     ) {
         CircularProgressIndicator(
-            color = CadenceColors.Brand500,
+            color = CadenceColors.Fg1,
             strokeWidth = 2.dp,
             modifier = Modifier.size(16.dp)
         )
@@ -609,13 +618,12 @@ private fun RegistryUnreachable(error: String) {
 
 @Composable
 private fun EmptyHint(title: String, body: String, accent: Color = CadenceColors.Fg3) {
-    val shape = RoundedCornerShape(Radii.md)
+    val shape = RoundedCornerShape(Radii.lg)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line1, shape)
             .padding(Spacing.s4)
     ) {
         Text(text = title, style = CadenceType.bodyStrong, color = accent)
@@ -641,15 +649,19 @@ private fun AddByUrlSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = CadenceColors.Bg1,
-        contentColor = CadenceColors.Fg1
+        contentColor = CadenceColors.Fg1,
+        shape = SheetShape,
+        scrimColor = SheetScrim,
+        dragHandle = { SheetHandle() },
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .padding(horizontal = Spacing.s5)
                 .padding(bottom = Spacing.s5)
         ) {
-            Text(text = "ADD BY URL", style = CadenceType.eyebrow, color = CadenceColors.Brand500)
+            Text(text = "Add by URL", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
             Spacer(Modifier.height(6.dp))
             Text(text = "Paste a repository or workout URL", style = CadenceType.h2, color = CadenceColors.Fg1)
             Spacer(Modifier.height(Spacing.s2))
@@ -675,7 +687,6 @@ private fun AddByUrlSheet(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(Radii.md))
                     .background(CadenceColors.Bg2)
-                    .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
                     .padding(horizontal = 14.dp, vertical = 14.dp),
                 decorationBox = { inner ->
                     if (input.isEmpty()) {

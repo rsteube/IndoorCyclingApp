@@ -16,9 +16,9 @@
 package app.indoorbike.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
@@ -135,14 +135,12 @@ fun UnfinishedRideBanner(
     // snapshots default it to 0, so fall back to the planned elapsed.
     val rideSeconds = current.actualRideSeconds.takeIf { it > 0 } ?: current.elapsedSeconds
 
-    val shape = RoundedCornerShape(Radii.md)
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(shape)
+            .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Brand500.copy(alpha = 0.5f), shape)
-            .padding(14.dp)
+            .padding(Spacing.s5)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -155,13 +153,13 @@ fun UnfinishedRideBanner(
                     Icons.Outlined.PauseCircleOutline
                 },
                 contentDescription = null,
-                tint = CadenceColors.Brand500,
+                tint = CadenceColors.Fg2,
                 modifier = Modifier.size(18.dp)
             )
             Text(
-                text = if (isFinished) "RIDE NOT SAVED" else "UNFINISHED RIDE",
+                text = if (isFinished) "Ride not saved" else "Unfinished ride",
                 style = CadenceType.eyebrow,
-                color = CadenceColors.Brand500,
+                color = CadenceColors.Fg3,
                 modifier = Modifier.weight(1f)
             )
             if (dismissable) {
@@ -199,14 +197,14 @@ fun UnfinishedRideBanner(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(6.dp)
-                    .clip(RoundedCornerShape(999.dp))
-                    .background(CadenceColors.Bg0)
+                    .clip(CircleShape)
+                    .background(CadenceColors.Bg2)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(progress)
                         .fillMaxHeight()
-                        .background(CadenceColors.Brand500)
+                        .background(CadenceColors.Fg1)
                 )
             }
             Spacer(Modifier.height(6.dp))
@@ -217,11 +215,11 @@ fun UnfinishedRideBanner(
                 openEnded -> "${formatClock(current.elapsedSeconds)} ridden · no set finish"
                 else -> "${formatClock(current.elapsedSeconds)} / ${formatClock(total)} · $pct% complete"
             },
-            style = CadenceType.tick,
-            color = CadenceColors.Fg2
+            style = CadenceType.small,
+            color = CadenceColors.Fg3
         )
 
-        Spacer(Modifier.height(Spacing.s3))
+        Spacer(Modifier.height(Spacing.s4))
 
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
             if (isFinished) {
@@ -258,7 +256,7 @@ fun UnfinishedRideBanner(
 }
 
 private val BannerButtonHeight = 44.dp
-private val BannerButtonShape = RoundedCornerShape(12.dp)
+private val BannerButtonShape = CircleShape
 
 @Composable
 private fun ContinueButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -319,7 +317,6 @@ private fun AbandonButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
             .height(BannerButtonHeight)
             .clip(BannerButtonShape)
             .background(CadenceColors.Bg2)
-            .border(1.dp, CadenceColors.Line2, BannerButtonShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -352,13 +349,12 @@ private fun AbandonConfirmDialog(
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
-                .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.lg))
-                .padding(Spacing.s5),
+                .padding(Spacing.s6),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {
             Text(
                 text = if (isFinished) "Discard this ride?" else "Abandon this ride?",
-                style = CadenceType.h3,
+                style = CadenceType.h2,
                 color = CadenceColors.Fg1
             )
             Text(
@@ -377,37 +373,16 @@ private fun AbandonConfirmDialog(
                 color = CadenceColors.Fg2
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(BannerButtonHeight)
-                        .clip(BannerButtonShape)
-                        .background(CadenceColors.Bg2)
-                        .border(1.dp, CadenceColors.Line2, BannerButtonShape)
-                        .clickable(onClick = onCancel),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Keep ride",
-                        style = CadenceType.bodyStrong,
-                        color = CadenceColors.Fg1
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(BannerButtonHeight)
-                        .clip(BannerButtonShape)
-                        .background(CadenceColors.Danger)
-                        .clickable(onClick = onConfirm),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (isFinished) "Discard" else "Abandon",
-                        style = CadenceType.bodyStrong,
-                        color = CadenceColors.Fg1
-                    )
-                }
+                SecondaryBtn(
+                    text = "Keep ride",
+                    onClick = onCancel,
+                    modifier = Modifier.weight(1f)
+                )
+                DestructiveBtn(
+                    text = if (isFinished) "Discard" else "Abandon",
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
     }
