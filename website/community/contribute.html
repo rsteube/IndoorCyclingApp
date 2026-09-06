@@ -476,7 +476,11 @@ milliseconds: 1785297508000   &lt;- 13 digits, what this field wants</code></pre
       <p>
         <a href="../routetool/index.html">The route publishing tool</a> reads a
         GPX in your browser - the file is never uploaded - and gives you the
-        entry to paste, plus your manifest with the pointer already added. It
+        entry to paste, plus your manifest with the pointer already added. Give
+        it the <code>routes.json</code> you already publish and it adds to that
+        instead, so you can put up a route at a time and download the whole
+        file with the earlier ones still in it; it will also show you the
+        listing as the app draws it before you publish anything. It
         also warns you about the things that quietly ruin a route, most
         importantly a GPX with no elevation, which the app would simulate as
         dead flat. Two fields it can fill for you, each only when you ask:
@@ -656,7 +660,7 @@ milliseconds: 1785297508000   &lt;- 13 digits, what this field wants</code></pre
     "place": "Provence, France",
     "tags": ["Climb", "France"],
     "version": 1,
-    "gpxUrl": "routes/ventoux-bedoin.gpx",
+    "gpxUrl": "gpx_files/ventoux-bedoin.gpx",
     "gpxBytes": 184320,
     "gpxSha256": "9f2c...",
     "distanceMeters": 21400,

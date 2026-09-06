@@ -18,6 +18,7 @@
       "author": "Juhani Lehtimäki",
       "manifestUrl": "https://raw.codeberg.page/juhanilehtimaki/community_indoor_cycling_workouts/manifest.json",
       "tags": ["Recovery", "Endurance", "Tempo", "Threshold", "VO2 Max", "Anaerobic", "Sprint"],
+      "content": ["workouts", "routes"],
       "homepage": "https://codeberg.org/juhanilehtimaki/community_indoor_cycling_workouts"
     },
     {
