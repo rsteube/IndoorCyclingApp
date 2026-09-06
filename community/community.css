@@ -390,6 +390,8 @@
 
 .route-shape {
   flex: 0 0 auto;
+  width: 96px;
+  height: 64px;
   background: var(--bg-2);
   border-radius: var(--r-sm, 8px);
 }
@@ -405,7 +407,7 @@
   margin-bottom: var(--s-4, 16px);
 }
 
-.route-detail-graphics .route-shape { flex: 0 0 220px; }
+.route-detail-graphics .route-shape { flex: 0 0 220px; width: 220px; height: 150px; }
 
 .route-detail-graphics .spark {
   flex: 1 1 320px;
