@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.1] (15) - 2026-09-07
+
 ### Changed
 
 - **A new mark.** The same ridge and frame, recoloured to Slate and drawn at one
@@ -73,6 +75,30 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 - The first-ride suggestion and the unfinished-ride banner can both be waved
   away. Dismissing an unfinished ride hides the card and keeps the ride:
   abandoning it is still a separate, deliberate button.
+- **The gradient reading is drawn on the road around you.** A fixed 50 m behind
+  and 500 m ahead, whatever the route's length. The whole-route profile cannot
+  answer how much further this climb goes or where the next one starts, because
+  on a 169 km stage a two kilometre climb is a pixel wide.
+- **A gear shift bites harder.** Nothing was broken - a shift reaches the
+  trainer inside 250 ms - but the model was exactly faithful to a bike, where
+  one sprocket is a 5 to 8 % change in force. On the road that is plainly felt
+  because your cadence drops with it; indoors, where virtual speed comes from
+  power alone, a rider absorbs it by pushing 5 % harder at the same cadence and
+  never notices. Each shift now reaches further, while the gear matching your
+  real one still carries the road's own force unchanged.
+- The route list is marked Beta on the home screen. Routes are the newest part
+  of the app and the part with the most still to settle.
+- The progress bar under the elevation profile is gone. It said exactly what
+  the profile above it says, without terrain to read it against.
+- **A repository's workouts and its routes are one stop now.** A repository can
+  carry both, and reaching the other half meant going back to the library and
+  coming in through a different button. There is a Workouts / Routes switch at
+  the top of the browser whenever the repository has the other kind, and back
+  still leaves the repository however many times you crossed. It reads the
+  repository's own manifest rather than the registry, so it works for a
+  repository you opened by URL or QR - which is also the only way out of a
+  routes-only repository that used to greet you with "no workouts" and nothing
+  else.
 
 ### Added
 
@@ -88,6 +114,17 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **Cadence and heart rate were cut off on a landscape phone.** The simulation
+  HUD stacked fixed type sizes and ran past the bottom of the screen, and the
+  two readings that fell off were the ones a rider cannot reconstruct from
+  anything else on it.
+- **A long route would download and then never finish.** The spinner stayed up
+  for good on anything much past a few hundred kilobytes of GPX: a 42 KB route
+  parsed in milliseconds and a 531 KB one took minutes, because the parser
+  looked for a namespace prefix by scanning to the end of the document and only
+  bounded the result afterwards. A GPX with no namespace prefixes - which is
+  most of them - has no colon to stop that search, so the cost grew with the
+  square of the file. The search is bounded to the tag it is reading now.
 - The community registry is refetched when you open the repositories screen.
   It used to be fetched only when no cached copy existed at all, so a
   repository added to the registry after your first look never appeared, and
@@ -118,6 +155,25 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   editing its own files. The manifest format did not change version to make
   this safe: adding routes cannot break the repository for anyone still on an
   older build of the app.
+- **Ride a long road across several sittings.** A published route is as long as
+  the road it came from, and a Tour stage is eight hours. Stop part-way and the
+  app remembers where you got to; the next time you pick that route it asks
+  whether to carry on from there or start again, and the card in your route list
+  says how far along you are. Climbing carries over too, so a route ridden in
+  pieces still totals the whole climb. Finishing a road clears the mark, because
+  picking it again then means you want to ride it.
+- **Long press a route to remove it from your device.** Downloaded routes are
+  files, and eighteen stages of a Grand Tour is a lot of files. Removing one
+  takes its saved position with it and leaves your rides in your history; you
+  can add it again from the repository it came from. Bundled routes say why they
+  cannot be removed rather than ignoring the gesture.
+- **The route tool builds the whole file, not one entry.** Give
+  [the tool](https://indoorbike.app/routetool/) the `routes.json` you already
+  publish and it adds to that, so you can put up a route at a time and download
+  a file with the earlier ones still in it - the step where a route used to get
+  lost. It can also start an empty one, and it will show you the listing as the
+  app draws it, cards and all, before you publish anything. Routes the app would
+  quietly skip are named there rather than going missing in front of riders.
 
 ## [1.8.2] (13) - 2026-09-05
 
