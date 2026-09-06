@@ -155,6 +155,19 @@ class RepositoryManager(
     }
 
     /**
+     * Fetch just the manifest, without any of its bundles.
+     *
+     * The cheap half of a repository. [FollowedRepositories] uses this to ask
+     * "has anything changed?" by comparing bundle versions, which answers the
+     * question for the usual case of nothing having changed without
+     * downloading any content at all.
+     */
+    suspend fun fetchManifest(manifestUrl: String): RepositoryManifest =
+        withContext(Dispatchers.IO) {
+            ManifestParser.parseRepositoryManifest(HttpFetcher.getString(manifestUrl))
+        }
+
+    /**
      * Fetch a single repository's routes: download its manifest, then every
      * supported route bundle, and return the merged listing.
      *
@@ -220,7 +233,7 @@ class RepositoryManager(
      * listings and its GPX files in the same subdirectory and refer to them
      * with bare filenames.
      */
-    private fun resolveUrl(entryUrl: String, baseUrl: String): String? {
+    fun resolveUrl(entryUrl: String, baseUrl: String): String? {
         if (entryUrl.startsWith("https://", ignoreCase = true) ||
             entryUrl.startsWith("http://", ignoreCase = true)) {
             return entryUrl

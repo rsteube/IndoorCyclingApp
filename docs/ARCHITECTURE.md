@@ -263,6 +263,26 @@ A 1080×1080 PNG generated on-demand from a completed ride and surfaced via a Sh
 
 **Dependencies:** none added. Bitmap rendering uses `androidx.compose.ui:ui` (Compose 1.7+ `GraphicsLayer.toImageBitmap`), persistence uses `MediaStore` + AndroidX `FileProvider`. No analytics, no Firebase Dynamic Links, no network share endpoints - the user picks the destination via the system chooser.
 
+### Home screen and the pickers
+
+The Ride tab is a chooser, not a list. [`HomeScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/HomeScreen.kt) offers Workout / Route / Just ride and nothing else above the fold; the specific workout or road is chosen on the next screen. The old `WorkoutListScreen` was split rather than rewritten: search, the duration and tag filters and the compact rows became [`WorkoutPickerScreen`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/WorkoutPickerScreen.kt) unchanged, the welcome banner and first-run sheet became [`Onboarding.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/Onboarding.kt), and the up-next hero, quick-pick shelf, trainer chip and mode cards were deleted, because all four existed only to make a list serve as a landing screen. `RouteLibraryScreen` was already the route picker.
+
+Riding stays trainer-gated. The two pickers are browsable without one, since choosing is not riding, but Just ride starts immediately and so checks on the home screen itself.
+
+**Device status is one implementation.** [`DeviceStatusCard`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/components/DeviceStatus.kt) was lifted out of the Settings tab when home came to need it, along with the nine state-to-label helpers, which the pairing rows in Settings still import. Those labels are where the awkward truths live: a strap can be connected and sending nothing, and a controller can pair, report itself connected and answer no button press. Both read as "Connected" to anything that only inspects the connection state, which is precisely the case worth warning about before a ride.
+
+**Dismissal.** The first-ride card persists through `hasDismissedStarterCard`. The unfinished-ride banner does not persist and is keyed to the ride, via `AppContainer.dismissedUnfinishedRideStart`: dismissing means "not now", so the banner returns next launch while the ride is still on disk, and a rider who waves away one unfinished ride and then abandons a second is still told about the second. Throwing a ride away remains the separate Abandon button.
+
+### Followed repositories
+
+[`FollowedRepositories`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/FollowedRepositories.kt) brings back a subscription concept that was removed once, but only the half that was never the problem. The original objection was to *content*: mirroring a repo let a maintainer change what sat on someone's device. Following restores only *knowing* - a followed repo is checked and reported on, and nothing enters the library until the rider opens it and taps Add, so every local copy is still the static import `WorkoutSource` and `RouteSource` describe.
+
+**Cost of a check.** Naively this means downloading every bundle of every followed repo on every look, which for a 400-workout repository is a real transfer to answer a question whose answer is almost always "no". Instead a check fetches the manifest, which is small by design, and compares each bundle's `version` against the version last seen; a bundle downloads only when that number moves. This is the first use of a field the format has carried since v2 and never read, and it is why the contributor docs tell maintainers to bump it whenever bundle content changes. A maintainer who does not is invisible to the check, by contract.
+
+**What "new" means.** Everything ever fetched from a repo is *known*; everything the rider has browsed is *seen*; new is the difference. Refreshing never marks anything seen, or nothing would stay new long enough to be noticed - only opening the repo browser does, via `markSeen`. Both sets persist under `filesDir/followed/seen/<id>.json`, so a count survives the app being killed.
+
+**When it runs.** On home screen open, throttled to `REFRESH_INTERVAL_MS` (3 h) unless forced. No background worker and no scheduled work: nothing runs while the app is closed, which keeps the no-Google rule and the battery story simple. The registry itself, being about a kilobyte, is refetched every time the repositories screen opens - it was previously fetched only when no cache existed at all, which silently froze the discoverable list on the day of first use.
+
 ### Workout library - sources, import, repositories
 
 The Rides list aggregates workouts from two local sources, both merged through [`WorkoutLibrary`](../mobile_clients/android/src/main/kotlin/app/indoorbike/library/WorkoutLibrary.kt) (`AppContainer.workoutLibrary`):

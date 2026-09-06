@@ -6,7 +6,42 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The home screen asks what you are riding, instead of listing workouts.**
+  Workout, Route, or Just ride; you pick the kind first and the specific one on
+  the screen after. A list of workouts was the right home screen when a workout
+  was the only thing a ride could be, and stopped being right the moment a ride
+  could also be a road. Searching and filtering the library did not go away, it
+  moved to where choosing a workout actually happens.
+- **Up next is gone**, along with the quick-pick shelf. Both existed to make a
+  long list usable as a landing screen, and there is no longer a list to land on.
+- The home screen now shows the trainer, heart rate monitor and controller
+  together, because the moment before a ride is exactly when it matters whether
+  a strap is connected but sending nothing.
+- The first-ride suggestion and the unfinished-ride banner can both be waved
+  away. Dismissing an unfinished ride hides the card and keeps the ride:
+  abandoning it is still a separate, deliberate button.
+
 ### Added
+
+- **Follow a community repository and the app tells you when it publishes
+  something new.** Following is about being told, not being given: nothing
+  reaches your library until you open the repository and add it. Checks happen
+  when you open the home screen, at most every few hours, and never while the
+  app is closed. A check reads the manifest and only downloads a bundle whose
+  version has actually moved, so asking a 400-workout repository whether
+  anything changed usually costs one small file.
+- A Repositories screen to follow, unfollow and check them, taking either a
+  repository from the community registry or any manifest URL.
+
+### Fixed
+
+- The community registry is refetched when you open the repositories screen.
+  It used to be fetched only when no cached copy existed at all, so a
+  repository added to the registry after your first look never appeared, and
+  nothing on screen suggested anything was missing.
+
 
 - **Community routes.** Repositories can now publish roads as well as intervals.
   A route listing carries everything a picker needs - distance, climbing, a

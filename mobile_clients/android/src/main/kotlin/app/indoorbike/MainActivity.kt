@@ -95,12 +95,18 @@ import app.indoorbike.ui.screens.LibraryScreen
 import app.indoorbike.ui.screens.QrScannerScreen
 import app.indoorbike.ui.screens.RemoteRepoBrowserScreen
 import app.indoorbike.ui.screens.RemoteRouteBrowserScreen
+import app.indoorbike.ui.screens.HomeScreen
+import app.indoorbike.ui.screens.RepositoriesScreen
 import app.indoorbike.ui.screens.RouteLibraryScreen
+import app.indoorbike.ui.screens.WorkoutPickerScreen
+import app.indoorbike.ui.screens.STARTER_WORKOUT_ID
 import app.indoorbike.navigation.RouteLibrary
 import app.indoorbike.navigation.RouteQrScanner
 import app.indoorbike.navigation.RouteRemoteRepo
 import app.indoorbike.navigation.RouteRemoteRoutes
+import app.indoorbike.navigation.RouteRepositories
 import app.indoorbike.navigation.RouteRouteLibrary
+import app.indoorbike.navigation.RouteWorkoutPicker
 import app.indoorbike.ui.HistoryTab
 import app.indoorbike.ui.HrmPairingScreen
 import app.indoorbike.ui.ProgressTab
@@ -111,7 +117,6 @@ import app.indoorbike.ui.components.TabBar
 import app.indoorbike.ui.components.TabItem
 import app.indoorbike.ui.screens.RideScreen
 import app.indoorbike.ui.screens.WorkoutDetailScreen
-import app.indoorbike.ui.screens.WorkoutListScreen
 import app.indoorbike.ui.screens.WorkoutOverviewScreen
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceTheme
@@ -378,20 +383,10 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
 
     val entryProvider = entryProvider<NavKey> {
         entry<TabRides> { _ ->
-            WorkoutListScreen(
-                entries = entries,
+            HomeScreen(
                 eyebrow = eyebrow,
-                onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
-                onStartWorkout = { workout ->
-                    // One-tap start from the Up next hero: same prepare + route
-                    // as the detail screen's Start CTA. The hero only offers
-                    // this when the trainer is live, so no gating needed here.
-                    container.sessionManager.prepareWorkout(
-                        workout = workout,
-                        ftp = container.userSettings.ftp.value
-                    )
-                    navigator.navigate(RouteRideScreen(workout.id))
-                },
+                onChooseWorkout = { navigator.navigate(RouteWorkoutPicker) },
+                onChooseRoute = { navigator.navigate(RouteRouteLibrary) },
                 onStartFreeRide = {
                     // No workout to prepare: the session manager synthesises
                     // one and opens the trainer at 40 % of the rider's FTP.
@@ -400,20 +395,37 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                     )
                     navigator.navigate(RouteRideScreen(FREE_RIDE_WORKOUT_ID))
                 },
-                onStartSimulation = { route ->
-                    // Same shape as a free ride: a synthetic workout, but with
-                    // a road behind it. The trainer goes into simulation mode
-                    // rather than ERG the moment the ride goes active.
-                    container.sessionManager.prepareSimulation(
-                        route = route,
-                        ftp = container.userSettings.ftp.value
-                    )
-                    navigator.navigate(RouteRideScreen(simulationWorkoutId(route.id)))
-                },
-                onBrowseRoutes = { navigator.navigate(RouteRouteLibrary) },
-                onOpenLibrary = { navigator.navigate(RouteLibrary) },
+                onOpenRepositories = { navigator.navigate(RouteRepositories) },
+                onOpenRepo = { manifestUrl -> navigator.navigate(RouteRemoteRepo(manifestUrl)) },
                 onScanQr = { navigator.navigate(RouteQrScanner) },
                 onOpenTrainerPairing = { navigator.navigate(RouteTrainerPairing) },
+                onOpenHrmPairing = { navigator.navigate(RouteHrmPairing) },
+                onOpenControllerPairing = { navigator.navigate(RouteControllerPairing) },
+                onStartFirstRide = {
+                    val starter = workouts.firstOrNull { it.id == STARTER_WORKOUT_ID }
+                    if (starter != null) {
+                        navigator.navigate(RouteWorkoutDetail(starter.id))
+                    } else {
+                        // The bundled starter can be deleted like any other
+                        // workout, so fall back to the picker rather than
+                        // making the card a dead tap.
+                        navigator.navigate(RouteWorkoutPicker)
+                    }
+                },
+            )
+        }
+        entry<RouteWorkoutPicker> { _ ->
+            WorkoutPickerScreen(
+                entries = entries,
+                onBack = { navigator.goBack() },
+                onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
+                onOpenLibrary = { navigator.navigate(RouteLibrary) },
+            )
+        }
+        entry<RouteRepositories> { _ ->
+            RepositoriesScreen(
+                onBack = { navigator.goBack() },
+                onOpenRepo = { manifestUrl -> navigator.navigate(RouteRemoteRepo(manifestUrl)) },
             )
         }
         entry<RouteLibrary> { _ ->

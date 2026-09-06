@@ -123,10 +123,15 @@ fun RemoteRepoBrowserScreen(
     LaunchedEffect(manifestUrl) {
         fetchState = FetchState.Loading
         fetchState = when (val result = container.repositoryManager.fetchRepoWorkouts(manifestUrl)) {
-            is RepoFetchResult.Ok -> FetchState.Loaded(
-                manifest = result.manifest,
-                summaries = result.workouts.map { it.toSummary(ftp) }
-            )
+            is RepoFetchResult.Ok -> {
+                // See the note in RemoteRouteBrowserScreen: browsing is what
+                // clears a repository's new badge.
+                container.followedRepositories.markSeen(result.manifest.id)
+                FetchState.Loaded(
+                    manifest = result.manifest,
+                    summaries = result.workouts.map { it.toSummary(ftp) }
+                )
+            }
             is RepoFetchResult.Failure -> FetchState.Failed(result.message)
         }
     }

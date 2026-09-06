@@ -20,6 +20,7 @@ import android.app.Application
 import android.os.Bundle
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.indoorbike.library.RepositoryManager
+import app.indoorbike.library.FollowedRepositories
 import app.indoorbike.route.RouteCatalog
 import app.indoorbike.route.RouteImporter
 import app.indoorbike.library.WorkoutImporter
@@ -33,6 +34,7 @@ import app.indoorbike.sync.IntervalsIcuUploader
 import app.indoorbike.sync.SafSyncStorage
 import app.indoorbike.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -83,12 +85,27 @@ class AppContainer(
     val activeSessionStore: ActiveSessionStore,
     val workoutImporter: WorkoutImporter,
     val repositoryManager: RepositoryManager,
+    /** Repositories the rider follows, and what each has published since they looked. */
+    val followedRepositories: FollowedRepositories,
     val workoutLibrary: WorkoutLibrary,
     val intervalsIcuUploader: IntervalsIcuUploader,
     val fitTrackeeUploader: FitTrackeeUploader,
     val syncEngine: SyncEngine,
 ) {
     private val containerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * The unfinished ride the rider has waved away this session, identified by
+     * its start time.
+     *
+     * Deliberately not persisted and deliberately not a boolean. Not
+     * persisted, because dismissing is "not now" rather than "never", and the
+     * banner should be back next launch while the ride is still on disk. Keyed
+     * to the ride rather than a flag, because a rider who dismisses one
+     * unfinished ride and then abandons a second one mid-session must still be
+     * told about the second.
+     */
+    val dismissedUnfinishedRideStart = MutableStateFlow<Long?>(null)
 
     /**
      * Single shared subscription to the history table. Three separate screens
@@ -162,6 +179,7 @@ class AppContainer(
                 context = application,
                 registryUrl = BuildConfig.REGISTRY_URL,
             )
+            val followedRepositories = FollowedRepositories(application, repositoryManager)
             val workoutLibrary = WorkoutLibrary(
                 context = application,
                 importer = workoutImporter,
@@ -204,6 +222,7 @@ class AppContainer(
                 activeSessionStore = activeSessionStore,
                 workoutImporter = workoutImporter,
                 repositoryManager = repositoryManager,
+                followedRepositories = followedRepositories,
                 workoutLibrary = workoutLibrary,
                 intervalsIcuUploader = intervalsIcuUploader,
                 fitTrackeeUploader = fitTrackeeUploader,

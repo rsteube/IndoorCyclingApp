@@ -75,6 +75,16 @@ import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.sync.SyncStatus
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.DeviceStatusCard
+import app.indoorbike.ui.components.controllerStatusColor
+import app.indoorbike.ui.components.controllerStatusLine
+import app.indoorbike.ui.components.controllerTitle
+import app.indoorbike.ui.components.hrmStatusColor
+import app.indoorbike.ui.components.hrmStatusLine
+import app.indoorbike.ui.components.hrmTitle
+import app.indoorbike.ui.components.trainerStatusColor
+import app.indoorbike.ui.components.trainerStatusLine
+import app.indoorbike.ui.components.trainerTitle
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.components.UnfinishedRideBanner
@@ -135,7 +145,7 @@ fun SettingsTab(
             Spacer(modifier = Modifier.height(Spacing.s6))
 
             SectionHeader("DEVICES")
-            DevicesCard(
+            DeviceStatusCard(
                 onTrainerClick = { sheetTarget = DeviceSheetTarget.Trainer },
                 onHrmClick = { sheetTarget = DeviceSheetTarget.Hrm },
                 onControllerClick = { sheetTarget = DeviceSheetTarget.Controller }
@@ -350,113 +360,6 @@ internal fun ExpandableCard(
                 content = content
             )
         }
-    }
-}
-
-// ─── Devices card + rows ──────────────────────────────────────────────────────
-
-@Composable
-private fun DevicesCard(
-    onTrainerClick: () -> Unit,
-    onHrmClick: () -> Unit,
-    onControllerClick: () -> Unit,
-) {
-    val container = LocalAppContainer.current
-    val trainerState by container.trainerManager.connectionState.collectAsState()
-    val trainerName by container.trainerManager.connectedTrainerName.collectAsState()
-    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
-    val hrmState by container.heartRateMonitor.connectionState.collectAsState()
-    val hrmName by container.heartRateMonitor.connectedDeviceName.collectAsState()
-    val hrmHeartRate by container.heartRateMonitor.heartRate.collectAsState()
-    val hrmSilent by container.heartRateMonitor.sensorSilent.collectAsState()
-    val controllerState by container.controllerManager.connectionState.collectAsState()
-    val controllerName by container.controllerManager.connectedDeviceName.collectAsState()
-    val controllerSilent by container.controllerManager.keypadSilent.collectAsState()
-
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(Radii.md))
-            .background(CadenceColors.Bg1)
-            .border(1.dp, CadenceColors.Line2, RoundedCornerShape(Radii.md))
-    ) {
-        DeviceRow(
-            icon = Icons.Outlined.Bluetooth,
-            iconTint = CadenceColors.Brand500,
-            title = trainerTitle(trainerState, trainerName, isMockTrainer),
-            statusLine = trainerStatusLine(trainerState, isMockTrainer),
-            statusColor = trainerStatusColor(trainerState),
-            onClick = onTrainerClick
-        )
-        HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
-        DeviceRow(
-            icon = Icons.Outlined.MonitorHeart,
-            iconTint = CadenceColors.Danger,
-            title = hrmTitle(hrmState, hrmName),
-            statusLine = hrmStatusLine(hrmState, hrmHeartRate, hrmSilent),
-            statusColor = hrmStatusColor(hrmState, hrmSilent),
-            onClick = onHrmClick
-        )
-        HorizontalDivider(color = CadenceColors.Line1, thickness = 1.dp)
-        DeviceRow(
-            icon = Icons.Outlined.SettingsRemote,
-            iconTint = CadenceColors.Brand500,
-            title = controllerTitle(controllerState, controllerName),
-            statusLine = controllerStatusLine(controllerState, controllerSilent),
-            statusColor = controllerStatusColor(controllerState, controllerSilent),
-            onClick = onControllerClick
-        )
-    }
-}
-
-@Composable
-private fun DeviceRow(
-    icon: ImageVector,
-    iconTint: Color,
-    title: String,
-    statusLine: String,
-    statusColor: Color,
-    onClick: () -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(iconTint.copy(alpha = 0.10f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
-            Text(text = statusLine, style = CadenceType.small, color = CadenceColors.Fg3)
-        }
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(statusColor)
-        )
-        Spacer(modifier = Modifier.width(Spacing.s2))
-        Icon(
-            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
-            contentDescription = null,
-            tint = CadenceColors.Fg4,
-            modifier = Modifier.size(20.dp)
-        )
     }
 }
 
@@ -729,100 +632,6 @@ private fun SheetBody(
             modifier = Modifier.fillMaxWidth()
         )
     }
-}
-
-// ─── State → label helpers ────────────────────────────────────────────────────
-
-private fun trainerTitle(
-    state: TrainerConnectionState,
-    name: String?,
-    isMock: Boolean,
-): String = when {
-    state == TrainerConnectionState.Connected && name != null -> name
-    isMock -> "Mock Trainer"
-    else -> "Trainer"
-}
-
-private fun trainerStatusLine(state: TrainerConnectionState, isMock: Boolean): String = when (state) {
-    TrainerConnectionState.Scanning -> "Scanning…"
-    TrainerConnectionState.Connecting -> "Connecting…"
-    TrainerConnectionState.Connected -> if (isMock) "Mock connected" else "Connected"
-    TrainerConnectionState.Disconnecting -> "Disconnecting…"
-    TrainerConnectionState.Disconnected -> "Not paired"
-    TrainerConnectionState.Error -> "Connection error · tap to retry"
-}
-
-private fun trainerStatusColor(state: TrainerConnectionState): Color = when (state) {
-    TrainerConnectionState.Connected -> CadenceColors.Success
-    TrainerConnectionState.Scanning,
-    TrainerConnectionState.Connecting,
-    TrainerConnectionState.Disconnecting -> CadenceColors.Warning
-    TrainerConnectionState.Error -> CadenceColors.Danger
-    TrainerConnectionState.Disconnected -> CadenceColors.Fg4
-}
-
-private fun hrmTitle(state: HrmConnectionState, name: String?): String =
-    if (state == HrmConnectionState.Connected && name != null) name else "Heart Rate Monitor"
-
-private fun hrmStatusLine(
-    state: HrmConnectionState,
-    heartRate: Int,
-    sensorSilent: Boolean,
-): String = when (state) {
-    HrmConnectionState.Scanning -> "Scanning…"
-    HrmConnectionState.Connecting -> "Connecting…"
-    HrmConnectionState.Connected -> when {
-        heartRate > 0 -> "$heartRate BPM"
-        // "Waiting" implies patience will fix it. Once the monitor has given up
-        // retrying, it won't, and the rider needs to act. See
-        // HeartRateMonitor.sensorSilent.
-        sensorSilent -> "Connected but sending nothing · restart Bluetooth"
-        else -> "Connected · waiting for first sample"
-    }
-    HrmConnectionState.Disconnecting -> "Disconnecting…"
-    HrmConnectionState.Disconnected -> "Not paired"
-    HrmConnectionState.Error -> "Connection error · tap to retry"
-}
-
-private fun hrmStatusColor(state: HrmConnectionState, sensorSilent: Boolean): Color = when (state) {
-    HrmConnectionState.Connected -> if (sensorSilent) CadenceColors.Danger else CadenceColors.Success
-    HrmConnectionState.Scanning,
-    HrmConnectionState.Connecting,
-    HrmConnectionState.Disconnecting -> CadenceColors.Warning
-    HrmConnectionState.Error -> CadenceColors.Danger
-    HrmConnectionState.Disconnected -> CadenceColors.Fg4
-}
-
-private fun controllerTitle(state: ControllerConnectionState, name: String?): String =
-    if (state == ControllerConnectionState.Connected && name != null) name else "Controller"
-
-private fun controllerStatusLine(
-    state: ControllerConnectionState,
-    keypadSilent: Boolean,
-): String = when (state) {
-    ControllerConnectionState.Scanning -> "Scanning…"
-    ControllerConnectionState.Connecting -> "Connecting…"
-    // Connected is not the same as usable: a controller whose protocol the app
-    // cannot speak pairs and reports itself connected like any other.
-    ControllerConnectionState.Connected ->
-        if (keypadSilent) "Connected but not answering · use in-app ± buttons"
-        else "Connected · in-ride ± control"
-    ControllerConnectionState.Disconnecting -> "Disconnecting…"
-    ControllerConnectionState.Disconnected -> "Not paired · use in-app ± buttons"
-    ControllerConnectionState.Error -> "Connection error · tap to retry"
-}
-
-private fun controllerStatusColor(
-    state: ControllerConnectionState,
-    keypadSilent: Boolean,
-): Color = when (state) {
-    ControllerConnectionState.Connected ->
-        if (keypadSilent) CadenceColors.Danger else CadenceColors.Success
-    ControllerConnectionState.Scanning,
-    ControllerConnectionState.Connecting,
-    ControllerConnectionState.Disconnecting -> CadenceColors.Warning
-    ControllerConnectionState.Error -> CadenceColors.Danger
-    ControllerConnectionState.Disconnected -> CadenceColors.Fg4
 }
 
 // ─── Profile rows (unchanged) ─────────────────────────────────────────────────
@@ -1313,8 +1122,8 @@ private fun ReportProblemCard() {
  * Auto-upload is its own opt-in toggle; manual upload from
  * WorkoutOverviewScreen also picks up these credentials.
  *
- * F-Droid posture: nothing here triggers a network call by itself — only the
- * upload path (manual or auto) does, and both require explicit user action.
+ * Nothing here triggers a network call by itself: only the upload path
+ * (manual or auto) does, and both require an explicit user action.
  */
 @Composable
 internal fun IntervalsIcuCard() {
@@ -1471,9 +1280,9 @@ internal fun IntervalsTextField(
  * each device writes one small JSON slice into it; every device pointed at
  * the same folder shares rides, library, and settings.
  *
- * F-Droid posture: nothing here triggers a network call from the app
- * itself — the rider's chosen storage provider does any uploading on the
- * SAF side. No accounts, no servers, no telemetry.
+ * Nothing here triggers a network call from the app itself: the rider's
+ * chosen storage provider does any uploading on the SAF side. No accounts,
+ * no servers, no telemetry.
  */
 @Composable
 private fun BackupSyncCard() {

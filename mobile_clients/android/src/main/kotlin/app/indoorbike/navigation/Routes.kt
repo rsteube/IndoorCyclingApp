@@ -89,3 +89,14 @@ data class RouteRemoteRoutes(val manifestUrl: String) : NavKey
  */
 @Serializable
 data object RouteRouteLibrary : NavKey
+
+/**
+ * Choose a workout. Split off the home screen when home became a chooser of
+ * ride *kinds* rather than a list of one kind.
+ */
+@Serializable
+data object RouteWorkoutPicker : NavKey
+
+/** Follow, unfollow and check community repositories. */
+@Serializable
+data object RouteRepositories : NavKey

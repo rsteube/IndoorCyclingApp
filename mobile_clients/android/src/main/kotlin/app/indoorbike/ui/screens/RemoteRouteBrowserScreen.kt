@@ -115,7 +115,13 @@ fun RemoteRouteBrowserScreen(
     LaunchedEffect(manifestUrl) {
         fetchState = RouteFetchState.Loading
         fetchState = when (val result = container.repositoryManager.fetchRepoRoutes(manifestUrl)) {
-            is RouteFetchResult.Ok -> RouteFetchState.Loaded(result.manifest, result.routes)
+            is RouteFetchResult.Ok -> {
+                // Opening the repo is what "looking" means, so this is the one
+                // place a new badge is cleared. A refresh never does it, or
+                // nothing would stay new long enough to be noticed.
+                container.followedRepositories.markSeen(result.manifest.id)
+                RouteFetchState.Loaded(result.manifest, result.routes)
+            }
             is RouteFetchResult.Failure -> RouteFetchState.Failed(result.message)
         }
     }

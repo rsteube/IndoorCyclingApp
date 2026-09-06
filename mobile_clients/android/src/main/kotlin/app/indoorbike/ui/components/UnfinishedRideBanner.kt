@@ -21,6 +21,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
 import androidx.compose.material.icons.outlined.PauseCircleOutline
 import androidx.compose.material.icons.outlined.PlayArrow
@@ -75,6 +76,14 @@ import app.indoorbike.ui.theme.Spacing
 @Composable
 fun UnfinishedRideBanner(
     modifier: Modifier = Modifier,
+    /**
+     * Whether the rider may wave this away. True on the home screen, where the
+     * banner is one card among several and a rider who has decided to start
+     * something else should be able to clear it. False everywhere it appears
+     * as a persistent cross-tab notice, where hiding it would leave no way
+     * back to the ride.
+     */
+    dismissable: Boolean = false,
 ) {
     val container = LocalAppContainer.current
     val workouts = LocalWorkouts.current
@@ -82,6 +91,11 @@ fun UnfinishedRideBanner(
     val snapshot by container.sessionManager.persistedSnapshot.collectAsState()
 
     val current = snapshot ?: return
+
+    // Dismissal is per ride and per session: see
+    // AppContainer.dismissedUnfinishedRideStart.
+    val dismissedStart by container.dismissedUnfinishedRideStart.collectAsState()
+    if (dismissable && dismissedStart == current.sessionStartTimeEpochMs) return
     // Route names come from the catalog so a recovered simulated ride is
     // labelled with the road it was on rather than with its route id.
     val workout = resolveRideWorkout(
@@ -147,8 +161,25 @@ fun UnfinishedRideBanner(
             Text(
                 text = if (isFinished) "RIDE NOT SAVED" else "UNFINISHED RIDE",
                 style = CadenceType.eyebrow,
-                color = CadenceColors.Brand500
+                color = CadenceColors.Brand500,
+                modifier = Modifier.weight(1f)
             )
+            if (dismissable) {
+                // Hides the card; the ride stays on disk and the banner is
+                // back next launch. Abandoning is the button below, and stays
+                // the only thing that throws a ride away.
+                Icon(
+                    imageVector = Icons.Outlined.Close,
+                    contentDescription = "Hide until next time",
+                    tint = CadenceColors.Fg3,
+                    modifier = Modifier
+                        .size(18.dp)
+                        .clickable {
+                            container.dismissedUnfinishedRideStart.value =
+                                current.sessionStartTimeEpochMs
+                        }
+                )
+            }
         }
         Spacer(Modifier.height(6.dp))
         Text(
