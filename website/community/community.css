@@ -109,6 +109,12 @@
   color: inherit;
   transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out);
 }
+.repo-card, .workout-card, .route-card {
+  transition: transform var(--dur-base) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              border-color var(--dur-fast) var(--ease-out);
+}
+.repo-card:hover, .workout-card:hover, .route-card:hover { transform: translateY(-3px); }
 .repo-card:hover {
   transform: translateY(-2px);
   border-color: var(--line-3);

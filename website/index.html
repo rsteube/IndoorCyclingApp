@@ -70,7 +70,7 @@
     <!-- 1. HERO -->
     <section class="hero">
       <div class="container">
-        <div class="hero-copy">
+        <div class="hero-copy" data-stagger>
           <p class="eyebrow" style="margin:0">Free, open-source indoor cycling for Android</p>
           <h1>Your smart trainer.<br>Your phone.<br>Nothing in between.</h1>
           <p class="lead">
@@ -97,7 +97,7 @@
         </div>
 
         <!-- The app's Home screen, drawn in CSS. -->
-        <div class="device" aria-hidden="true">
+        <div class="device reveal" style="--i:2" aria-hidden="true">
           <div class="device-screen">
             <div class="m-status">
               <span>23:44</span>
@@ -167,7 +167,7 @@
           rider level.
         </p>
 
-        <div class="ride-grid">
+        <div class="ride-grid" data-stagger>
           <article class="card ride-card">
             <div class="ride-visual" aria-hidden="true">
               <div class="zone-profile">
@@ -199,7 +199,7 @@
               <div class="elev">
                 <svg viewBox="0 0 300 60" preserveAspectRatio="none">
                   <polygon points="0,60 0,44 30,40 60,30 90,34 120,14 150,10 180,26 210,22 240,38 270,34 300,42 300,60" fill="var(--bg-2)"></polygon>
-                  <polyline points="0,44 30,40 60,30 90,34 120,14 150,10 180,26 210,22 240,38 270,34 300,42" fill="none" stroke="var(--fg-1)" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
+                  <polyline pathLength="1" points="0,44 30,40 60,30 90,34 120,14 150,10 180,26 210,22 240,38 270,34 300,42" fill="none" stroke="var(--fg-1)" stroke-width="2" vector-effect="non-scaling-stroke"></polyline>
                 </svg>
                 <div class="elev-caption">
                   <span>Col de la Madone · 12.4 km</span>
@@ -225,7 +225,7 @@
             <div class="ride-visual" aria-hidden="true">
               <div class="stepper">
                 <i>−</i>
-                <b>168<em> W</em></b>
+                <b><span data-count="168">168</span><em> W</em></b>
                 <i>+</i>
               </div>
             </div>
@@ -273,7 +273,7 @@
         </div>
 
         <div class="repo-aside">
-          <div class="card repo-flow" aria-label="How a repository reaches a rider">
+          <div class="card repo-flow" data-stagger aria-label="How a repository reaches a rider">
             <div class="flow-node">
               <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-person"></use></svg></span>
               <b>Maintainer</b><span>publishes JSON</span>
@@ -308,7 +308,7 @@
           make travels to the app as a QR code or a URL; no cloud sits in between.
         </p>
 
-        <div class="tool-grid">
+        <div class="tool-grid" data-stagger>
           <article class="card tool-card">
             <div>
               <p class="eyebrow" style="margin:0">Workout editor</p>
@@ -365,7 +365,7 @@
             no Firebase, no crash reporters, no analytics. So it runs on phones
             that have no Google on them at all.
           </p>
-          <ul class="os-list">
+          <ul class="os-list" data-stagger>
             <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Murena /e/OS</li>
             <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>GrapheneOS</li>
             <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Huawei and other GApps-free phones</li>
@@ -426,7 +426,7 @@
             <svg class="icon icon-18" aria-hidden="true"><use href="#i-arrow_forward"></use></svg>
           </a>
         </div>
-        <ul class="deal-list">
+        <ul class="deal-list" data-stagger>
           <li>
             <svg class="icon icon-22" aria-hidden="true"><use href="#i-phone_android"></use></svg>
             <span><b>Local-first.</b> FTP, weight, devices and every ride are files on your phone. FIT and TCX export any time.</span>
@@ -453,7 +453,7 @@
         <p class="eyebrow">Questions</p>
         <h2 class="section-title" style="margin-bottom:28px">Good to know.</h2>
 
-        <div class="faq">
+        <div class="faq" data-stagger>
           <details class="faq-item">
             <summary>Which trainers work?
               <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
@@ -496,7 +496,7 @@
 
     <!-- 8. CTA -->
     <section class="cta">
-      <div class="container">
+      <div class="container" data-stagger>
         <h2>Ready when you are.</h2>
         <p>Install, set your FTP and weight, pair the trainer, ride. About a minute, no sign-up screens.</p>
         <div class="hero-cta">
@@ -533,6 +533,129 @@
 
   <script>
     document.getElementById('copyright-year').textContent = new Date().getFullYear();
+
+    /* ---- Motion ----
+       Blocks reveal as they scroll into view, siblings a beat apart; a few
+       things draw themselves the first time they are seen. Everything here is
+       decoration: without this script the page is simply already there, and
+       reduced motion turns it all off in the stylesheet. */
+    var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    document.documentElement.classList.add('js');
+
+    function stagger(els) {
+      els.forEach(function (el, i) {
+        el.classList.add('reveal');
+        el.style.setProperty('--i', i);
+      });
+    }
+    document.querySelectorAll('[data-stagger]').forEach(function (group) {
+      stagger(Array.prototype.slice.call(group.children));
+    });
+    document.querySelectorAll('main > section > .container.split').forEach(function (c) {
+      stagger(Array.prototype.slice.call(c.children));
+    });
+    document.querySelectorAll('main > section > .container:not(.split):not([data-stagger])').forEach(function (c) {
+      stagger(Array.prototype.slice.call(c.children).filter(function (el) {
+        return el.matches('.eyebrow, .section-title, .section-lead');
+      }));
+    });
+    document.querySelectorAll('.zone-profile').forEach(function (chart) {
+      Array.prototype.forEach.call(chart.children, function (bar, i) { bar.style.setProperty('--i', i); });
+    });
+
+    function countUp(el) {
+      var target = parseInt(el.getAttribute('data-count'), 10);
+      if (!isFinite(target) || reduceMotion) { el.textContent = target; return; }
+      var start = null, dur = 1100;
+      function frame(t) {
+        if (start === null) start = t;
+        var p = Math.min(1, (t - start) / dur);
+        var eased = 1 - Math.pow(1 - p, 3);
+        el.textContent = Math.round(target * eased);
+        if (p < 1) requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
+
+    var revealer = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) show(entry.target);
+      });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 }) : null;
+
+    function show(el) {
+      if (el.classList.contains('is-in')) return;
+      el.classList.add('is-in');
+      el.querySelectorAll('[data-count]').forEach(countUp);
+      if (revealer) revealer.unobserve(el);
+    }
+    function watch(el) {
+      if (revealer) revealer.observe(el);
+      else show(el);
+    }
+    document.querySelectorAll('.reveal').forEach(watch);
+
+    /* Belt and braces: anything already in the viewport on a scroll is shown,
+       so a browser that is slow to deliver observations never leaves a block
+       hidden under the reader's eyes. */
+    var pending = false;
+    function sweep() {
+      pending = false;
+      var limit = window.innerHeight * 0.96;
+      document.querySelectorAll('.reveal:not(.is-in)').forEach(function (el) {
+        var r = el.getBoundingClientRect();
+        if (r.top < limit && r.bottom > 0) show(el);
+      });
+    }
+    function onScroll() {
+      header.classList.toggle('is-scrolled', window.scrollY > 8);
+      // A timer rather than requestAnimationFrame: frames stop in a
+      // background tab, and a page that scrolled while hidden should still
+      // be revealed when it is looked at again.
+      if (!pending) { pending = true; setTimeout(sweep, 40); }
+    }
+
+    /* The header draws its line only once there is content under it. */
+    var header = document.querySelector('.site-header');
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    onScroll();
+    setTimeout(sweep, 1200);
+
+    /* FAQ answers slide open and shut. A <details> cannot animate its own
+       height, so the answer is wrapped and the attribute toggled after the
+       slide. */
+    document.querySelectorAll('details.faq-item').forEach(function (d) {
+      var summary = d.querySelector('summary');
+      var body = document.createElement('div');
+      body.className = 'faq-body';
+      Array.prototype.slice.call(d.children).forEach(function (child) {
+        if (child !== summary) body.appendChild(child);
+      });
+      d.appendChild(body);
+      summary.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (reduceMotion) { d.open = !d.open; return; }
+        if (d.open && !d.classList.contains('is-closing')) {
+          d.classList.add('is-closing');
+          var finished = false;
+          var done = function () {
+            if (finished) return;
+            finished = true;
+            body.removeEventListener('transitionend', done);
+            d.open = false;
+            d.classList.remove('is-closing');
+          };
+          body.addEventListener('transitionend', done);
+          // If the transition never reports back (animations off, a tab in
+          // the background), close anyway once it would have finished.
+          setTimeout(done, 400);
+        } else {
+          d.classList.remove('is-closing');
+          d.open = true;
+        }
+      });
+    });
 
     /* The registry strip is rendered from registry.json - the same file the
        app reads - so this list never drifts from what riders see in-app. */
@@ -583,6 +706,13 @@
         return li;
       }
 
+      function show(li, i) {
+        li.classList.add('reveal');
+        li.style.setProperty('--i', i);
+        list.appendChild(li);
+        watch(li);
+      }
+
       function fallback() {
         list.textContent = '';
         var li = document.createElement('li');
@@ -607,7 +737,7 @@
           var repos = (data && data.repositories) || [];
           if (!repos.length) { fallback(); return; }
           list.textContent = '';
-          repos.forEach(function (repo) { list.appendChild(row(repo)); });
+          repos.forEach(function (repo, i) { show(row(repo), i); });
         })
         .catch(fallback);
     })();
