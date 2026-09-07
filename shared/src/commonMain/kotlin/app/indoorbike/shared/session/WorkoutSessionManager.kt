@@ -25,12 +25,15 @@ import app.indoorbike.shared.simulation.RouteProgress
 import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
 import app.indoorbike.shared.workout.clampFreeRideWatts
 import app.indoorbike.shared.workout.freeRideStartWatts
+import app.indoorbike.shared.workout.companionWorkout
 import app.indoorbike.shared.workout.freeRideWorkout
 import app.indoorbike.shared.workout.isFreeRide
+import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isSimulation
 import app.indoorbike.shared.workout.simulationWorkout
 import kotlinx.coroutines.CoroutineScope
@@ -102,6 +105,12 @@ class WorkoutSessionManager(
      * every other mode behaves exactly as it did before the mode existed.
      */
     private val simulationEngine: SimulationEngine? = null,
+    /**
+     * Drives the trainer in companion mode. Null on platforms and in tests with
+     * no companion socket, in which case [prepareCompanion] is a no-op - the
+     * same contract [simulationEngine] has for route rides.
+     */
+    private val companionEngine: CompanionEngine? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -264,10 +273,11 @@ class WorkoutSessionManager(
         // user implicitly abandons the prior ride by starting a new one.
         clearPersistedRide()
         _activeWorkout.value = workout
-        // Any route left over from a previous ride goes now. [prepareSimulation]
-        // loads the new one straight after this returns, so a simulated ride
-        // never sees the gap.
+        // Any road left over from a previous ride goes now. [prepareSimulation]
+        // and [prepareCompanion] load the new one straight after this returns,
+        // so neither engine-driven mode ever sees the gap.
         simulationEngine?.clear()
+        companionEngine?.clear()
         ftpWatts = ftp
         _state.value = WorkoutState.Standby
         _elapsedSeconds.value = 0
@@ -334,6 +344,26 @@ class WorkoutSessionManager(
     }
 
     /**
+     * Start a ride whose road comes from a companion on another device.
+     *
+     * The third engine-driven mode, and the only one where the app does not
+     * know what is being ridden. Like a route ride the trainer is put into FTMS
+     * simulation mode and never told a wattage; unlike a route ride there is no
+     * course to load, because the gradient and the speed arrive frame by frame
+     * over the socket (see `docs/COMPANION_API.md`).
+     *
+     * Nothing here ends the ride. A route ride finishes when the road runs out,
+     * but a companion ride has no road to run out: it ends when the companion
+     * sends `finish` or the rider stops, both of which arrive through
+     * [endWorkoutEarly].
+     */
+    fun prepareCompanion(ftp: Int) {
+        val engine = companionEngine ?: return
+        prepareWorkout(workout = companionWorkout(), ftp = ftp)
+        engine.load()
+    }
+
+    /**
      * Restore a previously persisted snapshot. Sets state to Standby so the
      * rider has to pedal to resume, mirroring the start-of-ride flow.
      *
@@ -385,8 +415,23 @@ class WorkoutSessionManager(
                 elevationGainMeters = snapshot.simulationElevationGainMeters ?: 0.0,
             )
             simulationEngine?.onRouteFinished = { completeWorkout() }
+            companionEngine?.clear()
+        } else if (workout.isCompanion) {
+            // The gear survives a crash; the road does not, and should not. A
+            // resumed companion ride sits on a flat road until the companion
+            // reconnects and says otherwise, which is the honest state: the app
+            // has no idea what hill it was on.
+            simulationEngine?.clear()
+            companionEngine?.load(
+                gearIndex = snapshot.simulationGearIndex ?: CompanionEngine.USE_START_GEAR,
+            )
+            companionEngine?.setProgress(
+                distanceM = snapshot.simulationDistanceMeters,
+                ascentM = snapshot.simulationElevationGainMeters,
+            )
         } else {
             simulationEngine?.clear()
+            companionEngine?.clear()
         }
         _telemetry.clear()
         _telemetry.addAll(recoveredTelemetry)
@@ -394,7 +439,7 @@ class WorkoutSessionManager(
         // snapshot, so a ride resumed after a crash reports the same distance
         // it would have had the app never died. A simulated ride's distance is
         // real ground on a real route, so it comes from the snapshot instead.
-        _virtualDistanceMeters.value = if (workout.isSimulation) {
+        _virtualDistanceMeters.value = if (workout.isSimulation || workout.isCompanion) {
             snapshot.simulationDistanceMeters ?: 0.0
         } else {
             VirtualSpeed.distanceMeters(_telemetry.map { it.power }, riderMassKg())
@@ -445,8 +490,16 @@ class WorkoutSessionManager(
                 // Coasting down a hill is riding. Only meaningful while a
                 // route is loaded and moving; every other mode has no ground
                 // under it and this term is always false.
-                val isRolling = _activeWorkout.value?.isSimulation == true &&
-                    (simulationEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
+                val isRolling = when {
+                    _activeWorkout.value?.isSimulation == true ->
+                        (simulationEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
+                    // The companion owns speed in its mode, so the same rule
+                    // reads it from there. A rider freewheeling down the game's
+                    // descent is riding, exactly as they are on a route.
+                    _activeWorkout.value?.isCompanion == true ->
+                        (companionEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
+                    else -> false
+                }
                 val isPedaling = cadence > 5 || power > 10 || isRolling
                 val now = getCurrentEpochMillis()
                 if (isPedaling) lastPedalingEpochMs = now
@@ -480,6 +533,7 @@ class WorkoutSessionManager(
         // Order matters: the engine stops driving the trainer before the zero
         // target lands, so the two can't race over the control point.
         simulationEngine?.stop()
+        companionEngine?.stop()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Standby
         // The timer's exit handler flushes the tail to the durable log.
@@ -533,6 +587,7 @@ class WorkoutSessionManager(
         if (_state.value != WorkoutState.Active) return
         _state.value = WorkoutState.Paused
         simulationEngine?.stop()
+        companionEngine?.stop()
         trainerManager.setTargetPower(0)
         // Cancelling the loop runs its exit handler, which flushes the tail —
         // a paused ride can sit backgrounded for a long time and is a prime
@@ -585,6 +640,7 @@ class WorkoutSessionManager(
         timerJob?.cancel()
         pedalingDetectionJob?.cancel()
         simulationEngine?.stop()
+        companionEngine?.stop()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Idle
         _activeWorkout.value = null
@@ -650,6 +706,7 @@ class WorkoutSessionManager(
     fun abandonUnfinishedRide() {
         if (_state.value != WorkoutState.Idle) stopWorkout()
         simulationEngine?.clear()
+        companionEngine?.clear()
         clearPersistedRide()
     }
 
@@ -716,10 +773,11 @@ class WorkoutSessionManager(
      * Called on every transition into [WorkoutState.Active].
      */
     private fun startModeControl() {
-        if (_activeWorkout.value?.isSimulation == true) {
-            simulationEngine?.start()
-        } else {
-            updateTrainerTarget()
+        val workout = _activeWorkout.value
+        when {
+            workout?.isSimulation == true -> simulationEngine?.start()
+            workout?.isCompanion == true -> companionEngine?.start()
+            else -> updateTrainerTarget()
         }
     }
 
@@ -805,12 +863,9 @@ class WorkoutSessionManager(
             state = state,
             actualRideSeconds = _actualRideSeconds.value,
             freeRideTargetWatts = _freeRideTargetWatts.value.takeIf { workout.isFreeRide },
-            simulationDistanceMeters = simulationEngine?.distanceMeters?.value
-                ?.takeIf { workout.isSimulation },
-            simulationGearIndex = simulationEngine?.gearIndex?.value
-                ?.takeIf { workout.isSimulation },
-            simulationElevationGainMeters = simulationEngine?.elevationGainMeters?.value
-                ?.takeIf { workout.isSimulation },
+            simulationDistanceMeters = engineDistanceMeters(workout),
+            simulationGearIndex = engineGearIndex(workout),
+            simulationElevationGainMeters = engineElevationGainMeters(workout),
         )
         _persistedSnapshot.value = snapshot
         scope.launch(snapshotDispatcher) {
@@ -874,11 +929,13 @@ class WorkoutSessionManager(
             heartRate = effectiveHeartRate().toLong(),
         )
         _telemetry.add(sample)
-        val simulating = workout.isSimulation
-        if (simulating) {
+        val engineDistance = engineDistanceMeters(workout)
+        if (engineDistance != null) {
             // On a route the distance isn't an estimate at all: it's where the
             // rider has got to on a real road, which the engine already knows.
-            _virtualDistanceMeters.value = simulationEngine?.distanceMeters?.value ?: 0.0
+            // In companion mode it is the total the companion reported, which is
+            // ground covered rather than a position, and equally not a guess.
+            _virtualDistanceMeters.value = engineDistance
         } else {
             // One sample is one second of riding, so the sample's speed is the
             // metres it covered. Integrating sample by sample rather than from an
@@ -912,12 +969,39 @@ class WorkoutSessionManager(
         }
     }
 
+    /**
+     * Distance, gear and climbing for whichever engine is driving, or null when
+     * none is.
+     *
+     * The three snapshot columns are named for simulation because route mode
+     * got there first, but what they hold is generic - ground covered, the gear
+     * the rider is in, and metres climbed - so a companion ride reuses them
+     * rather than costing a migration for three columns that already exist.
+     */
+    private fun engineDistanceMeters(workout: Workout): Double? = when {
+        workout.isSimulation -> simulationEngine?.distanceMeters?.value
+        workout.isCompanion -> companionEngine?.distanceMeters?.value
+        else -> null
+    }
+
+    private fun engineGearIndex(workout: Workout): Int? = when {
+        workout.isSimulation -> simulationEngine?.gearIndex?.value
+        workout.isCompanion -> companionEngine?.gearIndex?.value
+        else -> null
+    }
+
+    private fun engineElevationGainMeters(workout: Workout): Double? = when {
+        workout.isSimulation -> simulationEngine?.elevationGainMeters?.value
+        workout.isCompanion -> companionEngine?.elevationGainMeters?.value
+        else -> null
+    }
+
     private fun updateTrainerTarget() {
         val workout = _activeWorkout.value ?: return
         // A simulated ride has no target: the engine owns the trainer and
         // describes a road to it. Writing a wattage here would drop the machine
         // out of simulation mode and flatten the route's hills.
-        if (workout.isSimulation) return
+        if (workout.isSimulation || workout.isCompanion) return
         if (workout.isFreeRide) {
             // The synthetic segment's FTP percentage is only the opening
             // suggestion; what the rider has dialled in is authoritative.
@@ -941,6 +1025,7 @@ class WorkoutSessionManager(
         timerJob?.cancel()
         pedalingDetectionJob?.cancel()
         simulationEngine?.stop()
+        companionEngine?.stop()
         trainerManager.setTargetPower(0)
         persistCompletedRide()
     }
@@ -977,12 +1062,9 @@ class WorkoutSessionManager(
             state = WorkoutState.Completed,
             actualRideSeconds = _actualRideSeconds.value,
             freeRideTargetWatts = _freeRideTargetWatts.value.takeIf { workout.isFreeRide },
-            simulationDistanceMeters = simulationEngine?.distanceMeters?.value
-                ?.takeIf { workout.isSimulation },
-            simulationGearIndex = simulationEngine?.gearIndex?.value
-                ?.takeIf { workout.isSimulation },
-            simulationElevationGainMeters = simulationEngine?.elevationGainMeters?.value
-                ?.takeIf { workout.isSimulation },
+            simulationDistanceMeters = engineDistanceMeters(workout),
+            simulationGearIndex = engineGearIndex(workout),
+            simulationElevationGainMeters = engineElevationGainMeters(workout),
         )
         _persistedSnapshot.value = snapshot
         val store = activeSessionStore ?: return

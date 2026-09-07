@@ -462,15 +462,20 @@ class SimulationEngine(
      * shift is felt, while the output still approaches the ceiling rather than
      * crossing it. Below the knee, which is all ordinary riding, nothing is
      * changed at all.
+     *
+     * Lives on the companion object rather than the instance because companion
+     * mode commands the same trainer through the same envelope
+     * ([app.indoorbike.shared.companion.CompanionEngine]), and a force ceiling
+     * with two implementations is a force ceiling with two behaviours.
      */
-    private fun softCeiling(force: Double): Double {
-        if (force <= SOFT_KNEE_NEWTONS) return force
-        val headroom = MAX_TRAINER_FORCE_NEWTONS - SOFT_KNEE_NEWTONS
-        return SOFT_KNEE_NEWTONS + headroom * tanh((force - SOFT_KNEE_NEWTONS) / headroom)
-    }
-
     companion object {
         private const val TAG = "SimulationEngine"
+
+        internal fun softCeiling(force: Double): Double {
+            if (force <= SOFT_KNEE_NEWTONS) return force
+            val headroom = MAX_TRAINER_FORCE_NEWTONS - SOFT_KNEE_NEWTONS
+            return SOFT_KNEE_NEWTONS + headroom * tanh((force - SOFT_KNEE_NEWTONS) / headroom)
+        }
 
         /**
          * Passed to [load] as the gear when the caller has no opinion,
@@ -480,7 +485,7 @@ class SimulationEngine(
         const val USE_START_GEAR = -1
 
         /** 4 Hz: smooth on the map, cheap on the battery. */
-        private const val TICK_MS = 250L
+        internal const val TICK_MS = 250L
 
         /**
          * Longest gap a single tick will integrate. A ride whose process was
@@ -495,7 +500,7 @@ class SimulationEngine(
          * Floor on the routine traffic the 4 Hz loop generates, so gradient
          * changes cannot saturate the GATT queue.
          */
-        private const val MIN_SEND_INTERVAL_MS = 200L
+        internal const val MIN_SEND_INTERVAL_MS = 200L
 
         /**
          * Floor on a shift, which jumps that queue.
@@ -509,17 +514,17 @@ class SimulationEngine(
          * gets its own, far shorter floor - long enough to coalesce a
          * double-tap, short enough to be indistinguishable from immediate.
          */
-        private const val MIN_SHIFT_INTERVAL_MS = 60L
+        internal const val MIN_SHIFT_INTERVAL_MS = 60L
 
         /** Restate an unchanged road at least this often. */
-        private const val REFRESH_INTERVAL_MS = 5_000L
+        internal const val REFRESH_INTERVAL_MS = 5_000L
 
         /**
          * Change in commanded force worth a write, in newtons. Below roughly
          * this the rider cannot tell, and every write costs GATT bandwidth the
          * telemetry notifications also need.
          */
-        private const val FORCE_EPSILON_NEWTONS = 1.5
+        internal const val FORCE_EPSILON_NEWTONS = 1.5
 
         /**
          * The total mass a trainer is assumed to apply simulation parameters

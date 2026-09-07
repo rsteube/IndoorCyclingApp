@@ -38,6 +38,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Cast
 import androidx.compose.material.icons.automirrored.outlined.DirectionsBike
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.LibraryBooks
@@ -114,6 +115,7 @@ fun HomeScreen(
     onChooseWorkout: () -> Unit,
     onChooseRoute: () -> Unit,
     onStartFreeRide: () -> Unit,
+    onChooseCompanion: () -> Unit,
     onOpenRepositories: () -> Unit,
     onOpenRepo: (manifestUrl: String) -> Unit,
     onOpenTrainerPairing: () -> Unit,
@@ -218,6 +220,19 @@ fun HomeScreen(
                     else "Pair a trainer to ride freely at your own power.",
                     onClick = if (isTrainerLive) onStartFreeRide else onOpenTrainerPairing,
                     modifier = Modifier.enterReveal(index = 2),
+                )
+            }
+
+            item(key = "mode-companion") {
+                ModeCard(
+                    icon = Icons.Outlined.Cast,
+                    title = "Companion",
+                    body = if (isTrainerLive)
+                        "Let an app on another screen drive the road."
+                    else "Pair a trainer to ride with a companion app.",
+                    onClick = if (isTrainerLive) onChooseCompanion else onOpenTrainerPairing,
+                    beta = true,
+                    modifier = Modifier.enterReveal(index = 3),
                 )
             }
 

@@ -1,0 +1,253 @@
+/*
+ * Copyright (C) 2026 Juhani Lehtimäki
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package app.indoorbike.shared.companion
+
+/**
+ * A protocol version, `major.minor`.
+ *
+ * While [major] is 0 a minor bump may break compatibility. That is ordinary
+ * semver 0.x, and it is the honest description of a protocol being designed
+ * alongside its first client. From 1.0 a minor bump is additive only: an
+ * implementation of 1.0 must keep working against a 1.4 peer.
+ */
+data class ProtocolVersion(val major: Int, val minor: Int) : Comparable<ProtocolVersion> {
+
+    override fun compareTo(other: ProtocolVersion): Int =
+        if (major != other.major) major.compareTo(other.major) else minor.compareTo(other.minor)
+
+    override fun toString(): String = "$major.$minor"
+
+    companion object {
+        /** Returns null rather than throwing: this parses data off a socket. */
+        fun parse(text: String): ProtocolVersion? {
+            val parts = text.trim().split('.')
+            if (parts.size != 2) return null
+            val major = parts[0].toIntOrNull() ?: return null
+            val minor = parts[1].toIntOrNull() ?: return null
+            if (major < 0 || minor < 0) return null
+            return ProtocolVersion(major, minor)
+        }
+    }
+}
+
+/**
+ * An inclusive range of protocol versions an implementation can speak.
+ *
+ * Deliberately not validated in the constructor: a client can declare a `min`
+ * above its `max`, and that is a negotiation failure with a useful message
+ * rather than an exception thrown while parsing a frame.
+ */
+data class VersionRange(val min: ProtocolVersion, val max: ProtocolVersion) {
+    val isEmpty: Boolean get() = min > max
+    override fun toString(): String = "$min-$max"
+}
+
+/** The outcome of [CompanionProtocol.negotiate]. */
+sealed interface Negotiation {
+    data class Agreed(val version: ProtocolVersion) : Negotiation
+
+    /** [message] is written to be shown to a human. See [CompanionProtocol.mismatchMessage]. */
+    data class Rejected(val message: String) : Negotiation
+}
+
+/**
+ * Constants and version negotiation for the Companion API.
+ *
+ * The published specification is [docs/COMPANION_API.md]; the reasoning behind
+ * the split it describes is in `docs/LIVE_API.md`. The short version: in
+ * Companion mode the companion owns the world, the rider's position and their
+ * virtual speed, and this app owns the trainer, the gears and the recording.
+ */
+object CompanionProtocol {
+
+    /** What this build speaks. */
+    val VERSION = ProtocolVersion(0, 1)
+    val SUPPORTED = VersionRange(VERSION, VERSION)
+
+    /** WebSocket path. The version is negotiated in-band, not in the path. */
+    const val PATH = "/companion"
+
+    /** DNS-SD service type. The port is ephemeral and lives in the SRV record. */
+    const val SERVICE_TYPE = "_indoorbike._tcp"
+
+    /**
+     * Telemetry rate, matched to the simulation engine's own tick. Anything
+     * faster would be inventing data: the physics only moves four times a
+     * second, and a companion is expected to interpolate for rendering.
+     */
+    const val TICK_MS = 250L
+
+    /** Silence after which the road is no longer trusted. */
+    const val WORLD_TIMEOUT_MS = 1_500L
+
+    /**
+     * How long the gradient takes to reach flat once the lease has expired.
+     *
+     * A ramp rather than a step, because dropping off a 12 % climb in a single
+     * tick is a jolt the rider feels as the pedals falling away. Speed is
+     * *held* rather than zeroed, so what they land on is an ordinary flat road
+     * at their current pace rather than nothing at all.
+     */
+    const val WORLD_RAMP_MS = 2_000L
+
+    /** Shift requests are coalesced above this. A held gamepad button is not an error. */
+    const val MAX_SHIFT_REQUESTS_PER_SECOND = 10
+
+    /** Matches the clamp route mode already applies to a GPX-derived gradient. */
+    const val MIN_GRADIENT = -0.30
+    const val MAX_GRADIENT = 0.30
+
+    /**
+     * Sanity bounds only. The real protection against a companion sending
+     * nonsense is the force ceiling in the simulation engine, which compresses
+     * rather than clips and so cannot take the rider's gears away.
+     */
+    const val MIN_SPEED_MPS = 0.0
+    const val MAX_SPEED_MPS = 30.0
+
+    /** World-frame fields this build acts on. Published in `welcome.honours`. */
+    val HONOURED_WORLD_FIELDS = setOf("gradient", "speedMps", "distanceM", "ascentM")
+
+    /** Structural, never warned about. */
+    val WORLD_ENVELOPE_FIELDS = setOf("t", "seq")
+
+    /**
+     * Names the protocol reserves but this build does not honour.
+     *
+     * They are unnecessary while the companion owns speed: drafting, surfaces
+     * and wind are all its own arithmetic, and none of them has to cross the
+     * socket to be felt. They would only become meaningful if a future mode
+     * handed speed back to the phone. Reserved rather than simply unknown so
+     * that nobody uses `cda` to mean something else in the meantime.
+     */
+    val RESERVED_WORLD_FIELDS = setOf("crr", "cda", "airDensity", "headwindMps")
+
+    /**
+     * The gradient to ride given one that is [ageMs] old.
+     *
+     * Inside the lease this is [gradient] unchanged. Past it the value decays
+     * linearly to flat over [WORLD_RAMP_MS] and stays there. Shared by
+     * [CompanionRoad], which reports it, and [CompanionEngine], which rides it,
+     * so a deadman with two formulas cannot drift into two behaviours.
+     */
+    fun rampedGradient(gradient: Double, ageMs: Long): Double {
+        if (ageMs <= WORLD_TIMEOUT_MS) return gradient
+        val into = ageMs - WORLD_TIMEOUT_MS
+        if (into >= WORLD_RAMP_MS) return 0.0
+        return gradient * (1.0 - into.toDouble() / WORLD_RAMP_MS)
+    }
+
+    /**
+     * Pick the highest version both ends understand.
+     *
+     * Rejection carries a message naming both ranges and which end to update,
+     * because "incompatible version" tells a rider nothing they can act on.
+     */
+    fun negotiate(
+        server: VersionRange,
+        client: VersionRange,
+        clientName: String,
+    ): Negotiation {
+        if (client.isEmpty) {
+            return Negotiation.Rejected(
+                "Companion '" + clientName + "' declared an impossible protocol range (min " +
+                    client.min + " is above max " + client.max + "). This build of Indoor Bike " +
+                    "speaks " + server + "."
+            )
+        }
+        val low = maxOf(server.min, client.min)
+        val high = minOf(server.max, client.max)
+        if (low > high) return Negotiation.Rejected(mismatchMessage(clientName, client, server))
+        return Negotiation.Agreed(high)
+    }
+
+    /**
+     * The human half of a version failure.
+     *
+     * The rule, in both directions: say what each end speaks and which end to
+     * update. A rider staring at a game that will not connect needs to know
+     * which of the two things they own is the old one, and no amount of
+     * "incompatible version" will tell them.
+     */
+    fun mismatchMessage(
+        clientName: String,
+        client: VersionRange,
+        server: VersionRange,
+    ): String {
+        val advice = if (client.min > server.max) {
+            "Update Indoor Bike, or run a companion build that supports " + server.max + "."
+        } else {
+            "Update the companion, or run an Indoor Bike build that supports " + client.max + "."
+        }
+        return "Companion '" + clientName + "' speaks protocol " + client +
+            "; this build of Indoor Bike speaks " + server + ". " + advice
+    }
+
+    /**
+     * The same failure phrased for a companion that is rejecting *us*.
+     *
+     * Both ends must check: a server may legitimately choose a version the
+     * client listed but has since deprecated, and a client that trusts
+     * `welcome` blindly will then fail somewhere far less legible.
+     */
+    fun clientSideMismatchMessage(
+        serverVersion: ProtocolVersion,
+        clientRange: VersionRange,
+    ): String {
+        val advice = if (serverVersion > clientRange.max) {
+            "Update this companion, or run an Indoor Bike build that supports " +
+                clientRange.max + "."
+        } else {
+            "Update Indoor Bike, or run a companion build that supports " + serverVersion + "."
+        }
+        return "Indoor Bike chose protocol " + serverVersion + "; this companion speaks " +
+            clientRange + ". " + advice
+    }
+}
+
+/**
+ * WebSocket close codes, all inside the application range.
+ *
+ * A fatal failure sends an [ErrorFrame] *and* closes with one of these plus a
+ * reason string. Both are required: a client that fails negotiation may close
+ * the socket before it processes the frame, and then the close reason is the
+ * only thing it ever sees.
+ */
+object CompanionClose {
+    const val PROTOCOL_MISMATCH = 4001
+    const val UNAUTHORIZED = 4002
+    const val CONTROLLER_BUSY = 4003
+    const val CONTROL_REVOKED = 4004
+    const val RIDE_ENDED = 4005
+    const val MALFORMED = 4008
+}
+
+/** Error codes carried by [ErrorFrame]. */
+object CompanionError {
+    const val PROTO_UNSUPPORTED = "protoUnsupported"
+    const val UNAUTHORIZED = "unauthorized"
+    const val CONTROLLER_BUSY = "controllerBusy"
+    const val NOT_CONTROLLER = "notController"
+    const val NO_TRAINER = "noTrainer"
+    const val MALFORMED = "malformed"
+}
+
+/** Warning codes carried by [WarningFrame]. All non-fatal. */
+object CompanionWarning {
+    const val FIELD_NOT_HONOURED = "fieldNotHonoured"
+    const val CLAMPED = "clamped"
+    const val RATE_LIMITED = "rateLimited"
+}

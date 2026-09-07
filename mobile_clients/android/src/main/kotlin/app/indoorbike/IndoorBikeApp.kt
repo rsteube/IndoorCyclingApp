@@ -54,6 +54,9 @@ import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.session.WorkoutSessionManager
+import app.indoorbike.companion.CompanionHost
+import app.indoorbike.shared.ble.TrainerConnectionState
+import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.settings.UserSettings
@@ -78,6 +81,12 @@ class AppContainer(
     val sessionManager: WorkoutSessionManager,
     /** Drives a simulated route ride: position, speed, gears, road resistance. */
     val simulationEngine: SimulationEngine,
+    val companionEngine: CompanionEngine,
+    /**
+     * The companion socket. Started by the pairing screen and stopped when the
+     * ride ends, so nothing is listening outside a companion ride.
+     */
+    val companionHost: CompanionHost,
     /** Every route the rider can simulate. */
     val routeCatalog: RouteCatalog,
     /** Downloads and stores the GPX behind a route the rider adds. */
@@ -159,6 +168,16 @@ class AppContainer(
                 bikeMassKg = { userSettings.bikeWeightKg.value },
                 drivetrainProvider = { Drivetrain.byId(userSettings.drivetrainId.value) },
             )
+            // The companion's engine is built the same way and from the same
+            // settings, because it drives the same trainer through the same
+            // force model. What differs is only where the road comes from.
+            val companionEngine = CompanionEngine(
+                powerWatts = { trainerManager.power.value },
+                applyRoad = trainerManager::setSimulationParameters,
+                riderMassKg = { userSettings.weightKg.value },
+                bikeMassKg = { userSettings.bikeWeightKg.value },
+                drivetrainProvider = { Drivetrain.byId(userSettings.drivetrainId.value) },
+            )
             // One importer, shared with the catalogue: the route browser adds
             // through it and then asks the catalogue to refresh, and both have
             // to be looking at the same directory for that to mean anything.
@@ -177,6 +196,27 @@ class AppContainer(
                 },
                 riderMassKg = { userSettings.weightKg.value },
                 simulationEngine = simulationEngine,
+                companionEngine = companionEngine,
+            )
+            val companionHost = CompanionHost(
+                context = application,
+                engine = companionEngine,
+                sessionManager = sessionManager,
+                appVersion = BuildConfig.VERSION_NAME,
+                ftp = { userSettings.ftp.value },
+                riderMassKg = { userSettings.weightKg.value },
+                bikeMassKg = { userSettings.bikeWeightKg.value },
+                powerWatts = { trainerManager.power.value },
+                cadenceRpm = { trainerManager.cadence.value },
+                heartRateBpm = {
+                    val hrm = heartRateMonitor.heartRate.value
+                    if (hrm > 0) hrm else trainerManager.heartRate.value
+                },
+                trainerName = { trainerManager.connectedTrainerName.value },
+                trainerConnected = {
+                    trainerManager.connectionState.value == TrainerConnectionState.Connected ||
+                        trainerManager.isMockTrainer.value
+                },
             )
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)
@@ -220,6 +260,8 @@ class AppContainer(
                 controllerManager = controllerManager,
                 sessionManager = sessionManager,
                 simulationEngine = simulationEngine,
+                companionEngine = companionEngine,
+                companionHost = companionHost,
                 routeCatalog = routeCatalog,
                 routeImporter = routeImporter,
                 historyRepository = historyRepository,

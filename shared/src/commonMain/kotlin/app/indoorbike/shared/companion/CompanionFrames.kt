@@ -1,0 +1,336 @@
+/*
+ * Copyright (C) 2026 Juhani Lehtimäki
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+package app.indoorbike.shared.companion
+
+import kotlinx.serialization.Serializable
+
+/**
+ * Every frame on the Companion socket, in both directions.
+ *
+ * ## Why these are plain classes rather than a polymorphic hierarchy
+ *
+ * kotlinx.serialization can dispatch on a discriminator for a sealed
+ * hierarchy, but it *throws* on a discriminator it has never heard of. The
+ * protocol requires the opposite: an unknown frame type must be ignored, never
+ * fatal, because that is what lets a 0.1 peer sit on a socket with a 0.4 peer
+ * that has learned to say something new. So [CompanionCodec] reads the `t`
+ * field itself and dispatches, and each frame here is serialised on its own.
+ *
+ * The `t` field is a defaulted property rather than a computed one so that it
+ * round-trips: it is written on encode and simply ignored on decode.
+ *
+ * Optional fields are nullable and default to null, and the codec is
+ * configured not to write nulls. A field the sender has no value for is
+ * **omitted, not zeroed** - a missing `hr` means no strap, not a heart rate of
+ * zero. That is the same discipline the FIT writer uses with its invalid
+ * sentinels, and for the same reason.
+ */
+sealed interface CompanionFrame
+
+/** Frames a companion sends to the app. */
+sealed interface ClientFrame : CompanionFrame
+
+/** Frames the app sends to a companion. */
+sealed interface ServerFrame : CompanionFrame
+
+// Client to server ───────────────────────────────────────────────────────────
+
+/** Who is connecting, and what they can speak. Always the first frame. */
+@Serializable
+data class HelloFrame(
+    val protoMin: String,
+    val protoMax: String,
+    val token: String? = null,
+    val client: ClientInfo = ClientInfo(),
+    /** `controller` (default) or `observer`. Unknown values fall back to observer. */
+    val role: String = ROLE_CONTROLLER,
+    val capabilities: List<String> = emptyList(),
+    val t: String = "hello",
+) : ClientFrame {
+    companion object {
+        const val ROLE_CONTROLLER = "controller"
+        const val ROLE_OBSERVER = "observer"
+    }
+}
+
+@Serializable
+data class ClientInfo(
+    val name: String = "Unnamed companion",
+    val version: String? = null,
+    val platform: String? = null,
+)
+
+/**
+ * The road under the rider, and how fast they are covering it.
+ *
+ * [speedMps] is required and not an afterthought: the app computes the force to
+ * command from the road force at this speed, because the drag term is
+ * `0.5 * rho * CdA * v^2`. A companion that omits it leaves the trainer with a
+ * road that has no air in it.
+ *
+ * [distanceM] and [ascentM] are cumulative rather than per-frame deltas, so a
+ * dropped frame costs nothing and a reconnecting companion resynchronises by
+ * stating the total. They are how a game ride gets a real distance and
+ * elevation profile into the ride record instead of a flat-road estimate, and
+ * they are not a position: how far and how much up, never where.
+ */
+@Serializable
+data class WorldFrame(
+    val seq: Long,
+    val gradient: Double,
+    val speedMps: Double,
+    val distanceM: Double? = null,
+    val ascentM: Double? = null,
+    val t: String = "world",
+) : ClientFrame
+
+/**
+ * Ask the app to shift. [steps] is signed; positive is a harder gear.
+ *
+ * The companion has no shifting logic of its own. It does not know the
+ * drivetrain's ratios or its limits, and it does not decide what a shift means:
+ * it asks, and the app answers with a `gearChanged` event whether or not the
+ * index actually moved.
+ */
+@Serializable
+data class RequestShiftFrame(
+    val steps: Int,
+    val t: String = "requestShift",
+) : ClientFrame
+
+/** Name the ride. The last value before [FinishFrame] wins. */
+@Serializable
+data class LabelFrame(
+    val name: String,
+    val world: String? = null,
+    val t: String = "label",
+) : ClientFrame
+
+/**
+ * End the ride. Companion mode has no route, so nothing else can know when it
+ * is over.
+ */
+@Serializable
+data class FinishFrame(
+    val summary: RideSummary? = null,
+    val t: String = "finish",
+) : ClientFrame
+
+/**
+ * What the ride looked like, handed over once it is finished.
+ *
+ * This is the only part of the protocol that may carry geography, and it
+ * arrives *after* the ride rather than during it, so the app still learns
+ * nothing about where the rider was while they were riding. A companion that
+ * would rather not disclose even this omits it, and the ride saves with its
+ * numbers but no shape.
+ *
+ * Both formats are the ones the app's own route listings already use, so the
+ * post-ride card and the share image render this with no new drawing code:
+ * [shape] is a precision-5 encoded polyline and [profile] is 64 elevation
+ * samples in metres.
+ */
+@Serializable
+data class RideSummary(
+    val shape: String? = null,
+    val profile: List<Int> = emptyList(),
+)
+
+/** Liveness check. The WebSocket's own ping is usually enough. */
+@Serializable
+data class PingFrame(
+    val id: Long? = null,
+    val t: String = "ping",
+) : ClientFrame
+
+// Server to client ───────────────────────────────────────────────────────────
+
+/**
+ * Everything a companion needs to configure itself, sent once in answer to
+ * [HelloFrame].
+ *
+ * Three fields carry more weight than they look:
+ *
+ * - [honours] is what this build actually acts on, as distinct from what the
+ *   protocol defines. A companion must check it. A field absent from it will be
+ *   ignored and warned about rather than quietly doing nothing.
+ * - [gears] is the whole drivetrain with real teeth, so a companion can render
+ *   a genuine gear display rather than an index out of twenty.
+ * - [limits] publishes the clamps. An implementer should learn the envelope
+ *   from the handshake rather than discovering it by surprise halfway down a
+ *   descent.
+ */
+@Serializable
+data class WelcomeFrame(
+    val proto: String,
+    val app: String,
+    val sessionId: String,
+    val tickMs: Long = CompanionProtocol.TICK_MS,
+    val honours: List<String>,
+    val capabilities: List<String>,
+    val role: String,
+    val rider: RiderInfo,
+    val bike: BikeInfo,
+    val gears: List<GearInfo>,
+    val gearIndex: Int,
+    val trainer: TrainerInfo,
+    val limits: Limits,
+    val resume: ResumeInfo? = null,
+    val t: String = "welcome",
+) : ServerFrame
+
+@Serializable
+data class RiderInfo(val massKg: Double, val ftpWatts: Int)
+
+@Serializable
+data class BikeInfo(val massKg: Double, val drivetrain: String)
+
+/** One virtual gear. [loadFactor] is the multiplier applied to the road force. */
+@Serializable
+data class GearInfo(
+    val i: Int,
+    val ratio: Double,
+    val label: String,
+    val loadFactor: Double,
+)
+
+@Serializable
+data class TrainerInfo(
+    val name: String? = null,
+    val connected: Boolean = false,
+    /** `sim` is the only tier this version supports. */
+    val control: String = "sim",
+)
+
+/** Each entry is `[min, max]`, inclusive. */
+@Serializable
+data class Limits(
+    val gradient: List<Double> = listOf(CompanionProtocol.MIN_GRADIENT, CompanionProtocol.MAX_GRADIENT),
+    val speedMps: List<Double> = listOf(CompanionProtocol.MIN_SPEED_MPS, CompanionProtocol.MAX_SPEED_MPS),
+)
+
+/**
+ * Non-null when a crashed ride is being recovered, telling the companion how
+ * far the record already believes the rider has come so it can place them.
+ */
+@Serializable
+data class ResumeInfo(val distanceM: Double, val ascentM: Double)
+
+/**
+ * What the trainer is doing, at [CompanionProtocol.TICK_MS].
+ *
+ * [trainerForceN] and [trainerGradePercent] look like internals and are
+ * published on purpose. They are literally what the machine was asked for, they
+ * differ from [appliedGradient] because of the gear multiplier and the division
+ * by an assumed trainer mass, and without them nobody implementing against this
+ * can tell a protocol bug from an honest disagreement about physics.
+ */
+@Serializable
+data class TelemetryFrame(
+    val seq: Long,
+    val tMono: Long,
+    val state: String,
+    val power: Int? = null,
+    val cadence: Int? = null,
+    val hr: Int? = null,
+    val gearIndex: Int,
+    val loadFactor: Double,
+    val appliedGradient: Double,
+    val trainerForceN: Double,
+    val trainerGradePercent: Double,
+    val elapsedS: Long,
+    val t: String = "telemetry",
+) : ServerFrame
+
+/**
+ * Something happened that a companion should react to at once rather than at
+ * the next tick.
+ *
+ * A shift is the case that justifies the frame existing: telemetry already
+ * carries the gear, but a shift sound played up to 250 ms after the rider
+ * pressed the button reads as lag in the companion, not in the protocol.
+ */
+@Serializable
+data class EventFrame(
+    val event: String,
+    val index: Int? = null,
+    val changed: Boolean? = null,
+    /** `zwiftClick`, `screen` or `companion`. */
+    val source: String? = null,
+    val input: String? = null,
+    val state: String? = null,
+    val reason: String? = null,
+    val fallback: String? = null,
+    val by: String? = null,
+    val t: String = "event",
+) : ServerFrame {
+    companion object {
+        const val GEAR_CHANGED = "gearChanged"
+        const val RIDER_INPUT = "riderInput"
+        const val STATE_CHANGED = "stateChanged"
+        const val WORLD_TIMEOUT = "worldTimeout"
+        const val WORLD_RESUMED = "worldResumed"
+        const val TRAINER_LOST = "trainerLost"
+        const val CONTROL_REVOKED = "controlRevoked"
+
+        const val SOURCE_CLICK = "zwiftClick"
+        const val SOURCE_SCREEN = "screen"
+        const val SOURCE_COMPANION = "companion"
+    }
+}
+
+/**
+ * Non-fatal: something was ignored, clamped or rate-limited, and the sender
+ * should know.
+ *
+ * [CompanionWarning.FIELD_NOT_HONOURED] is the one that earns its keep while
+ * the protocol is still moving. It is the difference between an implementer
+ * seeing "drafting does not work" and seeing "this build ignores cda".
+ */
+@Serializable
+data class WarningFrame(
+    val code: String,
+    val field: String? = null,
+    val frame: String? = null,
+    val sent: Double? = null,
+    val applied: Double? = null,
+    val message: String? = null,
+    val t: String = "warning",
+) : ServerFrame
+
+/** Fatal for the current operation, and usually followed by a close. */
+@Serializable
+data class ErrorFrame(
+    val code: String,
+    val message: String,
+    val serverRange: String? = null,
+    val clientRange: String? = null,
+    val t: String = "error",
+) : ServerFrame
+
+@Serializable
+data class PongFrame(
+    val id: Long? = null,
+    val t: String = "pong",
+) : ServerFrame
+
+/** Ride states, as they appear in [TelemetryFrame.state]. */
+object CompanionState {
+    const val LISTENING = "listening"
+    const val ACTIVE = "active"
+    const val PAUSED = "paused"
+    const val FINISHED = "finished"
+}

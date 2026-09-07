@@ -104,7 +104,10 @@ import app.indoorbike.library.WorkoutEntry
 import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.navigation.RouteCompanion
+import app.indoorbike.shared.workout.COMPANION_WORKOUT_ID
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
+import app.indoorbike.ui.screens.companion.CompanionScreen
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.simulationWorkoutId
 import app.indoorbike.ui.ControllerPairingScreen
@@ -497,6 +500,7 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                     )
                     navigator.navigate(RouteRideScreen(FREE_RIDE_WORKOUT_ID))
                 },
+                onChooseCompanion = { navigator.navigate(RouteCompanion) },
                 onOpenRepositories = { navigator.navigate(RouteRepositories) },
                 onOpenRepo = { manifestUrl -> navigator.navigate(RouteRemoteRepo(manifestUrl)) },
                 onOpenTrainerPairing = { navigator.navigate(RouteTrainerPairing) },
@@ -664,6 +668,17 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
         }
         entry<RouteControllerPairing> { _ ->
             ControllerPairingScreen(onBack = { navigator.goBack() })
+        }
+        entry<RouteCompanion> { _ ->
+            CompanionScreen(
+                onBack = { navigator.goBack() },
+                // `replace` rather than `navigate`: once the companion is
+                // driving, backing out to a pairing screen for a ride already
+                // under way would be a dead end.
+                onRideReady = {
+                    navigator.replace(RouteRideScreen(COMPANION_WORKOUT_ID))
+                },
+            )
         }
         entry<RouteRideScreen> { _ ->
             RideScreen(

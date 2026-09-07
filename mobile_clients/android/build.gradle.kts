@@ -137,6 +137,9 @@ dependencies {
     implementation(libs.camerax.view)
     implementation(libs.zxing.core)
     implementation(libs.osmdroid.android)
+    implementation(libs.ktor.server.core)
+    implementation(libs.ktor.server.cio)
+    implementation(libs.ktor.server.websockets)
 
     debugImplementation(libs.compose.ui.tooling)
 }

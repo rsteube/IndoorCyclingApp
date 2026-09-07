@@ -91,6 +91,16 @@ data class RouteRemoteRoutes(val manifestUrl: String) : NavKey
 data object RouteRouteLibrary : NavKey
 
 /**
+ * Pair a companion, then hand the ride over to it.
+ *
+ * Its own destination rather than a state of the ride screen because pairing is
+ * not riding: the rider is off the bike, reading a code, and the screen they
+ * need is a chooser of network details rather than a HUD with nothing on it.
+ */
+@Serializable
+data object RouteCompanion : NavKey
+
+/**
  * Choose a workout. Split off the home screen when home became a chooser of
  * ride *kinds* rather than a list of one kind.
  */

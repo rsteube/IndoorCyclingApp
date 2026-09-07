@@ -100,7 +100,9 @@ import androidx.compose.ui.platform.LocalConfiguration
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
+import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.ui.screens.companion.CompanionHud
 import app.indoorbike.ui.screens.simulation.SimulationHud
 import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.formatClock
@@ -195,6 +197,10 @@ fun RideScreen(
     // interval furniture to show; what the rider needs instead is the road,
     // which is what [SimulationHud] draws.
     val isSimulation = workout?.isSimulation == true
+    // The third engine-driven mode. Like a route ride nothing holds the rider
+    // to a wattage, so it shares every `isFreeRide || isSimulation` branch
+    // below; unlike a route ride there is no course, so it draws its own HUD.
+    val isCompanion = workout?.isCompanion == true
     val simulationEngine = container.simulationEngine
     val simulationRoute by simulationEngine.route.collectAsState()
     val simulationPosition by simulationEngine.position.collectAsState()
@@ -281,9 +287,27 @@ fun RideScreen(
     // a structured workout, ±10 W on a free ride, which has no target of its
     // own to take a percentage of, and one gear on a simulated route, where a
     // shifter is exactly what a pair of ± buttons on the bars is.
+    val companionEngine = container.companionEngine
+    val companionHost = container.companionHost
+    val companionStatus by companionHost.status.collectAsState()
+    val companionGradient by companionEngine.gradient.collectAsState()
+    val companionSpeed by companionEngine.speedMps.collectAsState()
+    val companionDistance by companionEngine.distanceMeters.collectAsState()
+    val companionClimb by companionEngine.elevationGainMeters.collectAsState()
+    val companionDrivetrain by companionEngine.drivetrain.collectAsState()
+    val companionGear by companionEngine.gearIndex.collectAsState()
+
+    // The socket outlives the pairing screen so the ride can use it, which
+    // makes this screen the one that has to close it. Leaving here means the
+    // ride is over one way or another: saved, abandoned or backed out of.
+    DisposableEffect(isCompanion) {
+        onDispose { if (isCompanion) companionHost.stop() }
+    }
+
     val adjustEffort: (Int) -> Unit = { direction ->
         when {
             isSimulation -> simulationEngine.shiftBy(direction)
+            isCompanion -> companionEngine.shiftBy(direction)
             isFreeRide -> sessionManager.adjustFreeRideTarget(direction * FREE_RIDE_STEP_WATTS)
             else -> sessionManager.adjustDifficulty(direction * 5)
         }
@@ -550,7 +574,35 @@ fun RideScreen(
                 val segPower = currentSeg?.powerPercentFTP ?: 0
 
                 val route = simulationRoute
-                if (isSimulation && route != null) {
+                if (isCompanion) {
+                    // SimulationHud minus its three "where" elements - the map,
+                    // the profile and the progress bar - because where the
+                    // rider is is exactly what this mode does not know.
+                    CompanionHud(
+                        gradient = companionGradient,
+                        speedMps = companionSpeed,
+                        distanceMeters = companionDistance,
+                        elevationGainMeters = companionClimb,
+                        drivetrain = companionDrivetrain,
+                        gearIndex = companionGear,
+                        powerWatts = currentPower,
+                        isPowerStale = showStalePower,
+                        wattsPerKg = wattsPerKg,
+                        cadenceRpm = animatedCadence,
+                        heartRate = animatedHr,
+                        isHrStale = showStaleHr,
+                        hrColor = hrZone?.color ?: CadenceColors.Danger,
+                        hrSublabel = if (showStaleHr) null
+                            else hrZone?.let { "Z${it.number} · ${it.label}" },
+                        zoneColor = animatedZoneColor,
+                        companionName = companionStatus.controllerName,
+                        roadStale = companionStatus.roadStale,
+                        onShiftDown = { companionEngine.shiftDown() },
+                        onShiftUp = { companionEngine.shiftUp() },
+                        shiftingEnabled = state != WorkoutState.Countdown,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else if (isSimulation && route != null) {
                     // The simulation HUD replaces the metrics area wholesale
                     // rather than decorating it: a route ride shares the power,
                     // cadence and heart-rate readouts with a workout but
