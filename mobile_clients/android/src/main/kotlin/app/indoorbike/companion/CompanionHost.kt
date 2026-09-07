@@ -59,6 +59,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.CopyOnWriteArrayList
 
@@ -149,6 +151,7 @@ class CompanionHost(
     private var server: EmbeddedServer<*, *>? = null
     private var telemetryJob: Job? = null
     private var startJob: Job? = null
+    private var rideWatchJob: Job? = null
 
     /** Every open connection, controllers and observers alike. */
     private val connections = CopyOnWriteArrayList<Conn>()
@@ -167,6 +170,18 @@ class CompanionHost(
     private class Conn(
         val session: CompanionSession,
         val ws: DefaultWebSocketSession,
+        /**
+         * Serialises everything written to this socket.
+         *
+         * A Ktor websocket session is not safe for concurrent sends, and this
+         * host has three writers: the 4 Hz telemetry loop, event broadcasts off
+         * the engine's callbacks, and the per-connection read loop answering a
+         * frame. Two of them overlapping interleaves bytes on the wire, and the
+         * peer drops the connection with a 1006 rather than the close code it
+         * was being sent - which is exactly the failure the protocol's
+         * "send the frame *and* the reason" rule exists to prevent.
+         */
+        val write: Mutex = Mutex(),
     )
 
     // Lifecycle ──────────────────────────────────────────────────────────────
@@ -228,6 +243,15 @@ class CompanionHost(
                 engine.onGearChanged = ::broadcastGearChanged
                 engine.onRoadStaleChanged = ::broadcastRoadStale
                 telemetryJob = scope.launch { telemetryLoop() }
+                // A finished ride has to reach the companion when it finishes,
+                // not when the rider gets round to tapping through the summary.
+                // Tying this to the screen meant a game sat waiting on a ride
+                // that had been over for minutes.
+                rideWatchJob = scope.launch {
+                    sessionManager.state.collect { rideState ->
+                        if (rideState == WorkoutState.Completed) stop()
+                    }
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Could not open the companion socket", e)
                 _status.value = _status.value.copy(
@@ -246,21 +270,30 @@ class CompanionHost(
         startJob = null
         telemetryJob?.cancel()
         telemetryJob = null
+        rideWatchJob?.cancel()
+        rideWatchJob = null
         engine.onGearChanged = null
         engine.onRoadStaleChanged = null
         advertiser.stop()
 
         val running = server
         server = null
-        controller = null
+        val closing = connections.toList()
         connections.clear()
+        controller = null
         ridePrepared = false
 
-        if (running != null) {
+        if (running != null || closing.isNotEmpty()) {
             // Stopped off the caller's thread: CIO's shutdown joins its
             // selector, and doing that on the main thread while a screen is
             // being disposed is a visible stall.
-            scope.launch { runCatching { running.stop(GRACE_MS, TIMEOUT_MS) } }
+            scope.launch {
+                // Say why before the socket goes away. Without this a
+                // companion cannot tell a finished ride from a crashed phone,
+                // and the protocol promises it a `stateChanged` and a 4005.
+                closing.forEach { runCatching { dispatch(it, it.session.rideEnded()) } }
+                runCatching { running?.stop(GRACE_MS, TIMEOUT_MS) }
+            }
         }
         _status.value = CompanionStatus()
     }
@@ -337,8 +370,11 @@ class CompanionHost(
                 if (frame !is Frame.Text) continue
                 val effects = session.onFrame(frame.readText(), System.currentTimeMillis())
                 val open = dispatch(conn, effects)
-                registerRoleIfNeeded(conn)
+                // Registering after the close check, not before it: a
+                // connection that has just been closed must not be put back as
+                // the controller on its way out.
                 if (!open) break
+                registerRoleIfNeeded(conn)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Companion connection ended: " + (e.message ?: e::class.simpleName))
@@ -393,8 +429,28 @@ class CompanionHost(
                 is CompanionEffect.Send -> conn.send(effect.frame)
 
                 is CompanionEffect.Close -> {
+                    // Retire the connection *before* closing it. The telemetry
+                    // loop writes to everything in `connections` four times a
+                    // second, and a frame landing on a socket that is closing
+                    // aborts it: the companion then sees a bare 1006 instead
+                    // of the code and reason that explain why it was dropped,
+                    // which defeats the whole point of sending both.
+                    connections.remove(conn)
+                    if (controller === conn) controller = null
                     runCatching {
-                        conn.ws.close(CloseReason(effect.code.toShort(), effect.reason))
+                        conn.write.withLock {
+                            conn.ws.close(
+                                CloseReason(
+                                    effect.code.toShort(),
+                                    // Clamped again here because the 125-byte
+                                    // cap is a fact about WebSocket frames
+                                    // rather than about the protocol, and the
+                                    // transport is the last place that can
+                                    // still honour it.
+                                    CompanionProtocol.closeReason(effect.reason),
+                                )
+                            )
+                        }
                     }
                     open = false
                 }
@@ -430,7 +486,7 @@ class CompanionHost(
     }
 
     private suspend fun Conn.send(frame: ServerFrame) {
-        runCatching { ws.send(CompanionCodec.encode(frame)) }
+        runCatching { write.withLock { ws.send(CompanionCodec.encode(frame)) } }
             .onFailure { Log.w(TAG, "Dropping a frame to " + session.clientName + ": " + it.message) }
     }
 

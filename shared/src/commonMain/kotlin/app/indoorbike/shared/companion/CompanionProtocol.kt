@@ -103,6 +103,33 @@ object CompanionProtocol {
      */
     const val WORLD_RAMP_MS = 2_000L
 
+    /**
+     * Longest close reason a WebSocket frame can carry, in bytes.
+     *
+     * A close frame's payload is capped at 125 bytes, two of which are the
+     * code. Overrun it and the frame is invalid: the peer never sees a close at
+     * all, the connection is torn down, and the companion is left with a bare
+     * 1006 - losing exactly the code and reason the protocol went to the
+     * trouble of sending. The full explanation belongs in the [ErrorFrame],
+     * which has no such limit; the close reason is a summary.
+     */
+    const val MAX_CLOSE_REASON_BYTES = 123
+
+    /**
+     * Fit [text] inside [MAX_CLOSE_REASON_BYTES], trimming on a character
+     * boundary so a multi-byte character is never cut in half.
+     */
+    fun closeReason(text: String): String {
+        if (text.encodeToByteArray().size <= MAX_CLOSE_REASON_BYTES) return text
+        val ellipsis = "..."
+        val budget = MAX_CLOSE_REASON_BYTES - ellipsis.encodeToByteArray().size
+        var end = text.length
+        while (end > 0 && text.substring(0, end).encodeToByteArray().size > budget) {
+            end--
+        }
+        return text.substring(0, end) + ellipsis
+    }
+
     /** Shift requests are coalesced above this. A held gamepad button is not an error. */
     const val MAX_SHIFT_REQUESTS_PER_SECOND = 10
 

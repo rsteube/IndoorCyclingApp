@@ -120,9 +120,9 @@ fun CompanionHud(
             else -> 76.sp
         }
 
-        val road = @Composable { compact: Boolean ->
+        val road = @Composable { compact: Boolean, slot: Modifier ->
             Row(
-                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                modifier = slot.fillMaxWidth().height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
             ) {
                 GradientReadout(
@@ -144,9 +144,9 @@ fun CompanionHud(
             }
         }
 
-        val rider = @Composable {
+        val rider = @Composable { slot: Modifier ->
             Row(
-                modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                modifier = slot.fillMaxWidth().height(IntrinsicSize.Max),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3, Alignment.CenterHorizontally),
             ) {
                 CadenceFlankMetric(
@@ -187,12 +187,19 @@ fun CompanionHud(
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s4),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    // Cards keep their natural height and the group is
+                    // centred in whatever is left. A tablet has more room than
+                    // this HUD has content - it is the route HUD without the
+                    // map - and centring reads as a deliberate composition
+                    // where stretching read as four empty boxes.
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+                        verticalArrangement = Arrangement.spacedBy(
+                            Spacing.s3, Alignment.CenterVertically,
+                        ),
                     ) {
-                        road(false)
-                        rider()
+                        road(false, Modifier)
+                        rider(Modifier)
                     }
                     CompanionPowerReadout(
                         powerWatts = powerWatts,
@@ -204,7 +211,7 @@ fun CompanionHud(
                     )
                 }
             } else {
-                road(short)
+                road(short, Modifier)
                 CompanionPowerReadout(
                     powerWatts = powerWatts,
                     isStale = isPowerStale,
@@ -213,7 +220,7 @@ fun CompanionHud(
                     powerFontSize = powerFont,
                     modifier = Modifier.fillMaxWidth().weight(1f),
                 )
-                rider()
+                rider(Modifier)
             }
 
             CompanionTotals(

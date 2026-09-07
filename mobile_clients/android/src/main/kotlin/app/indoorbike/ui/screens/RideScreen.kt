@@ -69,6 +69,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -289,6 +290,9 @@ fun RideScreen(
     // a structured workout, ±10 W on a free ride, which has no target of its
     // own to take a percentage of, and one gear on a simulated route, where a
     // shifter is exactly what a pair of ± buttons on the bars is.
+    // Hoisted: an expanded debug panel takes the HUD's place rather than
+    // squeezing it, so the screen has to know which of the two is on show.
+    var companionDebugExpanded by remember { mutableStateOf(false) }
     val companionEngine = container.companionEngine
     val companionHost = container.companionHost
     val companionStatus by companionHost.status.collectAsState()
@@ -577,7 +581,8 @@ fun RideScreen(
 
                 val route = simulationRoute
                 if (isCompanion) {
-                  Box(modifier = Modifier.fillMaxSize()) {
+                  Column(modifier = Modifier.fillMaxSize()) {
+                    if (!companionDebugExpanded) {
                     // SimulationHud minus its three "where" elements - the map,
                     // the profile and the progress bar - because where the
                     // rider is is exactly what this mode does not know.
@@ -603,15 +608,26 @@ fun RideScreen(
                         onShiftDown = { companionEngine.shiftDown() },
                         onShiftUp = { companionEngine.shiftUp() },
                         shiftingEnabled = state != WorkoutState.Countdown,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxWidth().weight(1f),
                     )
+                    }
                     // The harness for whoever is building the other end: a hand
                     // on the readings the companion receives, and a way to fire
                     // the events the app cannot otherwise produce on demand.
+                    //
+                    // In the column rather than over it. As an overlay the
+                    // expanded panel covered the HUD, and a translucent panel
+                    // on top of a translucent HUD left both unreadable.
+                    //
                     // Gated on DEBUG rather than merely hidden, so R8 removes
                     // it from a release build entirely.
                     if (app.indoorbike.BuildConfig.DEBUG) {
-                        CompanionDebugPanel(modifier = Modifier.align(Alignment.BottomCenter))
+                        CompanionDebugPanel(
+                            expanded = companionDebugExpanded,
+                            onExpandedChange = { companionDebugExpanded = it },
+                            modifier = if (companionDebugExpanded) Modifier.weight(1f)
+                            else Modifier,
+                        )
                     }
                   }
                 } else if (isSimulation && route != null) {

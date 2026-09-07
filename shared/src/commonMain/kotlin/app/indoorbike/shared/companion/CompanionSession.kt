@@ -389,16 +389,27 @@ class CompanionSession(
             ),
             CompanionEffect.Close(
                 CompanionClose.PROTOCOL_MISMATCH,
-                "protocol mismatch: server " + config.supported + ", client " + clientRange,
+                CompanionProtocol.closeReason(
+                    "protocol mismatch: server " + config.supported + ", client " + clientRange
+                ),
             ),
         )
     }
 
+    /**
+     * The full explanation goes in the frame; a summary goes in the close.
+     *
+     * They are not the same string because they cannot be: a close frame's
+     * reason is capped at [CompanionProtocol.MAX_CLOSE_REASON_BYTES], and a
+     * message that overruns it produces an invalid frame, so the peer sees no
+     * close code at all. A parser error naming the offending token is easily
+     * long enough to trip that.
+     */
     private fun fail(code: String, message: String, closeCode: Int): List<CompanionEffect> {
         phase = Phase.CLOSED
         return listOf(
             CompanionEffect.Send(ErrorFrame(code = code, message = message)),
-            CompanionEffect.Close(closeCode, message),
+            CompanionEffect.Close(closeCode, CompanionProtocol.closeReason(message)),
         )
     }
 

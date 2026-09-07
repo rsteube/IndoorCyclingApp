@@ -19,11 +19,14 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -80,7 +83,11 @@ import kotlin.math.sin
  * whole panel from a release build rather than merely hiding it.
  */
 @Composable
-fun CompanionDebugPanel(modifier: Modifier = Modifier) {
+fun CompanionDebugPanel(
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val container = LocalAppContainer.current
     val trainer = container.trainerManager
     val host = container.companionHost
@@ -93,7 +100,6 @@ fun CompanionDebugPanel(modifier: Modifier = Modifier) {
     val liveHr by trainer.heartRate.collectAsState()
     val status by host.status.collectAsState()
 
-    var expanded by remember { mutableStateOf(false) }
     var power by remember { mutableIntStateOf(180) }
     var cadence by remember { mutableIntStateOf(88) }
     var heartRate by remember { mutableIntStateOf(145) }
@@ -129,7 +135,7 @@ fun CompanionDebugPanel(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(Spacing.s2),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable { expanded = !expanded },
+            modifier = Modifier.fillMaxWidth().clickable { onExpandedChange(!expanded) },
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
         ) {
@@ -156,8 +162,16 @@ fun CompanionDebugPanel(modifier: Modifier = Modifier) {
             )
         }
 
-        AnimatedVisibility(visible = expanded) {
-            Column(verticalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        if (expanded) {
+            // Takes the space rather than sharing it. Squeezing the HUD clipped
+            // the gauges, and overlaying it left a translucent panel on top of a
+            // translucent HUD with both unreadable. The collapsed strip still
+            // reports the live readings, so nothing is lost by standing the HUD
+            // down while a hand is on the numbers.
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+            ) {
                 if (!isMock) {
                     Text(
                         text = "Pair the mock trainer (Settings, Devices, Trainer) to take the " +

@@ -166,3 +166,38 @@ class NegotiationTest {
         }
     }
 }
+
+class CloseReasonTest {
+
+    /**
+     * A close frame's payload is capped at 125 bytes, two of which are the
+     * code. Overrun it and the peer never sees a close at all - it gets a bare
+     * 1006 and loses the code the protocol went to the trouble of sending.
+     */
+    @Test
+    fun `a short reason is left alone`() {
+        val short = "protocol mismatch: server 0.1-0.1, client 2.0-2.3"
+        assertEquals(short, CompanionProtocol.closeReason(short))
+    }
+
+    @Test
+    fun `a long reason is trimmed to fit a close frame`() {
+        val long = "Could not read a frame: not valid JSON: Unexpected JSON token at offset 1: " +
+            "Expected beginning of the string, but got { at path: " + "$" + ".someLongPath"
+        val fitted = CompanionProtocol.closeReason(long)
+        assertTrue(long.encodeToByteArray().size > CompanionProtocol.MAX_CLOSE_REASON_BYTES)
+        assertTrue(
+            fitted.encodeToByteArray().size <= CompanionProtocol.MAX_CLOSE_REASON_BYTES,
+            "was " + fitted.encodeToByteArray().size,
+        )
+        assertTrue(fitted.endsWith("..."))
+    }
+
+    @Test
+    fun `trimming never cuts a multi-byte character in half`() {
+        val fitted = CompanionProtocol.closeReason("ä".repeat(200))
+        assertTrue(fitted.encodeToByteArray().size <= CompanionProtocol.MAX_CLOSE_REASON_BYTES)
+        // Round-tripping proves nothing was left as a half-formed character.
+        assertEquals(fitted, fitted.encodeToByteArray().decodeToString())
+    }
+}

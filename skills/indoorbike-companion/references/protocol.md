@@ -463,6 +463,12 @@ Fatal for the operation, and usually followed by a close.
 | 4005 | Ride ended |
 | 4008 | Malformed frame |
 
+**Close reasons are capped at 123 bytes.** A WebSocket close frame carries at most 125 bytes,
+two of which are the code. The app trims anything longer and appends `...`; the untruncated
+explanation is in the `error` frame, which has no such limit. **Apply the same cap to your own
+close reasons.** Overrun it and the frame is invalid, the peer never sees a close at all, and
+what should have been a 4001 arrives as a bare 1006.
+
 ---
 
 ## 14. Tolerance rules (both directions, mandatory)
@@ -605,4 +611,5 @@ Present in the protocol, absent from this build. Do not design around them.
 | Treating `trainerGradePercent` as a gradient | It is a force expressed against 84 kg |
 | Defaulting missing `hr` to 0 | Displays a heart rate of zero instead of "no strap" |
 | Sending `cda` expecting drafting | Not honoured; you own drag, apply it to your own speed |
+| A close reason over 123 bytes | Invalid frame; the peer sees 1006 and loses your close code |
 | Expecting the app to end the ride | Only `finish` or the rider ends it |
