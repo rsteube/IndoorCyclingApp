@@ -113,7 +113,12 @@ fun SimulationHud(
         // below introduce their own scopes, which shadow the implicit receiver.
         val availableWidth = maxWidth
         val availableHeight = maxHeight
-        val wide = availableWidth >= 600.dp
+        // Side by side needs width to spare *relative to height*, not just an
+        // absolute number. A tablet held upright is 800 dp wide, which passes
+        // any width test, and putting a map in a narrow column beside a column
+        // of air is the wrong answer for it: 1280 dp of height is exactly what
+        // the stacked layout is for.
+        val wide = availableWidth >= 600.dp && availableWidth >= availableHeight
         val tall = availableHeight >= 600.dp
         val expanded = availableWidth >= 840.dp && tall
         // A landscape phone is wide but genuinely short, around 400dp.
@@ -229,9 +234,22 @@ fun SimulationHud(
                     modifier = Modifier
                         .width(if (expanded) 400.dp else 320.dp)
                         .fillMaxHeight(),
-                    verticalArrangement = Arrangement.spacedBy(
-                        if (short) Spacing.s2 else Spacing.s3,
-                    ),
+                    // Two different problems. On a landscape phone the column
+                    // is shorter than its contents and the question is what
+                    // gives way; on a tablet it is taller and the question is
+                    // where the slack goes. Spreading it evenly beats pouring
+                    // all of it into the power block, which left the number
+                    // floating in the middle of an empty half-screen.
+                    // Keyed on whether the column is short of height, not on
+                    // how wide the screen is. A tablet held upright is 1280 dp
+                    // tall and not "expanded", and it has more slack than any
+                    // other case: keying this on expanded left the power
+                    // number stranded in half a screen of nothing.
+                    verticalArrangement = if (short) {
+                        Arrangement.spacedBy(Spacing.s2)
+                    } else {
+                        Arrangement.SpaceEvenly
+                    },
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // The gauges and the rider's own numbers take their height
@@ -243,7 +261,11 @@ fun SimulationHud(
                     // things that fell off were the two the rider cannot
                     // reconstruct from anything else on screen.
                     BoxWithConstraints(
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        // Only claim the leftover height where there is a
+                        // shortage to manage. With room to spare the block
+                        // takes its natural size and the column spaces it.
+                        modifier = (if (short) Modifier.weight(1f) else Modifier)
+                            .fillMaxWidth(),
                         contentAlignment = Alignment.Center,
                     ) {
                         // Eyebrow, W/kg bar and its caption, plus the gaps.

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -77,6 +78,8 @@ import app.indoorbike.shared.repo.ImportKind
 import app.indoorbike.shared.repo.ManifestParser
 import app.indoorbike.shared.repo.RegistryEntry
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn
@@ -163,6 +166,7 @@ fun LibraryScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
@@ -192,7 +196,8 @@ fun LibraryScreen(
         )
 
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            // Capped and left aligned, matching the screen title above it.
+            modifier = Modifier.weight(1f).widthIn(max = ContentMaxWidth),
             contentPadding = PaddingValues(horizontal = Spacing.s5, vertical = Spacing.s4),
             verticalArrangement = Arrangement.spacedBy(Spacing.s4)
         ) {

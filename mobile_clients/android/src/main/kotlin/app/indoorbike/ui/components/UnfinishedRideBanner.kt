@@ -346,6 +346,11 @@ private fun AbandonConfirmDialog(
     ) {
         Column(
             modifier = Modifier
+                // 85 % of a phone is a dialog; 85 % of a tablet is a banner.
+                // The cap has to come first: fillMaxWidth resolves against the
+                // constraints it is handed and passes a fixed width down, so a
+                // widthIn after it can only fit inside what it already chose.
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)

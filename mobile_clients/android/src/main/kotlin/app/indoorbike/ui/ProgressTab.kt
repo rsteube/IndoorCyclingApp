@@ -59,6 +59,8 @@ import app.indoorbike.shared.progression.computeStreak
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import java.util.TimeZone
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.tabRootBottomPadding
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.PrimaryBtn
@@ -100,6 +102,7 @@ fun ProgressTab(onNavigateToRides: () -> Unit = {}) {
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
@@ -109,7 +112,10 @@ fun ProgressTab(onNavigateToRides: () -> Unit = {}) {
         )
 
         UnfinishedRideBanner(
-            modifier = Modifier.padding(horizontal = Spacing.s5, vertical = Spacing.s2)
+            // Sits above the list, so it needs the list's cap of its own.
+            modifier = Modifier
+                .widthIn(max = ContentMaxWidth)
+                .padding(horizontal = Spacing.s5, vertical = Spacing.s2)
         )
 
         if (sessions.isEmpty()) {
@@ -118,7 +124,8 @@ fun ProgressTab(onNavigateToRides: () -> Unit = {}) {
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            // Capped and left aligned, matching the screen title above it.
+            modifier = Modifier.fillMaxHeight().widthIn(max = ContentMaxWidth),
             contentPadding = PaddingValues(
                 start = Spacing.s5,
                 end = Spacing.s5,

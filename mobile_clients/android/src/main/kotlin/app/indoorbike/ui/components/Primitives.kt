@@ -983,6 +983,18 @@ data class TabItem(val id: String, val icon: ImageVector, val label: String)
  * sit directly underneath it on the repository browsers and mean something
  * quite different: a filter narrows a list, this changes which list.
  */
+/**
+ * The widest a column of cards and prose should ever get, however wide the
+ * screen is.
+ *
+ * A phone layout stretched across a tablet is not a tablet layout: a row whose
+ * title sits at the far left and whose chevron sits a thousand points away at
+ * the right has stopped being one thing to read. Capping and centring is the
+ * conventional answer and it costs a phone nothing, since no phone is this
+ * wide in the first place.
+ */
+val ContentMaxWidth = 760.dp
+
 @Composable
 fun SegmentedSwitch(
     options: List<String>,

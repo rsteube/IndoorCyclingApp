@@ -78,6 +78,8 @@ import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.sync.SyncStatus
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.tabRootBottomPadding
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.CardDivider
@@ -127,13 +129,18 @@ fun SettingsTab(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(title = "Settings", eyebrow = "Preferences", header = header)
 
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                // Height only. fillMaxSize would fix the width too and the cap
+                // below it would do nothing, which is the trap this screen and
+                // three others fell into.
+                .fillMaxHeight()
+                .widthIn(max = ContentMaxWidth)
                 .imePadding()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.s5)

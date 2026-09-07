@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import android.widget.Toast
@@ -67,6 +68,8 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import app.indoorbike.shared.simulation.RouteProgress
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.DestructiveBtn
@@ -195,6 +198,7 @@ fun RouteLibraryScreen(
         Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
@@ -228,6 +232,10 @@ fun RouteLibraryScreen(
         }
 
         LazyColumn(
+            // Left aligned, not centred: the screen title above it is, and a
+            // capped list floating in the middle of the window while its own
+            // heading sits at the far left reads as two screens.
+            modifier = Modifier.widthIn(max = ContentMaxWidth),
             contentPadding = PaddingValues(Spacing.s4),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
@@ -401,6 +409,10 @@ private fun ResumeRouteDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             modifier = Modifier
+                // 85 % of a phone is a dialog; 85 % of a tablet is a
+                // banner. The cap is what makes the fraction mean "most of a
+                // narrow screen" rather than "most of any screen".
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
@@ -484,6 +496,10 @@ private fun RemoveRouteDialog(
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             modifier = Modifier
+                // 85 % of a phone is a dialog; 85 % of a tablet is a
+                // banner. The cap is what makes the fraction mean "most of a
+                // narrow screen" rather than "most of any screen".
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)

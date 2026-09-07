@@ -45,6 +45,8 @@ import app.indoorbike.shared.progression.durationLabelLong
 import app.indoorbike.shared.progression.totalDurationSeconds
 import app.indoorbike.shared.progression.totalKjAcross
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.tabRootBottomPadding
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.CardDivider
@@ -84,6 +86,7 @@ fun HistoryTab(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
@@ -93,7 +96,10 @@ fun HistoryTab(
         )
 
         UnfinishedRideBanner(
-            modifier = Modifier.padding(horizontal = Spacing.s5, vertical = Spacing.s2)
+            // Sits above the list, so it needs the list's cap of its own.
+            modifier = Modifier
+                .widthIn(max = ContentMaxWidth)
+                .padding(horizontal = Spacing.s5, vertical = Spacing.s2)
         )
 
         if (sessions.isEmpty()) {
@@ -136,7 +142,8 @@ fun HistoryTab(
             val grouped = remember(sessions) { groupByWeek(sessions) }
 
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                // Capped and left aligned, matching the title above it.
+                modifier = Modifier.fillMaxHeight().widthIn(max = ContentMaxWidth),
                 contentPadding = PaddingValues(
                     start = Spacing.s5,
                     end = Spacing.s5,

@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -67,6 +68,8 @@ import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.RepoStatus
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.tabRootBottomPadding
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.CardDivider
@@ -148,11 +151,16 @@ fun HomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(title = "What are you riding?", eyebrow = eyebrow, header = header)
 
         LazyColumn(
+            // Left aligned, not centred: the screen title above it is, and a
+            // capped list floating in the middle of the window while its own
+            // heading sits at the far left reads as two screens.
+            modifier = Modifier.widthIn(max = ContentMaxWidth),
             contentPadding = PaddingValues(
                 start = Spacing.s5,
                 end = Spacing.s5,

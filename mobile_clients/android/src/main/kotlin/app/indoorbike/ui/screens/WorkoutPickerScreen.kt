@@ -103,6 +103,8 @@ import app.indoorbike.shared.workout.freeRideStartWatts
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.components.CardDivider
@@ -224,6 +226,7 @@ fun WorkoutPickerScreen(
         Modifier
             .fillMaxSize()
             .background(CadenceColors.Bg0)
+            .marginRidges()
             .nestedScroll(header.nestedScrollConnection)
     ) {
         AppBar(
@@ -246,7 +249,8 @@ fun WorkoutPickerScreen(
         )
 
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            // Capped and left aligned, matching the screen title above it.
+            modifier = Modifier.weight(1f).widthIn(max = ContentMaxWidth),
             contentPadding = PaddingValues(
                 start = Spacing.s5, end = Spacing.s5,
                 top = Spacing.s4, bottom = listBottomPadding()

@@ -1224,6 +1224,10 @@ private fun EndRideConfirmDialog(
     ) {
         Column(
             modifier = Modifier
+                // 85 % of a phone is a dialog; 85 % of a tablet is a
+                // banner. The cap is what makes the fraction mean "most of a
+                // narrow screen" rather than "most of any screen".
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)

@@ -33,6 +33,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -75,6 +76,8 @@ import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
 import app.indoorbike.ui.components.AppBar
+import app.indoorbike.ui.components.marginRidges
+import app.indoorbike.ui.components.ContentMaxWidth
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.CardDivider
 import app.indoorbike.ui.components.DestructiveBtn
@@ -159,7 +162,8 @@ fun WorkoutDetailScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val header = rememberCollapsingHeaderState()
-    Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
+    Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)
+            .marginRidges()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -236,7 +240,8 @@ fun WorkoutDetailScreen(
         )
 
         LazyColumn(
-            modifier = Modifier.weight(1f),
+            // Capped and left aligned, matching the screen title above it.
+            modifier = Modifier.weight(1f).widthIn(max = ContentMaxWidth),
             contentPadding = PaddingValues(
                 start = Spacing.s5, end = Spacing.s5,
                 top = Spacing.s5, bottom = Spacing.s4
@@ -337,6 +342,10 @@ private fun RenameWorkoutDialog(
     ) {
         Column(
             modifier = Modifier
+                // 85 % of a phone is a dialog; 85 % of a tablet is a
+                // banner. The cap is what makes the fraction mean "most of a
+                // narrow screen" rather than "most of any screen".
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
@@ -392,6 +401,10 @@ private fun DeleteWorkoutDialog(
     ) {
         Column(
             modifier = Modifier
+                // 85 % of a phone is a dialog; 85 % of a tablet is a
+                // banner. The cap is what makes the fraction mean "most of a
+                // narrow screen" rather than "most of any screen".
+                .widthIn(max = 420.dp)
                 .fillMaxWidth(0.85f)
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
