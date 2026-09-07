@@ -39,7 +39,9 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -101,14 +103,21 @@ fun CompanionScreen(
 
     // The socket lives exactly as long as the rider is trying to pair or ride.
     // Handing off to the ride screen leaves it running on purpose - that screen
-    // owns it from there and closes it when the ride is done.
+    // owns it from there and closes it when the ride is done. Tracked as a flag
+    // rather than inferred from `receivingRoad`, because the debug entry below
+    // hands off without a road and would otherwise close the socket on its way
+    // to the screen that exists to drive it.
+    var handedOff by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
         host.start()
-        onDispose { if (!host.status.value.receivingRoad) host.stop() }
+        onDispose { if (!handedOff) host.stop() }
     }
 
     LaunchedEffect(status.receivingRoad) {
-        if (status.receivingRoad) onRideReady()
+        if (status.receivingRoad) {
+            handedOff = true
+            onRideReady()
+        }
     }
 
     Column(
@@ -166,6 +175,24 @@ fun CompanionScreen(
                         addresses = status.addresses,
                         port = status.port,
                         advertising = status.advertising,
+                    )
+                }
+            }
+
+            // Debug builds only: skip the wait and go straight to the HUD,
+            // where the manual-trainer harness lives. Someone whose companion
+            // is the thing being debugged should not be stranded here because
+            // it connected and then stopped sending.
+            if (app.indoorbike.BuildConfig.DEBUG) {
+                item(key = "debug-enter") {
+                    SecondaryBtn(
+                        text = "Debug: open the HUD without a companion",
+                        onClick = {
+                            handedOff = true
+                            host.prepareRideWithoutCompanion()
+                            onRideReady()
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = Spacing.s3),
                     )
                 }
             }

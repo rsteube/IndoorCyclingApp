@@ -68,6 +68,7 @@ import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,6 +103,7 @@ import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
 import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.ui.screens.companion.CompanionDebugPanel
 import app.indoorbike.ui.screens.companion.CompanionHud
 import app.indoorbike.ui.screens.simulation.SimulationHud
 import app.indoorbike.shared.workout.cadenceTarget
@@ -575,6 +577,7 @@ fun RideScreen(
 
                 val route = simulationRoute
                 if (isCompanion) {
+                  Box(modifier = Modifier.fillMaxSize()) {
                     // SimulationHud minus its three "where" elements - the map,
                     // the profile and the progress bar - because where the
                     // rider is is exactly what this mode does not know.
@@ -602,6 +605,15 @@ fun RideScreen(
                         shiftingEnabled = state != WorkoutState.Countdown,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    // The harness for whoever is building the other end: a hand
+                    // on the readings the companion receives, and a way to fire
+                    // the events the app cannot otherwise produce on demand.
+                    // Gated on DEBUG rather than merely hidden, so R8 removes
+                    // it from a release build entirely.
+                    if (app.indoorbike.BuildConfig.DEBUG) {
+                        CompanionDebugPanel(modifier = Modifier.align(Alignment.BottomCenter))
+                    }
+                  }
                 } else if (isSimulation && route != null) {
                     // The simulation HUD replaces the metrics area wholesale
                     // rather than decorating it: a route ride shares the power,

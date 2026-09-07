@@ -279,6 +279,40 @@ class CompanionHost(
         }
     }
 
+    /**
+     * Fire an event at every connected companion.
+     *
+     * Exists for the debug harness. Most events are produced by something real
+     * happening - a shift, a timeout, the rider taking control - but a
+     * companion developer has to be able to exercise their reconnect and
+     * error paths without unplugging a trainer or crashing their own game, and
+     * `worldTimeout` in particular is a condition the app cannot manufacture
+     * on demand because only the companion's silence causes it.
+     *
+     * Injected events are indistinguishable on the wire from real ones, which
+     * is the point: the companion should not need a test mode of its own.
+     */
+    fun sendEvent(frame: EventFrame) = broadcast(frame)
+
+    /**
+     * Prepare the ride without waiting for a companion. Debug harness only.
+     *
+     * Normally the ride is prepared when a controller completes the handshake,
+     * which means the debug panel on the HUD is unreachable until a companion
+     * both connects *and* sends a road. That is the wrong way round for someone
+     * whose companion is the thing being debugged: a game that connects and
+     * then stalls leaves them stranded on the pairing screen with no tools.
+     *
+     * Goes through the host rather than calling the session manager directly so
+     * that a companion connecting afterwards does not prepare a second ride on
+     * top of this one and reset it underneath the rider.
+     */
+    fun prepareRideWithoutCompanion() {
+        if (ridePrepared) return
+        sessionManager.prepareCompanion(ftp())
+        ridePrepared = true
+    }
+
     fun dispose() {
         stop()
         scope.cancel()

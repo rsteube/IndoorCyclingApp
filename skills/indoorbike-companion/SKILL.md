@@ -116,6 +116,39 @@ published so you can tell a protocol bug from a physics disagreement -
 `trainerGradePercent` is a *force* expressed against an assumed 84 kg trainer mass, not a
 gradient; never display it as one.
 
+## Driving the phone by hand
+
+A **debug build** of Indoor Bike ships a harness built for exactly this job. It is the fastest
+way to make the phone do a specific thing on demand, and it beats a mock server as soon as you
+want to test how your game *feels* rather than how it parses.
+
+Setup, once: Settings, Devices, Trainer, **Use mock trainer** (debug builds only). Then choose
+**Companion** on the Ride tab.
+
+On the companion HUD there is a **DEBUG** strip along the bottom. Expand it and you get:
+
+| Control | What it does |
+|---|---|
+| **Manual: on** | The mock trainer stops inventing a rider and reports exactly what you set |
+| Power / Cadence / Heart steppers | The readings that reach you in `telemetry` |
+| **Wobble** | A slow sine on power, so your smoothing has something to smooth |
+| Coast / Endurance / Threshold / Sprint | One-tap presets, including 0 W and 700 W |
+| Shift down / up / **as Click** | Real shifts, so you see `gearChanged` with each `source` |
+| `worldTimeout`, `worldResumed`, `trainerLost`, `riderInput +/-` | One-off events, injected |
+| Revoke control, End ride | Real actions that change the ride, not just the wire |
+
+Two things to know about it:
+
+- **Injected events are indistinguishable from real ones on the wire.** That is deliberate: you
+  should not need a test mode of your own to receive them.
+- **The rest of the stream is completely ordinary.** The session machinery, the physics, the
+  force model and the wire format are all the real ones. The only difference is that a person
+  is choosing the watts.
+
+If your companion connects but stalls before sending a road, the pairing screen has a debug
+button that opens the HUD anyway, so the harness is reachable even when your end is the broken
+one.
+
 ## Testing without a phone
 
 Write a mock server before you have a trainer to hand. It needs to: accept a WebSocket on

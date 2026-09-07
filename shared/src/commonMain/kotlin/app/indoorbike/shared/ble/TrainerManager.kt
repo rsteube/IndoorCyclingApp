@@ -134,6 +134,23 @@ class TrainerManager {
     private val _isMockTrainer = MutableStateFlow(false)
     val isMockTrainer: StateFlow<Boolean> = _isMockTrainer.asStateFlow()
 
+    /**
+     * Manual mock: the mock trainer stops inventing a rider and reports
+     * exactly what it is told.
+     *
+     * The ordinary mock plays a plausible rider, which is what a smoke test
+     * wants and what a developer with no bike wants for a route. It is the
+     * wrong tool for building a *companion*, where the whole job is provoking
+     * a specific reaction: hold 400 W for a moment, drop the cadence to zero,
+     * pin the heart rate. That needs a hand on the numbers, not a simulation
+     * of a person.
+     *
+     * Debug-only in practice, because [connectMock] is: the mock trainer is
+     * hidden in release builds, and everything here hangs off it.
+     */
+    private val _mockManual = MutableStateFlow(false)
+    val mockManual: StateFlow<Boolean> = _mockManual.asStateFlow()
+
     /** Last instant (epoch ms) any telemetry was observed; used by UI to show "--" when stale. */
     private val _lastTelemetryEpochMs = MutableStateFlow(0L)
     val lastTelemetryEpochMs: StateFlow<Long> = _lastTelemetryEpochMs.asStateFlow()
@@ -303,6 +320,41 @@ class TrainerManager {
     }
 
 
+    /**
+     * Hand the mock trainer's readings over to the caller, or give them back.
+     *
+     * Turning it on holds whatever is currently on the flows rather than
+     * zeroing them, so a developer flipping the switch mid-ride does not stall
+     * the bike underneath themselves.
+     */
+    fun setMockManual(enabled: Boolean) {
+        if (!_isMockTrainer.value) return
+        _mockManual.value = enabled
+        touchTelemetry()
+    }
+
+    /**
+     * Write mock readings directly. Only honoured while [mockManual] is on, so
+     * a stray call cannot interfere with a real ride or with the automatic
+     * mock.
+     *
+     * Null leaves a reading alone, which is what lets the caller nudge power
+     * without having to restate cadence and heart rate every time.
+     */
+    fun setMockTelemetry(
+        powerWatts: Int? = null,
+        cadenceRpm: Int? = null,
+        heartRateBpm: Int? = null,
+    ) {
+        if (!_isMockTrainer.value || !_mockManual.value) return
+        powerWatts?.let { _power.value = it.coerceAtLeast(0) }
+        cadenceRpm?.let { _cadence.value = it.coerceAtLeast(0) }
+        heartRateBpm?.let { _heartRate.value = it.coerceAtLeast(0) }
+        // Without this the HUD greys the numbers out after a few seconds of a
+        // developer not touching a button, which reads as a broken link.
+        touchTelemetry()
+    }
+
     fun toggleMockPedaling() {
         isMockPedaling = !isMockPedaling
         if (!isMockPedaling) {
@@ -334,6 +386,7 @@ class TrainerManager {
         activePeripheral = null
 
         _isMockTrainer.value = true
+        _mockManual.value = false
         _connectedTrainerName.value = "Mock Trainer"
         _pairedTrainerId.value = "mock"
         _connectionState.value = TrainerConnectionState.Connected
@@ -865,7 +918,13 @@ class TrainerManager {
         mockJob?.cancel()
         mockJob = scope.launch {
             while (true) {
-                if (_isMockTrainer.value && isMockPedaling) {
+                if (_isMockTrainer.value && _mockManual.value) {
+                    // Manual: the readings are whatever setMockTelemetry last
+                    // wrote. Nothing to generate, but the stamp still has to
+                    // be kept fresh or the readings go stale on screen while
+                    // they are in fact exactly what was asked for.
+                    touchTelemetry()
+                } else if (_isMockTrainer.value && isMockPedaling) {
                     val target = _targetPower.value
                     val road = _simulationParameters.value
                     if (road != null) {
@@ -901,6 +960,7 @@ class TrainerManager {
         mockJob?.cancel()
         mockJob = null
         isMockPedaling = false
+        _mockManual.value = false
         _power.value = 0
         _cadence.value = 0
         _heartRate.value = 0
