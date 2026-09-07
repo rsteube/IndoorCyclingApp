@@ -15,6 +15,11 @@
  */
 package app.indoorbike.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
@@ -22,6 +27,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,8 +37,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -76,9 +84,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
+import app.indoorbike.ui.theme.PressScale
 import app.indoorbike.ui.theme.Radii
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.enterPop
+import app.indoorbike.ui.theme.pressScale
+import app.indoorbike.ui.theme.rememberHaptics
+import app.indoorbike.ui.theme.rememberReducedMotion
 import app.indoorbike.ui.zones.HeartRateZone
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.unit.IntOffset
 import app.indoorbike.ui.zones.PowerZone
 
 /**
@@ -443,22 +459,34 @@ fun PrimaryBtn(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val bg = when {
-        !enabled -> CadenceColors.Bg2
-        pressed -> CadenceColors.Fg2
-        else -> CadenceColors.Fg1
-    }
+    val haptics = rememberHaptics()
+    // The fill eases between its three states instead of snapping, and the
+    // whole pill gives a little under the finger. Committing to the one action
+    // on the screen also answers with a firm tap.
+    val bg by animateColorAsState(
+        targetValue = when {
+            !enabled -> CadenceColors.Bg2
+            pressed -> CadenceColors.Fg2
+            else -> CadenceColors.Fg1
+        },
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "primaryBtnBg",
+    )
     val fg = if (enabled) CadenceColors.OnBrand else CadenceColors.Fg4
     Row(
         modifier = modifier
             .height(56.dp)
+            .pressScale(interaction)
             .clip(CircleShape)
             .background(bg)
             .clickable(
                 enabled = enabled,
                 interactionSource = interaction,
                 indication = null,
-                onClick = onClick
+                onClick = {
+                    haptics.confirm()
+                    onClick()
+                }
             )
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -492,11 +520,17 @@ fun SecondaryBtn(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val bg by animateColorAsState(
+        targetValue = if (pressed) CadenceColors.Bg3 else CadenceColors.Bg2,
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "secondaryBtnBg",
+    )
     Row(
         modifier = modifier
             .height(56.dp)
+            .pressScale(interaction)
             .clip(CircleShape)
-            .background(if (pressed) CadenceColors.Bg3 else CadenceColors.Bg2)
+            .background(bg)
             .clickable(
                 enabled = enabled,
                 interactionSource = interaction,
@@ -537,12 +571,22 @@ fun DestructiveBtn(
     modifier: Modifier = Modifier,
     leadingIcon: ImageVector? = null
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val haptics = rememberHaptics()
     Row(
         modifier = modifier
             .height(56.dp)
+            .pressScale(interaction)
             .clip(CircleShape)
             .background(CadenceColors.Danger)
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = {
+                    haptics.confirm()
+                    onClick()
+                }
+            )
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2, Alignment.CenterHorizontally)
@@ -579,11 +623,17 @@ fun IconBtn(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
+    val bg by animateColorAsState(
+        targetValue = if (pressed) CadenceColors.Bg3 else background,
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "iconBtnBg",
+    )
     Box(
         modifier = Modifier
             .size(44.dp)
+            .pressScale(interaction)
             .clip(CircleShape)
-            .background(if (pressed) CadenceColors.Bg3 else background)
+            .background(bg)
             .clickable(
                 enabled = enabled,
                 interactionSource = interaction,
@@ -671,11 +721,33 @@ fun NavRow(
 
 @Composable
 fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val haptics = rememberHaptics()
+    // Selection crossfades between the two fills rather than flipping, so a
+    // chip row read left to right shows one chip lighting up as another dims.
+    val bg by animateColorAsState(
+        targetValue = if (selected) CadenceColors.Fg1 else CadenceColors.Bg2,
+        animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+        label = "chipBg",
+    )
+    val fg by animateColorAsState(
+        targetValue = if (selected) CadenceColors.OnBrand else CadenceColors.Fg2,
+        animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+        label = "chipFg",
+    )
     Row(
         modifier = Modifier
+            .pressScale(interaction)
             .clip(CircleShape)
-            .background(if (selected) CadenceColors.Fg1 else CadenceColors.Bg2)
-            .clickable(onClick = onClick)
+            .background(bg)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                onClick = {
+                    if (!selected) haptics.tick()
+                    onClick()
+                }
+            )
             .padding(horizontal = Spacing.s4, vertical = 10.dp)
     ) {
         Text(
@@ -683,7 +755,7 @@ fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
             style = CadenceType.small.copy(
                 fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
             ),
-            color = if (selected) CadenceColors.OnBrand else CadenceColors.Fg2,
+            color = fg,
             maxLines = 1
         )
     }
@@ -732,11 +804,25 @@ fun MetaPill(
     icon: ImageVector? = null,
     onClick: (() -> Unit)? = null
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val bg by animateColorAsState(
+        targetValue = if (pressed) CadenceColors.Bg3 else CadenceColors.Bg2,
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "metaPillBg",
+    )
     Row(
         modifier = Modifier
+            .then(if (onClick != null) Modifier.pressScale(interaction) else Modifier)
             .clip(CircleShape)
-            .background(CadenceColors.Bg2)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .background(bg)
+            .then(
+                if (onClick != null) Modifier.clickable(
+                    interactionSource = interaction,
+                    indication = null,
+                    onClick = onClick
+                ) else Modifier
+            )
             .padding(horizontal = 14.dp, vertical = Spacing.s2),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -758,7 +844,10 @@ fun MetaPill(
     }
 }
 
-/** "2 new". An Fg1 fill, so a count is the loudest thing in its row. */
+/**
+ * "2 new". An Fg1 fill, so a count is the loudest thing in its row - and it
+ * pops in when it appears, because a count is news.
+ */
 @Composable
 fun CountPill(text: String) {
     Text(
@@ -767,6 +856,7 @@ fun CountPill(text: String) {
         color = CadenceColors.OnBrand,
         maxLines = 1,
         modifier = Modifier
+            .enterPop()
             .clip(CircleShape)
             .background(CadenceColors.Fg1)
             .padding(horizontal = Spacing.s3, vertical = 6.dp)
@@ -900,39 +990,76 @@ fun SegmentedSwitch(
     onSelect: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Row(
+    val haptics = rememberHaptics()
+    val count = options.size.coerceAtLeast(1)
+    val selectedIndex = options.indexOf(selected).coerceAtLeast(0)
+    BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .clip(CircleShape)
             .background(CadenceColors.Bg1)
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp)
+            .padding(4.dp)
     ) {
-        options.forEach { option ->
-            val active = option == selected
+        // One thumb that slides between the segments, rather than a fill that
+        // vanishes from one and appears on another. The slide is what says the
+        // two are views of the same thing.
+        val slot = maxWidth / count
+        val thumbX by animateDpAsState(
+            targetValue = slot * selectedIndex,
+            animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f),
+            label = "switchThumb",
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+        ) {
             Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .offset { IntOffset(thumbX.roundToPx(), 0) }
+                    .fillMaxWidth(1f / count)
+                    .fillMaxHeight()
                     .clip(CircleShape)
-                    .background(if (active) CadenceColors.Fg1 else Color.Transparent)
-                    // selectable rather than clickable: it tells a screen
-                    // reader which segment is chosen, which "button" does not.
-                    .selectable(
-                        selected = active,
-                        role = Role.Tab,
-                        onClick = { if (!active) onSelect(option) }
-                    )
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = option,
-                    style = CadenceType.small.copy(
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold
-                    ),
-                    color = if (active) CadenceColors.OnBrand else CadenceColors.Fg2,
-                    maxLines = 1
+                    .background(CadenceColors.Fg1)
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth()) {
+            options.forEach { option ->
+                val active = option == selected
+                val fg by animateColorAsState(
+                    targetValue = if (active) CadenceColors.OnBrand else CadenceColors.Fg2,
+                    animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+                    label = "switchLabel",
                 )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(CircleShape)
+                        // selectable rather than clickable: it tells a screen
+                        // reader which segment is chosen, which "button" does not.
+                        .selectable(
+                            selected = active,
+                            role = Role.Tab,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {
+                                if (!active) {
+                                    haptics.tick()
+                                    onSelect(option)
+                                }
+                            }
+                        )
+                        .padding(vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = option,
+                        style = CadenceType.small.copy(
+                            fontWeight = if (active) FontWeight.Bold else FontWeight.SemiBold
+                        ),
+                        color = fg,
+                        maxLines = 1
+                    )
+                }
             }
         }
     }
@@ -970,7 +1097,11 @@ fun TabBar(
                     )
                 )
         )
-        Row(
+        val haptics = rememberHaptics()
+        val reduceMotion = rememberReducedMotion()
+        val count = tabs.size.coerceAtLeast(1)
+        val activeIndex = tabs.indexOfFirst { it.id == active }.coerceAtLeast(0)
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(CadenceColors.Bg0)
@@ -984,33 +1115,79 @@ fun TabBar(
                 .background(CadenceColors.Bg1)
                 .padding(6.dp)
         ) {
-            tabs.forEach { tab ->
-                val activeNow = tab.id == active
-                Column(
+            // The active pill is one object that slides to whichever tab was
+            // chosen, settling with a touch of give. It is the only part of the
+            // bar that moves; icons and labels crossfade under it.
+            val slot = maxWidth / count
+            val pillX by animateDpAsState(
+                targetValue = slot * activeIndex,
+                animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f),
+                label = "tabPill",
+            )
+            Box(modifier = Modifier.matchParentSize()) {
+                Box(
                     modifier = Modifier
-                        .weight(1f)
+                        .offset { IntOffset(pillX.roundToPx(), 0) }
+                        .fillMaxWidth(1f / count)
+                        .fillMaxHeight()
                         .clip(CircleShape)
-                        .background(if (activeNow) CadenceColors.Fg1 else Color.Transparent)
-                        .clickable { onTabSelected(tab.id) }
-                        .padding(vertical = Spacing.s2, horizontal = Spacing.s1),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
-                ) {
-                    Icon(
-                        imageVector = tab.icon,
-                        contentDescription = tab.label,
-                        tint = if (activeNow) CadenceColors.OnBrand else CadenceColors.Fg2,
-                        modifier = Modifier.size(22.dp)
+                        .background(CadenceColors.Fg1)
+                )
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                tabs.forEach { tab ->
+                    val activeNow = tab.id == active
+                    val tint by animateColorAsState(
+                        targetValue = if (activeNow) CadenceColors.OnBrand else CadenceColors.Fg2,
+                        animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+                        label = "tabTint",
                     )
-                    Text(
-                        text = tab.label,
-                        style = CadenceType.micro.copy(
-                            fontWeight = if (activeNow) FontWeight.Bold else FontWeight.SemiBold
-                        ),
-                        color = if (activeNow) CadenceColors.OnBrand else CadenceColors.Fg2,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    // The icon of the tab just chosen gives a small bounce as
+                    // the pill arrives under it - the bar's way of saying
+                    // "this one".
+                    val iconScale = remember { Animatable(1f) }
+                    LaunchedEffect(activeNow) {
+                        if (activeNow && !reduceMotion) {
+                            iconScale.snapTo(0.78f)
+                            iconScale.animateTo(1f, SlateMotion.Pop)
+                        }
+                    }
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                            ) {
+                                if (!activeNow) haptics.tick()
+                                onTabSelected(tab.id)
+                            }
+                            .padding(vertical = Spacing.s2, horizontal = Spacing.s1),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Icon(
+                            imageVector = tab.icon,
+                            contentDescription = tab.label,
+                            tint = tint,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .graphicsLayer {
+                                    scaleX = iconScale.value
+                                    scaleY = iconScale.value
+                                }
+                        )
+                        Text(
+                            text = tab.label,
+                            style = CadenceType.micro.copy(
+                                fontWeight = if (activeNow) FontWeight.Bold else FontWeight.SemiBold
+                            ),
+                            color = tint,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }

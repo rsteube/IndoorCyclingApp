@@ -39,7 +39,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,7 +46,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -56,6 +54,7 @@ import androidx.compose.ui.unit.sp
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.rememberReducedMotion
 
 /**
  * Pairing chrome, shared by the trainer, heart-rate and controller screens.
@@ -150,23 +149,6 @@ private fun ScanRing() {
             useCenter = false,
             style = Stroke(width = stroke, cap = StrokeCap.Round)
         )
-    }
-}
-
-/**
- * Whether the device has animations turned off system-wide. Compose has no
- * reduced-motion flag of its own, so this reads the same global the platform
- * animators read.
- */
-@Composable
-fun rememberReducedMotion(): Boolean {
-    val context = LocalContext.current
-    return remember(context) {
-        android.provider.Settings.Global.getFloat(
-            context.contentResolver,
-            android.provider.Settings.Global.ANIMATOR_DURATION_SCALE,
-            1f
-        ) == 0f
     }
 }
 

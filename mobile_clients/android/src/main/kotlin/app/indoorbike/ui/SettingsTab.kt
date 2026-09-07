@@ -105,6 +105,9 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.SlateMotion
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.animateColorAsState
 import kotlinx.coroutines.launch
 
 private enum class DeviceSheetTarget { Trainer, Hrm, Controller }
@@ -713,13 +716,7 @@ private fun WeightRow() {
                         modifier = Modifier
                             .clip(RoundedCornerShape(Radii.md))
                             .background(CadenceColors.Bg2)
-                            .then(
-                                if (focused) Modifier.border(
-                                    2.dp,
-                                    CadenceColors.Fg1,
-                                    RoundedCornerShape(Radii.md)
-                                ) else Modifier
-                            )
+                            .border(2.dp, focusRingColor(focused), RoundedCornerShape(Radii.md))
                             .padding(horizontal = Spacing.s4, vertical = 10.dp)
                     ) {
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
@@ -739,6 +736,21 @@ private fun WeightRow() {
             )
         }
     }
+}
+
+/**
+ * The 2 dp focus ring, faded in and out rather than switched: the ring
+ * arriving is what tells the rider the field took the tap, and a fade reads
+ * as the field lighting up where a snap reads as a redraw.
+ */
+@Composable
+private fun focusRingColor(focused: Boolean): Color {
+    val color by animateColorAsState(
+        targetValue = if (focused) CadenceColors.Fg1 else Color.Transparent,
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "focusRing",
+    )
+    return color
 }
 
 private fun formatWeightForInput(kg: Float): String {
@@ -851,13 +863,7 @@ private fun FtpRow() {
                         modifier = Modifier
                             .clip(RoundedCornerShape(Radii.md))
                             .background(CadenceColors.Bg2)
-                            .then(
-                                if (focused) Modifier.border(
-                                    2.dp,
-                                    CadenceColors.Fg1,
-                                    RoundedCornerShape(Radii.md)
-                                ) else Modifier
-                            )
+                            .border(2.dp, focusRingColor(focused), RoundedCornerShape(Radii.md))
                             .padding(horizontal = Spacing.s4, vertical = 10.dp)
                     ) {
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
@@ -989,13 +995,7 @@ private fun MaxHrRow() {
                         modifier = Modifier
                             .clip(RoundedCornerShape(Radii.md))
                             .background(CadenceColors.Bg2)
-                            .then(
-                                if (focused) Modifier.border(
-                                    2.dp,
-                                    CadenceColors.Fg1,
-                                    RoundedCornerShape(Radii.md)
-                                ) else Modifier
-                            )
+                            .border(2.dp, focusRingColor(focused), RoundedCornerShape(Radii.md))
                             .padding(horizontal = Spacing.s4, vertical = 10.dp)
                     ) {
                         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {

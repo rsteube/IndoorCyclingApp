@@ -21,8 +21,13 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.slideInVertically
+import androidx.compose.ui.unit.IntOffset
+import androidx.navigation3.runtime.NavEntry
+import kotlin.math.sign
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -349,20 +354,76 @@ class MainActivity : ComponentActivity() {
 
 /**
  * Switching tabs is a move between peers, not a move deeper, so the tab roots
- * cross-fade instead of pushing. A push would claim a hierarchy the tab bar
- * does not have, and it reads as "you went forward" when you went sideways.
+ * do not push. They do slide, a little, in the direction the rider moved along
+ * the bar: choosing a tab to the right brings the new screen in from the
+ * right. It is the smallest hint that the four tabs sit side by side, and it
+ * agrees with the pill that just slid the same way underneath them.
+ *
+ * Anything that is not a tab-to-tab move - a detail screen popping back to a
+ * tab root - falls through to the ordinary push and pop.
  */
 private val TabTransition: Map<String, Any> =
-    NavDisplay.transitionSpec {
-        fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) togetherWith
-            fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing))
-    } + NavDisplay.popTransitionSpec {
-        fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) togetherWith
-            fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing))
-    } + NavDisplay.predictivePopTransitionSpec {
-        fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) togetherWith
-            fadeOut(tween(SlateMotion.Base, easing = SlateMotion.Easing))
-    }
+    NavDisplay.transitionSpec { tabTransform(pop = false) } +
+        NavDisplay.popTransitionSpec { tabTransform(pop = true) } +
+        NavDisplay.predictivePopTransitionSpec { tabTransform(pop = true) }
+
+/**
+ * Which tab, if any, an entry is. NavEntry keeps its key to itself and exposes
+ * a content key, which by default is the key or its string form, so both are
+ * accepted.
+ */
+private fun tabIndex(entry: Any?): Int {
+    val contentKey = (entry as? NavEntry<*>)?.contentKey ?: return -1
+    return TOP_LEVEL_ROUTES.keys.indexOfFirst { it == contentKey || it.toString() == contentKey.toString() }
+}
+
+private fun AnimatedContentTransitionScope<*>.tabTransform(pop: Boolean): ContentTransform {
+    val from = tabIndex(initialState)
+    val to = tabIndex(targetState)
+    if (from < 0 || to < 0) return if (pop) popTransform() else pushTransform()
+    val dir = (to - from).sign
+    val slide = tween<IntOffset>(SlateMotion.Base, easing = SlateMotion.Easing)
+    val fade = tween<Float>(SlateMotion.Base, easing = SlateMotion.Easing)
+    return (slideInHorizontally(slide) { dir * it / 14 } + fadeIn(fade)) togetherWith
+        (slideOutHorizontally(slide) { -dir * it / 14 } +
+            fadeOut(tween(SlateMotion.Fast, easing = SlateMotion.Easing)))
+}
+
+/**
+ * Going deeper pushes the new screen in from the trailing edge while the one
+ * underneath slips a little the other way and dims; coming back reverses it,
+ * the screen underneath returning from where it went. The two offsets are
+ * unequal on purpose - the screen on top travels further than the one below -
+ * which is what makes the pair read as layers rather than as two panels on a
+ * belt. The default was a cross-fade in both directions, which said that the
+ * screen changed but not whether the rider went in or came out.
+ */
+private fun pushTransform(): ContentTransform {
+    val slide = tween<IntOffset>(SlateMotion.Base, easing = SlateMotion.Easing)
+    val fade = tween<Float>(SlateMotion.Base, easing = SlateMotion.Easing)
+    return (slideInHorizontally(slide) { it / 6 } + fadeIn(fade)) togetherWith
+        (slideOutHorizontally(slide) { -it / 10 } +
+            fadeOut(tween(SlateMotion.Fast, easing = SlateMotion.Easing)))
+}
+
+/**
+ * [edge] is set when a back gesture is driving the pop frame by frame: the
+ * screen then follows the finger off whichever edge it started from, so the
+ * rider sees what they are going back to before they commit.
+ */
+private fun popTransform(edge: Int? = null): ContentTransform {
+    val slide = tween<IntOffset>(SlateMotion.Base, easing = SlateMotion.Easing)
+    val fade = tween<Float>(SlateMotion.Base, easing = SlateMotion.Easing)
+    val towardsLeft = edge == NavigationEvent.EDGE_RIGHT
+    return (slideInHorizontally(slide) { if (towardsLeft) it / 10 else -it / 10 } + fadeIn(fade)) togetherWith
+        (slideOutHorizontally(slide) {
+            when {
+                edge == null -> it / 6
+                towardsLeft -> -it / 4
+                else -> it / 4
+            }
+        } + fadeOut(fade))
+}
 
 private val TOP_LEVEL_ROUTES = mapOf<NavKey, TabItem>(
     TabRides to TabItem("rides", Icons.AutoMirrored.Outlined.DirectionsBike, "Ride"),
@@ -685,63 +746,11 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 CompositionLocalProvider(LocalTabBarHeight provides tabBarHeight) {
                     NavDisplay(
                         entries = navigationState.toDecoratedEntries(entryProvider),
-                        // Going deeper pushes the new screen in from the
-                        // trailing edge; coming back sends it out the way it
-                        // came. The default is a cross-fade in both directions,
-                        // which tells a rider that the screen changed but not
-                        // whether they went in or came out - the one thing the
-                        // animation is there to say.
-                        transitionSpec = {
-                            (
-                                slideInHorizontally(
-                                    animationSpec = tween(
-                                        SlateMotion.Base,
-                                        easing = SlateMotion.Easing
-                                    ),
-                                    initialOffsetX = { it / 6 }
-                                ) + fadeIn(
-                                    tween(SlateMotion.Base, easing = SlateMotion.Easing)
-                                )
-                            ) togetherWith fadeOut(
-                                tween(SlateMotion.Fast, easing = SlateMotion.Easing)
-                            )
-                        },
-                        popTransitionSpec = {
-                            fadeIn(
-                                tween(SlateMotion.Base, easing = SlateMotion.Easing)
-                            ) togetherWith (
-                                slideOutHorizontally(
-                                    animationSpec = tween(
-                                        SlateMotion.Base,
-                                        easing = SlateMotion.Easing
-                                    ),
-                                    targetOffsetX = { it / 6 }
-                                ) + fadeOut(
-                                    tween(SlateMotion.Base, easing = SlateMotion.Easing)
-                                )
-                            )
-                        },
-                        // A back gesture drives this one frame by frame, so the
-                        // screen follows the finger off whichever edge it came
-                        // from and the rider can see what they are going back to
-                        // before they commit.
-                        predictivePopTransitionSpec = { edge ->
-                            fadeIn(
-                                tween(SlateMotion.Base, easing = SlateMotion.Easing)
-                            ) togetherWith (
-                                slideOutHorizontally(
-                                    animationSpec = tween(
-                                        SlateMotion.Base,
-                                        easing = SlateMotion.Easing
-                                    ),
-                                    targetOffsetX = {
-                                        if (edge == NavigationEvent.EDGE_RIGHT) -it / 4 else it / 4
-                                    }
-                                ) + fadeOut(
-                                    tween(SlateMotion.Base, easing = SlateMotion.Easing)
-                                )
-                            )
-                        },
+                        // Push, pop and the gesture-driven pop: see the three
+                        // transforms above the navigator.
+                        transitionSpec = { pushTransform() },
+                        popTransitionSpec = { popTransform() },
+                        predictivePopTransitionSpec = { edge -> popTransform(edge) },
                         onBack = { navigator.goBack() }
                     )
                 }

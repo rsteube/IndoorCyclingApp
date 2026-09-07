@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -67,7 +68,9 @@ import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.rememberReducedMotion
 import kotlin.math.roundToInt
 
 /**
@@ -263,14 +266,24 @@ private fun LevelCard(
     }
 }
 
-/** The level number on a plain Bg2 disc, popping in with the entry animation. */
+/**
+ * The level number on a plain Bg2 disc. It springs in with a touch of
+ * overshoot - the one thing on this card allowed to bounce, because it is the
+ * rank, and a rank should land with some weight.
+ */
 @Composable
 private fun LevelMedallion(level: Int, entry: Float) {
-    val pop = 0.7f + 0.3f * entry
+    val reduce = rememberReducedMotion()
+    val pop = remember { Animatable(if (reduce) 1f else 0.6f) }
+    LaunchedEffect(level, reduce) {
+        if (reduce) { pop.snapTo(1f); return@LaunchedEffect }
+        pop.snapTo(0.6f)
+        pop.animateTo(1f, SlateMotion.Pop)
+    }
     Box(
         modifier = Modifier
             .size(64.dp)
-            .scale(pop)
+            .scale(pop.value)
             .clip(CircleShape)
             .background(CadenceColors.Bg2),
         contentAlignment = Alignment.Center
@@ -475,10 +488,24 @@ private fun BadgeTile(
     modifier: Modifier = Modifier,
 ) {
     val unlocked = earned != null
-    val pop = 0.85f + 0.15f * appear
+    // Earned tiles spring in a size up from small with a little overshoot;
+    // locked ones simply fade to their place, since an empty slot has nothing
+    // to celebrate.
+    val reduce = rememberReducedMotion()
+    val pop = remember { Animatable(if (reduce || !unlocked) 1f else 0.8f) }
+    LaunchedEffect(unlocked, reduce) {
+        if (reduce || !unlocked) { pop.snapTo(1f); return@LaunchedEffect }
+        pop.snapTo(0.8f)
+        pop.animateTo(1f, SlateMotion.Pop)
+    }
     Column(
         modifier = modifier
-            .scale(pop)
+            .graphicsLayer {
+                alpha = appear
+                val s = pop.value
+                scaleX = s
+                scaleY = s
+            }
             .clip(RoundedCornerShape(Radii.lg))
             .then(
                 if (unlocked) Modifier.background(CadenceColors.Bg1)

@@ -15,12 +15,16 @@
  */
 package app.indoorbike.ui.screens
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -51,13 +55,25 @@ fun RidgeTimeline(
     modifier: Modifier = Modifier,
     height: Dp = 56.dp,
 ) {
+    // The session ticks once a second, so drawn straight the cursor would hop
+    // a step at a time. A linear second-long glide between ticks keeps it
+    // rolling at the pace of the ride; on a skip it covers the distance in the
+    // same second, which reads as a fast slide rather than a teleport.
+    val segments = workout.segments
+    val totalSeconds = segments.sumOf { it.lengthInSeconds }.coerceAtLeast(1)
+    val elapsedTotal = segments.take(currentSegIdx).sumOf { it.lengthInSeconds } + elapsedInSeg
+    val targetProgress = (elapsedTotal.toFloat() / totalSeconds).coerceIn(0f, 1f)
+    val progress by animateFloatAsState(
+        targetValue = targetProgress,
+        animationSpec = tween(durationMillis = 1000, easing = LinearEasing),
+        label = "timelineCursor",
+    )
+
     Box(modifier = modifier.fillMaxWidth().height(height)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val w = size.width
             val h = size.height
-            val segments = workout.segments
             if (segments.isEmpty()) return@Canvas
-            val totalSeconds = segments.sumOf { it.lengthInSeconds }.coerceAtLeast(1)
             val maxPct = (segments.maxOfOrNull { it.powerPercentFTP } ?: 100).coerceAtLeast(60)
             val gap = 2.dp.toPx()
             val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
@@ -82,9 +98,6 @@ fun RidgeTimeline(
                 )
             }
 
-            val elapsedTotal =
-                segments.take(currentSegIdx).sumOf { it.lengthInSeconds } + elapsedInSeg
-            val progress = (elapsedTotal.toFloat() / totalSeconds).coerceIn(0f, 1f)
             val cursorWidth = 2.dp.toPx()
             drawRoundRect(
                 color = CadenceColors.Fg1,

@@ -15,6 +15,12 @@
  */
 package app.indoorbike.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -50,7 +57,9 @@ import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.rememberReducedMotion
 
 /**
  * The trainer, heart rate monitor and controller, with what each one is
@@ -154,12 +163,7 @@ private fun DeviceRow(
             )
             Text(text = statusLine, style = CadenceType.small, color = CadenceColors.Fg3)
         }
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(statusColor)
-        )
+        StatusDot(color = statusColor)
         if (showChevron) {
             Spacer(modifier = Modifier.width(6.dp))
             Icon(
@@ -170,6 +174,46 @@ private fun DeviceRow(
             )
         }
     }
+}
+
+/**
+ * The 8 dp dot that carries a device state. It crossfades between colours
+ * rather than snapping, and while it is amber - scanning, connecting - it
+ * breathes, because those are the states in which something is happening
+ * that the rider is waiting on. Green and grey hold still: nothing to wait for.
+ */
+@Composable
+fun StatusDot(color: Color, modifier: Modifier = Modifier) {
+    val shown by animateColorAsState(
+        targetValue = color,
+        animationSpec = tween(SlateMotion.Slow, easing = SlateMotion.Easing),
+        label = "statusDotColor",
+    )
+    val busy = color == CadenceColors.Warning && !rememberReducedMotion()
+    val breath = rememberInfiniteTransition(label = "statusDotBreath")
+    val pulse by breath.animateFloat(
+        initialValue = 0.55f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 700, easing = SlateMotion.Easing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "statusDotPulse",
+    )
+    Box(
+        modifier = modifier
+            .size(8.dp)
+            .graphicsLayer {
+                if (busy) {
+                    alpha = pulse
+                    val s = 0.85f + 0.3f * pulse
+                    scaleX = s
+                    scaleY = s
+                }
+            }
+            .clip(CircleShape)
+            .background(shown)
+    )
 }
 
 // ─── State → label helpers ────────────────────────────────────────────────────

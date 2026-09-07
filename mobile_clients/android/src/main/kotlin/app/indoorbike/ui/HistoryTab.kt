@@ -58,6 +58,10 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.enterReveal
+import app.indoorbike.ui.theme.rememberEntryProgress
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -141,17 +145,25 @@ fun HistoryTab(
                 ),
                 verticalArrangement = Arrangement.spacedBy(Spacing.s3)
             ) {
-                item { TotalsCard(totalRides = sessions.size, totalSeconds = totalSeconds, totalKj = totalKj) }
+                item {
+                    Box(Modifier.enterReveal(index = 0)) {
+                        TotalsCard(totalRides = sessions.size, totalSeconds = totalSeconds, totalKj = totalKj)
+                    }
+                }
 
-                grouped.forEach { (label, list) ->
+                grouped.forEachIndexed { groupIndex, (label, list) ->
                     item(key = "h-$label") {
-                        WeekHeader(label = label, sessions = list)
+                        WeekHeader(
+                            label = label,
+                            sessions = list,
+                            modifier = Modifier.enterReveal(index = 1 + groupIndex),
+                        )
                     }
                     // A week is one card. Rides inside it are rows of that
                     // week, not seven separate objects that happen to be
                     // adjacent.
                     item(key = "w-$label") {
-                        ListCard {
+                        ListCard(modifier = Modifier.enterReveal(index = 1 + groupIndex)) {
                             list.forEachIndexed { index, session ->
                                 SessionRow(
                                     session = session,
@@ -173,18 +185,30 @@ fun HistoryTab(
 
 @Composable
 private fun TotalsCard(totalRides: Int, totalSeconds: Long, totalKj: Long) {
+    // The three totals count up to what they are. A new ride replays it, and
+    // that replay - the numbers climbing past where they were - is the small
+    // reward for having added one.
+    val entry by rememberEntryProgress(key = totalRides, delayMillis = 120)
     SlateCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
         ) {
-            Stat(label = "Rides", value = totalRides.toString(), modifier = Modifier.weight(1f))
             Stat(
-                label = "Time",
-                value = durationLabelLong(totalSeconds),
+                label = "Rides",
+                value = (totalRides * entry).roundToInt().toString(),
                 modifier = Modifier.weight(1f)
             )
-            Stat(label = "kJ", value = totalKj.toString(), modifier = Modifier.weight(1f))
+            Stat(
+                label = "Time",
+                value = durationLabelLong((totalSeconds * entry).roundToLong()),
+                modifier = Modifier.weight(1f)
+            )
+            Stat(
+                label = "kJ",
+                value = (totalKj * entry).roundToLong().toString(),
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }
@@ -194,12 +218,12 @@ private fun TotalsCard(totalRides: Int, totalSeconds: Long, totalKj: Long) {
  * so each group answers "how much did I do that week?" without opening rides.
  */
 @Composable
-private fun WeekHeader(label: String, sessions: List<WorkoutSession>) {
+private fun WeekHeader(label: String, sessions: List<WorkoutSession>, modifier: Modifier = Modifier) {
     val rides = sessions.size
     val secs = sessions.sumOf { it.durationSeconds }
     val kj = sessions.sumOf { (it.avgPower * it.durationSeconds) / 1000L }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(start = Spacing.s1, end = Spacing.s1, top = Spacing.s3, bottom = 2.dp),
         verticalAlignment = Alignment.Bottom

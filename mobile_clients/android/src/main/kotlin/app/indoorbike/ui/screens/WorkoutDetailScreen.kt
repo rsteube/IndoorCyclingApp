@@ -15,8 +15,11 @@
  */
 package app.indoorbike.ui.screens
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -87,7 +90,12 @@ import app.indoorbike.ui.components.ZoneBadge
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.enterReveal
+import app.indoorbike.ui.theme.rememberEntryProgress
+import app.indoorbike.ui.theme.rememberHaptics
+import app.indoorbike.ui.theme.rememberPopOnChange
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.workout.WorkoutSummary
@@ -170,17 +178,30 @@ fun WorkoutDetailScreen(
                     // the workout isn't local yet, so toggling a favourite or
                     // renaming has nothing to write against.
                     if (!isRemoteAdd) {
-                        IconBtn(
-                            icon = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                            contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
-                            // Full-strength white when starred, secondary when
-                            // not. With no accent left, the filled glyph and the
-                            // step up in contrast carry the state on their own.
-                            tint = if (isFavourite) CadenceColors.Fg1 else CadenceColors.Fg2,
-                            onClick = {
-                                container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
+                        // The star pops when it changes, with a tick under the
+                        // finger: favouriting is a small decision and gets a
+                        // small reward.
+                        val haptics = rememberHaptics()
+                        val starScale by rememberPopOnChange(isFavourite)
+                        Box(
+                            Modifier.graphicsLayer {
+                                scaleX = starScale
+                                scaleY = starScale
                             }
-                        )
+                        ) {
+                            IconBtn(
+                                icon = if (isFavourite) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                                contentDescription = if (isFavourite) "Remove from favourites" else "Add to favourites",
+                                // Full-strength white when starred, secondary when
+                                // not. With no accent left, the filled glyph and the
+                                // step up in contrast carry the state on their own.
+                                tint = if (isFavourite) CadenceColors.Fg1 else CadenceColors.Fg2,
+                                onClick = {
+                                    haptics.tick()
+                                    container.userSettings.setWorkoutFavourite(workout.id, !isFavourite)
+                                }
+                            )
+                        }
                     }
                     if (!isRemoteAdd && isImported) {
                         Box {
@@ -222,15 +243,23 @@ fun WorkoutDetailScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3)
         ) {
-            item { ZoneProfileCard(summary) }
+            item { Box(Modifier.enterReveal(index = 0)) { ZoneProfileCard(summary) } }
             item {
                 SectionLabel(
                     text = "Steps · $totalSteps",
-                    modifier = Modifier.padding(top = Spacing.s3)
+                    modifier = Modifier.padding(top = Spacing.s3).enterReveal(index = 1)
                 )
             }
             item {
-                ListCard {
+                // Expanding the steps grows the card rather than replacing it,
+                // so the rows the rider was already reading stay where they are.
+                ListCard(
+                    modifier = Modifier
+                        .enterReveal(index = 2)
+                        .animateContentSize(
+                            animationSpec = tween(SlateMotion.Slow, easing = SlateMotion.Easing)
+                        )
+                ) {
                     visibleSteps.forEachIndexed { index, segment ->
                         StepRow(segment, ftp)
                         if (index != visibleSteps.lastIndex) CardDivider()
@@ -397,8 +426,16 @@ private fun DeleteWorkoutDialog(
  */
 @Composable
 private fun ZoneProfileCard(summary: WorkoutSummary) {
+    // The card builds itself on arrival: the bars rise left to right, the way
+    // the workout will be ridden, and the four numbers count up beneath them.
+    // One progress drives both so they land together.
+    val entry by rememberEntryProgress(
+        key = summary.workout.id,
+        durationMillis = 800,
+        delayMillis = 140,
+    )
     SlateCard {
-        SteppedZoneChart(summary, chartHeight = 110)
+        SteppedZoneChart(summary, chartHeight = 110, growth = entry)
         Spacer(Modifier.height(Spacing.s5))
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -406,28 +443,39 @@ private fun ZoneProfileCard(summary: WorkoutSummary) {
         ) {
             Stat(
                 label = "NP",
-                value = summary.normalizedPowerWatts.toString(),
+                value = (summary.normalizedPowerWatts * entry).roundToInt().toString(),
                 unit = "W",
                 modifier = Modifier.weight(1f)
             )
-            Stat(label = "TSS", value = summary.tss.toString(), modifier = Modifier.weight(1f))
+            Stat(
+                label = "TSS",
+                value = (summary.tss * entry).roundToInt().toString(),
+                modifier = Modifier.weight(1f)
+            )
             Stat(
                 label = "IF",
-                value = "%.2f".format(summary.intensityFactor),
+                value = "%.2f".format(summary.intensityFactor * entry),
                 modifier = Modifier.weight(1f)
             )
             Stat(
                 label = "kJ",
-                value = summary.kilojoules.toString(),
+                value = (summary.kilojoules * entry).roundToInt().toString(),
                 modifier = Modifier.weight(1f)
             )
         }
     }
 }
 
+/**
+ * [growth] runs 0 → 1 as the chart appears. Each bar starts rising a little
+ * after the one before it, all of them within the first third of the run, so
+ * the shape sweeps in from the left and is complete by the time the numbers
+ * under it have landed.
+ */
 @Composable
-private fun SteppedZoneChart(summary: WorkoutSummary, chartHeight: Int) {
-    val maxPct = (summary.workout.segments.maxOfOrNull { it.powerPercentFTP } ?: 100).coerceAtLeast(60)
+private fun SteppedZoneChart(summary: WorkoutSummary, chartHeight: Int, growth: Float = 1f) {
+    val segments = summary.workout.segments
+    val maxPct = (segments.maxOfOrNull { it.powerPercentFTP } ?: 100).coerceAtLeast(60)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -435,13 +483,15 @@ private fun SteppedZoneChart(summary: WorkoutSummary, chartHeight: Int) {
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
-        summary.workout.segments.forEach { seg ->
+        segments.forEachIndexed { index, seg ->
             val zone = ZonePalette.fromFtpPercent(seg.powerPercentFTP)
+            val slotStart = (index.toFloat() / segments.size.coerceAtLeast(1)) * 0.35f
+            val local = ((growth - slotStart) / (1f - slotStart)).coerceIn(0f, 1f)
             val heightFraction = (seg.powerPercentFTP.toFloat() / maxPct).coerceIn(0.05f, 1f)
             Box(
                 modifier = Modifier
                     .weight(seg.lengthInSeconds.toFloat().coerceAtLeast(1f))
-                    .fillMaxHeight(heightFraction)
+                    .fillMaxHeight((heightFraction * local).coerceAtLeast(0.01f))
                     .background(zone.color, RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
             )
         }

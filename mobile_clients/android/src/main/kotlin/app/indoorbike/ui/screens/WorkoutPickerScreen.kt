@@ -20,9 +20,13 @@ import android.Manifest
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -109,7 +113,11 @@ import app.indoorbike.ui.components.dashedOutline
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.enterReveal
+import app.indoorbike.ui.theme.rememberHaptics
+import app.indoorbike.ui.theme.rememberPopOnChange
 import app.indoorbike.ui.workout.zoneSegments
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -246,7 +254,7 @@ fun WorkoutPickerScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item(key = "search") {
-                Column {
+                Column(Modifier.enterReveal(index = 0)) {
                     SearchField(
                         query = searchQuery,
                         onQueryChange = { searchQuery = it },
@@ -279,7 +287,12 @@ fun WorkoutPickerScreen(
                 // into forty floating objects; this way the list is one object
                 // and the rows are its contents.
                 item(key = "workout-list") {
-                    ListCard {
+                    Box(Modifier.enterReveal(index = 1)) {
+                    // A filter that drops rows shrinks the card to fit rather
+                    // than cutting it, so the list is seen to change shape.
+                    ListCard(modifier = Modifier.animateContentSize(
+                        animationSpec = tween(SlateMotion.Slow, easing = SlateMotion.Easing)
+                    )) {
                         visible.forEachIndexed { index, summary ->
                             val starred = summary.workout.id in favouriteIds
                             WorkoutRow(
@@ -295,13 +308,16 @@ fun WorkoutPickerScreen(
                             if (index != visible.lastIndex) CardDivider()
                         }
                     }
+                    }
                 }
             }
 
             // Trailing "add more" card. Catches riders who scrolled the whole
             // list looking for something that is not there yet.
             item(key = "add-more-workouts") {
-                AddMoreWorkoutsCard(onClick = onOpenLibrary)
+                Box(Modifier.enterReveal(index = 2)) {
+                    AddMoreWorkoutsCard(onClick = onOpenLibrary)
+                }
             }
         }
     }
@@ -428,19 +444,34 @@ private fun WorkoutRow(
             )
         }
         // 36dp hit target; the row's own clickable is not triggered because
-        // the inner clickable consumes the tap.
+        // the inner clickable consumes the tap. The star pops when it changes,
+        // with a tick under the finger: favouriting is a small decision and
+        // deserves a small reward.
+        val haptics = rememberHaptics()
+        val starScale by rememberPopOnChange(starred)
         Box(
             modifier = Modifier
                 .size(36.dp)
                 .clip(CircleShape)
-                .clickable(onClick = onToggleStar),
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) {
+                    haptics.tick()
+                    onToggleStar()
+                },
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = if (starred) Icons.Filled.Star else Icons.Outlined.StarBorder,
                 contentDescription = if (starred) "Remove from favourites" else "Add to favourites",
                 tint = if (starred) CadenceColors.Fg1 else CadenceColors.Fg3,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        scaleX = starScale
+                        scaleY = starScale
+                    }
             )
         }
     }

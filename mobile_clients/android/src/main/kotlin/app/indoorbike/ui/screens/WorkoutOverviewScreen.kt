@@ -72,8 +72,12 @@ import app.indoorbike.ui.components.Stat
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.enterReveal
+import app.indoorbike.ui.theme.rememberEntryProgress
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
+import kotlin.math.roundToInt
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -189,6 +193,18 @@ fun WorkoutOverviewScreen(
             timeInZoneSeconds(telemetry.map { it.power }, ftp)
         }
 
+        // This is the reward screen, so it is allowed to take a moment. The
+        // two headline numbers count up first; the adherence chart then draws
+        // the ride over its plan, bars first and the rider's line after, so
+        // the eye is led from what was asked to what was done.
+        val entry by rememberEntryProgress(key = activeSession.id, delayMillis = 150)
+        val chartReveal by rememberEntryProgress(
+            key = activeSession.id,
+            durationMillis = 1300,
+            delayMillis = 350,
+            easing = SlateMotion.Easing,
+        )
+
         // Helper that runs the actual upload — used by both the manual button
         // and the auto-upload-on-arrival LaunchedEffect below. Posts a toast
         // with the result; doesn't block navigation.
@@ -283,7 +299,10 @@ fun WorkoutOverviewScreen(
 
             // The two numbers a rider looks for first, at a size nothing else
             // on the screen competes with.
-            SlateCard(padding = PaddingValues(Spacing.s6)) {
+            SlateCard(
+                padding = PaddingValues(Spacing.s6),
+                modifier = Modifier.enterReveal(index = 0),
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -291,11 +310,11 @@ fun WorkoutOverviewScreen(
                 ) {
                     HeroStat(
                         label = "Duration",
-                        value = formatClock(activeSession.durationSeconds.toInt())
+                        value = formatClock((activeSession.durationSeconds * entry).roundToInt())
                     )
                     HeroStat(
                         label = "Avg power",
-                        value = activeSession.avgPower.toString(),
+                        value = (activeSession.avgPower * entry).roundToInt().toString(),
                         unit = "W",
                         alignEnd = true
                     )
@@ -307,7 +326,7 @@ fun WorkoutOverviewScreen(
             // Everything else, in one grid. Nothing here is tinted: a heart
             // rate is not more urgent than a cadence, and colouring it red only
             // made the card look like a warning.
-            SlateCard {
+            SlateCard(modifier = Modifier.enterReveal(index = 1)) {
                 StatGrid(
                     buildList {
                         add(Triple("Cadence", activeSession.avgCadence.toString(), "rpm"))
@@ -334,7 +353,7 @@ fun WorkoutOverviewScreen(
                     route = riddenRoute,
                     riddenMeters = activeSession.routeDistanceMeters,
                     elevationGainMeters = activeSession.routeElevationGainMeters,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().enterReveal(index = 2),
                 )
             }
 
@@ -343,7 +362,7 @@ fun WorkoutOverviewScreen(
             // weight set, since there is then nothing to estimate from.
             if (stats.distanceMeters > 0) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
-                SlateCard {
+                SlateCard(modifier = Modifier.enterReveal(index = 2)) {
                     StatGrid(
                         listOf(
                             Triple("Distance", "%.2f".format(stats.distanceMeters / 1000f), "km"),
@@ -369,7 +388,7 @@ fun WorkoutOverviewScreen(
                 simulationRouteId(activeSession.workoutId) == null
             if (hadAPlan) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
-                SlateCard {
+                SlateCard(modifier = Modifier.enterReveal(index = 3)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -392,7 +411,8 @@ fun WorkoutOverviewScreen(
                             ChartOverlay(
                                 workout = targetWorkout!!,
                                 telemetry = telemetry,
-                                ftp = ftp
+                                ftp = ftp,
+                                reveal = chartReveal,
                             )
                         } else {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -405,34 +425,42 @@ fun WorkoutOverviewScreen(
 
             if (telemetry.isNotEmpty() && ttz.any { it > 0 }) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
-                TimeInZoneCard(ttzSeconds = ttz, totalSeconds = activeSession.durationSeconds.toInt())
+                Box(Modifier.enterReveal(index = 4)) {
+                    TimeInZoneCard(ttzSeconds = ttz, totalSeconds = activeSession.durationSeconds.toInt())
+                }
             }
 
             if (telemetry.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
-                ExportFileCard(onExport = { showExportSheet = true })
+                Box(Modifier.enterReveal(index = 5)) {
+                    ExportFileCard(onExport = { showExportSheet = true })
+                }
             }
 
             if (intervalsConfigured) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
-                UploadCard(
-                    service = "Intervals.icu",
-                    uploading = uploading,
-                    autoEnabled = autoUpload,
-                    uploadedEpoch = activeSession.intervalsUploadedEpoch,
-                    onUpload = { runIntervalsUpload() }
-                )
+                Box(Modifier.enterReveal(index = 5)) {
+                    UploadCard(
+                        service = "Intervals.icu",
+                        uploading = uploading,
+                        autoEnabled = autoUpload,
+                        uploadedEpoch = activeSession.intervalsUploadedEpoch,
+                        onUpload = { runIntervalsUpload() }
+                    )
+                }
             }
 
             if (ftConfigured) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
-                UploadCard(
-                    service = "FitTrackee",
-                    uploading = ftUploading,
-                    autoEnabled = ftAutoUpload,
-                    uploadedEpoch = activeSession.fitTrackeeUploadedEpoch,
-                    onUpload = { runFitTrackeeUpload() }
-                )
+                Box(Modifier.enterReveal(index = 5)) {
+                    UploadCard(
+                        service = "FitTrackee",
+                        uploading = ftUploading,
+                        autoEnabled = ftAutoUpload,
+                        uploadedEpoch = activeSession.fitTrackeeUploadedEpoch,
+                        onUpload = { runFitTrackeeUpload() }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(Spacing.s6))
@@ -541,17 +569,21 @@ private fun HeroStat(
 @Composable
 private fun StatGrid(entries: List<Triple<String, String, String?>>) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.s4)) {
-        entries.chunked(3).forEach { row ->
+        entries.chunked(3).forEachIndexed { rowIndex, row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
             ) {
-                row.forEach { (label, value, unit) ->
+                row.forEachIndexed { colIndex, (label, value, unit) ->
+                    // Reading order, one after the other: the grid fills the
+                    // way the eye scans it.
                     Stat(
                         label = label,
                         value = value,
                         unit = unit,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .enterReveal(index = 1 + rowIndex * 3 + colIndex, distance = 8.dp)
                     )
                 }
                 // Keep a short last row aligned with the columns above it.
@@ -568,6 +600,14 @@ private fun StatGrid(entries: List<Triple<String, String, String?>>) {
  */
 @Composable
 private fun TimeInZoneCard(ttzSeconds: IntArray, totalSeconds: Int) {
+    // The bars rise Z1 to Z7 in turn, the same left-to-right sweep as the
+    // zone profile on the workout screen, so the two charts feel like kin.
+    val growth by rememberEntryProgress(
+        key = totalSeconds,
+        durationMillis = 900,
+        delayMillis = 450,
+        easing = SlateMotion.Easing,
+    )
     SlateCard {
         Text(text = "Time in zone", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
         Spacer(modifier = Modifier.height(Spacing.s4))
@@ -581,6 +621,8 @@ private fun TimeInZoneCard(ttzSeconds: IntArray, totalSeconds: Int) {
         ) {
             ZonePalette.entries.forEachIndexed { idx, zone ->
                 val secs = ttzSeconds.getOrElse(idx) { 0 }
+                val slotStart = (idx / 7f) * 0.5f
+                val local = ((growth - slotStart) / (1f - slotStart)).coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                     contentAlignment = Alignment.BottomCenter
@@ -590,7 +632,10 @@ private fun TimeInZoneCard(ttzSeconds: IntArray, totalSeconds: Int) {
                             .fillMaxWidth()
                             .then(
                                 if (secs > 0)
-                                    Modifier.fillMaxHeight((secs.toFloat() / peak).coerceIn(0.08f, 1f))
+                                    Modifier.fillMaxHeight(
+                                        ((secs.toFloat() / peak).coerceIn(0.08f, 1f) * local)
+                                            .coerceAtLeast(0.02f)
+                                    )
                                 else Modifier.height(4.dp)
                             )
                             .clip(RoundedCornerShape(4.dp))
@@ -627,13 +672,21 @@ private fun TimeInZoneCard(ttzSeconds: IntArray, totalSeconds: Int) {
 fun ChartOverlay(
     workout: Workout,
     telemetry: List<WorkoutTelemetry>,
-    ftp: Int
+    ftp: Int,
+    /**
+     * 0 → 1 as the chart appears: the target bars rise through the first half,
+     * then the rider's line is drawn left to right over them. 1 draws the
+     * finished chart, which is what anything rendering it offscreen wants.
+     */
+    reveal: Float = 1f,
 ) {
     val targetMaxPct = (workout.segments.maxOfOrNull { it.powerPercentFTP } ?: 100).coerceAtLeast(60)
     val telemetryMaxPct = if (ftp > 0) {
         ((telemetry.maxOfOrNull { it.power } ?: 0L).toFloat() / ftp * 100f).toInt()
     } else 0
     val maxChartPct = maxOf(targetMaxPct, telemetryMaxPct).coerceAtLeast(60)
+    val barGrowth = (reveal / 0.45f).coerceIn(0f, 1f)
+    val lineReveal = ((reveal - 0.3f) / 0.7f).coerceIn(0f, 1f)
 
     Box(modifier = Modifier.fillMaxSize()) {
         Row(
@@ -646,7 +699,7 @@ fun ChartOverlay(
                 Box(
                     modifier = Modifier
                         .weight(seg.lengthInSeconds.toFloat().coerceAtLeast(1f))
-                        .fillMaxHeight(h)
+                        .fillMaxHeight((h * barGrowth).coerceAtLeast(0.01f))
                         .background(
                             CadenceColors.Bg2,
                             RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)
@@ -671,9 +724,10 @@ fun ChartOverlay(
             val width = size.width
             val height = size.height
             val points = yFractions.size
-            if (points <= 1) return@Canvas
+            val shown = (points * lineReveal).toInt().coerceAtMost(points)
+            if (points <= 1 || shown <= 1) return@Canvas
             val path = Path()
-            for (i in 0 until points) {
+            for (i in 0 until shown) {
                 val x = (i.toFloat() / (points - 1)) * width
                 val y = yFractions[i] * height
                 if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)

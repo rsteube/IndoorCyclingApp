@@ -43,7 +43,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import app.indoorbike.ui.theme.SlateMotion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -984,12 +987,9 @@ private fun RideHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stateText.orEmpty(),
-                    style = CadenceType.small,
+                RideStateText(
+                    text = stateText,
                     color = stateColor,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
                 )
                 RideClock(elapsed = elapsed, totalDuration = totalDuration, openEnded = openEnded)
@@ -1021,7 +1021,7 @@ private fun RideHeader(
         )
 
         if (stateText != null) {
-            Text(stateText, style = CadenceType.small, color = stateColor, maxLines = 1)
+            RideStateText(text = stateText, color = stateColor)
         }
 
         Spacer(Modifier.weight(1f))
@@ -1038,6 +1038,43 @@ private fun RideHeader(
         RideControls(
             state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
             canEndAndSave, onEndAndSave, canSkip, compact = false
+        )
+    }
+}
+
+/**
+ * The header's one-line status. It changes between states rather than
+ * snapping - the new line rises in as the old one sinks out, and the colour
+ * eases from grey to amber - so "Auto-paused" arriving is something the rider
+ * catches happening rather than finds already there.
+ */
+@Composable
+private fun RideStateText(text: String?, color: Color, modifier: Modifier = Modifier) {
+    val tint by animateColorAsState(
+        targetValue = color,
+        animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+        label = "rideStateTint",
+    )
+    AnimatedContent(
+        targetState = text.orEmpty(),
+        transitionSpec = {
+            (fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)) +
+                slideInVertically(tween(SlateMotion.Base, easing = SlateMotion.Easing)) { it / 2 })
+                .togetherWith(
+                    fadeOut(tween(SlateMotion.Fast, easing = SlateMotion.Easing)) +
+                        slideOutVertically(tween(SlateMotion.Fast, easing = SlateMotion.Easing)) { -it / 2 }
+                )
+                .using(SizeTransform(clip = false))
+        },
+        label = "rideState",
+        modifier = modifier,
+    ) { line ->
+        Text(
+            text = line,
+            style = CadenceType.small,
+            color = tint,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         )
     }
 }

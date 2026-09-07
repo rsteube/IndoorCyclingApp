@@ -16,6 +16,9 @@
 package app.indoorbike.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -43,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
@@ -75,10 +79,19 @@ fun ConnectionToastHost(modifier: Modifier = Modifier) {
         }
     }
 
+    // Drops in on a soft spring - a small overshoot past its resting place and
+    // back - so it lands like something set down rather than something that
+    // slid in on rails. Leaves the way it came, quicker and without the bounce.
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn() + slideInVertically { -it },
-        exit = fadeOut() + slideOutVertically { -it },
+        enter = slideInVertically(
+            animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+            initialOffsetY = { -it },
+        ) + fadeIn(tween(SlateMotion.Base, easing = SlateMotion.Easing)),
+        exit = slideOutVertically(
+            animationSpec = tween(SlateMotion.Base, easing = SlateMotion.Easing),
+            targetOffsetY = { -it },
+        ) + fadeOut(tween(SlateMotion.Fast, easing = SlateMotion.Easing)),
         modifier = modifier,
     ) {
         Row(

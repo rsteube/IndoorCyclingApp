@@ -15,8 +15,12 @@
  */
 package app.indoorbike.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -74,8 +78,12 @@ import app.indoorbike.ui.components.SectionLabel
 import app.indoorbike.ui.components.UnfinishedRideBanner
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
+import app.indoorbike.ui.theme.PressScale
 import app.indoorbike.ui.theme.Radii
+import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.enterReveal
+import app.indoorbike.ui.theme.pressScale
 
 /**
  * Home. The question it answers is "what am I riding today?", and nothing else.
@@ -172,12 +180,16 @@ fun HomeScreen(
                 }
             }
 
+            // The three choices arrive one after the other, then the readiness
+            // cards follow. The stagger is what makes the screen read as a
+            // list of options being laid out rather than a wall appearing.
             item(key = "mode-workout") {
                 ModeCard(
                     icon = Icons.AutoMirrored.Outlined.DirectionsBike,
                     title = "Workout",
                     body = "Intervals the trainer holds for you.",
                     onClick = onChooseWorkout,
+                    modifier = Modifier.enterReveal(index = 0),
                 )
             }
             item(key = "mode-route") {
@@ -187,6 +199,7 @@ fun HomeScreen(
                     body = "A real road, with its hills under the wheel.",
                     onClick = onChooseRoute,
                     beta = true,
+                    modifier = Modifier.enterReveal(index = 1),
                 )
             }
             item(key = "mode-free") {
@@ -196,28 +209,35 @@ fun HomeScreen(
                     body = if (isTrainerLive) "No plan. Set the resistance yourself."
                     else "Pair a trainer to ride freely at your own power.",
                     onClick = if (isTrainerLive) onStartFreeRide else onOpenTrainerPairing,
+                    modifier = Modifier.enterReveal(index = 2),
                 )
             }
 
             item(key = "devices-head") {
-                SectionLabel("Before you start", Modifier.padding(top = Spacing.s5))
+                SectionLabel(
+                    "Before you start",
+                    Modifier.padding(top = Spacing.s5).enterReveal(index = 3),
+                )
             }
             item(key = "devices") {
-                DeviceStatusCard(
-                    onTrainerClick = onOpenTrainerPairing,
-                    onHrmClick = onOpenHrmPairing,
-                    onControllerClick = onOpenControllerPairing,
-                )
+                Box(Modifier.enterReveal(index = 3)) {
+                    DeviceStatusCard(
+                        onTrainerClick = onOpenTrainerPairing,
+                        onHrmClick = onOpenHrmPairing,
+                        onControllerClick = onOpenControllerPairing,
+                    )
+                }
             }
 
             item(key = "repos-head") {
                 SectionLabel(
                     text = "Repositories",
-                    modifier = Modifier.padding(top = Spacing.s5),
+                    modifier = Modifier.padding(top = Spacing.s5).enterReveal(index = 4),
                     hint = if (refreshing) "Checking…" else null,
                 )
             }
             item(key = "repos") {
+                Box(Modifier.enterReveal(index = 4)) {
                 RepositoriesCard(
                     followed = followed.map { it.id to it.name },
                     status = repoStatus,
@@ -227,6 +247,7 @@ fun HomeScreen(
                     },
                     onManage = onOpenRepositories,
                 )
+                }
             }
         }
     }
@@ -242,13 +263,24 @@ private fun ModeCard(
     onClick: () -> Unit,
     /** Marks a mode still being built, so nobody meets a rough edge unwarned. */
     beta: Boolean = false,
+    modifier: Modifier = Modifier,
 ) {
+    // A card gives a little under the finger and darkens one step, the same
+    // answer every pressable surface in the app gives.
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val bg by animateColorAsState(
+        targetValue = if (pressed) CadenceColors.Bg2 else CadenceColors.Bg1,
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "modeCardBg",
+    )
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
+            .pressScale(interaction, PressScale.Card)
             .clip(RoundedCornerShape(Radii.lg))
-            .background(CadenceColors.Bg1)
-            .clickable(onClick = onClick)
+            .background(bg)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(Spacing.s5),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s4),

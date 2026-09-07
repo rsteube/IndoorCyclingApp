@@ -57,6 +57,10 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import app.indoorbike.ui.theme.SlateMotion
+import app.indoorbike.ui.theme.enterReveal
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 
 @Composable
 fun TrainerPairingScreen(
@@ -273,15 +277,23 @@ private fun DeviceList(devices: List<TrainerCandidate>, onConnect: (TrainerCandi
     // Strongest signal first: the nearest device is almost always the one in
     // the room with the rider, and it gets the white Connect pill to say so.
     val ordered = remember(devices) { devices.sortedByDescending { it.rssi ?: Int.MIN_VALUE } }
-    ListCard {
+    // Devices are found one at a time, and each new row settles in rather
+    // than snapping into a list that was a row shorter a moment ago.
+    ListCard(
+        modifier = Modifier.animateContentSize(
+            animationSpec = tween(SlateMotion.Slow, easing = SlateMotion.Easing)
+        )
+    ) {
         ordered.forEachIndexed { index, device ->
-            PairingDeviceRow(
-                icon = Icons.AutoMirrored.Outlined.BluetoothSearching,
-                name = device.name ?: "Unknown Trainer",
-                subtitle = signalLabel(device.rssi) ?: device.id,
-                primary = index == 0,
-                onConnect = { onConnect(device) }
-            )
+            androidx.compose.foundation.layout.Box(Modifier.enterReveal(index = index)) {
+                PairingDeviceRow(
+                    icon = Icons.AutoMirrored.Outlined.BluetoothSearching,
+                    name = device.name ?: "Unknown Trainer",
+                    subtitle = signalLabel(device.rssi) ?: device.id,
+                    primary = index == 0,
+                    onConnect = { onConnect(device) }
+                )
+            }
             if (index != ordered.lastIndex) CardDivider()
         }
     }
