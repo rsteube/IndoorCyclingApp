@@ -270,7 +270,13 @@ private fun PairingCodeCard(code: String) {
             textAlign = TextAlign.Center,
         )
         Text(
-            text = "New for every ride. It is never stored and never reused.",
+            // Debug builds pin the code, so the release copy would be a lie
+            // there - and a developer who read it and then wondered why the
+            // same code kept working would be right to distrust the rest.
+            text = if (app.indoorbike.BuildConfig.DEBUG)
+                "Fixed in debug builds so you can stop reading it. Release builds " +
+                    "use a fresh code for every ride."
+            else "New for every ride. It is never stored and never reused.",
             style = CadenceType.small,
             color = CadenceColors.Fg3,
             modifier = Modifier.padding(top = Spacing.s2),

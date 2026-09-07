@@ -128,6 +128,10 @@ want to test how your game *feels* rather than how it parses.
 Setup, once: Settings, Devices, Trainer, **Use mock trainer** (debug builds only). Then choose
 **Companion** on the Ride tab.
 
+**In a debug build the pairing code is always `AAAAAA`.** Hardcode it in your development
+build and stop reading it off the screen. Release builds generate a fresh one per ride, so do
+not ship a client that assumes it - keep the entry field.
+
 On the companion HUD there is a **DEBUG** strip along the bottom. Expand it and you get:
 
 | Control | What it does |

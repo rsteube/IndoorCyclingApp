@@ -42,9 +42,29 @@ object CompanionPairing {
     private const val ALPHABET = "ABCDEFGHJKLMNPQRTUVWXY2346789"
     const val CODE_LENGTH = 6
 
-    /** A fresh pairing code. One per ride: it is not stored and not reused. */
-    fun newToken(): String =
-        (1..CODE_LENGTH).map { ALPHABET[Random.nextInt(ALPHABET.length)] }.joinToString("")
+    /**
+     * The code a debug build always uses.
+     *
+     * A companion developer pairs dozens of times an hour, and reading six
+     * fresh characters off a screen each time is friction with no payoff: a
+     * debug build is a development tool on a development network, and the code
+     * is protecting a mock trainer from a machine sitting next to it.
+     *
+     * It is emphatically *not* a fallback or an override. Release builds never
+     * reach this branch, and because [BuildConfig.DEBUG] is a compile-time
+     * constant R8 removes both the constant and the test from them entirely.
+     */
+    const val DEBUG_TOKEN = "AAAAAA"
+
+    /**
+     * A fresh pairing code. One per ride: it is not stored and not reused.
+     *
+     * Except in a debug build, where it is always [DEBUG_TOKEN].
+     */
+    fun newToken(): String {
+        if (app.indoorbike.BuildConfig.DEBUG) return DEBUG_TOKEN
+        return (1..CODE_LENGTH).map { ALPHABET[Random.nextInt(ALPHABET.length)] }.joinToString("")
+    }
 
     /** A short id for this ride, so a reconnecting companion can tell it is the same one. */
     fun newSessionId(): String =
