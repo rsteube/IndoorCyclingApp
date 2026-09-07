@@ -6,6 +6,28 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.2] (16) - 2026-09-07
+
+### Changed
+
+- **The app answers touch physically.** A press, a chip, a card, a pairing row:
+  all of them now move on a spring rather than a fixed-duration curve, because
+  a finger expects a physical answer and a tween has none. Headline numbers
+  count up to what they are instead of appearing at it, lists reveal in
+  sequence rather than all at once, and the actions that confirm something
+  give a haptic tick. Reduced motion is honoured throughout: turn it on and
+  everything simply arrives.
+- The website moves the same way, on the same curve, and stops if you have
+  asked your browser to reduce motion.
+
+### Fixed
+
+- **The routes list on a repository's community page laid out on top of
+  itself.** Every route drew its shape at the full width of the card and
+  pushed the name, place and figures into a column a few pixels wide, which
+  then spilled outside the card. A repository publishing eighteen routes made
+  a page of it.
+
 ## [2.0.1] (15) - 2026-09-07
 
 ### Changed
