@@ -84,6 +84,31 @@ object CompanionProtocol {
     const val SERVICE_TYPE = "_indoorbike._tcp"
 
     /**
+     * Where the phone broadcasts [CompanionAnnouncement] datagrams, and so the
+     * one port in this protocol that is fixed.
+     *
+     * It has to be: a listener cannot discover the port it should be listening
+     * on. Everything else stays ephemeral, and the WebSocket port travels
+     * inside the announcement.
+     */
+    const val DISCOVERY_PORT = 47601
+
+    /** Marks a datagram as ours, so a listener can ignore whatever else shares the port. */
+    const val DISCOVERY_MAGIC = "indoorbike.companion"
+
+    /** How often the beacon goes out while nothing is driving the ride. */
+    const val DISCOVERY_INTERVAL_MS = 1_000L
+
+    /**
+     * How often it goes out once a controller has connected.
+     *
+     * Slower rather than silent: an observer may still want to find the ride,
+     * but nobody is hunting for a phone that is already busy, and a beacon
+     * every second for the length of a ride is noise on somebody's network.
+     */
+    const val DISCOVERY_INTERVAL_PAIRED_MS = 5_000L
+
+    /**
      * Telemetry rate, matched to the simulation engine's own tick. Anything
      * faster would be inventing data: the physics only moves four times a
      * second, and a companion is expected to interpolate for rendering.

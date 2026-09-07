@@ -71,7 +71,50 @@ frame.
 
 ## 3. Discovery
 
-### 3.1 mDNS / DNS-SD (preferred)
+The phone offers **three** ways to be found, and a companion should support at least the
+UDP beacon and the manual path.
+
+### 3.0 UDP broadcast beacon (easiest)
+
+While the socket is open, the phone broadcasts a JSON datagram to UDP port **47601**. This is
+the only fixed port in the protocol, and it has to be: a listener cannot discover the port it
+should be listening on. Bind to it and read.
+
+```json
+{
+  "t": "indoorbike.companion",
+  "proto": "0.1-0.1",
+  "path": "/companion",
+  "port": 33077,
+  "app": "2.0.2",
+  "session": "8aada0",
+  "name": "Indoor Bike",
+  "paired": false
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `t` | Always `indoorbike.companion`. Ignore datagrams without it |
+| `proto` | Supported range, so you can rule the phone out before connecting |
+| `path` | WebSocket path |
+| `port` | The WebSocket port. Ephemeral, which is why this beacon exists |
+| `app`, `session` | App version, and an id stable for the life of one ride |
+| `name` | What to show in a picker |
+| `paired` | True when a controller already holds this ride. Grey it out |
+
+Rules:
+
+- **The phone's address is the datagram's source address.** It is not in the payload, on
+  purpose: the phone usually has several and cannot know which one you can reach, whereas the
+  source address of a packet that arrived is reachable by construction.
+- **The pairing code is never broadcast.** Discovery answers "which phone"; pairing answers
+  "may you drive it". The rider still types the six characters or scans the QR.
+- Rate is **1 Hz while unpaired, every 5 s once a controller has connected**. Expire an entry
+  you have not heard from in ~15 s.
+- One datagram per network per tick. If you see doubles, dedupe on source address plus `port`.
+
+### 3.1 mDNS / DNS-SD (standard)
 
 - Service type: `_indoorbike._tcp`
 - Service name: `Indoor Bike` (the OS appends a suffix if it collides)

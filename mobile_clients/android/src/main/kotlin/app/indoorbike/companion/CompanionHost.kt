@@ -17,6 +17,7 @@ package app.indoorbike.companion
 
 import android.content.Context
 import app.indoorbike.shared.companion.BikeInfo
+import app.indoorbike.shared.companion.CompanionAnnouncement
 import app.indoorbike.shared.companion.CompanionCodec
 import app.indoorbike.shared.companion.CompanionConfig
 import app.indoorbike.shared.companion.CompanionEffect
@@ -145,6 +146,14 @@ class CompanionHost(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val advertiser = CompanionAdvertiser(appContext)
 
+    /**
+     * The other half of discovery. mDNS is the standard answer; this is the one
+     * a client with no DNS-SD library can consume, which in practice means most
+     * game engines. Neither is load-bearing - the pairing screen always shows
+     * the address and a QR.
+     */
+    private val beacon = CompanionBeacon(scope)
+
     private val _status = MutableStateFlow(CompanionStatus())
     val status: StateFlow<CompanionStatus> = _status.asStateFlow()
 
@@ -239,6 +248,17 @@ class CompanionHost(
                 advertiser.start(port, sessionId, appVersion) { advertising ->
                     _status.value = _status.value.copy(advertising = advertising)
                 }
+                beacon.start {
+                    CompanionAnnouncement(
+                        port = port,
+                        app = appVersion,
+                        session = sessionId,
+                        name = BEACON_NAME,
+                        // Read live, so a picker on the other end can tell a
+                        // phone that is free from one already being driven.
+                        paired = controller != null,
+                    )
+                }
 
                 engine.onGearChanged = ::broadcastGearChanged
                 engine.onRoadStaleChanged = ::broadcastRoadStale
@@ -275,6 +295,7 @@ class CompanionHost(
         engine.onGearChanged = null
         engine.onRoadStaleChanged = null
         advertiser.stop()
+        beacon.stop()
 
         val running = server
         server = null
@@ -595,5 +616,8 @@ class CompanionHost(
         const val START_TIMEOUT_MS = 5_000L
         const val GRACE_MS = 200L
         const val TIMEOUT_MS = 1_000L
+
+        /** What a companion's device picker shows. Matches the mDNS service name. */
+        const val BEACON_NAME = "Indoor Bike"
     }
 }

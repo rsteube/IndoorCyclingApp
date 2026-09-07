@@ -233,14 +233,84 @@ reached for the handlebar; animate it the same way.
 
 ## Discovery
 
-**Godot has no built-in mDNS / DNS-SD.** Do not plan around it for a first version.
+**Godot has no built-in mDNS / DNS-SD**, which is exactly why the phone also broadcasts a UDP
+beacon. `PacketPeerUDP` is in core, so discovery costs you no dependency at all: bind port
+47601 and read.
+
+```gdscript
+extends Node
+class_name CompanionFinder
+
+const DISCOVERY_PORT := 47601
+const STALE_AFTER := 15.0   # paired phones only announce every 5 s
+
+signal phones_changed(phones: Array)
+
+var _udp := PacketPeerUDP.new()
+var _found := {}            # "ip:port" -> { ip, port, path, name, paired, proto, seen }
+
+
+func _ready() -> void:
+    # Binding to "*" is the default and is what lets broadcasts in.
+    var err := _udp.bind(DISCOVERY_PORT)
+    if err != OK:
+        push_warning("Companion discovery unavailable (port %d busy). \
+Use the QR or type the address." % DISCOVERY_PORT)
+
+
+func _process(_delta: float) -> void:
+    while _udp.get_available_packet_count() > 0:
+        var text := _udp.get_packet().get_string_from_utf8()
+        # The phone's address is where the packet came FROM. It is deliberately
+        # not in the payload: the phone has several addresses and cannot know
+        # which one you can reach, but the source of a packet that arrived is
+        # reachable by construction.
+        var ip := _udp.get_packet_ip()
+        var parsed: Variant = JSON.parse_string(text)
+        if typeof(parsed) != TYPE_DICTIONARY:
+            continue
+        var a: Dictionary = parsed
+        if a.get("t", "") != "indoorbike.companion":
+            continue                      # stray traffic on a shared port
+        var key := "%s:%s" % [ip, a.get("port", 0)]
+        _found[key] = {
+            "ip": ip,
+            "port": int(a.get("port", 0)),
+            "path": String(a.get("path", "/companion")),
+            "name": String(a.get("name", "Indoor Bike")),
+            "proto": String(a.get("proto", "")),
+            "paired": bool(a.get("paired", false)),
+            "seen": Time.get_ticks_msec(),
+        }
+        phones_changed.emit(phones())
+
+
+func phones() -> Array:
+    var now := Time.get_ticks_msec()
+    for key in _found.keys():
+        if now - int(_found[key]["seen"]) > int(STALE_AFTER * 1000.0):
+            _found.erase(key)
+    return _found.values()
+
+
+func url_for(phone: Dictionary) -> String:
+    return "ws://%s:%d%s" % [phone["ip"], phone["port"], phone["path"]]
+```
+
+Show `phones()` in a picker, let the rider tap one, and ask them only for the six-character
+pairing code. **The code is never broadcast** - discovery answers "which phone", pairing
+answers "may you drive it" - so it stays a deliberate act.
+
+`paired: true` means a controller already holds that ride. Show it, greyed, rather than hiding
+it: a rider whose own game crashed and reconnected wants to see the phone is still there.
 
 | Approach | Verdict |
 |---|---|
-| Manual host + port + code entry | Ship this first. Always works, always needed as a fallback |
+| **UDP beacon (above)** | Ship this. Core Godot, no dependency, works on most home networks |
+| Manual host + port + code entry | Always keep it. Some networks drop broadcast entirely |
 | Parse the QR payload from a pasted string | Cheap. `indoorbike://companion?host=..&port=..&token=..&session=..` |
 | Camera QR scan | Needs a GDExtension or a platform plugin |
-| mDNS browse | Needs a GDExtension wrapping a DNS-SD library |
+| mDNS browse | Needs a GDExtension. The phone advertises `_indoorbike._tcp` for clients that can |
 
 Parse the deep link rather than asking for four fields:
 

@@ -20,6 +20,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class CompanionCodecTest {
@@ -246,5 +247,77 @@ class CompanionCodecTest {
         )
         assertContains(json, """"serverRange":"0.1-0.1"""")
         assertContains(json, """"clientRange":"2.0-2.3"""")
+    }
+}
+
+class CompanionDiscoveryTest {
+
+    private val announcement = CompanionAnnouncement(
+        port = 47612,
+        app = "2.0.2",
+        session = "3f9a1c",
+        name = "Indoor Bike",
+        paired = false,
+    )
+
+    @Test
+    fun `an announcement round trips`() {
+        val decoded = CompanionDiscovery.decode(CompanionDiscovery.encode(announcement))
+        assertEquals(announcement, decoded)
+    }
+
+    @Test
+    fun `the announcement carries what is needed to connect`() {
+        val json = CompanionDiscovery.encode(announcement)
+        assertContains(json, """"t":"indoorbike.companion"""")
+        assertContains(json, """"port":47612""")
+        assertContains(json, """"proto":"0.1-0.1"""")
+        assertContains(json, """"path":"/companion"""")
+    }
+
+    /**
+     * Discovery answers "which phone"; pairing answers "may you drive it".
+     * Broadcasting the code to the whole subnet would collapse the two and hand
+     * a trainer to anything listening.
+     */
+    @Test
+    fun `the pairing code is never broadcast`() {
+        val json = CompanionDiscovery.encode(announcement)
+        assertFalse(json.contains("token"), json)
+    }
+
+    /**
+     * The listener already knows the phone's address from the datagram's
+     * source, and that one is reachable by construction - which is more than
+     * can be said for any address the phone might nominate.
+     */
+    @Test
+    fun `the announcement does not nominate an address`() {
+        val json = CompanionDiscovery.encode(announcement)
+        assertFalse(json.contains("host"), json)
+        assertFalse(json.contains("address"), json)
+    }
+
+    @Test
+    fun `stray traffic on the discovery port is not an announcement`() {
+        assertNull(CompanionDiscovery.decode("not json"))
+        assertNull(CompanionDiscovery.decode("""{"t":"something.else","port":1}"""))
+        assertNull(CompanionDiscovery.decode("""{"hello":"world"}"""))
+        // Right magic, impossible port.
+        assertNull(
+            CompanionDiscovery.decode(
+                """{"t":"indoorbike.companion","port":0,"app":"1","session":"a","name":"n"}"""
+            )
+        )
+    }
+
+    @Test
+    fun `an announcement from a later version still parses`() {
+        val decoded = CompanionDiscovery.decode(
+            """{"t":"indoorbike.companion","proto":"0.1-0.4","path":"/companion","port":47612,
+               "app":"9.9","session":"abc","name":"Indoor Bike","paired":true,"somethingNew":42}"""
+        )
+        assertEquals(47612, decoded?.port)
+        assertEquals(true, decoded?.paired)
     }
 }

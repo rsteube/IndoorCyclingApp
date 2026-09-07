@@ -1,6 +1,6 @@
 ---
 name: indoorbike-companion
-description: Build a companion app that drives an Indoor Bike trainer ride over the local network - the game owns the world, position and virtual speed; the phone owns the trainer, the gears and the recording. Use when implementing or debugging the client side of the Indoor Bike Companion API (WebSocket, JSON, `_indoorbike._tcp`, `ws://host:port/companion`, `world`/`telemetry`/`requestShift` frames), when a companion cannot pair or connect, when trainer resistance feels wrong, or when a companion is being written in Godot, Unity, Unreal, C#, Python or TypeScript.
+description: Build a companion app that drives an Indoor Bike trainer ride over the local network - the game owns the world, position and virtual speed; the phone owns the trainer, the gears and the recording. Use when implementing or debugging the client side of the Indoor Bike Companion API (WebSocket, JSON, `_indoorbike._tcp`, `ws://host:port/companion`, `world`/`telemetry`/`requestShift` frames), when a companion cannot pair, connect or find the phone on the network (UDP discovery beacon on port 47601, mDNS), when trainer resistance feels wrong, or when a companion is being written in Godot, Unity, Unreal, C#, Python or TypeScript.
 ---
 
 # Building an Indoor Bike companion
@@ -44,7 +44,8 @@ fields. Apply them to the speed you compute, then send the result.
 4. **Add terrain.** Now the gradient comes from your world.
 5. **Add gears.** Draw the gear display from `welcome.gears`; wire `requestShift`; handle
    `gearChanged` including `changed: false`.
-6. **Add discovery and QR.**
+6. **Add discovery.** Bind UDP 47601 and read the beacon; see `references/godot.md`. The
+   phone's address is the datagram's source, never a field in the payload.
 7. **Add `label` and `finish`.**
 
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
@@ -61,8 +62,10 @@ has two untested systems and no way to tell which is wrong.
    presents as "the road is frozen" with no error anywhere.
 5. **`distanceM` and `ascentM` are cumulative totals, never deltas**, and never decrease. Send
    a smaller value and it is ignored.
-6. **Never hardcode the port.** It is ephemeral, different every ride. Read it from the mDNS
-   SRV record or the QR payload.
+6. **Never hardcode the WebSocket port.** It is ephemeral, different every ride. Read it from
+   the UDP beacon, the mDNS SRV record, or the QR payload. The only fixed port in the protocol
+   is **47601**, where discovery datagrams arrive - a listener cannot discover the port it
+   should be listening on.
 7. **Read `welcome.honours`.** It is what this build *acts on*, which is not what the protocol
    defines. `crr`, `cda`, `airDensity` and `headwindMps` are reserved and **not honoured**.
 8. **Missing telemetry fields mean absent, not zero.** No `hr` means no strap. Defaulting to 0
