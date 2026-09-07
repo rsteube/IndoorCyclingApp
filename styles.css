@@ -192,6 +192,8 @@ section { padding: var(--s-10) 0; }
   gap: var(--s-2) var(--s-6);
 }
 .nav a {
+  position: relative;
+  padding: 4px 0;
   font-size: 14px;
   font-weight: 600;
   color: var(--fg-2);
@@ -199,6 +201,29 @@ section { padding: var(--s-10) 0; }
 }
 .nav a:hover,
 .nav a[aria-current="page"] { color: var(--fg-1); }
+/* The underline grows out from the left on hover and stays put on the
+   current page, so the nav shows where you are and where you are pointing
+   with the same mark. */
+.nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--fg-1);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--dur-base) var(--ease-out);
+}
+.nav a:hover::after,
+.nav a[aria-current="page"]::after { transform: scaleX(1); }
+
+/* The header only draws a line under itself once there is content behind
+   it, which is when the line has something to separate. */
+.site-header { transition: box-shadow var(--dur-base) var(--ease-out); }
+.site-header.is-scrolled { box-shadow: 0 1px 0 var(--bg-2); }
 
 /* ---------- Buttons ---------- */
 .btn {
@@ -215,10 +240,17 @@ section { padding: var(--s-10) 0; }
   border: 0;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform var(--dur-fast) var(--ease-out),
+  transition: transform var(--dur-base) var(--ease-out),
               background var(--dur-fast) var(--ease-out),
               color var(--dur-fast) var(--ease-out);
 }
+/* A button lifts a hair under the pointer and gives under the click: the
+   same firm, no-bounce answer the app gives a finger. */
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: scale(0.97); transition-duration: var(--dur-fast); }
+.btn .icon { transition: transform var(--dur-base) var(--ease-out); }
+.btn:hover .icon:last-child { transform: translateX(3px); }
+.btn:hover .icon:first-child:not(:last-child) { transform: translateY(1px); }
 .btn-lg { height: 52px; padding: 0 24px; }
 .btn-sm { height: 40px; padding: 0 16px; font-size: 14px; }
 .site-header .btn { height: 44px; padding: 0 20px; font-size: 14px; }
@@ -228,7 +260,6 @@ section { padding: var(--s-10) 0; }
   color: var(--on-inverse);
 }
 .btn-primary:hover { background: var(--fg-2); color: var(--on-inverse); }
-.btn-primary:active { transform: scale(0.98); }
 .btn-primary[aria-disabled="true"] {
   background: var(--bg-2);
   color: var(--fg-3);
@@ -241,7 +272,6 @@ section { padding: var(--s-10) 0; }
   color: var(--fg-1);
 }
 .btn-secondary:hover { background: var(--bg-2); }
-.btn-secondary:active { transform: scale(0.98); }
 .section-alt .btn-secondary,
 .card .btn-secondary { background: var(--bg-2); }
 .section-alt .btn-secondary:hover,
@@ -258,6 +288,8 @@ section { padding: var(--s-10) 0; }
   transition: color var(--dur-fast) var(--ease-out);
 }
 .link-more:hover { color: var(--fg-2); }
+.link-more .icon { transition: transform var(--dur-base) var(--ease-out); }
+.link-more:hover .icon { transform: translateX(4px); }
 
 .btn-tag {
   display: inline-block;
@@ -637,9 +669,12 @@ section { padding: var(--s-10) 0; }
   align-items: center;
   gap: var(--s-4);
   padding: var(--s-4) var(--s-5);
-  transition: background var(--dur-fast) var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out),
+              transform var(--dur-base) var(--ease-out);
 }
-a.repo-row:hover { background: var(--bg-2); }
+a.repo-row:hover { background: var(--bg-2); transform: translateY(-2px); }
+a.repo-row > .icon { transition: transform var(--dur-base) var(--ease-out); }
+a.repo-row:hover > .icon { transform: translateX(3px); }
 .repo-row > div { flex: 1; min-width: 0; }
 .repo-row b { display: block; font-weight: 700; font-size: 15px; }
 .repo-row .repo-by { display: block; font-weight: 500; font-size: 13px; color: var(--fg-3); margin-top: 2px; }
@@ -742,9 +777,12 @@ a.repo-row:hover { background: var(--bg-2); }
   padding: var(--s-4) 18px;
   background: var(--bg-1);
   border-radius: var(--r-lg);
-  transition: background var(--dur-fast) var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out),
+              transform var(--dur-base) var(--ease-out);
 }
-a.install-row:hover { background: var(--bg-2); }
+a.install-row:hover { background: var(--bg-2); transform: translateY(-2px); }
+a.install-row > .icon { transition: transform var(--dur-base) var(--ease-out); }
+a.install-row:hover > .icon { transform: translate(2px, -2px); }
 .install-row > div { flex: 1; min-width: 0; }
 .install-row .install-name {
   display: flex;
@@ -988,10 +1026,126 @@ code {
   .cta { padding: var(--s-10) 0; }
 }
 
+/* ---------- Motion ----------
+   The page reveals itself as you scroll to it: a block fades and rises the
+   first time it comes into view, siblings a beat apart. Charts draw
+   themselves - zone bars grow, the elevation line is traced, a number counts
+   up - so what the app does is shown happening rather than already done.
+   All of it is decoration; with JavaScript off or reduced motion on, every
+   element is simply there. */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.55s var(--ease-out), transform 0.55s var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 70ms);
+}
+.js .reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* Every page arrives with a short settle rather than a cut. */
+@keyframes page-in {
+  from { opacity: 0; transform: translateY(8px); }
+}
+main { animation: page-in 0.45s var(--ease-out) both; }
+
+/* The phone in the hero drifts, very slowly, the way a held phone does. */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+.device { animation: float 7s ease-in-out infinite; }
+.js .device.reveal { animation: none; }
+.js .device.reveal.is-in { animation: float 7s ease-in-out 0.6s infinite; }
+
+/* The connected dot on the mock breathes, as it does in the app. */
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+.m-dot.on { animation: breathe 2.4s var(--ease-out) infinite; }
+
+/* Zone bars stand up left to right; the elevation line is traced over its
+   fill; the power number counts (see the script). */
+.js .zone-profile i {
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 0.6s var(--ease-out);
+  transition-delay: calc(0.15s + var(--i, 0) * 55ms);
+}
+.js .is-in .zone-profile i { transform: none; }
+.js .elev polygon {
+  opacity: 0;
+  transition: opacity 0.8s var(--ease-out) 0.7s;
+}
+.js .elev polyline {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  transition: stroke-dashoffset 1.3s var(--ease-out) 0.2s;
+}
+.js .is-in .elev polygon { opacity: 1; }
+.js .is-in .elev polyline { stroke-dashoffset: 0; }
+.stepper i { transition: transform var(--dur-base) var(--ease-out), background var(--dur-fast) var(--ease-out); }
+.stepper:hover i { background: var(--bg-2); }
+.stepper i:hover { transform: scale(1.08); }
+
+/* A scan line sweeps the QR mock, the way the phone camera would. */
+.qr-grid { position: relative; overflow: hidden; }
+.qr-grid::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 14px;
+  height: 2px;
+  border-radius: 1px;
+  background: linear-gradient(90deg, transparent, var(--fg-1), transparent);
+  opacity: 0.85;
+  animation: scan 2.8s ease-in-out infinite alternate;
+}
+@keyframes scan {
+  from { top: 14px; }
+  to { top: calc(100% - 16px); }
+}
+
+/* Flow-node arrows nudge forward, one after another, to say which way. */
+@keyframes nudge {
+  0%, 60%, 100% { transform: translateX(0); opacity: 1; }
+  30% { transform: translateX(4px); opacity: 0.6; }
+}
+.repo-flow .flow-sep { animation: nudge 3.2s var(--ease-out) infinite; }
+.repo-flow .flow-sep:last-of-type { animation-delay: 0.35s; }
+
+/* Cards that open somewhere lift under the pointer. */
+a.card, .tool-card, .os-list li, .deal-list li {
+  transition: transform var(--dur-base) var(--ease-out), background var(--dur-fast) var(--ease-out);
+}
+.tool-card:hover { transform: translateY(-3px); }
+.tool-card .tool-visual, .tool-card .qr-grid { transition: transform var(--dur-base) var(--ease-out); }
+.tool-card:hover .tool-visual { transform: rotate(-4deg) scale(1.04); }
+
+/* FAQ answers slide open and closed instead of appearing; the script wraps
+   each answer in .faq-body and toggles the attribute after the slide. */
+.faq-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s var(--ease-out);
+}
+.faq-body > p { overflow: hidden; min-height: 0; }
+details.faq-item[open]:not(.is-closing) .faq-body { grid-template-rows: 1fr; }
+details.faq-item summary { transition: color var(--dur-fast) var(--ease-out); }
+details.faq-item summary:hover { color: var(--fg-2); }
+
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   *, *::before, *::after {
     transition: none !important;
     animation: none !important;
   }
+  .js .reveal { opacity: 1; transform: none; }
+  .js .zone-profile i { transform: none; }
+  .js .elev polygon { opacity: 1; }
+  .js .elev polyline { stroke-dashoffset: 0; }
+  .qr-grid::after { display: none; }
 }
