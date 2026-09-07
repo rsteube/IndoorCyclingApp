@@ -6,8 +6,8 @@ owns the world and Indoor Bike owns the trainer, the gears and the recording.
 > **Status: draft, version 0.1. The app side is built.** Protocol core, WebSocket transport,
 > mDNS discovery, pairing, the ride mode and the HUD all exist; see
 > [Where it lives in the code](#9-where-it-lives-in-the-code) for the map and
-> [COMPANION_API_REFERENCE.md](COMPANION_API_REFERENCE.md) for the exhaustive, implementer-facing
-> description of what the app actually does with every frame.
+> [the companion protocol reference](../skills/indoorbike-companion/references/protocol.md) for
+> the exhaustive, implementer-facing description of what the app actually does with every frame.
 >
 > This is deliberately a *first guess*. It exists so that both ends can start being written
 > against something concrete, and it is expected to change while the first companion is built.

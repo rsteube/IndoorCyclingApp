@@ -8,9 +8,14 @@ the app side**. Written to be read by a model or a developer building the other 
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
 
-Related: [COMPANION_API.md](COMPANION_API.md) is the prose specification and rationale.
-[LIVE_API.md](LIVE_API.md) is the original design argument. **This document is normative for
-behaviour**: where prose and this disagree, the app does what is written here.
+Part of the `indoorbike-companion` skill, and the source of truth for companion-side
+behaviour. In the Indoor Bike repository it sits at
+`skills/indoorbike-companion/references/protocol.md`, beside `docs/COMPANION_API.md` (the prose
+specification and rationale) and `docs/LIVE_API.md` (the original design argument).
+
+**This document is normative for behaviour**: where prose and this disagree, the app does what
+is written here. If this document and a running app disagree, the app is right - re-copy the
+skill from the repository.
 
 Terminology: **app** is Indoor Bike on the phone (the WebSocket *server*). **Companion** is
 your program (the WebSocket *client*).
