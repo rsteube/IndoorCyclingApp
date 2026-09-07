@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -56,9 +57,18 @@ import kotlin.math.roundToInt
 @Composable
 fun RouteSummaryPanel(
     route: RouteTrack,
+    /** Where the ride ended on the route: a position, not a distance. */
     riddenMeters: Double,
     elevationGainMeters: Double,
     modifier: Modifier = Modifier,
+    /**
+     * Where the ride began on the route. Non-zero when the rider carried on
+     * from a previous sitting, and the difference between the two is what this
+     * ride actually did. Reading the position as the distance is what made a
+     * ride resumed at 42 km report 48 km of riding after six.
+     */
+    startedAtMeters: Double = 0.0,
+    startedAtElevationGainMeters: Double = 0.0,
     /** Scales the whole panel: the share image is drawn much larger. */
     titleSize: TextUnit = 13.sp,
     statSize: TextUnit = 20.sp,
@@ -79,8 +89,17 @@ fun RouteSummaryPanel(
     /** The honesty line. Shortened where space is tight, never dropped. */
     caption: String = "Simulated indoors. Gradient and distance from the route, " +
         "speed from the rider's own power.",
+    /** Appended when the ride was a continuation, so the picture is explained. */
+    continuedCaption: String = "Picked up from an earlier ride; the faint part " +
+        "of the road was ridden then.",
 ) {
     val completed = riddenMeters >= route.totalDistanceMeters - 5.0
+    val continued = startedAtMeters > 1.0
+    // What this sitting covered, which is the number the rest of the summary
+    // is about. Floored at zero so a route republished shorter than the one
+    // the rider started cannot produce a negative ride.
+    val thisRideMeters = (riddenMeters - startedAtMeters).coerceAtLeast(0.0)
+    val thisRideClimb = (elevationGainMeters - startedAtElevationGainMeters).coerceAtLeast(0.0)
     Column(
         modifier = modifier
             .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)
@@ -131,6 +150,7 @@ fun RouteSummaryPanel(
             RouteShape(
                 route = route,
                 riddenMeters = riddenMeters,
+                startedAtMeters = startedAtMeters,
                 strokeWidth = strokeWidth,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
@@ -138,17 +158,30 @@ fun RouteSummaryPanel(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 verticalArrangement = Arrangement.Center,
             ) {
+                // Today's numbers, with the road's own total underneath. On a
+                // continued ride the detail says where that leaves the rider
+                // rather than repeating the route length, because "6.5 km of
+                // 169 km" invites the reading that 162 km are still to go when
+                // in fact most of them are behind.
                 RouteStat(
-                    label = "Ridden",
-                    value = formatDistance(riddenMeters),
-                    detail = "of ${formatDistance(route.totalDistanceMeters)}",
+                    label = if (continued) "Ridden today" else "Ridden",
+                    value = formatDistance(thisRideMeters),
+                    detail = if (continued) {
+                        "${formatDistance(riddenMeters)} of ${formatDistance(route.totalDistanceMeters)}"
+                    } else {
+                        "of ${formatDistance(route.totalDistanceMeters)}"
+                    },
                     size = statSize,
                 )
                 Spacer(Modifier.height(Spacing.s3))
                 RouteStat(
-                    label = "Climbed",
-                    value = "${elevationGainMeters.roundToInt()} m",
-                    detail = "of ${route.totalAscentMeters.roundToInt()} m",
+                    label = if (continued) "Climbed today" else "Climbed",
+                    value = "${thisRideClimb.roundToInt()} m",
+                    detail = if (continued) {
+                        "${elevationGainMeters.roundToInt()} of ${route.totalAscentMeters.roundToInt()} m"
+                    } else {
+                        "of ${route.totalAscentMeters.roundToInt()} m"
+                    },
                     size = statSize,
                 )
             }
@@ -158,12 +191,13 @@ fun RouteSummaryPanel(
         ElevationProfile(
             route = route,
             distanceMeters = riddenMeters,
+            startedAtMeters = startedAtMeters,
             modifier = Modifier.fillMaxWidth().height(profileHeight),
         )
         Spacer(Modifier.height(6.dp))
         Text(
             // The claim this panel must not make by implication.
-            text = caption,
+            text = if (continued) "$caption $continuedCaption" else caption,
             style = CadenceType.tick.copy(fontSize = titleSize * 0.7f),
             color = CadenceColors.Fg3,
         )
@@ -182,11 +216,18 @@ private fun RouteStat(label: String, value: String, detail: String, size: TextUn
             text = value,
             style = CadenceType.h2.copy(fontSize = size),
             color = CadenceColors.Fg1,
+            // One line each, always. The share card draws this into a fixed
+            // slot in a 1080-square image, where a wrapped line does not push
+            // the layout down, it falls off the bottom of the picture.
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Text(
             text = detail,
             style = CadenceType.tick.copy(fontSize = size * 0.5f),
             color = CadenceColors.Fg3,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

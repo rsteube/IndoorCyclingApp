@@ -52,6 +52,13 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
          */
         routeDistanceMeters: Double = 0.0,
         routeElevationGainMeters: Double = 0.0,
+        /**
+         * Where on the road the ride began. Non-zero only when the rider chose
+         * to carry on from a previous sitting, and what makes the two values
+         * above readable as a distance rather than only as a position.
+         */
+        routeStartMeters: Double = 0.0,
+        routeStartElevationGainMeters: Double = 0.0,
         externalId: String,
         telemetry: List<TelemetryPoint>
     ): Long {
@@ -67,6 +74,8 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                     avgHeartRate = avgHeartRate,
                     routeDistanceMeters = routeDistanceMeters,
                     routeElevationGainMeters = routeElevationGainMeters,
+                    routeStartMeters = routeStartMeters,
+                    routeStartElevationGainMeters = routeStartElevationGainMeters,
                     externalId = externalId
                 )
 

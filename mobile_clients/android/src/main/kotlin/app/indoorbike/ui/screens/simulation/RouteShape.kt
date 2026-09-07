@@ -59,6 +59,12 @@ fun RouteShape(
     accent: Color = CadenceColors.Fg1,
     remainingColor: Color = CadenceColors.Fg4,
     strokeWidth: Float = 6f,
+    /**
+     * Where on the road this ride began. Everything before it was covered in
+     * an earlier sitting and is drawn between the two other states: not the
+     * road still to do, and not what the rider did today.
+     */
+    startedAtMeters: Double = 0.0,
 ) {
     // Projection is per-route work, not per-frame work.
     val projected = remember(route) { project(route) }
@@ -99,10 +105,32 @@ fun RouteShape(
 
         val riddenCount = route.points.count { it.distanceMeters <= riddenMeters }
             .coerceIn(0, projected.size)
+        // Where today's stretch begins. Zero for a ride from the trailhead,
+        // which collapses the two paths below into the single one this drew
+        // before routes could be resumed.
+        val startCount = route.points.count { it.distanceMeters <= startedAtMeters }
+            .coerceIn(0, riddenCount)
+
+        if (startCount >= 2) {
+            val earlier = Path().apply {
+                moveTo(at(0).x, at(0).y)
+                for (i in 1 until startCount) {
+                    val p = at(i)
+                    lineTo(p.x, p.y)
+                }
+            }
+            drawPath(
+                path = earlier,
+                color = accent.copy(alpha = 0.35f),
+                style = Stroke(width = strokeWidth * 0.85f, cap = StrokeCap.Round, join = StrokeJoin.Round),
+            )
+        }
+
         if (riddenCount >= 2) {
             val ridden = Path().apply {
-                moveTo(at(0).x, at(0).y)
-                for (i in 1 until riddenCount) {
+                val from = (startCount - 1).coerceAtLeast(0)
+                moveTo(at(from).x, at(from).y)
+                for (i in (from + 1) until riddenCount) {
                     val p = at(i)
                     lineTo(p.x, p.y)
                 }

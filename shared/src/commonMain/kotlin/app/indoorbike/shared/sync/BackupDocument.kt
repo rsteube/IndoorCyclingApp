@@ -119,6 +119,9 @@ data class BackupSession(
      */
     val routeDistanceMeters: Double? = null,
     val routeElevationGainMeters: Double? = null,
+    /** Where a resumed route ride began; absent (null) means the trailhead. */
+    val routeStartMeters: Double? = null,
+    val routeStartElevationGainMeters: Double? = null,
 )
 
 /**

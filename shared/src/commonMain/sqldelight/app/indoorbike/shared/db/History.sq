@@ -28,7 +28,13 @@ CREATE TABLE WorkoutSession (
     -- catalogue; only the rider's progress along it needs storing, because it
     -- is the one thing that cannot be reconstructed afterwards.
     routeDistanceMeters REAL NOT NULL DEFAULT 0.0,
-    routeElevationGainMeters REAL NOT NULL DEFAULT 0.0
+    routeElevationGainMeters REAL NOT NULL DEFAULT 0.0,
+    -- Where on the road the ride began. Non-zero only for a route picked up
+    -- part way, and the reason the two columns above cannot be read as "what
+    -- this ride did": they are positions, and this is the origin to measure
+    -- them from.
+    routeStartMeters REAL NOT NULL DEFAULT 0.0,
+    routeStartElevationGainMeters REAL NOT NULL DEFAULT 0.0
 );
 
 -- Non-unique because the v1 → v2 migration leaves multiple rows with the
@@ -49,8 +55,8 @@ CREATE TABLE WorkoutTelemetry (
 );
 
 insertSession:
-INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();

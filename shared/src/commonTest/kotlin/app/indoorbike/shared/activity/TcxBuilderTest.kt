@@ -60,6 +60,8 @@ class TcxBuilderTest {
             fitTrackeeUploadedEpoch = 0L,
     routeDistanceMeters = 0.0,
     routeElevationGainMeters = 0.0,
+    routeStartMeters = 0.0,
+    routeStartElevationGainMeters = 0.0,
         )
         return Triple(session, telemetry, workout)
     }

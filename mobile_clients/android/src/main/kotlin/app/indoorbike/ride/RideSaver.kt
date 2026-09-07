@@ -48,6 +48,13 @@ suspend fun saveRideToHistory(
         if (simulated) container.simulationEngine.distanceMeters.value else 0.0
     val routeClimb =
         if (simulated) container.simulationEngine.elevationGainMeters.value else 0.0
+    // Where the ride began, so the two above can be read as what this ride did
+    // rather than only as where it ended up. Non-zero when the rider carried
+    // on from a previous sitting.
+    val routeStart =
+        if (simulated) container.simulationEngine.startedAtMeters.value else 0.0
+    val routeStartClimb =
+        if (simulated) container.simulationEngine.startedAtElevationGainMeters.value else 0.0
 
     val avgPower = telemetry.averageOf { it.power }
     val avgCadence = telemetry.averageOf { it.cadence }
@@ -63,6 +70,8 @@ suspend fun saveRideToHistory(
         avgHeartRate = avgHeartRate,
         routeDistanceMeters = routeDistance,
         routeElevationGainMeters = routeClimb,
+        routeStartMeters = routeStart,
+        routeStartElevationGainMeters = routeStartClimb,
         // Globally-unique stable id for the backup-sync layer. The device-id
         // namespace + a fresh UUID per session means two phones can never
         // collide on a session id without any cross-device coordination.

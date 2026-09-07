@@ -220,4 +220,70 @@ class RouteProgressTest {
             assertEquals(road.totalDistanceMeters, engine.distanceMeters.value)
         }
     }
+
+    @Test
+    fun `a resumed ride knows where it began, not just where it ended`() = runTest {
+        // The summary bug: distanceMeters is a position on the route, and a
+        // ride picked up at 42 km that covers 6 more ends at 48. Read as a
+        // distance that says the rider rode 48 km in one sitting, and the
+        // summary draws the whole road behind them as today's work.
+        val store = FakeProgressStore()
+        withManager(store) { sessionManager, engine ->
+            val road = flatRoad(60_000.0)
+            sessionManager.prepareSimulation(
+                route = road,
+                ftp = 200,
+                startDistanceMeters = 42_000.0,
+                startElevationGainMeters = 610.0,
+            )
+            assertEquals(42_000.0, engine.startedAtMeters.value)
+            assertEquals(610.0, engine.startedAtElevationGainMeters.value)
+
+            repeat(10 * 60 * 4) { engine.advance(0.25) }
+
+            val ended = engine.distanceMeters.value
+            assertTrue(ended > 42_000.0, "should have covered ground, ended at $ended")
+            // What the summary must report is the difference, not the position.
+            val thisRide = ended - engine.startedAtMeters.value
+            assertTrue(
+                thisRide < ended,
+                "this ride covered $thisRide m and ended at $ended m; they must not be the same number",
+            )
+            // The origin does not drift as the ride goes on.
+            assertEquals(42_000.0, engine.startedAtMeters.value)
+        }
+    }
+
+    @Test
+    fun `a ride from the trailhead reports the same distance either way`() = runTest {
+        // The other half of the contract: with no offset, position and
+        // distance are the same number, which is what every ride recorded
+        // before routes could be resumed relied on.
+        val store = FakeProgressStore()
+        withManager(store) { sessionManager, engine ->
+            sessionManager.prepareSimulation(flatRoad(60_000.0), ftp = 200)
+            assertEquals(0.0, engine.startedAtMeters.value)
+            repeat(60 * 4) { engine.advance(0.25) }
+            assertEquals(
+                engine.distanceMeters.value,
+                engine.distanceMeters.value - engine.startedAtMeters.value,
+            )
+        }
+    }
+
+    @Test
+    fun `clearing the engine forgets the origin too`() = runTest {
+        val store = FakeProgressStore()
+        withManager(store) { sessionManager, engine ->
+            sessionManager.prepareSimulation(
+                route = flatRoad(60_000.0),
+                ftp = 200,
+                startDistanceMeters = 42_000.0,
+                startElevationGainMeters = 610.0,
+            )
+            engine.clear()
+            assertEquals(0.0, engine.startedAtMeters.value)
+            assertEquals(0.0, engine.startedAtElevationGainMeters.value)
+        }
+    }
 }

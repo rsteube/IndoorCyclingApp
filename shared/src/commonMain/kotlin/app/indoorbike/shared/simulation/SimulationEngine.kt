@@ -95,6 +95,23 @@ class SimulationEngine(
     private val _distanceMeters = MutableStateFlow(0.0)
     val distanceMeters: StateFlow<Double> = _distanceMeters.asStateFlow()
 
+    /**
+     * Where on the road this ride began, which is only non-zero when the rider
+     * chose to carry on from a previous sitting.
+     *
+     * [distanceMeters] is a position on the route, not a distance covered, and
+     * the two are the same number only for a ride that started at the
+     * trailhead. Anything reporting what *this* ride did has to subtract this,
+     * or a rider who resumes at 42 km and rides 6 is told they rode 48.
+     */
+    private val _startedAtMeters = MutableStateFlow(0.0)
+    val startedAtMeters: StateFlow<Double> = _startedAtMeters.asStateFlow()
+
+    /** The same for climbing: what was already on the clock when this ride began. */
+    private val _startedAtElevationGainMeters = MutableStateFlow(0.0)
+    val startedAtElevationGainMeters: StateFlow<Double> =
+        _startedAtElevationGainMeters.asStateFlow()
+
     private val _speedMps = MutableStateFlow(0.0)
     val speedMps: StateFlow<Double> = _speedMps.asStateFlow()
 
@@ -167,6 +184,8 @@ class SimulationEngine(
         _drivetrain.value = drivetrain
         _route.value = route
         _distanceMeters.value = startDistanceMeters.coerceIn(0.0, route.totalDistanceMeters)
+        _startedAtMeters.value = _distanceMeters.value
+        _startedAtElevationGainMeters.value = elevationGainMeters.coerceAtLeast(0.0)
         _gearIndex.value =
             if (gearIndex == USE_START_GEAR) drivetrain.startIndex else drivetrain.clampIndex(gearIndex)
         _elevationGainMeters.value = elevationGainMeters.coerceAtLeast(0.0)
@@ -184,6 +203,8 @@ class SimulationEngine(
         _route.value = null
         _position.value = null
         _distanceMeters.value = 0.0
+        _startedAtMeters.value = 0.0
+        _startedAtElevationGainMeters.value = 0.0
         _speedMps.value = 0.0
         _gradient.value = 0.0
         _elevationGainMeters.value = 0.0

@@ -394,6 +394,8 @@ class SyncEngine(
                     externalId = s.externalId,
                     routeDistanceMeters = s.routeDistanceMeters ?: 0.0,
                     routeElevationGainMeters = s.routeElevationGainMeters ?: 0.0,
+                    routeStartMeters = s.routeStartMeters ?: 0.0,
+                    routeStartElevationGainMeters = s.routeStartElevationGainMeters ?: 0.0,
                     // v1 deliberately drops telemetry from sync — sessions
                     // arriving from another device land without per-second
                     // power data. The post-ride chart on those rides will be
@@ -460,6 +462,8 @@ class SyncEngine(
         avgHeartRate = row.avgHeartRate,
         routeDistanceMeters = row.routeDistanceMeters.takeIf { it > 0.0 },
         routeElevationGainMeters = row.routeElevationGainMeters.takeIf { it > 0.0 },
+        routeStartMeters = row.routeStartMeters.takeIf { it > 0.0 },
+        routeStartElevationGainMeters = row.routeStartElevationGainMeters.takeIf { it > 0.0 },
     )
 
     companion object {

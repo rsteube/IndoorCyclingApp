@@ -353,6 +353,8 @@ fun WorkoutOverviewScreen(
                     route = riddenRoute,
                     riddenMeters = activeSession.routeDistanceMeters,
                     elevationGainMeters = activeSession.routeElevationGainMeters,
+                    startedAtMeters = activeSession.routeStartMeters,
+                    startedAtElevationGainMeters = activeSession.routeStartElevationGainMeters,
                     modifier = Modifier.fillMaxWidth().enterReveal(index = 2),
                 )
             }

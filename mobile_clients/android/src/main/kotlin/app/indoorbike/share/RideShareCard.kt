@@ -144,6 +144,8 @@ fun RideShareCard(
                     route = route,
                     riddenMeters = session.routeDistanceMeters,
                     elevationGainMeters = session.routeElevationGainMeters,
+                    startedAtMeters = session.routeStartMeters,
+                    startedAtElevationGainMeters = session.routeStartElevationGainMeters,
                     titleSize = 26.sp,
                     statSize = 44.sp,
                     shapeHeight = 260.dp,

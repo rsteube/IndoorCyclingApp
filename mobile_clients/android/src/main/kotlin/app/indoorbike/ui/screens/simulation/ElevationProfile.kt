@@ -58,11 +58,25 @@ fun ElevationProfile(
     route: RouteTrack,
     distanceMeters: Double,
     modifier: Modifier = Modifier,
+    /** Where this ride began; see [RouteShape]. */
+    startedAtMeters: Double = 0.0,
 ) {
     Box(modifier = modifier) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (route.isEmpty || size.width < 2f || size.height < 2f) return@Canvas
             drawProfile(route, distanceMeters, size)
+            // A line at the point the rider joined the road, so the shaded
+            // part reads as two sittings rather than one long one.
+            if (startedAtMeters > 0.0 && route.totalDistanceMeters > 0.0) {
+                val x = (startedAtMeters / route.totalDistanceMeters)
+                    .coerceIn(0.0, 1.0).toFloat() * size.width
+                drawLine(
+                    color = CadenceColors.Fg1.copy(alpha = 0.5f),
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = 2f,
+                )
+            }
         }
     }
 }

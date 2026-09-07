@@ -1,0 +1,13 @@
+-- Migrates HistoryDatabase v5 -> v6: where a route ride *began*.
+--
+-- routeDistanceMeters is a position on the route, not a distance covered, and
+-- until routes could be resumed the two were always the same number. They are
+-- not for a ride picked up part way, and the post-ride screen was reading the
+-- position as the distance: resume at 42 km, ride 6, and the summary drew the
+-- whole 48 km as this ride's and said so.
+--
+-- 0 is right for every row already in the table. Nothing before this could
+-- start anywhere but the trailhead, so the default is not a fallback, it is
+-- the truth about that data.
+ALTER TABLE WorkoutSession ADD COLUMN routeStartMeters REAL NOT NULL DEFAULT 0.0;
+ALTER TABLE WorkoutSession ADD COLUMN routeStartElevationGainMeters REAL NOT NULL DEFAULT 0.0;
