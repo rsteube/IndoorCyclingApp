@@ -1,0 +1,5 @@
+A tablet now gets a tablet's layout rather than a phone's stretched across the glass. Eleven screens hold their content to a readable column instead of running paragraphs the full width of the display, and dialogs are sized like dialogs again.
+
+Side by side now means the screen really is wider than it is tall, so a tablet held upright gets the stacked layout that all that height is for.
+
+Fixed: a route ride picked up part way reported the whole road as the distance you had just covered.
