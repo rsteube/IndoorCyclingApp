@@ -396,6 +396,17 @@ runs every check Play would run and then throws the edit away.
   APK does not, because on the CodeFloe side it is an unrecognised extra
   signing block that scanners have rejected. See
   [build.gradle.kts](../mobile_clients/android/build.gradle.kts).
+- **The "no debug symbols" warning on an App Bundle cannot be fixed here, so
+  do not spend an afternoon on it.** Play notices the bundle carries native
+  code and asks for a symbol file. The app has no native code of its own: the
+  twelve `.so` files come from AndroidX, being graphics-path via Compose, the
+  DataStore shared counter, and CameraX's image processing. Setting
+  `ndk.debugSymbolLevel` on the release build type looks like the fix and does
+  nothing, because AGP extracts symbols from unstripped libraries and those
+  arrive from their AARs already stripped. A rebuild with it set produces no
+  `BUNDLE-METADATA/.../nativesymbols` entry at all. The warning is advisory,
+  it does not block review, and the crashes it concerns would be inside
+  Google's own libraries.
 - **Play is optional per release.** Nothing in the CodeFloe flow depends on
   it. If a release skips Play, riders there stay on the previous version and
   the next upload catches them up.
