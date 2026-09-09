@@ -1,0 +1,14 @@
+# Google Play publishing identity.
+#
+# `json_key_file` points at a Play Console service-account key, kept at the
+# repo root beside keystore.properties and forge.properties and gitignored
+# the same way. The project's convention is credentials in files rather than
+# environment variables: a variable set with setx does not reach a process
+# that is already running, which has cost this project releases before.
+#
+# To create the key: Play Console > Users and permissions > invite a service
+# account (or Google Cloud > IAM > Service accounts > Keys > Add key > JSON),
+# grant it "Release apps to testing tracks" and "Release to production", then
+# save the downloaded JSON as play-service-account.json at the repo root.
+json_key_file(File.expand_path("../../../play-service-account.json", __dir__))
+package_name("app.indoorbike")

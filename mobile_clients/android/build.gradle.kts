@@ -90,18 +90,19 @@ android {
     }
 
     dependenciesInfo {
-        // AGP embeds an extra APK signing block ("Dependency metadata")
-        // with hashes of every dependency, intended for Google Play's
-        // app-review tooling. We do not publish to Play, so it is payload
-        // nobody reads, and it is exactly the kind of Google-oriented
-        // metadata this app has no business shipping. Disabled for both the
-        // APK and the AAB.
+        // AGP embeds a "Dependency metadata" blob holding hashes of every
+        // dependency. Play reads it to flag known-vulnerable libraries in
+        // the Console.
         //
-        // F-Droid's APK scanner rejecting unrecognised signing blocks
-        // (https://issuetracker.google.com/issues/189966237) is what first
-        // put this here; the setting outlived that reason on its own merits.
+        // The AAB keeps it. That artifact goes to Play and nowhere else, and
+        // the vulnerability warnings are worth having.
+        //
+        // The APK drops it. That artifact goes to CodeFloe for ObtainX,
+        // where the blob is an unrecognised extra APK signing block that
+        // nobody reads and that scanners have rejected outright
+        // (https://issuetracker.google.com/issues/189966237).
         includeInApk = false
-        includeInBundle = false
+        includeInBundle = true
     }
 }
 
