@@ -46,3 +46,14 @@
 -keep,allowobfuscation,allowshrinking class app.indoorbike.navigation.** {
     *;
 }
+
+# Ktor's IntellijIdeaDebugDetector asks java.lang.management whether a
+# debugger is attached. That package is JVM-only and has never existed on
+# Android, so R8 stops the release build over the dangling reference. The
+# code path is dead on this platform: Ktor guards the call and falls back
+# when the classes are absent, which on Android is always.
+#
+# This surfaced with the companion-mode BLE bridge, which embeds the Ktor
+# CIO server. It blocks assembleRelease and bundleRelease alike.
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean
