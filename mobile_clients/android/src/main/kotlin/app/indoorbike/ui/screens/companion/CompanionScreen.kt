@@ -15,22 +15,15 @@
  */
 package app.indoorbike.ui.screens.companion
 
-import android.graphics.Bitmap
-import android.graphics.Color as AndroidColor
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Text
@@ -42,12 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -62,12 +50,7 @@ import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.DisplayFontFamily
-import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
-import com.google.zxing.BarcodeFormat
-import com.google.zxing.EncodeHintType
-import com.google.zxing.qrcode.QRCodeWriter
-import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
 
 /**
  * Pairing, and then out of the way.
@@ -80,13 +63,23 @@ import com.google.zxing.qrcode.decoder.ErrorCorrectionLevel
  * yet driving anything and putting a rider on a HUD with no road on it would
  * be a lie.
  *
- * ## Three ways in, because networks are unreliable in different ways
+ * ## Two ways in, because networks are unreliable in different ways
  *
- * Discovery over mDNS is the pleasant path and the one that fails silently on
- * guest Wi-Fi, mesh routers and most corporate networks. So the address and
- * port are always on screen, the QR carries the whole connection string
- * including the pairing code, and the code itself can be typed. A rider whose
- * network eats multicast should lose a scan, not the feature.
+ * Discovery is the pleasant path and the one that fails silently on guest
+ * Wi-Fi, mesh routers and most corporate networks. So the address, the port and
+ * the pairing code are always on screen, set large, and in the order a
+ * companion's connect form asks for them. A rider whose network eats broadcast
+ * and multicast should lose the convenience, not the feature.
+ *
+ * ## Why there is no QR code
+ *
+ * There was one, carrying the whole connection string. It assumed the thing
+ * being paired had a camera. A companion runs on whatever drives the screen the
+ * rider is watching, which is usually a desktop or a laptop on a trainer desk
+ * with no camera pointed anywhere useful, so the scan was a large block of
+ * screen that nothing in the room could perform, pushing the one fact a
+ * companion cannot start without below the fold. Everything the code carried is
+ * on the screen as text instead.
  */
 @Composable
 fun CompanionScreen(
@@ -164,18 +157,18 @@ fun CompanionScreen(
             }
 
             if (status.running) {
-                item(key = "code") {
-                    PairingCodeCard(code = status.token)
-                }
-                item(key = "qr") {
-                    status.qrPayload?.let { QrCard(payload = it) }
-                }
-                item(key = "manual") {
-                    ManualConnectCard(
+                // Address first, then the code. That is the order a companion's
+                // connect form asks for them, and the address is the half that
+                // cannot be guessed or retried.
+                item(key = "address") {
+                    AddressCard(
                         addresses = status.addresses,
                         port = status.port,
                         advertising = status.advertising,
                     )
+                }
+                item(key = "code") {
+                    PairingCodeCard(code = status.token)
                 }
             }
 
@@ -250,6 +243,109 @@ private fun NoticeCard(title: String, body: String) {
 }
 
 /**
+ * The size the address and the port are set at.
+ *
+ * Deliberately not [CadenceType.displayM], which the rest of the app uses for a
+ * number worth staring at. An IPv4 address runs to fifteen characters where a
+ * cadence is three, and forty points of extra-bold walks off the side of a
+ * phone. Thirty, with a heading's tighter tracking, fits the longest address
+ * this can produce inside the narrowest card the app draws. Tabular figures
+ * stop the digits shuffling sideways as the last octet changes.
+ */
+private val AddressValue = CadenceType.h1.copy(
+    fontSize = 30.sp,
+    lineHeight = 36.sp,
+    fontFeatureSettings = "tnum",
+)
+
+/**
+ * Where to point the companion.
+ *
+ * The first card and the largest type on the screen, because it is the one
+ * thing a companion cannot start without, and the thing the rider retypes on
+ * another machine. It used to sit underneath the pairing code and a QR block,
+ * which put it below the fold on a phone: the rider was scrolling past two
+ * cards to reach the only one that is not optional.
+ *
+ * Host and port are separate values rather than one `ws://` URL, because that
+ * is how a companion asks for them. A connect form has two fields. The port is
+ * stated once even when there are several addresses, since it is the same
+ * socket on all of them.
+ */
+@Composable
+private fun AddressCard(
+    addresses: List<String>,
+    port: Int,
+    advertising: Boolean,
+) {
+    SlateCard {
+        if (addresses.isEmpty()) {
+            Text(text = "Address", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Text(
+                text = "This phone has no network address. Join the same Wi-Fi as the " +
+                    "device running the companion.",
+                style = CadenceType.body,
+                color = CadenceColors.Warning,
+                modifier = Modifier.padding(top = Spacing.s2),
+            )
+        } else {
+            Text(
+                text = if (addresses.size > 1) "Addresses" else "Address",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3,
+            )
+            // Every address, not a guess at the right one. A phone on Wi-Fi
+            // while tethering has more than one, and the app cannot know which
+            // one the other machine can see.
+            addresses.forEach { address ->
+                Text(
+                    text = address,
+                    style = AddressValue,
+                    color = CadenceColors.Fg1,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth().padding(top = Spacing.s1),
+                )
+            }
+
+            Text(
+                text = "Port",
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(top = Spacing.s4),
+            )
+            Text(
+                text = port.toString(),
+                style = AddressValue,
+                color = CadenceColors.Fg1,
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.s1),
+            )
+            Text(
+                // Worth saying on the screen that shows it. The socket is opened
+                // fresh for every ride, so a companion still holding the number
+                // from last time is pointing at something that has closed, and
+                // that failure looks exactly like a network problem.
+                text = "New for every ride. A companion that remembered the last one is " +
+                    "pointing at a socket that has closed.",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(top = Spacing.s2),
+            )
+        }
+
+        Text(
+            text = if (advertising)
+                "Discoverable on this network, so a companion that looks for phones " +
+                    "should find all of this by itself."
+            else "Not discoverable on this network. Type the address and port into the " +
+                "companion by hand.",
+            style = CadenceType.small,
+            color = if (advertising) CadenceColors.Success else CadenceColors.Fg3,
+            modifier = Modifier.padding(top = Spacing.s4),
+        )
+    }
+}
+
+/**
  * The pairing code, set large and spaced out.
  *
  * A rider types this from a phone propped on the handlebars, so it is sized to
@@ -283,115 +379,3 @@ private fun PairingCodeCard(code: String) {
         )
     }
 }
-
-@Composable
-private fun QrCard(payload: String) {
-    val bitmap = remember(payload) { encodeQr(payload) }
-    SlateCard {
-        Text(text = "Or scan", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-        Box(
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.s3),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = "Pairing QR code",
-                    modifier = Modifier
-                        .size(220.dp)
-                        .clip(RoundedCornerShape(Radii.md))
-                        .background(CadenceColors.Fg1)
-                        .padding(Spacing.s3)
-                        // Nearest-neighbour rather than the default smoothing:
-                        // a blurred QR is a QR that takes three attempts to scan.
-                        .graphicsLayer { },
-                )
-            } else {
-                Text(
-                    text = "Could not draw the code. Use the address below.",
-                    style = CadenceType.small,
-                    color = CadenceColors.Fg3,
-                )
-            }
-        }
-        Text(
-            text = "Carries the address, port and pairing code together, so a scan " +
-                "is all the companion needs.",
-            style = CadenceType.small,
-            color = CadenceColors.Fg3,
-            modifier = Modifier.padding(top = Spacing.s3),
-        )
-    }
-}
-
-@Composable
-private fun ManualConnectCard(
-    addresses: List<String>,
-    port: Int,
-    advertising: Boolean,
-) {
-    SlateCard {
-        Text(text = "Connect by hand", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-        if (addresses.isEmpty()) {
-            Text(
-                text = "This phone has no network address. Join the same Wi-Fi as the " +
-                    "device running the companion.",
-                style = CadenceType.body,
-                color = CadenceColors.Warning,
-                modifier = Modifier.padding(top = Spacing.s2),
-            )
-        } else {
-            // Every address, not a guess at the right one. A phone on Wi-Fi
-            // while tethering has more than one and the app cannot know which
-            // the other machine can see.
-            addresses.forEach { address ->
-                Text(
-                    text = CompanionPairing.websocketUrl(address, port),
-                    style = CadenceType.body,
-                    color = CadenceColors.Fg1,
-                    modifier = Modifier.padding(top = Spacing.s2),
-                )
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = Spacing.s3),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
-        ) {
-            Text(
-                text = if (advertising) "Discoverable on this network"
-                else "Not discoverable - use the QR or the address",
-                style = CadenceType.small,
-                color = if (advertising) CadenceColors.Success else CadenceColors.Fg3,
-            )
-        }
-    }
-}
-
-/**
- * Render the pairing payload as a QR bitmap.
- *
- * High error correction because the thing scanning it is a phone camera
- * pointing at a phone screen across a garage, often at an angle and usually
- * with a fingerprint on the lens.
- */
-private fun encodeQr(payload: String, sizePx: Int = 512): ImageBitmap? = runCatching {
-    val hints = mapOf(
-        EncodeHintType.MARGIN to 1,
-        EncodeHintType.ERROR_CORRECTION to ErrorCorrectionLevel.H,
-        EncodeHintType.CHARACTER_SET to "UTF-8",
-    )
-    val matrix = QRCodeWriter().encode(payload, BarcodeFormat.QR_CODE, sizePx, sizePx, hints)
-    val width = matrix.width
-    val height = matrix.height
-    val pixels = IntArray(width * height)
-    for (y in 0 until height) {
-        val offset = y * width
-        for (x in 0 until width) {
-            pixels[offset + x] =
-                if (matrix.get(x, y)) AndroidColor.BLACK else AndroidColor.WHITE
-        }
-    }
-    Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        .apply { setPixels(pixels, 0, width, 0, 0, width, height) }
-        .asImageBitmap()
-}.getOrNull()
