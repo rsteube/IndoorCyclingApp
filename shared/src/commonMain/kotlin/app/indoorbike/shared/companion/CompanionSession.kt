@@ -15,6 +15,8 @@
  */
 package app.indoorbike.shared.companion
 
+import app.indoorbike.shared.simulation.Drivetrain
+
 /**
  * Something the host should do as a result of a frame.
  *
@@ -44,6 +46,12 @@ sealed interface CompanionEffect {
 
     /** Pause or resume the recording. A request: it can legitimately do nothing. */
     data class SetRideState(val paused: Boolean) : CompanionEffect
+
+    /**
+     * Put the rider on a different bike. The ride's drivetrain only; the
+     * rider's own setting is untouched and comes back when the ride ends.
+     */
+    data class SetDrivetrain(val drivetrain: Drivetrain) : CompanionEffect
 
     /**
      * A controllable screen came up, or went away when null.
@@ -178,6 +186,7 @@ class CompanionSession(
             is CourseFrame -> onCourse(frame)
             is SetStateFrame -> onSetState(frame)
             is ControlsFrame -> onControls(frame)
+            is DrivetrainFrame -> onDrivetrain(frame)
             is FinishFrame -> onFinish(frame)
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
@@ -412,6 +421,43 @@ class CompanionSession(
         )
         if (!course.isEmpty) effects += CompanionEffect.SetCourse(course)
         return effects
+    }
+
+    /**
+     * The bike the game says the rider is on.
+     *
+     * Refused whole rather than repaired. A drivetrain is a description of a
+     * physical object, and a companion that sent a zero-tooth sprocket has a
+     * bug rather than a preference: quietly rounding it to nine would hide the
+     * bug and hand the rider a bike nobody designed. The rejection names the
+     * offending number, and the drivetrain they already had stays.
+     */
+    private fun onDrivetrain(frame: DrivetrainFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("drivetrain"))
+
+        val wheel = frame.wheelCircumferenceMm ?: Drivetrain.ROAD.wheelCircumferenceMm
+        val reason = Drivetrain.rejectionReason(frame.chainrings, frame.sprockets, wheel)
+        if (reason != null) {
+            return listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.REJECTED,
+                        field = "drivetrain",
+                        message = reason + " The drivetrain was left as it was.",
+                    )
+                )
+            )
+        }
+        return listOf(
+            CompanionEffect.SetDrivetrain(
+                Drivetrain.custom(
+                    name = frame.name?.take(CompanionProtocol.MAX_CONTROL_LABEL_CHARS),
+                    chainrings = frame.chainrings,
+                    sprockets = frame.sprockets,
+                    wheelCircumferenceMm = wheel,
+                )
+            )
+        )
     }
 
     /**

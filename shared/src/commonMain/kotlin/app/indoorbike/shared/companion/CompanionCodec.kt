@@ -102,6 +102,7 @@ object CompanionCodec {
                 "label" -> json.decodeFromJsonElement(LabelFrame.serializer(), root)
                 "course" -> json.decodeFromJsonElement(CourseFrame.serializer(), root)
                 "controls" -> json.decodeFromJsonElement(ControlsFrame.serializer(), root)
+                "drivetrain" -> json.decodeFromJsonElement(DrivetrainFrame.serializer(), root)
                 "setState" -> json.decodeFromJsonElement(SetStateFrame.serializer(), root)
                 "finish" -> json.decodeFromJsonElement(FinishFrame.serializer(), root)
                 "ping" -> json.decodeFromJsonElement(PingFrame.serializer(), root)
@@ -135,7 +136,7 @@ object CompanionCodec {
     fun encode(frame: ServerFrame): String = when (frame) {
         is WelcomeFrame -> json.encodeToString(WelcomeFrame.serializer(), frame.rounded())
         is TelemetryFrame -> json.encodeToString(TelemetryFrame.serializer(), frame.rounded())
-        is EventFrame -> json.encodeToString(EventFrame.serializer(), frame)
+        is EventFrame -> json.encodeToString(EventFrame.serializer(), frame.rounded())
         is WarningFrame -> json.encodeToString(WarningFrame.serializer(), frame.rounded())
         is ErrorFrame -> json.encodeToString(ErrorFrame.serializer(), frame)
         is PongFrame -> json.encodeToString(PongFrame.serializer(), frame)
@@ -156,6 +157,10 @@ object CompanionCodec {
         // any of them needs rather than guessing from the field name.
         sent = sent?.let { round(it, 4) },
         applied = applied?.let { round(it, 4) },
+    )
+
+    private fun EventFrame.rounded() = copy(
+        gears = gears?.map { it.copy(ratio = round(it.ratio, 2), loadFactor = round(it.loadFactor, 2)) },
     )
 
     private fun WelcomeFrame.rounded() = copy(

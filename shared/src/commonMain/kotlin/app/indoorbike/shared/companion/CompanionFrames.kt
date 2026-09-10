@@ -183,6 +183,46 @@ data class SetStateFrame(
 ) : ClientFrame
 
 /**
+ * The bike the rider is pretending to be on.
+ *
+ * Optional, and most companions will never send it: leaving it out gives the
+ * rider the drivetrain they chose in the app's own settings, which is a
+ * reasonable bike and the one they picked. Send it when the *game* has an
+ * opinion - a mountain stage that hands out a 32-tooth granny ring, a fixed
+ * gear track session, a bike the rider unlocked - and the ladder on the phone
+ * becomes that bike for the length of the ride.
+ *
+ * **1x, 2x and 3x is the length of [chainrings].** There is no separate field
+ * saying which, because a field like that can disagree with the list beside it
+ * and then somebody has to decide which one is lying.
+ *
+ * Nothing here is persisted. The rider's own setting is untouched underneath
+ * and comes back the moment the ride ends.
+ *
+ * Send it during setup, before `setState: "active"`. It is accepted later, but
+ * a ladder that changes under a rider mid-effort is a surprise nobody asked
+ * for; the app keeps them in the nearest gear it can find rather than throwing
+ * them into a different one, and says what the new ladder is either way.
+ *
+ * @param chainrings teeth, largest first or smallest first, it does not matter.
+ *   One to three of them, each 20 to 70 teeth.
+ * @param sprockets teeth on the cassette, in any order. One (a single-speed is
+ *   a real bike) to sixteen, each 9 to 60 teeth.
+ * @param wheelCircumferenceMm rolling circumference with the tyre on. Absent
+ *   means 2105, a 700x25, which is what the app's own road preset uses.
+ * @param name what to call it on the phone. Absent gets a description built
+ *   from the teeth, e.g. "2x, 50/34 with 11-32".
+ */
+@Serializable
+data class DrivetrainFrame(
+    val chainrings: List<Int> = emptyList(),
+    val sprockets: List<Int> = emptyList(),
+    val wheelCircumferenceMm: Int? = null,
+    val name: String? = null,
+    val t: String = "drivetrain",
+) : ClientFrame
+
+/**
  * A controllable screen is up, or has gone away.
  *
  * The app is driving a screen it cannot see, so this is how it learns there is
@@ -401,6 +441,15 @@ data class EventFrame(
     val input: String? = null,
     /** For [CONTROL_PRESSED]: which of [CompanionControl.ALL] the rider pressed. */
     val control: String? = null,
+    /**
+     * For [DRIVETRAIN_CHANGED]: the whole new ladder, in index order.
+     *
+     * Sent rather than left to be inferred, because it is not what the
+     * companion asked for. Near-identical ratios are dropped, so a 2x with
+     * fifty-odd combinations comes back as twenty distinct gears, and only the
+     * app knows which twenty.
+     */
+    val gears: List<GearInfo>? = null,
     val state: String? = null,
     val reason: String? = null,
     val fallback: String? = null,
@@ -416,6 +465,12 @@ data class EventFrame(
          * screen is up and only for a control that was listed as enabled.
          */
         const val CONTROL_PRESSED = "controlPressed"
+
+        /**
+         * The drivetrain changed, carrying [EventFrame.gears] and, in
+         * [EventFrame.index], the gear the rider is now in.
+         */
+        const val DRIVETRAIN_CHANGED = "drivetrainChanged"
         const val RIDER_INPUT = "riderInput"
         const val STATE_CHANGED = "stateChanged"
         const val WORLD_TIMEOUT = "worldTimeout"

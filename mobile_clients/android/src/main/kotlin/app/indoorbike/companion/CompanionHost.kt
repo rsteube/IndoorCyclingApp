@@ -550,6 +550,21 @@ class CompanionHost(
 
                 is CompanionEffect.SetControls -> _remoteControls.value = effect.controls
 
+                is CompanionEffect.SetDrivetrain -> {
+                    engine.setDrivetrain(effect.drivetrain)
+                    // The ladder that came out is not the one that went in:
+                    // near-identical ratios are dropped, so a 2x described as
+                    // fifty-odd combinations comes back as twenty gears. Only
+                    // this side knows which twenty, so it says.
+                    broadcast(
+                        EventFrame(
+                            event = EventFrame.DRIVETRAIN_CHANGED,
+                            index = engine.gearIndex.value,
+                            gears = gearLadder(),
+                        )
+                    )
+                }
+
                 is CompanionEffect.SetRideState -> {
                     // Requests, not commands. `pauseWorkout` ignores anything
                     // that is not an active ride and `resumeWorkout` anything
@@ -678,6 +693,25 @@ class CompanionHost(
         )
     }
 
+    /**
+     * The whole drivetrain with real teeth on it, so a companion can draw
+     * "34 x 17" rather than "gear 11 of 20". One description, shared by the
+     * welcome and by [EventFrame.DRIVETRAIN_CHANGED], because a ladder
+     * described two ways is a ladder that will eventually be described two
+     * different ways.
+     */
+    private fun gearLadder(): List<GearInfo> {
+        val drivetrain = engine.drivetrain.value
+        return drivetrain.gears.mapIndexed { i, gear ->
+            GearInfo(
+                i = i,
+                ratio = gear.ratio,
+                label = gear.label,
+                loadFactor = drivetrain.loadFactor(i),
+            )
+        }
+    }
+
     private fun rideState(): String = sessionManager.state.value.asCompanionState()
 
     /**
@@ -703,14 +737,7 @@ class CompanionHost(
             bike = BikeInfo(massKg = bikeMassKg().toDouble(), drivetrain = drivetrain.id),
             // The whole ladder with real teeth, so a companion can draw "34 x 17"
             // rather than "gear 11 of 20".
-            gears = drivetrain.gears.mapIndexed { i, gear ->
-                GearInfo(
-                    i = i,
-                    ratio = gear.ratio,
-                    label = gear.label,
-                    loadFactor = drivetrain.loadFactor(i),
-                )
-            },
+            gears = gearLadder(),
             gearIndex = engine.gearIndex.value,
             trainer = TrainerInfo(
                 name = trainerName(),

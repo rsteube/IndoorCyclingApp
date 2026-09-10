@@ -197,6 +197,31 @@ The phone shows "Ready, start the ride in the game" while it waits.
 **If you forget this, the rider pedals, the road works, and nothing is ever recorded.** It is
 the single easiest way to ship a companion that looks right and saves nothing.
 
+## Optional: put the rider on your bike
+
+By default the rider rides the drivetrain they chose in the app's settings, which is a
+reasonable bike and the one they picked. **Most companions should leave it alone.** Send a
+`drivetrain` frame only when your game has an opinion: a mountain stage that hands out a
+32-tooth granny ring, a track session on a fixed gear, a bike the rider unlocked.
+
+```json
+{ "t": "drivetrain", "name": "Race bike", "chainrings": [50, 34],
+  "sprockets": [11, 12, 13, 14, 15, 17, 19, 21, 23, 25, 28, 32],
+  "wheelCircumferenceMm": 2105 }
+```
+
+1x, 2x or 3x is the length of `chainrings` - there is no separate field for it, because a field
+like that can disagree with the list beside it.
+
+Two things to know. An invalid spec is **refused whole, not repaired**: a 0-tooth sprocket gets
+a warning naming it and the rider keeps the bike they had. And the ladder you get back is
+**shorter than the list you sent**, because near-identical ratios are dropped, so a 2x with
+fifty-odd combinations becomes about twenty gears. The app answers with a `drivetrainChanged`
+event carrying the resulting ladder and the current gear; draw your gear display from that.
+
+Send it during setup, before `setState: "active"`. Nothing is persisted, and the rider's own
+setting comes back when the ride ends.
+
 ## Menus: lend the rider your phone
 
 Your game is on a television across the room. The rider is on a bike, with a phone on the bars

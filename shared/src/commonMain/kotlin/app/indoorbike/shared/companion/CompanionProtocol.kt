@@ -76,6 +76,10 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.5 added the `drivetrain` frame, so a game can put the rider on the
+     * bike the game thinks they are riding. Optional: leaving it out keeps the
+     * drivetrain the rider chose in settings.
+     *
      * 0.4 moved the moment a ride starts. The app now records nothing until
      * the companion sends `setState: active`, and there is no countdown when
      * it does. **This is the one change so far that is not purely additive**: a
@@ -98,7 +102,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 4)
+    val VERSION = ProtocolVersion(0, 5)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -111,7 +115,9 @@ object CompanionProtocol {
      * [HONOURED_WORLD_FIELDS] rather than assume.
      */
     val CAPABILITIES =
-        listOf("requestShift", "label", "summary", "course", "setState", "controls")
+        listOf(
+            "requestShift", "label", "summary", "course", "setState", "controls", "drivetrain",
+        )
 
     /**
      * Longest encoded polyline a `course` frame may carry.

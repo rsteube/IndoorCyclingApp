@@ -259,6 +259,132 @@ data class Drivetrain(
         /** Look one up by [Drivetrain.id], falling back to [DEFAULT]. */
         fun byId(id: String?): Drivetrain = ALL.find { it.id == id } ?: DEFAULT
 
+        // Bounds on a drivetrain somebody else describes ───────────────────
+
+        /**
+         * Teeth counts that exist on real bicycles, give or take.
+         *
+         * Deliberately wider than any catalogue: the point is to refuse
+         * nonsense, not to have an opinion about the rider's bike. A 20-tooth
+         * inner ring and a 70-tooth outer are both absurd on the same bike and
+         * both real on some bike, so both are allowed. What is not allowed is
+         * a zero, a negative, or a number that would put a rider in a gear no
+         * chain could reach.
+         */
+        const val MIN_CHAINRING_TEETH = 20
+        const val MAX_CHAINRING_TEETH = 70
+        const val MIN_SPROCKET_TEETH = 9
+        const val MAX_SPROCKET_TEETH = 60
+
+        /** 1x, 2x, 3x. There is no 4x, and there is no 0x. */
+        const val MAX_CHAINRINGS = 3
+
+        /** A single-speed is one sprocket, and a real bike. Beyond 16 is not. */
+        const val MAX_SPROCKETS = 16
+
+        /**
+         * Rolling circumference bounds, in millimetres. A 20-inch wheel is
+         * about 1 500 and a fat-bike 29er about 2 400, so this brackets
+         * everything with a tyre on it.
+         */
+        const val MIN_WHEEL_CIRCUMFERENCE_MM = 900
+        const val MAX_WHEEL_CIRCUMFERENCE_MM = 2_500
+
+        /**
+         * Why a described drivetrain cannot be ridden, or null if it can.
+         *
+         * Returns a sentence rather than a boolean because the sentence is the
+         * whole value: it goes straight into the warning the companion
+         * receives, and "sprocket 0 is not a sprocket" saves an afternoon that
+         * "invalid drivetrain" does not.
+         */
+        fun rejectionReason(
+            chainrings: List<Int>,
+            sprockets: List<Int>,
+            wheelCircumferenceMm: Int,
+        ): String? {
+            if (chainrings.isEmpty()) return "A bike needs at least one chainring."
+            if (chainrings.size > MAX_CHAINRINGS) {
+                return "There is no " + chainrings.size + "x drivetrain; the most is " +
+                    MAX_CHAINRINGS + "x."
+            }
+            if (sprockets.isEmpty()) return "A bike needs at least one sprocket."
+            if (sprockets.size > MAX_SPROCKETS) {
+                return "That is " + sprockets.size + " sprockets; the most is " +
+                    MAX_SPROCKETS + "."
+            }
+            chainrings.firstOrNull { it < MIN_CHAINRING_TEETH || it > MAX_CHAINRING_TEETH }
+                ?.let {
+                    return "Chainring of " + it + " teeth is outside " +
+                        MIN_CHAINRING_TEETH + " to " + MAX_CHAINRING_TEETH + "."
+                }
+            sprockets.firstOrNull { it < MIN_SPROCKET_TEETH || it > MAX_SPROCKET_TEETH }
+                ?.let {
+                    return "Sprocket of " + it + " teeth is outside " +
+                        MIN_SPROCKET_TEETH + " to " + MAX_SPROCKET_TEETH + "."
+                }
+            if (wheelCircumferenceMm < MIN_WHEEL_CIRCUMFERENCE_MM ||
+                wheelCircumferenceMm > MAX_WHEEL_CIRCUMFERENCE_MM
+            ) {
+                return "Wheel circumference of " + wheelCircumferenceMm + " mm is outside " +
+                    MIN_WHEEL_CIRCUMFERENCE_MM + " to " + MAX_WHEEL_CIRCUMFERENCE_MM + "."
+            }
+            return null
+        }
+
+        /**
+         * A drivetrain somebody else described, with a summary written for it.
+         *
+         * The caller is expected to have run [rejectionReason] first; this
+         * clamps rather than refuses, so a spec that slipped through cannot
+         * produce a ladder nobody could ride.
+         *
+         * Not added to [ALL] and never persisted. It belongs to the ride that
+         * asked for it, and the rider's own setting is waiting untouched
+         * underneath.
+         */
+        fun custom(
+            name: String?,
+            chainrings: List<Int>,
+            sprockets: List<Int>,
+            wheelCircumferenceMm: Int = ROAD.wheelCircumferenceMm,
+        ): Drivetrain {
+            val rings = chainrings
+                .map { it.coerceIn(MIN_CHAINRING_TEETH, MAX_CHAINRING_TEETH) }
+                .distinct()
+                .take(MAX_CHAINRINGS)
+                .sortedDescending()
+            val cogs = sprockets
+                .map { it.coerceIn(MIN_SPROCKET_TEETH, MAX_SPROCKET_TEETH) }
+                .distinct()
+                .take(MAX_SPROCKETS)
+                .sorted()
+            val circumference = wheelCircumferenceMm
+                .coerceIn(MIN_WHEEL_CIRCUMFERENCE_MM, MAX_WHEEL_CIRCUMFERENCE_MM)
+            return Drivetrain(
+                id = CUSTOM_ID,
+                name = name?.takeIf { it.isNotBlank() } ?: describe(rings, cogs),
+                summary = describe(rings, cogs) + ", " + circumference + " mm",
+                chainrings = rings,
+                sprockets = cogs,
+                wheelCircumferenceMm = circumference,
+            )
+        }
+
+        /** "2x, 50/34 with 11-32", which is how a rider would say it. */
+        private fun describe(chainrings: List<Int>, sprockets: List<Int>): String {
+            val rings = chainrings.joinToString("/")
+            val cogs = if (sprockets.size < 2) {
+                sprockets.firstOrNull()?.toString() ?: "?"
+            } else {
+                sprockets.first().toString() + "-" + sprockets.last()
+            }
+            return chainrings.size.toString() + "x, " + rings + " with " + cogs
+        }
+
+        /** Marks a drivetrain a companion described rather than one we ship. */
+        const val CUSTOM_ID = "custom"
+
         private fun buildGears(
             chainrings: List<Int>,
             sprockets: List<Int>,

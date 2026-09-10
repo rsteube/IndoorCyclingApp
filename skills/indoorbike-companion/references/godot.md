@@ -19,7 +19,7 @@ signal welcomed(frame: Dictionary)
 signal link_closed(code: int, reason: String)
 
 const PROTO_MIN := "0.1"
-const PROTO_MAX := "0.4"
+const PROTO_MAX := "0.5"
 const WORLD_HZ := 10.0
 
 var _socket := WebSocketPeer.new()
@@ -85,7 +85,7 @@ func _send_hello() -> void:
             "platform": OS.get_name(),
         },
         "role": "controller",       # exact string; any other value grants observer
-        "capabilities": ["summary", "course", "setState", "controls"],
+        "capabilities": ["summary", "course", "setState", "controls", "drivetrain"],
     })
 
 

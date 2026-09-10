@@ -15,6 +15,7 @@
  */
 package app.indoorbike.shared.companion
 
+import app.indoorbike.shared.simulation.Drivetrain
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -678,5 +679,112 @@ class CompanionControlsTest {
     fun `the welcome advertises the capability`() {
         val s = session()
         assertContains(s.onFrame(hello(), nowMs = 0).sent<WelcomeFrame>().capabilities, "controls")
+    }
+}
+
+/** The bike the game says the rider is on. */
+class CompanionDrivetrainTest {
+
+    private fun ready(): CompanionSession = session().also { it.onFrame(hello(), nowMs = 0) }
+
+    @Test
+    fun `a described bike becomes a rideable ladder`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"drivetrain","chainrings":[50,34],""" +
+                """"sprockets":[11,12,13,14,15,17,19,21,23,25,28,32],""" +
+                """"wheelCircumferenceMm":2105,"name":"Race bike"}""",
+            nowMs = 1_000,
+        )
+        val drivetrain = effects.pick<CompanionEffect.SetDrivetrain>().drivetrain
+        assertEquals("Race bike", drivetrain.name)
+        assertEquals(listOf(50, 34), drivetrain.chainrings)
+        assertEquals(2_105, drivetrain.wheelCircumferenceMm)
+        assertTrue(drivetrain.gearCount > 10, "only ${drivetrain.gearCount} gears came out")
+        // Easiest first, and every gear distinct enough to be worth shifting to.
+        val developments = drivetrain.gears.map { it.developmentMeters }
+        assertEquals(developments.sorted(), developments)
+    }
+
+    /**
+     * The number of chainrings is the answer to "1x, 2x or 3x". A separate
+     * field could disagree with the list beside it.
+     */
+    @Test
+    fun `one chainring is a 1x`() {
+        val s = ready()
+        val drivetrain = s.onFrame(
+            """{"t":"drivetrain","chainrings":[32],"sprockets":[10,12,14,16,18,21,24,28,33,39,45,52]}""",
+            nowMs = 1_000,
+        ).pick<CompanionEffect.SetDrivetrain>().drivetrain
+        assertEquals(1, drivetrain.chainrings.size)
+        assertContains(drivetrain.summary, "1x")
+    }
+
+    @Test
+    fun `an absent wheel gets a road wheel`() {
+        val s = ready()
+        val drivetrain = s.onFrame(
+            """{"t":"drivetrain","chainrings":[46,30],"sprockets":[11,28]}""",
+            nowMs = 1_000,
+        ).pick<CompanionEffect.SetDrivetrain>().drivetrain
+        assertEquals(Drivetrain.ROAD.wheelCircumferenceMm, drivetrain.wheelCircumferenceMm)
+    }
+
+    /**
+     * Refused whole rather than repaired. A zero-tooth sprocket is a bug, and
+     * rounding it up to nine would hide the bug and hand the rider a bike
+     * nobody designed.
+     */
+    @Test
+    fun `a sprocket that cannot exist is refused, naming the number`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"drivetrain","chainrings":[50],"sprockets":[0,11]}""",
+            nowMs = 1_000,
+        )
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.REJECTED, warning.code)
+        assertEquals("drivetrain", warning.field)
+        assertContains(warning.message.orEmpty(), "0")
+        assertTrue(effects.filterIsInstance<CompanionEffect.SetDrivetrain>().isEmpty())
+    }
+
+    @Test
+    fun `there is no 4x`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"drivetrain","chainrings":[53,50,39,34],"sprockets":[11,28]}""",
+            nowMs = 1_000,
+        )
+        assertContains(effects.sent<WarningFrame>().message.orEmpty(), "4x")
+        assertTrue(effects.filterIsInstance<CompanionEffect.SetDrivetrain>().isEmpty())
+    }
+
+    @Test
+    fun `a bike with no chainrings is not a bike`() {
+        val s = ready()
+        val effects = s.onFrame("""{"t":"drivetrain","sprockets":[11,28]}""", nowMs = 1_000)
+        assertEquals(CompanionWarning.REJECTED, effects.sent<WarningFrame>().code)
+    }
+
+    @Test
+    fun `an observer may not change the rider's bike`() {
+        val s = session()
+        s.onFrame(hello(role = HelloFrame.ROLE_OBSERVER), nowMs = 0)
+        val error = s.onFrame(
+            """{"t":"drivetrain","chainrings":[50],"sprockets":[11,28]}""",
+            nowMs = 1_000,
+        ).sent<ErrorFrame>()
+        assertEquals(CompanionError.NOT_CONTROLLER, error.code)
+    }
+
+    @Test
+    fun `the welcome advertises the capability`() {
+        val s = session()
+        assertContains(
+            s.onFrame(hello(), nowMs = 0).sent<WelcomeFrame>().capabilities,
+            "drivetrain",
+        )
     }
 }

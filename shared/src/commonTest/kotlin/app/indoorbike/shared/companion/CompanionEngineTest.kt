@@ -17,6 +17,7 @@ package app.indoorbike.shared.companion
 
 import app.indoorbike.shared.ble.SimulationParameters
 import app.indoorbike.shared.simulation.Drivetrain
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -374,5 +375,44 @@ class CompanionEngineTest {
 
         val gear = Drivetrain.DEFAULT.developmentMeters(r.engine.gearIndex.value)
         assertEquals(90.0 / 60.0 * gear, r.engine.driveSpeedMps.value, absoluteTolerance = 1e-6)
+    }
+
+    // The bike ───────────────────────────────────────────────────────────────
+
+    /**
+     * A rider in the eleventh of twenty gears is not asking to be in the
+     * eleventh of twelve. They are asking to keep turning the ground over at
+     * the rate they were.
+     */
+    @Test
+    fun `changing bikes keeps the rider at the gear they were turning`() {
+        val r = Recorder(cadence = 90)
+        r.engine.setRoad(gradient = 0.0, speedMps = 9.0, nowMs = 0)
+        r.engine.advance(0)
+        repeat(6) { r.engine.shiftUp() }
+        val before = r.engine.drivetrain.value.developmentMeters(r.engine.gearIndex.value)
+
+        r.engine.setDrivetrain(
+            Drivetrain.custom(
+                name = "Gravel",
+                chainrings = listOf(40),
+                sprockets = listOf(10, 11, 13, 15, 17, 19, 21, 24, 28, 33, 38, 44),
+                wheelCircumferenceMm = 2200,
+            )
+        )
+        val after = r.engine.drivetrain.value.developmentMeters(r.engine.gearIndex.value)
+        assertEquals("Gravel", r.engine.drivetrain.value.name)
+        assertTrue(
+            abs(after - before) < 0.8,
+            "the rider was thrown from $before m to $after m per crank turn",
+        )
+    }
+
+    @Test
+    fun `an empty drivetrain is refused rather than leaving no gears`() {
+        val r = Recorder()
+        val before = r.engine.drivetrain.value
+        r.engine.setDrivetrain(Drivetrain.custom("Nothing", emptyList(), emptyList()))
+        assertEquals(before, r.engine.drivetrain.value)
     }
 }

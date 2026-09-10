@@ -361,6 +361,32 @@ class CompanionEngine(
     }
 
     /**
+     * Put the rider on a different bike.
+     *
+     * The gear index is carried across by *development* rather than by
+     * position: a rider in the eleventh of twenty gears is not asking to be in
+     * the eleventh of twelve, they are asking to keep turning the ground over
+     * at the rate they were. Nearest development is the closest thing to
+     * leaving them where they are, and on a fresh ride it lands on a sensible
+     * opener because the gear it measures against is already one.
+     *
+     * Announced by the host afterwards, because the ladder the rider ends up
+     * with is not the one the companion described: near-identical ratios are
+     * dropped on the way in.
+     */
+    fun setDrivetrain(drivetrain: Drivetrain) {
+        if (drivetrain.gears.isEmpty()) return
+        val wanted = _drivetrain.value.developmentMeters(_gearIndex.value)
+        _drivetrain.value = drivetrain
+        _gearIndex.value = drivetrain.gears.indices.minByOrNull {
+            abs(drivetrain.gears[it].developmentMeters - wanted)
+        } ?: drivetrain.startIndex
+        // The gear decides the force, so the trainer needs telling at once
+        // rather than at the next road update.
+        if (_running.value) pushRoadToTrainer(force = true)
+    }
+
+    /**
      * The road this ride is on, laid over whatever was already known.
      *
      * Merged rather than replaced so a companion can name the course while the

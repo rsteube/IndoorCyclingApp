@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.4** (the app also accepts 0.3, 0.2 and 0.1)
+- Protocol version: **0.5** (the app also accepts 0.4, 0.3, 0.2 and 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -165,7 +165,7 @@ Codes are 6 characters, generated per ride, never stored, never reused.
   "token": "8F3K2M",
   "client": { "name": "Alpine Climb", "version": "0.3.1", "platform": "windows" },
   "role": "controller",
-  "capabilities": ["summary", "course", "setState", "controls"]
+  "capabilities": ["summary", "course", "setState", "controls", "drivetrain"]
 }
 ```
 
@@ -199,7 +199,8 @@ want control, send `"controller"` or omit the field.
   "sessionId": "3f9a1c",
   "tickMs": 250,
   "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
-  "capabilities": ["requestShift", "label", "summary", "course", "setState", "controls"],
+  "capabilities": ["requestShift", "label", "summary", "course", "setState", "controls",
+                   "drivetrain"],
   "role": "controller",
   "rider": { "massKg": 78.0, "ftpWatts": 250 },
   "bike": { "massKg": 9.5, "drivetrain": "road-double" },
@@ -238,6 +239,8 @@ Rules from 1.0 onward (0.x may break on a minor bump):
 Version and capability are separate mechanisms. Version answers "same language"; `honours` and
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
+
+**0.5** added the `drivetrain` frame. Optional; leaving it out keeps the rider's own setting.
 
 **0.4** moved the moment a ride starts, and is the one change so far that is not purely
 additive: nothing is recorded until you send `setState: "active"`, and there is no countdown.
@@ -430,6 +433,51 @@ the phone has a stop-pedalling watchdog, and its foreground service can force on
 Note that `setState` does not stop the deadman. Keep sending `world` frames while you are
 paused (see [5.1](#51-the-deadman)) or the gradient will ramp to flat under a rider who may
 still be turning the pedals.
+
+---
+
+## 7bb. `drivetrain` (companion -> app)
+
+Optional. Requires the `drivetrain` capability. Added in protocol 0.5.
+
+```json
+{
+  "t": "drivetrain",
+  "name": "Race bike",
+  "chainrings": [50, 34],
+  "sprockets": [11, 12, 13, 14, 15, 17, 19, 21, 23, 25, 28, 32],
+  "wheelCircumferenceMm": 2105
+}
+```
+
+Puts the rider on the bike your game thinks they are riding. Most companions never send it:
+without it the rider keeps the drivetrain they chose in the app's settings.
+
+| Field | Type | Required | Range | Notes |
+|---|---|---|---|---|
+| `chainrings` | int[] | yes | 1 to 3 entries, 20 to 70 teeth | The count is the 1x / 2x / 3x |
+| `sprockets` | int[] | yes | 1 to 16 entries, 9 to 60 teeth | One sprocket is a single-speed, which is a real bike |
+| `wheelCircumferenceMm` | int | no | 900 to 2500 | Absent means 2105 |
+| `name` | string | no | 48 chars | Absent builds one from the teeth |
+
+Order does not matter in either list; the app sorts and de-duplicates.
+
+**There is no field saying 1x, 2x or 3x.** It is the length of `chainrings`. A separate field
+could disagree with the list beside it.
+
+**Invalid specs are refused whole, not repaired.** A drivetrain describes a physical object, so
+a 0-tooth sprocket is a bug, not a preference. You get a `rejected` warning naming the offending
+number and the rider keeps the bike they had.
+
+**Read the ladder back from `drivetrainChanged`.** Combinations within 2.5 % of one already in
+the ladder are dropped, so what comes out is shorter than what went in and only the app knows by
+how much. The event carries the whole resulting ladder and the current gear index.
+
+Send it during setup, before `setState: "active"`. Accepted later too: a rider whose bike
+changes mid-ride is placed in the nearest gear by development rather than by index, so they keep
+turning the ground over at about the rate they were.
+
+Nothing is persisted. The rider's own setting comes back when the ride ends.
 
 ---
 
@@ -629,6 +677,7 @@ encode as `0.0` rather than emitting invalid JSON.
 ```json
 { "t": "event", "event": "gearChanged", "index": 12, "changed": true, "source": "zwiftClick" }
 { "t": "event", "event": "controlPressed", "control": "enter" }
+{ "t": "event", "event": "drivetrainChanged", "index": 6, "gears": [ ... ] }
 { "t": "event", "event": "stateChanged", "state": "finished" }
 { "t": "event", "event": "worldTimeout", "fallback": "flat" }
 { "t": "event", "event": "worldResumed" }
@@ -834,7 +883,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Read `welcome.honours` and `welcome.capabilities`, and warn if you rely on something
       not listed. Branch on `capabilities`, never on the version number
 - [ ] Read `welcome.tickMs`; do not hardcode 250
-- [ ] Build the gear display from `welcome.gears`, not from an index
+- [ ] Build the gear display from `welcome.gears`, and update it from
+      `drivetrainChanged` if you send a `drivetrain`
 - [ ] Send `world` at 4-10 Hz with a strictly increasing `seq`
 - [ ] Always include `gradient` **and** `speedMps`
 - [ ] Take the rider's speed from `telemetry.speedMps`; only integrate from power when the
@@ -876,6 +926,7 @@ Present in the protocol, absent from this build. Do not design around them.
 | Truncating a long `shape` to fit | Refused whole with a `rejected` warning; simplify the track instead |
 | Reading `course.distanceM` as the rider's distance | It is the course's own length; the rider's is `world.distanceM` |
 | Pausing with `setState` and stopping `world` frames | The deadman ramps the gradient to flat under a rider who may still be pedalling |
+| Assuming the gear ladder matches the `drivetrain` you sent | Near-identical ratios are dropped. Read `drivetrainChanged` |
 | Never sending `setState: "active"` | The rider pedals, the road works, and nothing is ever recorded |
 | Waiting for the app to count the rider in | It does not, in this mode. Your game owns the start |
 | Leaving `controls` visible after a menu closes | The rider is left holding a pad wired to nothing |

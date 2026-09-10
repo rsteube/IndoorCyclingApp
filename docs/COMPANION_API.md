@@ -158,7 +158,10 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.4, and this build accepts everything back to 0.1.**
+**Current version: 0.5, and this build accepts everything back to 0.1.**
+
+0.5 added the `drivetrain` frame, so a game can put the rider on the bike the game thinks they
+are riding. Optional: leave it out and the rider keeps the drivetrain they chose in settings.
 
 0.4 moved the moment a ride starts, and is **the one change so far that is not purely
 additive**. The app now records nothing until the companion sends `setState: "active"`, and
@@ -415,6 +418,50 @@ and it is broadcast for rider-initiated pauses too - the phone has its own pause
 stop-pedalling watchdog, and a foreground service that can force one - so a companion should
 follow `stateChanged` rather than assume its own request took effect.
 
+#### `drivetrain`
+
+The bike the rider is pretending to be on. Optional, and requires the `drivetrain` capability.
+
+```jsonc
+{ "t": "drivetrain",
+  "name": "Race bike",
+  "chainrings": [50, 34],
+  "sprockets": [11, 12, 13, 14, 15, 17, 19, 21, 23, 25, 28, 32],
+  "wheelCircumferenceMm": 2105 }
+```
+
+Most companions will never send this. Leaving it out gives the rider the drivetrain they picked
+in the app's own settings, which is a reasonable bike and the one they chose. Send it when the
+*game* has an opinion: a mountain stage that hands out a 32-tooth granny ring, a track session
+on a fixed gear, a bike the rider unlocked.
+
+| Field | Type | Notes |
+|---|---|---|
+| `chainrings` | int[] | Teeth. One to three of them, each 20 to 70. Order does not matter |
+| `sprockets` | int[] | Teeth on the cassette. One to sixteen, each 9 to 60. Order does not matter |
+| `wheelCircumferenceMm` | int | Rolling circumference with the tyre on. Absent means 2105, a 700x25. 900 to 2500 |
+| `name` | string | What to call it on the phone. Absent builds one from the teeth |
+
+**1x, 2x and 3x is the length of `chainrings`.** There is no separate field saying which,
+because a field like that can disagree with the list beside it and then somebody has to decide
+which one is lying.
+
+**It is refused whole rather than repaired.** A drivetrain describes a physical object, so a
+zero-tooth sprocket is a bug rather than a preference: quietly rounding it up would hide the bug
+and hand the rider a bike nobody designed. The `rejected` warning names the offending number and
+the drivetrain the rider already had stays.
+
+**The ladder you get back is not the list you sent.** Combinations within 2.5 % of one already
+in the ladder are dropped, so a 2x with fifty-odd chainring and sprocket pairings comes back as
+about twenty distinct gears. The app answers with a `drivetrainChanged` event carrying the whole
+resulting ladder and the gear the rider is now in. Draw your gear display from that, not from
+what you sent.
+
+Send it during setup, before `setState: "active"`. It is accepted later too, and a rider whose
+bike changes mid-ride is kept in the nearest gear the new ladder has to the one they were
+turning, rather than thrown into a different one. Nothing here is persisted: the rider's own
+setting is untouched underneath and comes back when the ride ends.
+
 #### `controls`
 
 A controllable screen is up, or has gone away. Requires the `controls` capability.
@@ -580,6 +627,7 @@ and mean nothing. Do not read an absent field as a standstill: fall back to your
 ```jsonc
 { "t": "event", "event": "gearChanged", "index": 12, "changed": true, "source": "zwiftClick" }
 { "t": "event", "event": "controlPressed", "control": "enter" }
+{ "t": "event", "event": "drivetrainChanged", "index": 6, "gears": [ … ] }
 { "t": "event", "event": "riderInput", "input": "plus" }
 { "t": "event", "event": "stateChanged", "state": "paused", "reason": "autoPause" }
 { "t": "event", "event": "worldTimeout", "fallback": "flat" }
