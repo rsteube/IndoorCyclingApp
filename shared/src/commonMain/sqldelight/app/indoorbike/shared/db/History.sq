@@ -34,7 +34,19 @@ CREATE TABLE WorkoutSession (
     -- this ride did": they are positions, and this is the origin to measure
     -- them from.
     routeStartMeters REAL NOT NULL DEFAULT 0.0,
-    routeStartElevationGainMeters REAL NOT NULL DEFAULT 0.0
+    routeStartElevationGainMeters REAL NOT NULL DEFAULT 0.0,
+    -- The road itself, for a ride whose road was not in the route catalogue.
+    -- Companion rides only: a game's course exists nowhere else once the socket
+    -- closes, so it travels with the ride and is put back together by
+    -- app.indoorbike.shared.route.courseTrackOf. Empty everywhere else, which
+    -- for a route ride means "ask the catalogue".
+    --
+    -- routeShape is a precision-5 encoded polyline; routeProfile is
+    -- comma-separated whole-metre elevations evenly spaced along it. Both are
+    -- the formats the app's own route listings already use, so the post-ride
+    -- card and the share image render them with no new drawing code.
+    routeShape TEXT NOT NULL DEFAULT '',
+    routeProfile TEXT NOT NULL DEFAULT ''
 );
 
 -- Non-unique because the v1 → v2 migration leaves multiple rows with the
@@ -55,8 +67,8 @@ CREATE TABLE WorkoutTelemetry (
 );
 
 insertSession:
-INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters, routeShape, routeProfile)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();

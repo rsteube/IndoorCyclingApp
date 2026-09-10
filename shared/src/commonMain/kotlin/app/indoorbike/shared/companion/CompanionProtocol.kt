@@ -73,9 +73,51 @@ sealed interface Negotiation {
  */
 object CompanionProtocol {
 
-    /** What this build speaks. */
-    val VERSION = ProtocolVersion(0, 1)
-    val SUPPORTED = VersionRange(VERSION, VERSION)
+    /**
+     * What this build speaks.
+     *
+     * 0.2 added three things, all of them additions rather than changes:
+     * `telemetry.speedMps` (the drivetrain's own speed, so a companion no
+     * longer has to integrate one out of power), the `course` frame (so a
+     * companion ride is recorded like a route ride), and the `setState` frame
+     * (so a game's own pause reaches the recording).
+     *
+     * [SUPPORTED] therefore still reaches back to 0.1. Nothing a 0.1 companion
+     * sends has changed meaning, and everything 0.2 adds is optional in both
+     * directions, so an older companion connects and behaves exactly as it
+     * always did. A companion learns which of the new frames this build will
+     * act on from `welcome.capabilities`, not from the version number.
+     */
+    val VERSION = ProtocolVersion(0, 2)
+    val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
+
+    /**
+     * Frames beyond the base protocol that this build acts on, published in
+     * `welcome.capabilities`.
+     *
+     * The version says what the wire format is; this says what the app will
+     * actually do with it. A companion should branch on this rather than on
+     * the negotiated version, for the same reason it should read
+     * [HONOURED_WORLD_FIELDS] rather than assume.
+     */
+    val CAPABILITIES = listOf("requestShift", "label", "summary", "course", "setState")
+
+    /**
+     * Longest encoded polyline a `course` frame may carry.
+     *
+     * Roughly a four-thousand-point road, which is a great deal more detail
+     * than any card or share image can draw. An over-long shape is refused
+     * whole rather than truncated: half a polyline is not a shorter road, it is
+     * a corrupt one, and it would decode into a line running off to somewhere
+     * the rider has never been.
+     */
+    const val MAX_COURSE_SHAPE_CHARS = 32_768
+
+    /** Elevation samples a `course` frame may carry. The app's own listings use 64. */
+    const val MAX_COURSE_PROFILE_SAMPLES = 1_024
+
+    /** Longest course or ride name that will be stored, in characters. */
+    const val MAX_COURSE_NAME_CHARS = 120
 
     /** WebSocket path. The version is negotiated in-band, not in the path. */
     const val PATH = "/companion"
@@ -302,4 +344,14 @@ object CompanionWarning {
     const val FIELD_NOT_HONOURED = "fieldNotHonoured"
     const val CLAMPED = "clamped"
     const val RATE_LIMITED = "rateLimited"
+
+    /**
+     * A value was dropped rather than trimmed to fit.
+     *
+     * Distinct from [CLAMPED] on purpose. A gradient held at 30 % is still a
+     * road; a polyline cut off at 32 768 characters is a road that leaves the
+     * map. Where trimming would produce something worse than nothing, the
+     * field is refused and this says so.
+     */
+    const val REJECTED = "rejected"
 }

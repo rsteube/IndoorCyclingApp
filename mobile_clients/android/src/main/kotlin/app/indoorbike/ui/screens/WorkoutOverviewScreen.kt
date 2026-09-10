@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.ride.rideRoute
 import app.indoorbike.share.ExportSheet
 import app.indoorbike.share.ShareSheet
 import app.indoorbike.shared.Workout
@@ -345,8 +346,12 @@ fun WorkoutOverviewScreen(
             // cards on purpose: on a route those estimates are the less
             // interesting number, because the ground covered was real ground on
             // a real road rather than a guess from watts.
-            val routeId = simulationRouteId(activeSession.workoutId)
-            val riddenRoute = routeId?.let { container.routeCatalog.find(it) }
+            // Either the catalogue route a simulated ride names, or the road a
+            // companion handed over with its ride. Both arrive as a RouteTrack,
+            // so the panel below cannot tell them apart and does not need to.
+            val riddenRoute = remember(activeSession.id) {
+                rideRoute(container, activeSession)
+            }
             if (riddenRoute != null) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
                 RouteSummaryPanel(

@@ -48,6 +48,8 @@ private fun session(
     routeElevationGainMeters = 0.0,
     routeStartMeters = 0.0,
     routeStartElevationGainMeters = 0.0,
+    routeShape = "",
+    routeProfile = "",
 )
 
 class StreakTest {

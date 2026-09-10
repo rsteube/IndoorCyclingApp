@@ -1,0 +1,23 @@
+-- Migrates HistoryDatabase v6 -> v7: the road a companion ride was on.
+--
+-- A route ride does not need this. Its workoutId names a course in the route
+-- catalogue ("simulation:<routeId>"), and the post-ride screen, the share image
+-- and the history entry all go and fetch the GPX. A companion ride has no
+-- catalogue entry to fetch: the road lived in somebody else's game, and once
+-- the socket closed there was nothing left of it. So a finished companion ride
+-- saved as a column of numbers with no shape, which is the same ride recorded
+-- worse purely because of where the road came from.
+--
+-- These two columns are that road travelling with the ride instead. The
+-- formats are the ones the app's own route listings already use, so nothing new
+-- has to know how to draw them: routeShape is a precision-5 encoded polyline
+-- and routeProfile is comma-separated whole-metre elevations, evenly spaced
+-- along it. app.indoorbike.shared.route.courseTrackOf puts the two back
+-- together into an ordinary RouteTrack.
+--
+-- Empty is right for every row already in the table, and stays right for every
+-- route ride and every structured workout. It reads as "no shape stored here",
+-- which for a route ride means "ask the catalogue" and for a workout means
+-- "there was never a road".
+ALTER TABLE WorkoutSession ADD COLUMN routeShape TEXT NOT NULL DEFAULT '';
+ALTER TABLE WorkoutSession ADD COLUMN routeProfile TEXT NOT NULL DEFAULT '';

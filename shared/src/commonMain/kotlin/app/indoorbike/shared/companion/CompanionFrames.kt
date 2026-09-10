@@ -111,6 +111,77 @@ data class RequestShiftFrame(
     val t: String = "requestShift",
 ) : ClientFrame
 
+/**
+ * The road the rider is on, so a companion ride can be recorded like a route
+ * ride instead of like a column of numbers.
+ *
+ * A route ride's record is thin because its route is not: the session names a
+ * course in the catalogue and the post-ride screen, the share image and the
+ * history entry all fetch it. A companion ride has no catalogue entry, so the
+ * course has to travel with it. That is all this is.
+ *
+ * **Send it whenever you like, as often as you like.** Fields merge: a frame
+ * that omits one leaves whatever was already known alone, so the usual shape
+ * is a `name` at the start (the ride is called something useful while it is
+ * still happening) and a `shape` at the end (that is when a free-roaming game
+ * knows what road the rider actually took). Every field is optional, and a
+ * companion that sends none of this saves exactly as it did before.
+ *
+ * Nothing here is a position. It describes the course, never where on the
+ * course the rider is, which is the same line the live protocol draws.
+ *
+ * @param name what to call the ride, e.g. "Watopia Volcano Circuit". Becomes
+ *   the saved session's name, so it is also what [LabelFrame] sets - send
+ *   either.
+ * @param world the game or world it was in, shown beside the name.
+ * @param distanceM the *course's* length, which is not how far the rider got.
+ *   That is `world.distanceM`.
+ * @param ascentM the course's own total climb, on the same footing.
+ * @param shape the road as a precision-5 encoded polyline, the same format the
+ *   app's own route listings use. Capped at
+ *   [CompanionProtocol.MAX_COURSE_SHAPE_CHARS]; an over-long shape is refused
+ *   with a warning rather than truncated, because half a polyline is not a
+ *   shorter road, it is a corrupt one.
+ * @param profile elevation in whole metres, evenly spaced along [shape]. 64
+ *   samples is plenty and is what the app's own listings carry; anything past
+ *   [CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES] is refused.
+ */
+@Serializable
+data class CourseFrame(
+    val name: String? = null,
+    val world: String? = null,
+    val distanceM: Double? = null,
+    val ascentM: Double? = null,
+    val shape: String? = null,
+    val profile: List<Int> = emptyList(),
+    val t: String = "course",
+) : ClientFrame
+
+/**
+ * Pause or resume the ride on the phone.
+ *
+ * A game that has its own pause - a menu, a loading screen, a rider who
+ * stopped - can stop the recording with it, so the ride record does not
+ * quietly accumulate several minutes of zeroes that the rider never rode. On
+ * resume the timer picks up where it left off, exactly as if the rider had
+ * used the phone's own pause button.
+ *
+ * [state] is [CompanionState.ACTIVE] or [CompanionState.PAUSED]. Anything else
+ * is refused with a warning rather than guessed at: a misspelt state that
+ * silently paused a ride would be far worse than one that did nothing.
+ *
+ * This is a request, not a command, and it can legitimately do nothing: a ride
+ * that has not started yet cannot be paused, and one already paused cannot be
+ * paused again. The `stateChanged` event that follows is the answer, and it is
+ * broadcast for rider-initiated pauses too, so a companion can follow the ride
+ * without polling.
+ */
+@Serializable
+data class SetStateFrame(
+    val state: String,
+    val t: String = "setState",
+) : ClientFrame
+
 /** Name the ride. The last value before [FinishFrame] wins. */
 @Serializable
 data class LabelFrame(
@@ -132,11 +203,15 @@ data class FinishFrame(
 /**
  * What the ride looked like, handed over once it is finished.
  *
- * This is the only part of the protocol that may carry geography, and it
- * arrives *after* the ride rather than during it, so the app still learns
- * nothing about where the rider was while they were riding. A companion that
- * would rather not disclose even this omits it, and the ride saves with its
- * numbers but no shape.
+ * The short form of [CourseFrame], kept because it was here first and because
+ * a companion that only ever knows its road at the end has nothing to say
+ * earlier. It is merged into the course exactly as a `course` frame would be,
+ * so the two are interchangeable and a companion needs only one of them.
+ *
+ * Geography arrives *after* the ride rather than during it, so the app still
+ * learns nothing about where the rider was while they were riding. A companion
+ * that would rather not disclose even this omits it, and the ride saves with
+ * its numbers but no shape.
  *
  * Both formats are the ones the app's own route listings already use, so the
  * post-ride card and the share image render this with no new drawing code:
@@ -246,6 +321,29 @@ data class TelemetryFrame(
     val power: Int? = null,
     val cadence: Int? = null,
     val hr: Int? = null,
+    /**
+     * How fast the rider's legs and their chosen gear are turning the road
+     * out, in metres per second. **Use this as the bike's speed.**
+     *
+     * A chain does not slip, so `v = cadence x development` is not an estimate
+     * of the rider's speed, it *is* their speed, and it is known on the first
+     * turn of the crank. A companion that integrates speed out of power
+     * instead is solving `m . dv/dt = P/v - F_road` from a standing start,
+     * which is why speed used to sit at zero for several seconds after the
+     * rider began pedalling: the model was right, but it was answering a
+     * question about a bicycle that was genuinely stationary rather than about
+     * one whose cranks were already turning at 80 rpm.
+     *
+     * The companion still owns the world. Take this as the drivetrain's output
+     * and apply whatever the game adds - drafting, surfaces, wind - before
+     * sending the result back as `world.speedMps`.
+     *
+     * **Omitted when the trainer cannot report cadence**, which is the honest
+     * answer rather than a zero: there is then no drivetrain speed to be had,
+     * and a companion should fall back to its own model. Do not read an absent
+     * field as a standstill.
+     */
+    val speedMps: Double? = null,
     val gearIndex: Int,
     val loadFactor: Double,
     val appliedGradient: Double,

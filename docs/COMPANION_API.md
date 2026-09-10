@@ -70,13 +70,36 @@ rider feels both immediately:
   term collapses and the rider spins against nothing.
 
 So the phone computes the road force itself, multiplies it by the virtual gear, and commands
-that force (expressed as a grade, because FTMS has no force field). To do that it needs the
-gradient *and the speed*, which is why `world` frames carry both. See
+that force (expressed as a grade, because FTMS has no force field). See
 [ARCHITECTURE.md](ARCHITECTURE.md#simulation-route-rides) for the full argument.
 
+### Whose speed the road is evaluated at
+
+The road force needs a speed for its aerodynamic term, and there are two in play.
+
+**You own the world.** Where the rider is, how fast their avatar is moving, and every rule
+about drafting, surfaces and wind that produced it. That is the speed on the `world` frame,
+and nothing here second-guesses it.
+
+**The phone owns the drivetrain.** A chain does not slip, so a gear decides how fast the road
+goes past for a given cadence - `v = cadence x development` - and the road force is evaluated
+at that. A virtual gear that does not decide it is not a gear at all, only a multiplier on a
+number somebody else chose, worth a few per cent a shift.
+
+The two are not rivals. A settled rider solves `P = F_road(v) . v` from either end and lands
+on the same speed, so they agree wherever the road is steady and part company only where a
+bicycle would: mid-acceleration, while coasting, and when a gear cannot turn the road out fast
+enough. Telemetry reports the phone's answer as well, so a disagreement is visible rather than
+mysterious.
+
+The road force also carries an acceleration term, `m_eff . dv/dt`, differentiated off the
+speed *you* send. You are already integrating that equation to produce speed; the phone was
+commanding only its `F_road` half, which is why a bike used to weigh nothing the moment it
+changed speed.
+
 The consequence for a companion author: **you own speed, and you must send it.** If you do not
-send speed the phone cannot compute drag, and the trainer's resistance will be wrong on
-anything but a standstill.
+send speed the phone has neither a fallback for a cadence-less power source nor an
+acceleration to bill for, and the resistance will be wrong on anything but a standstill.
 
 ## 2. Transport
 
@@ -134,6 +157,20 @@ message a human can act on when they do not.
 `major.minor`. **While `major` is 0, a minor bump may break compatibility.** This is normal
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
+
+**Current version: 0.2, and this build accepts 0.1 as well.** 0.2 added three things, all of
+them additions:
+
+- `telemetry.speedMps`, the drivetrain's own speed, so a companion no longer has to integrate
+  one out of power. This is the one you should adopt first: it is why speed used to sit at zero
+  for several seconds after the rider started pedalling.
+- The `course` frame, so a companion ride is recorded, listed and shared like a route ride
+  instead of like a column of numbers.
+- The `setState` frame, so a game's own pause reaches the recording.
+
+Nothing a 0.1 companion sends has changed meaning, so an older one connects and behaves exactly
+as it always did. **Branch on `welcome.capabilities`, not on the version number** - it is what
+this build will actually act on, as opposed to what the protocol defines.
 
 From 1.0 onward:
 
@@ -291,6 +328,69 @@ Name the ride. May be sent at any time; the last value before `finish` wins.
 ```
 
 Without this, the ride is saved as "Companion ride", which makes a history of them useless.
+`course` sets the same name and more besides, so a companion that sends one does not need this.
+
+#### `course`
+
+The road the rider is on, so a companion ride can be recorded like a route ride. Requires the
+`course` capability.
+
+```jsonc
+{ "t": "course", "name": "Volcano Circuit", "world": "Watopia",
+  "distanceM": 12400, "ascentM": 180,
+  "shape": "_p~iF~ps|U_ulLnnqC…", "profile": [412, 418, 431, …] }
+```
+
+**Why this exists.** A route ride's record can be thin because its route is not: the session
+names a course in the app's catalogue, and the post-ride card, the share image and the history
+entry all go and fetch the GPX. A companion ride has no catalogue entry to fetch - the road
+lived in your game, and once the socket closed there was nothing left of it - so it saved as
+numbers with no shape. This is the course travelling with the ride instead.
+
+**Send it whenever you like, as often as you like. Fields merge.** A frame that omits a field
+leaves whatever was already known alone, so the usual shape is a `name` early, while the ride is
+still happening and the HUD can show it, and a `shape` at the end, which is the only order a
+free-roaming game can manage: it does not know what road the rider took until they have taken
+it.
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | What to call the ride. Becomes the saved session's name |
+| `world` | string | The game or world it was in, shown beside the name |
+| `distanceM` | number | The **course's** length. Not how far the rider got - that is `world.distanceM` |
+| `ascentM` | number | The course's own total climb, on the same footing |
+| `shape` | string | Precision-5 encoded polyline, the same encoding as `RoutePolyline`. Max 32 768 characters |
+| `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. 64 samples is plenty. Max 1 024 |
+
+`shape` and `profile` describe the course, never a position on it, and nothing in the protocol
+ever asks where on that road the rider is. A companion that would rather disclose nothing sends
+none of this and the ride saves exactly as before: real numbers, no shape.
+
+An over-long `shape` or `profile` is **refused whole, not truncated**, with a `rejected`
+warning. Half a polyline is not a shorter road, it is one that leaves the map. The rest of the
+frame still lands, so a companion that sends an enormous track alongside a perfectly good name
+still gets the name.
+
+#### `setState`
+
+Pause or resume the recording on the phone. Requires the `setState` capability.
+
+```jsonc
+{ "t": "setState", "state": "paused" }
+```
+
+`state` is `"active"` or `"paused"`. Anything else is refused with a `rejected` warning rather
+than guessed at: reading a misspelt word as "paused" would silently stop recording a ride the
+rider is still doing, and they would find out afterwards.
+
+A game that has its own pause - a menu, a loading screen, a rider who stopped - should use this,
+or the ride record quietly accumulates minutes of zeroes nobody rode.
+
+**This is a request, and it can legitimately do nothing.** A ride that has not started cannot be
+paused, and one already paused cannot be paused again. The `stateChanged` event is the answer,
+and it is broadcast for rider-initiated pauses too - the phone has its own pause button, a
+stop-pedalling watchdog, and a foreground service that can force one - so a companion should
+follow `stateChanged` rather than assume its own request took effect.
 
 #### `finish`
 
@@ -301,9 +401,17 @@ End the ride. Companion mode has no route, so nothing else can know when it is o
   "summary": { "shape": "_p~iF~ps|U_ulLnnqC…", "profile": [412, 418, 431, …] } }
 ```
 
-`summary` is optional and requires the `summary` capability. When present, the phone stores it
-against the session and renders it on the post-ride card and the share image via the existing
-[RouteSummaryPanel](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/simulation/RouteSummaryPanel.kt).
+`summary` is optional and requires the `summary` capability. It is the short form of `course`
+and is merged into exactly the same place, so the two are interchangeable and a companion needs
+only one of them. Use `summary` if the road is the only thing you have to say and you only know
+it at the end; use `course` if you also want to name the ride or hand over the course's own
+length and climb.
+
+When present, the phone stores it against the session and renders it on the post-ride card and
+the share image via the existing
+[RouteSummaryPanel](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/simulation/RouteSummaryPanel.kt),
+which is the same panel a route ride uses. The ordering is fixed: the course reaches the ride
+record before the ride is told to end, because ending it is what writes the row.
 
 | Field | Type | Notes |
 |---|---|---|
@@ -364,7 +472,7 @@ inventing data.
 
 ```jsonc
 { "t": "telemetry", "seq": 1043, "tMono": 128500, "state": "active",
-  "power": 243, "cadence": 88, "hr": 152,
+  "power": 243, "cadence": 88, "hr": 152, "speedMps": 8.33,
   "gearIndex": 11, "loadFactor": 1.18,
   "appliedGradient": 0.062,
   "trainerForceN": 96.4, "trainerGradePercent": 11.7,
@@ -378,6 +486,7 @@ inventing data.
 | `tMono` | Milliseconds since ride start, monotonic, immune to clock adjustment |
 | `power`, `cadence` | From the trainer. Omitted if not reporting |
 | `hr` | From the strap. Omitted if none |
+| `speedMps` | **The drivetrain's own speed. Use this as the bike's speed.** Omitted when the trainer cannot report cadence |
 | `gearIndex`, `loadFactor` | The current gear |
 | `appliedGradient` | What the phone is actually using, **after clamping**. May differ from what was sent |
 | `trainerForceN` | Newtons at the wheel, after gear multiplication and the soft ceiling |
@@ -386,6 +495,26 @@ inventing data.
 `trainerForceN` and `trainerGradePercent` look like internals and are published on purpose.
 They are literally "what the trainer is doing", and without them nobody implementing against
 this can tell a protocol bug from a physics disagreement.
+
+**`speedMps` deserves its own paragraph, because getting it wrong is the most common way a
+companion feels broken.** A chain does not slip, so `v = cadence x development` is not an
+estimate of the rider's speed, it *is* their speed, and it is known on the first turn of the
+crank. A companion that integrates speed out of power instead is solving
+`m . dv/dt = P/v - F_road` from a standing start, and that model is not wrong so much as
+answering a different question: it describes a bicycle that is genuinely stationary, rather than
+one whose cranks are already turning at 80 rpm. The visible symptom is watts and cadence
+arriving from the trainer while speed sits at zero for several seconds, at the start of a course
+and again every time the rider stops and starts.
+
+You still own the world. Take `speedMps` as the drivetrain's output, apply whatever your game
+adds on top - drafting, surfaces, wind, a downhill that carries the rider past what their gear
+could turn - and send the result back as `world.speedMps`. The two agree wherever the rider is
+settled, because both ends solve `P = F_road(v) . v`, and they are meant to disagree everywhere
+else.
+
+It is **omitted, not zeroed**, when the trainer cannot count cadence. There is then no
+drivetrain speed to be had, and echoing your own number back at you would look like agreement
+and mean nothing. Do not read an absent field as a standstill: fall back to your own model.
 
 #### `event`
 
@@ -502,9 +631,17 @@ the envelope already exists in the shipped route mode and applies unchanged.
 - **`listening`**: the server is up and advertised, the pairing token is on screen, no ride is
   recording yet. A companion may connect and will receive telemetry with `state: "listening"`.
 - **`active`**: recording. `world` frames are honoured.
-- **`paused`**: auto-pause. The existing rule that a still-rolling simulated ride counts as
-  active applies unchanged, using the companion's speed.
+- **`paused`**: not recording. Reached by auto-pause, by the rider's own pause button, by a
+  `setState` frame, or by the foreground service forcing one. The existing rule that a
+  still-rolling simulated ride counts as active applies unchanged, using the companion's speed.
+  The phone collapses its own richer set of states - paused, stopped pedalling, counting down -
+  into this one, because the only fact a game can act on is that the recording is not
+  advancing.
 - **`finished`**: the ride is saved. The socket closes with `4005`.
+
+Every transition between these is broadcast as a `stateChanged` event, whoever caused it. A
+companion that only reacted to the pauses it asked for would carry on rolling its world while
+the recording sat still.
 
 The ride is a synthetic single-segment `Workout` with a reserved id, following the free-ride
 and route-ride precedent, so recording, crash recovery, the unfinished-ride banner, history,
@@ -514,26 +651,30 @@ progression and export all work with no new plumbing.
 
 ```jsonc
 // -> client connects to ws://192.168.1.42:47612/companion
-{ "t": "hello", "protoMin": "0.1", "protoMax": "0.1", "token": "8F3K2M",
+{ "t": "hello", "protoMin": "0.1", "protoMax": "0.2", "token": "8F3K2M",
   "client": { "name": "Alpine Climb", "version": "0.3.1", "platform": "windows" },
-  "role": "controller", "capabilities": ["summary"] }
+  "role": "controller", "capabilities": ["summary", "course", "setState"] }
 
 // <- negotiated, configured
-{ "t": "welcome", "proto": "0.1", "tickMs": 250,
+{ "t": "welcome", "proto": "0.2", "tickMs": 250,
   "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
+  "capabilities": ["requestShift", "label", "summary", "course", "setState"],
   "gears": [ … ], "gearIndex": 6, "rider": { "massKg": 78.0, "ftpWatts": 250 }, … }
 
-{ "t": "label", "name": "Stelvio, north side", "world": "Alpine Tour" }
+// name the ride now; its shape is only known at the end
+{ "t": "course", "name": "Stelvio, north side", "world": "Alpine Tour",
+  "distanceM": 24800, "ascentM": 1533 }
 
 // rider taps Start on the phone
 // <- { "t": "event", "event": "stateChanged", "state": "active" }
 
-// steady state, roughly 4 Hz each way
+// steady state, roughly 4 Hz each way. speedMps comes back off the telemetry,
+// gets the world's own effects applied, and goes out again.
+// <- { "t": "telemetry", "seq": 1043, "tMono": 128500, "state": "active",
+//      "power": 243, "cadence": 88, "hr": 152, "speedMps": 7.42, "gearIndex": 11,
+//      "appliedGradient": 0.062, "trainerForceN": 96.4, … }
 { "t": "world", "seq": 412, "gradient": 0.062, "speedMps": 7.42,
   "distanceM": 8412.5, "ascentM": 214.0 }
-// <- { "t": "telemetry", "seq": 1043, "tMono": 128500, "state": "active",
-//      "power": 243, "cadence": 88, "hr": 152, "gearIndex": 11,
-//      "appliedGradient": 0.062, "trainerForceN": 96.4, … }
 
 // the rider hits a 14% ramp; the game asks for an easier gear
 { "t": "requestShift", "steps": -1 }
@@ -547,8 +688,18 @@ progression and export all work with no new plumbing.
 // <- { "t": "warning", "code": "fieldNotHonoured", "field": "cda",
 //      "message": "This build ignores 'cda'; drag uses the app's default CdA of 0.36." }
 
-// summit, ride over
-{ "t": "finish", "summary": { "shape": "_p~iF~ps|U…", "profile": [412, 418, …] } }
+// the rider opens the game's menu. setState does not stop the deadman, so the
+// world frames keep going out.
+{ "t": "setState", "state": "paused" }
+// <- { "t": "event", "event": "stateChanged", "state": "paused" }
+{ "t": "world", "seq": 501, "gradient": 0.08, "speedMps": 0.0 }
+{ "t": "setState", "state": "active" }
+// <- { "t": "event", "event": "stateChanged", "state": "active" }
+
+// summit, ride over. The shape goes over before the finish, because ending the
+// ride is what writes the row.
+{ "t": "course", "shape": "_p~iF~ps|U…", "profile": [412, 418, …] }
+{ "t": "finish" }
 // <- { "t": "event", "event": "stateChanged", "state": "finished" }
 // <- close 4005 "ride ended"
 ```
@@ -571,8 +722,19 @@ speed with no waiting and no flakiness. It also comes along free when iOS happen
 
 `CompanionSession.onFrame(text, nowMs)` returns a list of `CompanionEffect`. The transport turns
 `Send` and `Close` into WebSocket writes; the ride turns `ApplyRoad`, `Shift`, `SetLabel`,
-`ReportProgress` and `Finish` into calls on the simulation engine and the session manager. The
-session itself performs none of them, which is why it needs no device to test.
+`SetCourse`, `SetRideState`, `ReportProgress` and `Finish` into calls on the companion engine
+and the session manager. The session itself performs none of them, which is why it needs no
+device to test.
+
+A course reaches the ride record through the engine, not the host:
+[`CompanionCourse`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionCourse.kt)
+is merged onto `CompanionEngine.course`, which is where `RideSaver` reads it when the ride is
+written, alongside the cumulative distance and ascent that were already kept there.
+[`courseTrackOf`](../shared/src/commonMain/kotlin/app/indoorbike/shared/route/CourseTrack.kt)
+turns the stored shape and profile back into an ordinary `RouteTrack`, and
+[`rideRoute`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ride/RideRoute.kt) is the
+one function the post-ride screen and the share sheet ask, so neither has to know whether the
+road came from the catalogue or from a game.
 
 The Android side, which is where the sockets and the platform live:
 
@@ -615,9 +777,12 @@ Deliberately unresolved in 0.1, listed so neither end designs around their absen
 - **Scopes.** [LIVE_API.md](LIVE_API.md#scopes) splits consent into `metrics`, `biometrics`,
   `profile` and `control`. Companion mode needs all four, so 0.1 treats pairing as one
   decision. A read-only observer should get a narrower grant before this is published widely.
-- **Where the label and summary are stored.** `WorkoutSession` has no free-text label column.
-  Needs a schema migration, or the id has to carry it, which is worse because ids are lookup
-  keys.
+- **A course does not survive a crash.** `course` is held on the engine and written when the
+  ride is saved, so a ride recovered from the unfinished-ride banner after a process death keeps
+  its numbers but loses its shape. Route mode does not have this problem because its road is in
+  the catalogue and can be fetched again. Fixing it means putting the course in the
+  crash-recovery snapshot; until then, a companion that reconnects to a resumed ride should send
+  `course` again.
 - **Progression.** Whether a companion ride counts towards streaks, levels and badges is a
   product decision, open in LIVE_API.md and still open here.
 - **The protocol's own home.** LIVE_API.md argues for a separate Apache-2.0 repository holding

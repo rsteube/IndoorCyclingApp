@@ -33,12 +33,19 @@ class SimulationEngineTest {
 
     private class Harness(
         var power: Int = 0,
+        /**
+         * Held rather than derived, and that is the point: with the cadence
+         * pinned, the gear and the road are the only things left that can move
+         * the commanded force, so a test can attribute what it sees.
+         */
+        var cadence: Int = 0,
         val riderKg: Float = 75f,
         val drivetrain: Drivetrain = Drivetrain.ROAD,
     ) {
         val roads = mutableListOf<SimulationParameters>()
         val engine = SimulationEngine(
             powerWatts = { power },
+            cadenceRpm = { cadence },
             applyRoad = { roads.add(it) },
             riderMassKg = { riderKg },
             bikeMassKg = { 9f },
@@ -366,5 +373,140 @@ class SimulationEngineTest {
         val position = assertNotNull(h.engine.position.value)
         assertEquals(h.engine.distanceMeters.value, position.distanceMeters, absoluteTolerance = 0.01)
         assertTrue(position.latitude > 60.0, "should have moved north up the road")
+    }
+
+    // The drivetrain ─────────────────────────────────────────────────────────
+
+    /**
+     * The behaviour this whole model was rebuilt for.
+     *
+     * A gear decides how fast the road goes past for a given cadence, so a
+     * shift moves the speed the road force is evaluated at. On the flat, where
+     * air is nearly all of the resistance, that lands as the square of the
+     * ratio on top of the ratio itself. On a climb, where gravity is doing the
+     * work and there is barely any air term to square, it lands as very little
+     * more than the ratio. Riders know that difference by feel, and a model
+     * that scales one number by a fixed exponent cannot produce it.
+     */
+    @Test
+    fun `a shift bites harder at speed than it does on a climb`() {
+        val gear = Drivetrain.ROAD.gearCount - 8
+
+        val flat = Harness(power = 220, cadence = 90)
+        flat.engine.load(flatRoad(20_000.0))
+        flat.ride(seconds = 60)
+
+        val climb = Harness(power = 220, cadence = 90)
+        climb.engine.load(road(20_000.0) { d -> d * 0.06 })
+        climb.ride(seconds = 60)
+
+        fun drop(h: Harness) =
+            1.0 - h.engine.trainerForceNewtons(gear - 1) / h.engine.trainerForceNewtons(gear)
+
+        val onFlat = drop(flat)
+        val onClimb = drop(climb)
+        assertTrue(onFlat > 0.12, "one downshift at speed moved only ${onFlat * 100} %")
+        assertTrue(
+            onFlat > onClimb * 1.4,
+            "the same shift moved ${onFlat * 100} % on the flat and " +
+                "${onClimb * 100} % on a climb, which is not a gear changing",
+        )
+    }
+
+    /**
+     * The fourth force of the road load. A bike whose speed is changing weighs
+     * something, and the trainer used never to say so: [RideDynamics.step]
+     * integrated the acceleration term and then the commanded force threw it
+     * away, so every acceleration was weightless and no crest handed anything
+     * back.
+     */
+    @Test
+    fun `accelerating costs more than holding the same speed`() {
+        val h = Harness(power = 150, cadence = 90)
+        h.engine.load(flatRoad(30_000.0))
+        h.ride(seconds = 90)
+        val gear = h.drivetrain.gearCount - 8
+        val settled = h.engine.trainerForceNewtons(gear)
+
+        // The gear and the cadence are pinned, so the road term cannot move.
+        // Everything that shows up from here is the bike's own mass.
+        h.power = 600
+        h.ride(seconds = 2)
+        val accelerating = h.engine.trainerForceNewtons(gear)
+        assertTrue(
+            accelerating > settled + 15.0,
+            "a hard acceleration added only ${accelerating - settled} N",
+        )
+
+        h.power = 0
+        h.ride(seconds = 3)
+        val coasting = h.engine.trainerForceNewtons(gear)
+        assertTrue(
+            coasting < settled,
+            "momentum handed nothing back: $coasting N against $settled N settled",
+        )
+    }
+
+    @Test
+    fun `a trainer that cannot count cadence rides the road it always did`() {
+        val h = Harness(power = 200)
+        h.engine.load(flatRoad(10_000.0))
+        h.ride(seconds = 60)
+        assertTrue(h.engine.speedMps.value > 5.0, "the test never got going")
+        assertEquals(
+            h.engine.speedMps.value,
+            h.engine.driveSpeedMps.value,
+            absoluteTolerance = 1e-9,
+        )
+    }
+
+    /**
+     * The claim the whole design rests on, driven end to end.
+     *
+     * Route mode integrates the world's speed out of power. The drivetrain
+     * derives its own out of cadence and the gear. Nothing forces those two
+     * numbers to agree, and if they did not, the rider would be resisted by
+     * one road while being credited with another. They do agree, because both
+     * are the same equation seen from opposite ends:
+     *
+     *     world:      P = F_road(v) . v      (integrated forward in time)
+     *     drivetrain: P = F_cmd . cadence . real development
+     *                   = F_road(v) . (virtual / real) . cadence . real
+     *                   = F_road(v) . v
+     *
+     * So this closes the loop with a rider in it: someone holding their watts,
+     * whose legs speed up or slow down to whatever cadence the commanded force
+     * leaves them, with their real chain on the sprocket the model assumes.
+     * Where they settle is the test.
+     */
+    @Test
+    fun `a rider and the road they are on converge on one speed`() {
+        val h = Harness(power = 220)
+        h.engine.load(flatRoad(60_000.0))
+        h.engine.shiftBy(h.drivetrain.gearCount - 8 - h.engine.gearIndex.value)
+
+        var cadence = 60.0
+        repeat(4 * 300) {
+            val force = h.engine.trainerForceNewtons(h.engine.gearIndex.value)
+            val wanted = if (force > 0.5) {
+                h.power / (force * Drivetrain.ASSUMED_REAL_DEVELOPMENT_M) * 60.0
+            } else {
+                200.0
+            }
+            // Legs have mass too, so the rider eases towards the cadence the
+            // resistance is asking for rather than teleporting onto it.
+            cadence += (wanted.coerceIn(0.0, 200.0) - cadence) * 0.05
+            h.cadence = cadence.toInt()
+            h.engine.advance(0.25)
+        }
+
+        assertTrue(h.engine.speedMps.value > 8.0, "the rider never got up to speed")
+        assertEquals(
+            h.engine.speedMps.value,
+            h.engine.driveSpeedMps.value,
+            // Not exact: the world model bills the rider for drivetrain losses
+            // and the drivetrain model does not, which is worth about 1 %.
+            absoluteTolerance = 0.6,
+        )
     }
 }

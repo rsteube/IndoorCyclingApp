@@ -66,9 +66,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import app.indoorbike.ride.rideRoute
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
-import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.ui.components.PrimaryBtn
@@ -100,13 +100,13 @@ fun ShareSheet(
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val highlight = remember(workout, telemetry) { deriveHighlight(workout, telemetry) }
-    // The road a simulated ride was on. Null for the other two modes, and for a
-    // route that has since been removed from the catalogue - in which case the
-    // card falls back to the power chart rather than showing a blank panel.
+    // The road the ride was on, from the route catalogue for a simulated ride
+    // and from the ride's own record for a companion one. Null for a workout
+    // or a free ride, and for a route since removed from the catalogue - in
+    // which case the card falls back to the power chart rather than showing a
+    // blank panel.
     val container = app.indoorbike.LocalAppContainer.current
-    val route = remember(session.workoutId) {
-        simulationRouteId(session.workoutId)?.let { container.routeCatalog.find(it) }
-    }
+    val route = remember(session.id) { rideRoute(container, session) }
     val graphicsLayer = rememberGraphicsLayer()
 
     var busy by remember { mutableStateOf(false) }

@@ -89,6 +89,8 @@ data class CompanionStatus(
     val roadStale: Boolean = false,
     /** What the companion called this ride, if it said. */
     val label: String? = null,
+    /** Which world or game it is in, if it said. Shown beside [label]. */
+    val world: String? = null,
     val error: String? = null,
 ) {
     val primaryAddress: String? get() = addresses.firstOrNull()
@@ -268,8 +270,26 @@ class CompanionHost(
                 // Tying this to the screen meant a game sat waiting on a ride
                 // that had been over for minutes.
                 rideWatchJob = scope.launch {
+                    var announced: String? = null
                     sessionManager.state.collect { rideState ->
-                        if (rideState == WorkoutState.Completed) stop()
+                        if (rideState == WorkoutState.Completed) {
+                            // `stop` sends the finished state and the 4005
+                            // itself, so announcing it here as well would
+                            // double it up.
+                            stop()
+                            return@collect
+                        }
+                        // Pausing is not only something a companion asks for.
+                        // The rider has a pause button, the stop-pedalling
+                        // watchdog has its own, and the foreground service can
+                        // force one. A game that only ever heard about the
+                        // pauses it requested would carry on rolling its world
+                        // while the recording sat still.
+                        val now = rideState.asCompanionState()
+                        if (now != announced) {
+                            announced = now
+                            broadcast(EventFrame(event = EventFrame.STATE_CHANGED, state = now))
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -490,15 +510,39 @@ class CompanionHost(
                     engine.shiftBy(effect.steps, CompanionEngine.SOURCE_COMPANION)
 
                 is CompanionEffect.SetLabel ->
-                    _status.value = _status.value.copy(label = effect.name)
+                    _status.value = _status.value.copy(
+                        label = effect.name,
+                        world = effect.world ?: _status.value.world,
+                    )
+
+                is CompanionEffect.SetCourse -> {
+                    engine.setCourse(effect.course)
+                    // The HUD shows what the ride is called while it is
+                    // happening; the engine keeps the whole course for the
+                    // moment the ride is written to history.
+                    val merged = engine.course.value
+                    _status.value = _status.value.copy(
+                        label = merged.name ?: _status.value.label,
+                        world = merged.world ?: _status.value.world,
+                    )
+                }
+
+                is CompanionEffect.SetRideState -> {
+                    // Requests, not commands. `pauseWorkout` ignores anything
+                    // that is not an active ride and `resumeWorkout` anything
+                    // that is not a paused one, so a companion that pauses
+                    // twice, or resumes a ride the rider already resumed,
+                    // changes nothing. The `stateChanged` broadcast above is
+                    // the answer either way.
+                    if (effect.paused) sessionManager.pauseWorkout()
+                    else sessionManager.resumeWorkout()
+                }
 
                 is CompanionEffect.Finish -> {
-                    // The summary is accepted and, for now, only logged: the
-                    // session record has no column to hold a shape yet. See
-                    // docs/COMPANION_API.md, "Known gaps".
-                    effect.summary?.let {
-                        Log.i(TAG, "Companion supplied a ride summary (" + it.profile.size + " samples)")
-                    }
+                    // Any course the summary carried has already been merged by
+                    // the SetCourse effect the session emits ahead of this one,
+                    // which is the whole reason the ordering is fixed there:
+                    // ending the ride is what writes the row.
                     sessionManager.endWorkoutEarly()
                 }
             }
@@ -570,6 +614,12 @@ class CompanionHost(
             power = powerWatts().takeIf { trainerConnected() },
             cadence = cadenceRpm().takeIf { trainerConnected() },
             hr = heartRateBpm().takeIf { it > 0 },
+            // The drivetrain's own speed, known on the first turn of the crank.
+            // Omitted rather than zeroed when the trainer cannot count cadence:
+            // there is then no drivetrain speed to report, and echoing the
+            // companion's own number back at it would look like agreement and
+            // mean nothing.
+            speedMps = engine.driveSpeedMps.value.takeIf { engine.driveSpeedKnown.value },
             gearIndex = engine.gearIndex.value,
             loadFactor = engine.drivetrain.value.loadFactor(engine.gearIndex.value),
             appliedGradient = engine.gradient.value,
@@ -579,7 +629,18 @@ class CompanionHost(
         )
     }
 
-    private fun rideState(): String = when (sessionManager.state.value) {
+    private fun rideState(): String = sessionManager.state.value.asCompanionState()
+
+    /**
+     * The app has more ride states than the protocol does, on purpose.
+     *
+     * A companion does not need to know the difference between a rider who
+     * pressed pause, one who stopped pedalling, and one counting down to the
+     * start: in all three the recording is not advancing, and that is the only
+     * fact a game can act on. Collapsing them keeps the protocol small and
+     * keeps this app free to add a fourth without a version bump.
+     */
+    private fun WorkoutState.asCompanionState(): String = when (this) {
         WorkoutState.Active -> CompanionState.ACTIVE
         WorkoutState.Paused, WorkoutState.Standby, WorkoutState.Countdown -> CompanionState.PAUSED
         WorkoutState.Completed -> CompanionState.FINISHED

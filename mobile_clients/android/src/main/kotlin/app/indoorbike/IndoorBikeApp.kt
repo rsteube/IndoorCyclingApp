@@ -163,6 +163,10 @@ class AppContainer(
             // whenever a simulated ride goes active.
             val simulationEngine = SimulationEngine(
                 powerWatts = { trainerManager.power.value },
+                // The virtual gear is a kinematic constraint, so the physics
+                // needs a cadence to constrain. Zero from a trainer that
+                // cannot count one, which the model handles.
+                cadenceRpm = { trainerManager.cadence.value },
                 applyRoad = trainerManager::setSimulationParameters,
                 riderMassKg = { userSettings.weightKg.value },
                 bikeMassKg = { userSettings.bikeWeightKg.value },
@@ -173,6 +177,7 @@ class AppContainer(
             // force model. What differs is only where the road comes from.
             val companionEngine = CompanionEngine(
                 powerWatts = { trainerManager.power.value },
+                cadenceRpm = { trainerManager.cadence.value },
                 applyRoad = trainerManager::setSimulationParameters,
                 riderMassKg = { userSettings.weightKg.value },
                 bikeMassKg = { userSettings.bikeWeightKg.value },

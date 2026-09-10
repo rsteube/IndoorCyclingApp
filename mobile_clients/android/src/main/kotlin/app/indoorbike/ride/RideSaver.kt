@@ -17,7 +17,9 @@ package app.indoorbike.ride
 
 import app.indoorbike.AppContainer
 import app.indoorbike.shared.Workout
+import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isSimulation
 import java.util.UUID
 
@@ -40,21 +42,40 @@ suspend fun saveRideToHistory(
     durationSeconds: Int,
     telemetry: List<TelemetryPoint>,
 ): Long {
-    // A route ride's progress along its road, which nothing else can
-    // reconstruct once the engine is torn down. Zero for the other two modes:
-    // the engine is cleared for them, so this reads as "no road under it".
+    // A ride's progress along its road, which nothing else can reconstruct once
+    // the engine is torn down. Zero for a workout and a free ride, which have
+    // no road under them at all.
+    //
+    // Both simulated modes fill these in, and that is the point: a companion
+    // ride's distance and climbing are the totals its game reported, and
+    // storing them in the same two columns is what makes a companion ride
+    // read, sort and render exactly like a route ride everywhere downstream.
     val simulated = workout.isSimulation
-    val routeDistance =
-        if (simulated) container.simulationEngine.distanceMeters.value else 0.0
-    val routeClimb =
-        if (simulated) container.simulationEngine.elevationGainMeters.value else 0.0
+    val companion = workout.isCompanion
+    val routeDistance = when {
+        simulated -> container.simulationEngine.distanceMeters.value
+        companion -> container.companionEngine.distanceMeters.value
+        else -> 0.0
+    }
+    val routeClimb = when {
+        simulated -> container.simulationEngine.elevationGainMeters.value
+        companion -> container.companionEngine.elevationGainMeters.value
+        else -> 0.0
+    }
     // Where the ride began, so the two above can be read as what this ride did
     // rather than only as where it ended up. Non-zero when the rider carried
-    // on from a previous sitting.
+    // on from a previous sitting. A companion ride always starts at zero: its
+    // totals are this session's, because the companion counts them.
     val routeStart =
         if (simulated) container.simulationEngine.startedAtMeters.value else 0.0
     val routeStartClimb =
         if (simulated) container.simulationEngine.startedAtElevationGainMeters.value else 0.0
+
+    // The road itself, for the one mode whose road is not in the catalogue.
+    // Optional in the protocol and therefore usually absent; when it is there,
+    // it is what lets a companion ride draw its shape in history and in the
+    // share image the way a route ride does.
+    val course = if (companion) container.companionEngine.course.value else null
 
     val avgPower = telemetry.averageOf { it.power }
     val avgCadence = telemetry.averageOf { it.cadence }
@@ -62,7 +83,11 @@ suspend fun saveRideToHistory(
 
     val sessionId = container.historyRepository.insertWorkoutSession(
         workoutId = workout.id,
-        workoutName = workout.name,
+        // A companion that named its course names the ride. "Watopia Volcano
+        // Circuit" in the history list is worth a great deal more than twenty
+        // rows all called "Companion ride", and it is the same courtesy a
+        // route ride already gets from its GPX.
+        workoutName = course?.name?.takeIf { it.isNotBlank() } ?: workout.name,
         startTimeEpoch = startTimeEpoch,
         durationSeconds = durationSeconds.toLong(),
         avgPower = avgPower,
@@ -72,6 +97,8 @@ suspend fun saveRideToHistory(
         routeElevationGainMeters = routeClimb,
         routeStartMeters = routeStart,
         routeStartElevationGainMeters = routeStartClimb,
+        routeShape = course?.shape.orEmpty(),
+        routeProfile = course?.let { CompanionCourse.encodeProfile(it.profileMeters) }.orEmpty(),
         // Globally-unique stable id for the backup-sync layer. The device-id
         // namespace + a fresh UUID per session means two phones can never
         // collide on a session id without any cross-device coordination.

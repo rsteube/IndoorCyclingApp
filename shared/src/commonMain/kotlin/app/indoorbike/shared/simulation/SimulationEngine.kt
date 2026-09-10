@@ -74,6 +74,14 @@ class SimulationEngine(
      * the physics testable without a BLE stack under it.
      */
     private val powerWatts: () -> Int,
+    /**
+     * The rider's cadence in rpm, read from the trainer.
+     *
+     * Not decoration: a gear is a kinematic constraint, and without a cadence
+     * there is nothing for it to constrain. See [DriveSpeed]. A source that
+     * cannot report one is fine, and falls back to the route's own speed.
+     */
+    private val cadenceRpm: () -> Int = { 0 },
     /** Hand a road to the trainer. Wired to `TrainerManager::setSimulationParameters`. */
     private val applyRoad: (SimulationParameters) -> Unit,
     /** The rider's body mass in kg, read live so a correction mid-ride takes effect. */
@@ -115,6 +123,27 @@ class SimulationEngine(
     private val _speedMps = MutableStateFlow(0.0)
     val speedMps: StateFlow<Double> = _speedMps.asStateFlow()
 
+    /**
+     * The speed the rider's legs and their chosen gear are actually turning
+     * out, which is what the road force is evaluated at.
+     *
+     * Published because it is the number that says whether the drivetrain
+     * model is working. It should track [speedMps] closely on a settled road -
+     * the two solve the same equation - and diverge exactly when the rider is
+     * in the wrong gear, coasting, or spun out. A permanent offset between
+     * them is [Drivetrain.ASSUMED_REAL_DEVELOPMENT_M] being wrong for this
+     * rider's bike, and nothing else.
+     */
+    private val _driveSpeedMps = MutableStateFlow(0.0)
+    val driveSpeedMps: StateFlow<Double> = _driveSpeedMps.asStateFlow()
+
+    /**
+     * Whether [driveSpeedMps] is the drivetrain's answer or an echo of the
+     * route's own, which is what it falls back to until a crank has turned.
+     */
+    private val _driveSpeedKnown = MutableStateFlow(false)
+    val driveSpeedKnown: StateFlow<Boolean> = _driveSpeedKnown.asStateFlow()
+
     /** Smoothed road gradient under the rider, as a fraction (0.064 = 6.4 %). */
     private val _gradient = MutableStateFlow(0.0)
     val gradient: StateFlow<Double> = _gradient.asStateFlow()
@@ -148,6 +177,16 @@ class SimulationEngine(
 
     private var loop: Job? = null
     private var lastTickEpochMs: Long = 0
+
+    /** Cadence into road speed, through whatever gear the rider is in. */
+    private val driveSpeed = DriveSpeed()
+
+    /**
+     * The acceleration term of the road load, taken off the route's own
+     * integrated speed. Exact here rather than estimated: [advance] has just
+     * finished computing the very number this is the derivative of.
+     */
+    private val roadAcceleration = RoadAcceleration()
 
     // What was last actually written to the trainer, so we only write again
     // when the road has meaningfully changed. Null means nothing is in force.
@@ -193,6 +232,10 @@ class SimulationEngine(
         _finished.value = false
         _gradient.value = route.gradientAt(_distanceMeters.value)
         _position.value = route.positionAt(_distanceMeters.value)
+        driveSpeed.reset()
+        roadAcceleration.reset()
+        _driveSpeedMps.value = 0.0
+        _driveSpeedKnown.value = false
         lastSentForceNewtons = null
         lastSentGearIndex = -1
     }
@@ -223,6 +266,9 @@ class SimulationEngine(
         lastTickEpochMs = getCurrentEpochMillis()
         lastSentForceNewtons = null
         sendOwed = false
+        // A pause leaves stale momentum behind. Resuming must not bill the
+        // rider for an acceleration that happened while they were stopped.
+        roadAcceleration.reset()
         _running.value = true
         pushRoadToTrainer(force = true)
         loop = scope.launch {
@@ -248,6 +294,8 @@ class SimulationEngine(
         loop = null
         _running.value = false
         _speedMps.value = 0.0
+        _driveSpeedMps.value = 0.0
+        roadAcceleration.reset()
         lastSentForceNewtons = null
         sendOwed = false
     }
@@ -309,6 +357,17 @@ class SimulationEngine(
             dtSeconds = dt,
         )
         val distance = (previousDistance + speed * dt).coerceAtMost(route.totalDistanceMeters)
+
+        // The two halves of the drivetrain model, both refreshed before any
+        // force is computed from them: how fast the gear is turning the road
+        // out, and how hard the bike is changing speed.
+        driveSpeed.update(cadenceRpm(), dt)
+        roadAcceleration.update(speed, dt)
+        _driveSpeedMps.value = driveSpeed.speedMps(
+            developmentMeters = _drivetrain.value.developmentMeters(_gearIndex.value),
+            fallbackMps = speed,
+        )
+        _driveSpeedKnown.value = driveSpeed.available
 
         // Climbing is measured off the smoothed profile between the two
         // positions, so it agrees with the gradient the rider was made to feel
@@ -427,12 +486,30 @@ class SimulationEngine(
     internal fun trainerForceNewtons(gearIndex: Int): Double {
         val rider = riderMassKg()
         if (rider <= 0f) return 0.0
-        val gearFactor = _drivetrain.value.loadFactor(gearIndex)
+        val drivetrain = _drivetrain.value
+        val gearFactor = drivetrain.loadFactor(gearIndex)
         val totalMass = (rider + bikeMassKg()).toDouble()
 
+        // The road is evaluated at the speed *this gear* is turning out, not at
+        // the speed the rider happens to be travelling. That is what makes a
+        // shift a shift: it moves the aerodynamic term with the square of the
+        // ratio instead of leaving it fixed while a multiplier slides past it.
+        // The two agree wherever the rider is settled, because both solve
+        // P = F_road(v) . v, and they are meant to disagree everywhere else.
+        val roadSpeed = driveSpeed.speedMps(
+            developmentMeters = drivetrain.developmentMeters(gearIndex),
+            fallbackMps = _speedMps.value,
+        )
         val road = RideDynamics.roadForceNewtons(
             gradient = _gradient.value,
-            speedMps = _speedMps.value,
+            speedMps = roadSpeed,
+            totalMassKg = totalMass,
+        ) + RideDynamics.inertiaForceNewtons(
+            // The fourth force a road pushes back with. [advance] integrated
+            // the speed against this same mass; commanding only the other
+            // three was the model telling the rider their bike weighs nothing
+            // the moment it changes speed.
+            accelerationMps2 = roadAcceleration.mps2,
             totalMassKg = totalMass,
         )
         // A descent can pull harder than the road resists, which is a negative

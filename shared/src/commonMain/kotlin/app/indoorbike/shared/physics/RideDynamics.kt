@@ -148,8 +148,7 @@ object RideDynamics {
         val resistive = if (v > STOPPED_MPS) rollingForce + dragForce else 0.0
         val net = driveForce - gravityForce - resistive
 
-        val effectiveMass = totalMassKg + ROTATING_MASS_KG
-        var next = v + (net / effectiveMass) * dt
+        var next = v + (net / effectiveMassKg(totalMassKg)) * dt
 
         if (next <= STOPPED_MPS) {
             // Stopped, or being dragged backwards by a climb the rider is no
@@ -161,6 +160,54 @@ object RideDynamics {
     }
 
     /**
+     * The mass a bike actually behaves as when its speed changes: everything
+     * being carried plus [ROTATING_MASS_KG] for the wheels, which have to be
+     * spun up as well as moved along.
+     *
+     * The same number has to appear in both halves of the model. It is what
+     * [step] divides the net force by to get an acceleration, and what
+     * [inertiaForceNewtons] multiplies an acceleration by to get a force. Two
+     * values would mean the resistance the rider feels and the speed they are
+     * credited with came from two different bicycles.
+     */
+    fun effectiveMassKg(totalMassKg: Double): Double =
+        if (totalMassKg <= 0.0) 0.0 else totalMassKg + ROTATING_MASS_KG
+
+    /**
+     * The force it takes to change the bike's speed at [accelerationMps2],
+     * carrying [totalMassKg] of rider plus bike. Negative while slowing, which
+     * is momentum handing the work back.
+     *
+     * This is the fourth term of the road load, alongside gravity, rolling
+     * resistance and air, and the only one the trainer was never told about.
+     * It is not small: 85 kg accelerating at a mild 0.3 m/s^2 needs about 26 N
+     * before the gear multiplies it, against 26 N for the whole steady load of
+     * a flat road at 36 km/h. A model without it is a model in which the bike
+     * weighs nothing the moment the speed changes.
+     *
+     * [accelerationMps2] is clamped, because it is always a derivative of a
+     * sampled speed and a companion that teleports its rider, or a ride
+     * resumed after the process was suspended, can present a step no bicycle
+     * produced. The bound is well past a standing sprint, so nothing a rider
+     * can actually do is being trimmed.
+     */
+    fun inertiaForceNewtons(accelerationMps2: Double, totalMassKg: Double): Double {
+        if (totalMassKg <= 0.0) return 0.0
+        val a = accelerationMps2.coerceIn(
+            -MAX_MODELLED_ACCELERATION_MPS2,
+            MAX_MODELLED_ACCELERATION_MPS2,
+        )
+        return effectiveMassKg(totalMassKg) * a
+    }
+
+    /**
+     * Hardest change of speed the model will bill the rider for, in m/s^2.
+     * A very strong standing start is around 1.5; anything past this came from
+     * a bad sample rather than from a pair of legs.
+     */
+    const val MAX_MODELLED_ACCELERATION_MPS2 = 2.5
+
+    /**
      * The total force the road pushes back with, in newtons, for a rider of
      * [totalMassKg] travelling at [speedMps] on a road of [gradient].
      *
@@ -168,10 +215,12 @@ object RideDynamics {
      * steep enough that gravity outruns the other two, which is the physical
      * statement that the road is doing the work.
      *
-     * This is the number a trainer in simulation mode ultimately has to
-     * produce, so [app.indoorbike.shared.simulation.SimulationEngine] asks for
-     * it directly rather than describing a road and hoping the machine derives
-     * the same answer from a flywheel speed that belongs to a different gear.
+     * Three of the four forces a trainer in simulation mode has to produce,
+     * which is why [app.indoorbike.shared.simulation.SimulationEngine] asks
+     * for it directly rather than describing a road and hoping the machine
+     * derives the same answer from a flywheel speed that belongs to a
+     * different gear. The fourth is [inertiaForceNewtons], and the callers add
+     * it: a bike whose speed is changing weighs something.
      */
     fun roadForceNewtons(
         gradient: Double,

@@ -18,7 +18,9 @@ package app.indoorbike.shared.companion
 import app.indoorbike.shared.ble.SimulationParameters
 import app.indoorbike.shared.physics.RideDynamics
 import app.indoorbike.shared.physics.VirtualSpeed
+import app.indoorbike.shared.simulation.DriveSpeed
 import app.indoorbike.shared.simulation.Drivetrain
+import app.indoorbike.shared.simulation.RoadAcceleration
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import kotlinx.coroutines.CoroutineScope
@@ -43,19 +45,35 @@ import kotlin.math.abs
  * the gradient and the speed, and the app does everything downstream of them:
  *
  * 1. Take the road the companion last sent.
- * 2. Work out the force that road pushes back with **at that speed**, multiply
- *    it by the rider's virtual gear, and command exactly that force.
+ * 2. Work out the force that road pushes back with at the speed the rider's
+ *    own gear is turning out, multiply it by that gear, and command exactly
+ *    that force.
  * 3. The rider feels the hill, pushes harder or shifts, and the companion sees
  *    it in the power and gear this app reports back.
  *
- * ## Why speed comes off the wire rather than out of [RideDynamics]
+ * ## Whose speed the road is evaluated at
  *
- * The commanded force contains an aerodynamic term, `0.5 * rho * CdA * v^2`, so
- * the app has to *know* a speed. It does not have to *compute* one. Letting the
- * companion own it is what makes drafting, surfaces, wind and every other thing
- * a game might invent its own arithmetic, instead of four more fields on the
- * wire and four more terms in here. `RideDynamics.step` is therefore unused in
- * this mode; `roadForceNewtons` is not.
+ * The companion owns the world: where the rider is, how fast their avatar is
+ * moving, and every rule about drafting, surfaces and wind that produced it.
+ * None of that changes.
+ *
+ * What the *drivetrain* is evaluated at is a different speed, and it has to
+ * be: `v = cadence x development`. A chain does not slip, so the gear decides
+ * how fast the road goes past for a given cadence, and a virtual gear that
+ * does not decide that is not a gear at all - it is a multiplier on a number
+ * somebody else chose, worth a few per cent a shift, which is precisely the
+ * "I can't feel my gears" report this model was rebuilt to answer. See
+ * [DriveSpeed].
+ *
+ * The two speeds are not rivals. A settled rider solves `P = F_road(v) . v`
+ * from either end and lands on the same v, so they agree wherever the road is
+ * steady and part company only where a bicycle would: mid-acceleration, while
+ * coasting, and when a gear cannot turn the road out fast enough. A trainer
+ * that cannot report cadence falls back to the companion's speed and behaves
+ * exactly as this mode did before.
+ *
+ * `RideDynamics.step` is still unused here - the companion integrates, not
+ * this - but `roadForceNewtons` and `inertiaForceNewtons` are not.
  *
  * ## What this deliberately does not know
  *
@@ -72,6 +90,13 @@ import kotlin.math.abs
  */
 class CompanionEngine(
     private val powerWatts: () -> Int,
+    /**
+     * The rider's cadence in rpm, read from the trainer.
+     *
+     * Route mode takes it for the same reason: the virtual gear is a
+     * kinematic constraint and needs a cadence to constrain. See [DriveSpeed].
+     */
+    private val cadenceRpm: () -> Int = { 0 },
     /** Hand a road to the trainer. Wired to `TrainerManager::setSimulationParameters`. */
     private val applyRoad: (SimulationParameters) -> Unit,
     private val riderMassKg: () -> Float,
@@ -87,6 +112,45 @@ class CompanionEngine(
     /** Virtual speed as the companion last reported it. */
     private val _speedMps = MutableStateFlow(0.0)
     val speedMps: StateFlow<Double> = _speedMps.asStateFlow()
+
+    /**
+     * The speed the rider's legs and their chosen gear are turning out, which
+     * is what the road force is evaluated at.
+     *
+     * The companion still owns the world. This is the drivetrain's own answer
+     * to the same question, and the two are meant to agree: both solve
+     * `P = F_road(v) . v`, so a settled rider lands on the same speed from
+     * either end. Where they part company is where a bicycle parts company
+     * too - mid-acceleration, coasting, spun out on a descent, or riding a
+     * gear that cannot turn the road out fast enough.
+     */
+    private val _driveSpeedMps = MutableStateFlow(0.0)
+    val driveSpeedMps: StateFlow<Double> = _driveSpeedMps.asStateFlow()
+
+    /**
+     * Whether [driveSpeedMps] is the drivetrain's answer or an echo of the
+     * companion's own.
+     *
+     * False until a crank has turned, because a power source that cannot count
+     * cadence has no drivetrain speed to give and [DriveSpeed] falls back to
+     * whatever it was handed. Telemetry omits the field in that case rather
+     * than sending a companion its own number back, which would look like
+     * agreement and mean nothing.
+     */
+    private val _driveSpeedKnown = MutableStateFlow(false)
+    val driveSpeedKnown: StateFlow<Boolean> = _driveSpeedKnown.asStateFlow()
+
+    /**
+     * The road the companion says the rider is on, merged from every `course`
+     * frame and from a `finish` summary.
+     *
+     * Held here rather than on the host because this is where the rest of the
+     * ride record already lives: the cumulative distance and ascent that
+     * [setProgress] collects are read off this engine when the ride is saved,
+     * and the course is read from the same place at the same moment.
+     */
+    private val _course = MutableStateFlow(CompanionCourse())
+    val course: StateFlow<CompanionCourse> = _course.asStateFlow()
 
     /** Cumulative along-road distance the companion has reported. */
     private val _distanceMeters = MutableStateFlow(0.0)
@@ -142,6 +206,27 @@ class CompanionEngine(
     private var roadAtMs = 0L
     private var everReceived = false
 
+    /** Cadence into road speed, through whatever gear the rider is in. */
+    private val driveSpeed = DriveSpeed()
+
+    /**
+     * The acceleration term of the road load, differentiated off the
+     * companion's own speed rather than off the rider's cadence.
+     *
+     * Deliberately the world's signal and not the legs'. The companion's speed
+     * is already the output of an integration, so it moves smoothly and it
+     * moves for reasons the rider will recognise. Differentiating cadence
+     * instead would close a fast loop from the rider's legs, through a
+     * control-point write that cannot go out more than five times a second,
+     * and back to their legs, which is the shape of an oscillation rather than
+     * of a bicycle.
+     */
+    private val roadAcceleration = RoadAcceleration()
+
+    /** Wall clock of the last [advance], for the two filters above. */
+    private var lastAdvanceMs = 0L
+    private var advanceSeeded = false
+
     private var loop: Job? = null
 
     private var lastSentForceNewtons: Double? = null
@@ -175,6 +260,12 @@ class CompanionEngine(
         _receivingRoad.value = false
         _trainerForceN.value = 0.0
         _trainerGradePercent.value = 0.0
+        _driveSpeedMps.value = 0.0
+        _driveSpeedKnown.value = false
+        _course.value = CompanionCourse()
+        driveSpeed.reset()
+        roadAcceleration.reset()
+        advanceSeeded = false
         lastSentForceNewtons = null
         lastSentGearIndex = -1
     }
@@ -184,6 +275,10 @@ class CompanionEngine(
         loop?.cancel()
         lastSentForceNewtons = null
         sendOwed = false
+        // A pause leaves stale momentum behind, and resuming must not bill the
+        // rider for an acceleration that happened while they were stopped.
+        roadAcceleration.reset()
+        advanceSeeded = false
         _running.value = true
         pushRoadToTrainer(force = true)
         loop = scope.launch {
@@ -205,6 +300,16 @@ class CompanionEngine(
         loop?.cancel()
         loop = null
         _running.value = false
+        roadAcceleration.reset()
+        advanceSeeded = false
+        // Nothing is measuring the drivetrain while the ride is paused, so
+        // telemetry says so rather than repeating whatever the last tick
+        // happened to see. Resetting the cadence filter as well means the first
+        // crank after a resume is adopted whole, which is the difference
+        // between speed reappearing at once and creeping back over a second.
+        driveSpeed.reset()
+        _driveSpeedMps.value = 0.0
+        _driveSpeedKnown.value = false
         lastSentForceNewtons = null
         sendOwed = false
     }
@@ -245,6 +350,19 @@ class CompanionEngine(
     fun setProgress(distanceM: Double?, ascentM: Double?) {
         distanceM?.let { if (it > _distanceMeters.value) _distanceMeters.value = it }
         ascentM?.let { if (it > _elevationGainMeters.value) _elevationGainMeters.value = it }
+    }
+
+    /**
+     * The road this ride is on, laid over whatever was already known.
+     *
+     * Merged rather than replaced so a companion can name the course while the
+     * ride is happening and hand over its shape at the end, which is the only
+     * order a free-roaming game can manage: it does not know what road the
+     * rider took until they have taken it.
+     */
+    fun setCourse(update: CompanionCourse) {
+        if (update.isEmpty) return
+        _course.value = _course.value.mergedWith(update)
     }
 
     /** One step towards a harder gear. */
@@ -289,6 +407,20 @@ class CompanionEngine(
      * their own, the same contract [SimulationEngine.advance] offers.
      */
     internal fun advance(nowMs: Long) {
+        // Both filters are fed from the tick rather than from [setRoad], so a
+        // companion that goes quiet decays its own momentum away instead of
+        // freezing an acceleration into the commanded force forever.
+        val dt = if (advanceSeeded) (nowMs - lastAdvanceMs) / 1_000.0 else 0.0
+        lastAdvanceMs = nowMs
+        advanceSeeded = true
+        driveSpeed.update(cadenceRpm(), dt)
+        roadAcceleration.update(_speedMps.value, dt)
+        _driveSpeedMps.value = driveSpeed.speedMps(
+            developmentMeters = _drivetrain.value.developmentMeters(_gearIndex.value),
+            fallbackMps = _speedMps.value,
+        )
+        _driveSpeedKnown.value = driveSpeed.available
+
         if (everReceived) {
             val age = nowMs - roadAtMs
             val effective = CompanionProtocol.rampedGradient(rawGradient, age)
@@ -312,12 +444,27 @@ class CompanionEngine(
     internal fun trainerForceNewtons(gearIndex: Int): Double {
         val rider = riderMassKg()
         if (rider <= 0f) return 0.0
-        val gearFactor = _drivetrain.value.loadFactor(gearIndex)
+        val drivetrain = _drivetrain.value
+        val gearFactor = drivetrain.loadFactor(gearIndex)
         val totalMass = (rider + bikeMassKg()).toDouble()
 
+        // Evaluated at the speed this gear is turning out rather than at the
+        // one the companion reported. Route mode does the same thing and for
+        // the same reason: it is the only way a shift reaches the aerodynamic
+        // term, and the aerodynamic term is where a shift is felt.
+        val roadSpeed = driveSpeed.speedMps(
+            developmentMeters = drivetrain.developmentMeters(gearIndex),
+            fallbackMps = _speedMps.value,
+        )
         val road = RideDynamics.roadForceNewtons(
             gradient = _gradient.value,
-            speedMps = _speedMps.value,
+            speedMps = roadSpeed,
+            totalMassKg = totalMass,
+        ) + RideDynamics.inertiaForceNewtons(
+            // The companion integrates m_eff . dv/dt = P/v - F_road to get the
+            // speed it sends. Commanding only F_road was commanding one half
+            // of an equation somebody else was solving in full.
+            accelerationMps2 = roadAcceleration.mps2,
             totalMassKg = totalMass,
         )
         val floor = SimulationEngine.FREEWHEEL_DRAG_NEWTONS * gearFactor

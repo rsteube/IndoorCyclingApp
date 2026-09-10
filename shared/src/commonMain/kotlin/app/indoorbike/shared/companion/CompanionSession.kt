@@ -36,6 +36,15 @@ sealed interface CompanionEffect {
 
     data class SetLabel(val name: String, val world: String?) : CompanionEffect
 
+    /**
+     * The road this ride is on, merged into whatever was already known. The
+     * course, never a position on it.
+     */
+    data class SetCourse(val course: CompanionCourse) : CompanionEffect
+
+    /** Pause or resume the recording. A request: it can legitimately do nothing. */
+    data class SetRideState(val paused: Boolean) : CompanionEffect
+
     /** Cumulative totals for the ride record. Never a position. */
     data class ReportProgress(val distanceM: Double?, val ascentM: Double?) : CompanionEffect
 
@@ -50,7 +59,7 @@ data class CompanionConfig(
     val token: String,
     val supported: VersionRange = CompanionProtocol.SUPPORTED,
     val honours: Set<String> = CompanionProtocol.HONOURED_WORLD_FIELDS,
-    val capabilities: List<String> = listOf("requestShift", "label", "summary"),
+    val capabilities: List<String> = CompanionProtocol.CAPABILITIES,
 )
 
 /** The live facts a `welcome` needs, read at the moment a companion connects. */
@@ -157,6 +166,8 @@ class CompanionSession(
             is WorldFrame -> onWorld(frame, fields, nowMs)
             is RequestShiftFrame -> onRequestShift(frame, nowMs)
             is LabelFrame -> onLabel(frame)
+            is CourseFrame -> onCourse(frame)
+            is SetStateFrame -> onSetState(frame)
             is FinishFrame -> onFinish(frame)
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
@@ -336,9 +347,118 @@ class CompanionSession(
         return listOf(CompanionEffect.SetLabel(frame.name, frame.world))
     }
 
+    /**
+     * A course, whole or in pieces.
+     *
+     * The two size caps are enforced here rather than at the database, because
+     * this is the last place that can still explain itself to the sender. A
+     * shape too long to store is refused whole and warned about; the rest of
+     * the frame is kept, so a companion that sends an enormous polyline
+     * alongside a perfectly good name still gets the name.
+     */
+    private fun onCourse(frame: CourseFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("course"))
+
+        val effects = mutableListOf<CompanionEffect>()
+
+        var shape = frame.shape.orEmpty()
+        if (shape.length > CompanionProtocol.MAX_COURSE_SHAPE_CHARS) {
+            shape = ""
+            effects += CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.REJECTED,
+                    field = "shape",
+                    message = "The course shape is " + frame.shape.orEmpty().length +
+                        " characters; the limit is " + CompanionProtocol.MAX_COURSE_SHAPE_CHARS +
+                        ". It was dropped rather than truncated, because half a polyline " +
+                        "decodes into a road that leaves the map. Simplify the track first.",
+                )
+            )
+        }
+
+        var profile = frame.profile
+        if (profile.size > CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES) {
+            profile = emptyList()
+            effects += CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.REJECTED,
+                    field = "profile",
+                    message = "The course profile has " + frame.profile.size +
+                        " samples; the limit is " +
+                        CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES +
+                        ". Resample it: 64 evenly spaced points is what the app's own " +
+                        "route listings carry and is plenty to draw.",
+                )
+            )
+        }
+
+        val course = CompanionCourse(
+            name = frame.name?.take(CompanionProtocol.MAX_COURSE_NAME_CHARS)?.ifBlank { null },
+            world = frame.world?.take(CompanionProtocol.MAX_COURSE_NAME_CHARS)?.ifBlank { null },
+            distanceMeters = frame.distanceM,
+            ascentMeters = frame.ascentM,
+            shape = shape,
+            profileMeters = profile,
+        )
+        if (!course.isEmpty) effects += CompanionEffect.SetCourse(course)
+        return effects
+    }
+
+    /**
+     * Pause or resume the recording.
+     *
+     * An unrecognised state is refused rather than guessed at. Guessing here
+     * has an asymmetric cost: reading a misspelt word as "paused" silently
+     * stops recording a ride the rider is still doing, and they find out
+     * afterwards.
+     */
+    private fun onSetState(frame: SetStateFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("setState"))
+        return when (frame.state) {
+            CompanionState.PAUSED -> listOf(CompanionEffect.SetRideState(paused = true))
+            CompanionState.ACTIVE -> listOf(CompanionEffect.SetRideState(paused = false))
+            else -> listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.REJECTED,
+                        field = "state",
+                        message = "Unknown ride state '" + frame.state + "'; ignored. " +
+                            "Expected '" + CompanionState.ACTIVE + "' or '" +
+                            CompanionState.PAUSED + "'.",
+                    )
+                )
+            )
+        }
+    }
+
+    /**
+     * The ride is over.
+     *
+     * A summary is the short form of a `course`, so it merges into the same
+     * place, and the ordering matters: the course has to reach the ride record
+     * before the ride is told to end, or the shape arrives after the row has
+     * already been written.
+     */
     private fun onFinish(frame: FinishFrame): List<CompanionEffect> {
         if (!isController) return listOf(notController("finish"))
-        return listOf(CompanionEffect.Finish(frame.summary))
+        val summary = frame.summary
+        val course = summary?.let {
+            CompanionCourse(
+                // Dropped whole rather than trimmed, for the reason [onCourse]
+                // gives: a truncated polyline is a corrupt road, not a short one.
+                shape = it.shape
+                    .orEmpty()
+                    .takeIf { text -> text.length <= CompanionProtocol.MAX_COURSE_SHAPE_CHARS }
+                    .orEmpty(),
+                profileMeters = it.profile
+                    .takeIf { p -> p.size <= CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES }
+                    ?: emptyList(),
+            )
+        }
+        return buildList {
+            if (course != null && !course.isEmpty) add(CompanionEffect.SetCourse(course))
+            add(CompanionEffect.Finish(summary))
+        }
     }
 
     // Host-initiated ─────────────────────────────────────────────────────────

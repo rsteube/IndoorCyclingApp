@@ -122,6 +122,13 @@ data class BackupSession(
     /** Where a resumed route ride began; absent (null) means the trailhead. */
     val routeStartMeters: Double? = null,
     val routeStartElevationGainMeters: Double? = null,
+    /**
+     * A companion ride's own road, which no catalogue on the receiving device
+     * could look up. Null for every other mode. Omitted when empty so a backup
+     * of ordinary workouts does not grow two null fields per session.
+     */
+    val routeShape: String? = null,
+    val routeProfile: String? = null,
 )
 
 /**

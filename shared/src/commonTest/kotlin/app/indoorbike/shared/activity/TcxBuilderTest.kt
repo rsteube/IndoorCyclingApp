@@ -62,6 +62,8 @@ class TcxBuilderTest {
     routeElevationGainMeters = 0.0,
     routeStartMeters = 0.0,
     routeStartElevationGainMeters = 0.0,
+    routeShape = "",
+    routeProfile = "",
         )
         return Triple(session, telemetry, workout)
     }

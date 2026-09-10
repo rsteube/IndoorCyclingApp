@@ -38,42 +38,92 @@ fields. Apply them to the speed you compute, then send the result.
    nothing else works until the handshake does.
 2. **Render telemetry.** Prove the socket both ways before you drive anything: show power,
    cadence, heart rate and gear from `telemetry` frames.
-3. **Send a flat road.** `world` at 10 Hz with `gradient: 0.0` and a speed you integrate from
-   the reported power. The trainer should feel like flat ground. If it does not, stop and fix
+3. **Send a flat road.** `world` at 10 Hz with `gradient: 0.0` and the speed from
+   `telemetry.speedMps`. The trainer should feel like flat ground. If it does not, stop and fix
    it here.
 4. **Add terrain.** Now the gradient comes from your world.
 5. **Add gears.** Draw the gear display from `welcome.gears`; wire `requestShift`; handle
    `gearChanged` including `changed: false`.
 6. **Add discovery.** Bind UDP 47601 and read the beacon; see `references/godot.md`. The
    phone's address is the datagram's source, never a field in the payload.
-7. **Add `label` and `finish`.**
+7. **Add `course`, `setState` and `finish`.** These are what make a companion ride land in the
+   rider's history looking like a ride rather than like a log file.
 
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
 has two untested systems and no way to tell which is wrong.
 
-## The ten rules that prevent most bugs
+## The twelve rules that prevent most bugs
 
 1. **Send `hello` first.** Any other first frame is `unauthorized` and a close with 4002.
 2. **`role` defaults to `controller`**, and any value the phone does not recognise (including
    wrong case) silently grants **observer**, which cannot steer.
-3. **Always send both `gradient` and `speedMps`.** `speedMps` is required. A `world` frame
+3. **Take the rider's speed from `telemetry.speedMps`, do not integrate one from power.** This
+   is the single biggest feel bug in a new companion. See the next section.
+4. **Always send both `gradient` and `speedMps`.** `speedMps` is required. A `world` frame
    without it is `malformed` and closes the socket with 4008.
-4. **`seq` must strictly increase.** Frames with `seq <= last` are dropped **silently**. This
+5. **`seq` must strictly increase.** Frames with `seq <= last` are dropped **silently**. This
    presents as "the road is frozen" with no error anywhere.
-5. **`distanceM` and `ascentM` are cumulative totals, never deltas**, and never decrease. Send
+6. **`distanceM` and `ascentM` are cumulative totals, never deltas**, and never decrease. Send
    a smaller value and it is ignored.
-6. **Never hardcode the WebSocket port.** It is ephemeral, different every ride. Read it from
+7. **Never hardcode the WebSocket port.** It is ephemeral, different every ride. Read it from
    the UDP beacon, the mDNS SRV record, or the QR payload. The only fixed port in the protocol
    is **47601**, where discovery datagrams arrive - a listener cannot discover the port it
    should be listening on.
-7. **Read `welcome.honours`.** It is what this build *acts on*, which is not what the protocol
-   defines. `crr`, `cda`, `airDensity` and `headwindMps` are reserved and **not honoured**.
-8. **Missing telemetry fields mean absent, not zero.** No `hr` means no strap. Defaulting to 0
-   puts a heart rate of zero on your HUD.
-9. **Surface `warning` frames in development.** `fieldNotHonoured` is the difference between
-   "drafting doesn't work" and "this build ignores `cda`".
-10. **Ignore unknown fields, frame types and enum values.** Never treat them as errors. This is
+8. **Read `welcome.honours` and `welcome.capabilities`.** They are what this build *acts on*,
+   which is not what the protocol defines. Branch on `capabilities`, never on the negotiated
+   version number. `crr`, `cda`, `airDensity` and `headwindMps` are reserved and **not
+   honoured**.
+9. **Missing telemetry fields mean absent, not zero.** No `hr` means no strap, and no
+   `speedMps` means the trainer cannot count cadence. Defaulting to 0 puts a heart rate of zero
+   on your HUD and stops the rider dead.
+10. **Follow `stateChanged`, do not assume your `setState` took effect.** The rider has their
+    own pause button and the phone has a stop-pedalling watchdog, so pauses happen that you did
+    not ask for.
+11. **Surface `warning` frames in development.** `fieldNotHonoured` is the difference between
+    "drafting doesn't work" and "this build ignores `cda`". `rejected` is the difference
+    between "my course never shows up" and "your polyline is too long".
+12. **Ignore unknown fields, frame types and enum values.** Never treat them as errors. This is
     what lets your build share a socket with a later one.
+
+## Speed: take it, do not compute it
+
+`telemetry.speedMps` is how fast the rider's legs and their chosen gear are turning the road
+out. **Use it as the bike's speed.**
+
+A chain does not slip, so `v = cadence x development` is not an estimate of the rider's speed,
+it *is* their speed, and the phone knows it on the first turn of the crank. If you integrate a
+speed out of power instead, you are solving `m . dv/dt = P/v - F_road` from a standing start.
+That model is not wrong so much as answering a different question: it describes a bicycle that
+is genuinely stationary, rather than one whose cranks are already turning at 80 rpm. What the
+rider sees is watts and cadence arriving from the trainer while the speed sits at zero for five
+to ten seconds - at the start of a course, and again every single time they stop and start.
+
+You still own the world. Take `speedMps` as the drivetrain's output, apply whatever your game
+adds on top - drafting, surfaces, wind, a descent that carries the rider faster than their gear
+could turn - and send the result back as `world.speedMps`. The two agree wherever the rider is
+settled, because both ends are solving `P = F_road(v) . v`, and they are meant to disagree
+everywhere else.
+
+When the field is **absent**, the trainer cannot count cadence and there is no drivetrain speed
+to be had. Only then fall back to integrating from power.
+
+## Making the ride land in history properly
+
+Three frames turn a companion ride from a column of numbers into something the rider recognises
+a week later. All three are optional, and all three are worth the hour.
+
+- **`course`** carries the road: a name, the world, the course's own length and climb, an
+  encoded polyline and an elevation profile. Fields merge across frames, so send the `name`
+  early - the phone's HUD shows it while the ride is happening - and the `shape` at the end,
+  which is the only order a free-roaming game can manage. With it, the ride draws its map and
+  its elevation chart in history and in the share image exactly as a route ride does. Without
+  it, twenty rides all called "Companion ride" with no shape.
+- **`setState`** pauses and resumes the recording. If your game has a pause, a menu or a
+  loading screen, use it, or the ride record quietly accumulates minutes of zeroes nobody rode.
+- **`finish`** ends the ride on the phone. Nothing else can know a companion ride is over.
+
+`finish.summary` is the short form of `course` and merges into the same place. You need one of
+the two, not both.
 
 ## Rates
 
@@ -82,6 +132,8 @@ has two untested systems and no way to tell which is wrong.
 | `world` out | 4-10 Hz | Fixed timer, **not** per frame. A 144 Hz game must not send 144 Hz |
 | `telemetry` in | `welcome.tickMs` (250 ms) | Interpolate for rendering; do not ask for faster |
 | `requestShift` | max 10/s | Excess is warned and dropped, never an error |
+| `course` out | whenever | Merged field by field. Once at the start and once at the end is the usual shape |
+| `setState` out | on your own transitions | A request, not a command. `stateChanged` is the answer |
 | Deadman | 1500 ms | Then the gradient ramps to flat over 2000 ms |
 
 The physics on the phone moves four times a second. A faster telemetry stream would be

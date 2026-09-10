@@ -100,6 +100,8 @@ object CompanionCodec {
                 "world" -> json.decodeFromJsonElement(WorldFrame.serializer(), root)
                 "requestShift" -> json.decodeFromJsonElement(RequestShiftFrame.serializer(), root)
                 "label" -> json.decodeFromJsonElement(LabelFrame.serializer(), root)
+                "course" -> json.decodeFromJsonElement(CourseFrame.serializer(), root)
+                "setState" -> json.decodeFromJsonElement(SetStateFrame.serializer(), root)
                 "finish" -> json.decodeFromJsonElement(FinishFrame.serializer(), root)
                 "ping" -> json.decodeFromJsonElement(PingFrame.serializer(), root)
                 else -> return Decoded.Unknown(type)
@@ -139,6 +141,9 @@ object CompanionCodec {
     }
 
     private fun TelemetryFrame.rounded() = copy(
+        // Two decimals is a centimetre per second, which is far past anything a
+        // companion can do with it and keeps the frame a predictable size.
+        speedMps = speedMps?.let { round(it, 2) },
         loadFactor = round(loadFactor, 2),
         appliedGradient = round(appliedGradient, 4),
         trainerForceN = round(trainerForceN, 1),

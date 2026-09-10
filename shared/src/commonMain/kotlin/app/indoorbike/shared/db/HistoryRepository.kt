@@ -59,6 +59,15 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
          */
         routeStartMeters: Double = 0.0,
         routeStartElevationGainMeters: Double = 0.0,
+        /**
+         * The road itself, for a ride whose road was not in the route
+         * catalogue. Companion rides only: a game's course exists nowhere else
+         * once the socket closes, so it travels with the ride. A precision-5
+         * encoded polyline and comma-separated whole-metre elevations, the
+         * same two formats the route listings use.
+         */
+        routeShape: String = "",
+        routeProfile: String = "",
         externalId: String,
         telemetry: List<TelemetryPoint>
     ): Long {
@@ -76,6 +85,8 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                     routeElevationGainMeters = routeElevationGainMeters,
                     routeStartMeters = routeStartMeters,
                     routeStartElevationGainMeters = routeStartElevationGainMeters,
+                    routeShape = routeShape,
+                    routeProfile = routeProfile,
                     externalId = externalId
                 )
 

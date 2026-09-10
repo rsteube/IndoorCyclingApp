@@ -18,6 +18,7 @@ package app.indoorbike.shared.companion
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -105,7 +106,7 @@ class CompanionHandshakeTest {
 
         val error = effects.sent<ErrorFrame>()
         assertEquals(CompanionError.PROTO_UNSUPPORTED, error.code)
-        assertEquals("0.1-0.1", error.serverRange)
+        assertEquals(CompanionProtocol.SUPPORTED.toString(), error.serverRange)
         assertEquals("2.0-2.3", error.clientRange)
         assertContains(error.message, "Update Indoor Bike")
 
@@ -113,7 +114,7 @@ class CompanionHandshakeTest {
         // one, and then the close reason is all it ever sees.
         val close = effects.pick<CompanionEffect.Close>()
         assertEquals(CompanionClose.PROTOCOL_MISMATCH, close.code)
-        assertContains(close.reason, "0.1-0.1")
+        assertContains(close.reason, CompanionProtocol.SUPPORTED.toString())
         assertContains(close.reason, "2.0-2.3")
     }
 
@@ -399,5 +400,181 @@ class CompanionShutdownTest {
         s.rideEnded()
         assertEquals(emptyList(), s.rideEnded())
         assertEquals(emptyList(), s.revoke())
+    }
+}
+
+
+/**
+ * The course and the pause switch: everything 0.2 added to the client side of
+ * the protocol.
+ */
+class CompanionCourseFrameTest {
+
+    private fun ready(): CompanionSession = session().also { it.onFrame(hello(), nowMs = 0) }
+
+    @Test
+    fun `a course frame becomes a course`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"course","name":"Volcano Circuit","world":"Watopia",""" +
+                """"distanceM":12400.0,"ascentM":180.0,"shape":"abc","profile":[0,40,80]}""",
+            nowMs = 1_000,
+        )
+        val course = effects.pick<CompanionEffect.SetCourse>().course
+        assertEquals("Volcano Circuit", course.name)
+        assertEquals("Watopia", course.world)
+        assertEquals(12_400.0, course.distanceMeters)
+        assertEquals(180.0, course.ascentMeters)
+        assertEquals("abc", course.shape)
+        assertEquals(listOf(0, 40, 80), course.profileMeters)
+    }
+
+    @Test
+    fun `a course frame carrying nothing produces nothing`() {
+        val s = ready()
+        assertEquals(emptyList(), s.onFrame("""{"t":"course"}""", nowMs = 1_000))
+    }
+
+    /**
+     * Half a polyline is not a shorter road, it is one that leaves the map. So
+     * an over-long shape is dropped whole and said so, while the rest of the
+     * frame still lands: a companion that sends an enormous track alongside a
+     * perfectly good name should still get the name.
+     */
+    @Test
+    fun `an over-long shape is refused rather than truncated`() {
+        val s = ready()
+        val huge = "a".repeat(CompanionProtocol.MAX_COURSE_SHAPE_CHARS + 1)
+        val effects = s.onFrame(
+            """{"t":"course","name":"Too much","shape":"$huge"}""",
+            nowMs = 1_000,
+        )
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.REJECTED, warning.code)
+        assertEquals("shape", warning.field)
+
+        val course = effects.pick<CompanionEffect.SetCourse>().course
+        assertEquals("", course.shape)
+        assertEquals("Too much", course.name)
+    }
+
+    @Test
+    fun `an over-long profile is refused the same way`() {
+        val s = ready()
+        val samples = (0..CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES).joinToString(",")
+        val effects = s.onFrame("""{"t":"course","profile":[$samples]}""", nowMs = 1_000)
+        assertEquals("profile", effects.sent<WarningFrame>().field)
+        assertTrue(effects.filterIsInstance<CompanionEffect.SetCourse>().isEmpty())
+    }
+
+    /**
+     * A summary is the short form of a course, and the order is load-bearing:
+     * ending the ride is what writes the row, so the shape has to arrive first
+     * or it arrives too late to be saved.
+     */
+    @Test
+    fun `a finish summary reaches the course before the ride ends`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"finish","summary":{"shape":"abc","profile":[1,2,3]}}""",
+            nowMs = 1_000,
+        )
+        val courseAt = effects.indexOfFirst { it is CompanionEffect.SetCourse }
+        val finishAt = effects.indexOfFirst { it is CompanionEffect.Finish }
+        assertTrue(courseAt >= 0 && courseAt < finishAt, effects.toString())
+        assertEquals("abc", effects.pick<CompanionEffect.SetCourse>().course.shape)
+    }
+
+    @Test
+    fun `a finish with no summary is still a finish`() {
+        val s = ready()
+        val effects = s.onFrame("""{"t":"finish"}""", nowMs = 1_000)
+        assertTrue(effects.filterIsInstance<CompanionEffect.SetCourse>().isEmpty())
+        assertIs<CompanionEffect.Finish>(effects.single())
+    }
+
+    @Test
+    fun `an observer may not describe the course`() {
+        val s = session()
+        s.onFrame(hello(role = HelloFrame.ROLE_OBSERVER), nowMs = 0)
+        val error = s.onFrame("""{"t":"course","name":"Nope"}""", nowMs = 1_000).sent<ErrorFrame>()
+        assertEquals(CompanionError.NOT_CONTROLLER, error.code)
+    }
+}
+
+class CompanionSetStateTest {
+
+    private fun ready(): CompanionSession = session().also { it.onFrame(hello(), nowMs = 0) }
+
+    @Test
+    fun `pause and resume ask for what they say`() {
+        val s = ready()
+        assertTrue(
+            s.onFrame("""{"t":"setState","state":"paused"}""", nowMs = 1_000)
+                .pick<CompanionEffect.SetRideState>().paused
+        )
+        assertFalse(
+            s.onFrame("""{"t":"setState","state":"active"}""", nowMs = 1_100)
+                .pick<CompanionEffect.SetRideState>().paused
+        )
+    }
+
+    /**
+     * Guessing here has an asymmetric cost: reading a misspelt word as "paused"
+     * silently stops recording a ride the rider is still doing, and they find
+     * out afterwards.
+     */
+    @Test
+    fun `an unknown state is refused rather than guessed at`() {
+        val s = ready()
+        val effects = s.onFrame("""{"t":"setState","state":"pasued"}""", nowMs = 1_000)
+        assertTrue(effects.filterIsInstance<CompanionEffect.SetRideState>().isEmpty())
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.REJECTED, warning.code)
+        assertEquals("state", warning.field)
+        assertContains(warning.message.orEmpty(), "pasued")
+    }
+
+    @Test
+    fun `an observer may not pause the ride`() {
+        val s = session()
+        s.onFrame(hello(role = HelloFrame.ROLE_OBSERVER), nowMs = 0)
+        val error = s.onFrame("""{"t":"setState","state":"paused"}""", nowMs = 1_000)
+            .sent<ErrorFrame>()
+        assertEquals(CompanionError.NOT_CONTROLLER, error.code)
+    }
+}
+
+/**
+ * A 0.1 companion has to keep working. Everything 0.2 added is optional in both
+ * directions, so an older client connects, negotiates down, and rides.
+ */
+class CompanionVersionCompatibilityTest {
+
+    @Test
+    fun `an older companion negotiates down and is welcomed`() {
+        val s = session()
+        val welcome = s.onFrame(hello(min = "0.1", max = "0.1"), nowMs = 0).sent<WelcomeFrame>()
+        assertEquals("0.1", welcome.proto)
+        assertTrue(s.isController)
+    }
+
+    @Test
+    fun `a current companion gets the current version`() {
+        val s = session()
+        val welcome = s.onFrame(hello(min = "0.1", max = "0.2"), nowMs = 0).sent<WelcomeFrame>()
+        assertEquals(CompanionProtocol.VERSION.toString(), welcome.proto)
+    }
+
+    /**
+     * A companion should branch on what the app will act on, not on the version
+     * number it happened to negotiate.
+     */
+    @Test
+    fun `the welcome advertises the new frames`() {
+        val s = session()
+        val welcome = s.onFrame(hello(), nowMs = 0).sent<WelcomeFrame>()
+        assertContains(welcome.capabilities, "course")
+        assertContains(welcome.capabilities, "setState")
     }
 }

@@ -161,7 +161,14 @@ data class Drivetrain(
          * the top where it is needed.
          *
          * This is the one number to expose if riders ever want to tell the app
-         * which gear their bike is actually in.
+         * which gear their bike is actually in, and with the drivetrain now
+         * kinematically coupled to cadence it is the largest remaining guess
+         * in the model. It can be measured rather than assumed: the rider's
+         * power, their cadence and the force last commanded give
+         * `development = P / (F . cadence)` directly, which folds in whatever
+         * mass the trainer applies a grade against as well. Until that lands,
+         * a rider whose real gear is taller than this simply rides further
+         * down the virtual ladder than the numbers suggest.
          */
         const val ASSUMED_REAL_DEVELOPMENT_M = 3.35
 
@@ -187,23 +194,29 @@ data class Drivetrain(
          * How hard a shift bites, as an exponent on the gear's ratio against
          * the rider's real one.
          *
-         * At 1.0 the model is exactly faithful to a bike: one sprocket is a
-         * 5 to 8 % change in the force at the wheel. On the road that is
-         * plainly felt, because your cadence drops with it. Indoors it is not:
-         * the virtual speed here comes from power alone, so a rider can absorb
-         * the change by pushing 5 % harder at the same cadence and never
-         * notice they shifted - which is exactly what riders report.
+         * At 1.0 the model is exactly faithful to a bike, and 1.0 is now what
+         * it is. It was 1.35 for a reason that no longer holds: the virtual
+         * speed used to come from power alone, so the gear could not reach the
+         * speed the road force was evaluated at, one sprocket moved the
+         * commanded force by 5 %, and a rider absorbed that by pushing 5 %
+         * harder at the same cadence and never noticed they had shifted.
+         * Inflating the exponent was the cheapest way to make the shifter do
+         * something.
          *
-         * Above 1.0 each shift moves more while the ladder keeps its order and
-         * its shape. The curve pivots on [ASSUMED_REAL_DEVELOPMENT_M], so the
-         * gear that matches the rider's real one still carries the road's own
-         * force unchanged: what grows is the reach of the gears either side of
-         * it. 1.35 roughly doubles the top of the ladder and takes a road
-         * bike's smallest shift from 3.6 % to 4.9 %.
+         * [app.indoorbike.shared.simulation.DriveSpeed] removed the reason.
+         * The road force is now evaluated at the speed the *gear* is turning
+         * out, so the aerodynamic term moves with the square of the ratio and
+         * the commanded force with its cube: a 7 % sprocket step is an 18 %
+         * change in what the legs feel at 35 km/h, and a 9 % change on an 8 %
+         * wall where gravity dominates and there is no air term to square.
+         * That difference between terrains is the thing a rider recognises as
+         * gears, and it is exactly what a fixed exponent could not produce.
          *
-         * This is a feel setting, not physics, and it is the only one.
+         * Left as a constant rather than deleted because it is the one knob
+         * worth having if the ladder ever needs widening, but anything other
+         * than 1.0 is now a thumb on the scale rather than a missing term.
          */
-        const val GEAR_AUTHORITY = 1.35
+        const val GEAR_AUTHORITY = 1.0
 
         /**
          * A modern endurance road bike: compact double, wide-range cassette.

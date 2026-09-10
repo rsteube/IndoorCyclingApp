@@ -271,7 +271,10 @@ class CompanionDiscoveryTest {
         val json = CompanionDiscovery.encode(announcement)
         assertContains(json, """"t":"indoorbike.companion"""")
         assertContains(json, """"port":47612""")
-        assertContains(json, """"proto":"0.1-0.1"""")
+        // Spelled from the constant rather than pinned: the announcement
+        // carries whatever this build supports, and a version bump is not
+        // supposed to cost a test edit.
+        assertContains(json, """"proto":"""" + CompanionProtocol.SUPPORTED + """"""")
         assertContains(json, """"path":"/companion"""")
     }
 
@@ -320,4 +323,56 @@ class CompanionDiscoveryTest {
         assertEquals(47612, decoded?.port)
         assertEquals(true, decoded?.paired)
     }
+
+    // Added in 0.2 ───────────────────────────────────────────────────────────
+
+    @Test
+    fun `a course frame decodes`() {
+        val decoded = CompanionCodec.decodeClientFrame(
+            """{"t":"course","name":"Volcano Circuit","shape":"abc","profile":[0,40,80]}"""
+        )
+        val frame = assertIs<CourseFrame>(assertIs<Decoded.Ok>(decoded).frame)
+        assertEquals("Volcano Circuit", frame.name)
+        assertEquals("abc", frame.shape)
+        assertEquals(listOf(0, 40, 80), frame.profile)
+    }
+
+    @Test
+    fun `a setState frame decodes`() {
+        val decoded = CompanionCodec.decodeClientFrame("""{"t":"setState","state":"paused"}""")
+        val frame = assertIs<SetStateFrame>(assertIs<Decoded.Ok>(decoded).frame)
+        assertEquals(CompanionState.PAUSED, frame.state)
+    }
+
+    /**
+     * "No drivetrain speed to be had" and "a speed of zero" are different
+     * things, and the protocol keeps them different the way it keeps a missing
+     * heart rate different from a heart rate of zero.
+     */
+    @Test
+    fun `an unknown drivetrain speed is left out of telemetry entirely`() {
+        val json = CompanionCodec.encode(telemetry(speedMps = null))
+        assertFalse(json.contains("speedMps"), json)
+    }
+
+    @Test
+    fun `a known drivetrain speed is sent rounded`() {
+        val json = CompanionCodec.encode(telemetry(speedMps = 8.33333333))
+        assertContains(json, """"speedMps":8.33""")
+    }
+
+    private fun telemetry(speedMps: Double?) = TelemetryFrame(
+        seq = 1,
+        tMono = 1_000,
+        state = CompanionState.ACTIVE,
+        power = 210,
+        cadence = 88,
+        speedMps = speedMps,
+        gearIndex = 11,
+        loadFactor = 1.18,
+        appliedGradient = 0.062,
+        trainerForceN = 74.2,
+        trainerGradePercent = 9.0,
+        elapsedS = 61,
+    )
 }

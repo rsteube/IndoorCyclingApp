@@ -25,10 +25,11 @@ import kotlin.test.assertTrue
 private const val RIDER_KG = 75f
 private const val BIKE_KG = 9f
 
-private class Recorder {
+private class Recorder(private val cadence: Int = 0) {
     val roads = mutableListOf<SimulationParameters>()
     val engine = CompanionEngine(
         powerWatts = { 200 },
+        cadenceRpm = { cadence },
         applyRoad = { roads += it },
         riderMassKg = { RIDER_KG },
         bikeMassKg = { BIKE_KG },
@@ -225,5 +226,153 @@ class CompanionEngineTest {
         assertEquals(0.0, r.engine.distanceMeters.value)
         assertEquals(0.0, r.engine.elevationGainMeters.value)
         assertFalse(r.engine.receivingRoad.value)
+    }
+
+    // The drivetrain ─────────────────────────────────────────────────────────
+
+    /**
+     * A chain does not slip, so the gear decides how fast the road goes past
+     * for a given cadence. The companion still owns the world; this is the
+     * drivetrain answering the same question, and it is what the road force is
+     * evaluated at.
+     */
+    @Test
+    fun `the road is evaluated at the speed the gear is turning out`() {
+        val r = Recorder(cadence = 90)
+        r.engine.setRoad(gradient = 0.0, speedMps = 10.0, nowMs = 0)
+        r.engine.advance(0)
+
+        val gear = r.engine.gearIndex.value
+        assertEquals(
+            90.0 / 60.0 * Drivetrain.DEFAULT.developmentMeters(gear),
+            r.engine.driveSpeedMps.value,
+            absoluteTolerance = 1e-6,
+        )
+    }
+
+    @Test
+    fun `a shift bites harder at speed than it does on a climb`() {
+        val gear = Drivetrain.DEFAULT.gearCount - 8
+
+        val fast = Recorder(cadence = 90)
+        fast.engine.setRoad(gradient = 0.0, speedMps = 11.0, nowMs = 0)
+        fast.engine.advance(0)
+
+        val climb = Recorder(cadence = 90)
+        climb.engine.setRoad(gradient = 0.06, speedMps = 4.0, nowMs = 0)
+        climb.engine.advance(0)
+
+        fun drop(r: Recorder) =
+            1.0 - r.engine.trainerForceNewtons(gear - 1) / r.engine.trainerForceNewtons(gear)
+
+        val onFlat = drop(fast)
+        val onClimb = drop(climb)
+        assertTrue(onFlat > 0.12, "one downshift at speed moved only ${onFlat * 100} %")
+        assertTrue(
+            onFlat > onClimb * 1.4,
+            "the same shift moved ${onFlat * 100} % on the flat and " +
+                "${onClimb * 100} % on a climb, which is not a gear changing",
+        )
+    }
+
+    /**
+     * The companion integrates `m_eff . dv/dt = P/v - F_road` to get the speed
+     * it sends. Commanding only `F_road` was commanding one half of an
+     * equation somebody else was solving in full.
+     */
+    @Test
+    fun `a world winding up costs the rider its momentum`() {
+        val r = Recorder(cadence = 90)
+        var t = 0L
+        var v = 8.0
+        repeat(20) {
+            r.engine.setRoad(gradient = 0.0, speedMps = v, nowMs = t)
+            r.engine.advance(t)
+            t += 250
+        }
+        val gear = r.engine.gearIndex.value
+        val steady = r.engine.trainerForceNewtons(gear)
+
+        // Same road, same cadence, same gear. The only thing changing is how
+        // fast the world is winding up.
+        repeat(16) {
+            v += 0.6 * 0.25
+            r.engine.setRoad(gradient = 0.0, speedMps = v, nowMs = t)
+            r.engine.advance(t)
+            t += 250
+        }
+        val winding = r.engine.trainerForceNewtons(gear)
+        assertTrue(
+            winding > steady + 20.0,
+            "the world went from 8 to 10.4 m/s and the legs felt " +
+                "${winding - steady} N of it",
+        )
+    }
+
+    @Test
+    fun `a trainer that cannot count cadence keeps the companion's speed`() {
+        val r = Recorder()
+        r.engine.setRoad(gradient = 0.04, speedMps = 9.0, nowMs = 0)
+        r.engine.advance(0)
+        assertEquals(9.0, r.engine.driveSpeedMps.value, absoluteTolerance = 1e-9)
+    }
+
+    // The course ─────────────────────────────────────────────────────────────
+
+    @Test
+    fun `a course is merged rather than replaced`() {
+        val r = Recorder()
+        r.engine.setCourse(CompanionCourse(name = "Volcano Circuit", world = "Watopia"))
+        r.engine.setCourse(CompanionCourse(shape = "abc", profileMeters = listOf(0, 40)))
+
+        val course = r.engine.course.value
+        assertEquals("Volcano Circuit", course.name)
+        assertEquals("Watopia", course.world)
+        assertEquals("abc", course.shape)
+        assertTrue(course.hasShape)
+    }
+
+    @Test
+    fun `loading a fresh ride forgets the previous course`() {
+        val r = Recorder()
+        r.engine.setCourse(CompanionCourse(name = "Volcano Circuit", shape = "abc"))
+        r.engine.load()
+        assertTrue(r.engine.course.value.isEmpty)
+    }
+
+    /**
+     * The field telemetry omits rather than zeroes. A companion reading a zero
+     * as a standstill would be told its rider had stopped whenever the trainer
+     * happened not to count cadence.
+     */
+    @Test
+    fun `the drivetrain speed is only claimed once a crank has turned`() {
+        val silent = Recorder()
+        silent.engine.setRoad(gradient = 0.0, speedMps = 9.0, nowMs = 0)
+        silent.engine.advance(0)
+        assertFalse(silent.engine.driveSpeedKnown.value)
+
+        val pedalling = Recorder(cadence = 85)
+        pedalling.engine.setRoad(gradient = 0.0, speedMps = 9.0, nowMs = 0)
+        pedalling.engine.advance(0)
+        assertTrue(pedalling.engine.driveSpeedKnown.value)
+        assertTrue(pedalling.engine.driveSpeedMps.value > 0.0)
+    }
+
+    /**
+     * The reported speed has to move on the first crank revolution, because
+     * that is the complaint this field exists to answer: watts and cadence
+     * arriving from the trainer while the speed sat at zero for several
+     * seconds, which is what integrating speed out of power from a standstill
+     * looks like.
+     */
+    @Test
+    fun `speed is there on the first tick of pedalling`() {
+        val r = Recorder(cadence = 90)
+        r.engine.setRoad(gradient = 0.0, speedMps = 0.0, nowMs = 0)
+        r.engine.advance(0)
+
+        val gear = Drivetrain.DEFAULT.developmentMeters(r.engine.gearIndex.value)
+        assertEquals(90.0 / 60.0 * gear, r.engine.driveSpeedMps.value, absoluteTolerance = 1e-6)
     }
 }
