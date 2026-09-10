@@ -30,6 +30,8 @@ import app.indoorbike.shared.companion.CompanionState
 import app.indoorbike.shared.companion.EventFrame
 import app.indoorbike.shared.companion.GearInfo
 import app.indoorbike.shared.companion.HelloFrame
+import app.indoorbike.shared.companion.PairedCompanion
+import app.indoorbike.shared.companion.PairedCompanionStore
 import app.indoorbike.shared.companion.RemoteControls
 import app.indoorbike.shared.companion.RiderInfo
 import app.indoorbike.shared.companion.ServerFrame
@@ -145,6 +147,10 @@ class CompanionHost(
     private val heartRateBpm: () -> Int,
     private val trainerName: () -> String?,
     private val trainerConnected: () -> Boolean,
+    /** This phone's stable identity, so a paired companion knows which it reached. */
+    private val deviceId: () -> String = { "" },
+    /** Companions the rider has trusted. Null disables pairing entirely. */
+    private val pairedStore: PairedCompanionStore? = null,
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -171,6 +177,26 @@ class CompanionHost(
      */
     private val _remoteControls = MutableStateFlow<RemoteControls?>(null)
     val remoteControls: StateFlow<RemoteControls?> = _remoteControls.asStateFlow()
+
+    /**
+     * A companion asking to be remembered, waiting on the rider.
+     *
+     * Null almost always. Non-null only between a `pairRequest` arriving and
+     * the rider answering it, which is the one moment in this design that
+     * requires a human.
+     */
+    private val _pendingPairing = MutableStateFlow<PendingPairing?>(null)
+    val pendingPairing: StateFlow<PendingPairing?> = _pendingPairing.asStateFlow()
+
+    /**
+     * Keys for paired companions, in memory.
+     *
+     * The session state machine is synchronous by design, so it cannot wait on
+     * disk mid-handshake. The store is read once when the socket opens and kept
+     * here; a pairing made during a ride is written to both.
+     */
+    @Volatile
+    private var pairedKeys: Map<String, String> = emptyMap()
 
     private var server: EmbeddedServer<*, *>? = null
     private var telemetryJob: Job? = null
@@ -275,6 +301,10 @@ class CompanionHost(
                     )
                 }
 
+                // Read once, up front: a handshake cannot wait on disk.
+                pairedKeys = pairedStore?.all()?.associate { it.deviceId to it.keyHex }
+                    ?: emptyMap()
+
                 engine.onGearChanged = ::broadcastGearChanged
                 engine.onRoadStaleChanged = ::broadcastRoadStale
                 telemetryJob = scope.launch { telemetryLoop() }
@@ -336,6 +366,7 @@ class CompanionHost(
         connections.clear()
         controller = null
         _remoteControls.value = null
+        _pendingPairing.value = null
         ridePrepared = false
 
         if (running != null || closing.isNotEmpty()) {
@@ -412,11 +443,14 @@ class CompanionHost(
         val session = CompanionSession(
             config = CompanionConfig(
                 appVersion = appVersion,
+                deviceId = deviceId(),
+                appName = BEACON_NAME,
                 sessionId = sessionId,
                 token = token,
             ),
             snapshot = ::snapshot,
             controllerConnected = { controller != null },
+            pairedKeyFor = { pairedKeys[it] },
         )
         val conn = Conn(session, ws)
         connections.add(conn)
@@ -441,6 +475,7 @@ class CompanionHost(
                 // up would offer the rider buttons with nothing on the other
                 // end of them.
                 _remoteControls.value = null
+                _pendingPairing.value = null
                 Log.i(TAG, "Controller disconnected; the road will ramp to flat")
             }
             publishConnectionCounts()
@@ -548,6 +583,27 @@ class CompanionHost(
                     )
                 }
 
+                is CompanionEffect.RequestPairing -> {
+                    // The one place this design asks for a human. Everything
+                    // else about a paired connection happens silently, which is
+                    // exactly why the moment trust is granted should not.
+                    _pendingPairing.value = PendingPairing(effect.deviceId, effect.name)
+                }
+
+                is CompanionEffect.SavePairing -> {
+                    pairedKeys = pairedKeys + (effect.companion.deviceId to effect.companion.keyHex)
+                    pairedStore?.save(effect.companion)
+                    Log.i(TAG, "Paired with a companion; it will connect without a code from now on")
+                }
+
+                is CompanionEffect.PairingProved -> {
+                    // A timestamp, so a stale row in the rider's list is
+                    // obvious when they come to prune it.
+                    pairedStore?.find(effect.deviceId)?.let {
+                        pairedStore.save(it.copy(lastSeenEpochMs = System.currentTimeMillis()))
+                    }
+                }
+
                 is CompanionEffect.SetControls -> _remoteControls.value = effect.controls
 
                 is CompanionEffect.SetDrivetrain -> {
@@ -597,6 +653,46 @@ class CompanionHost(
     }
 
     // Outbound ───────────────────────────────────────────────────────────────
+
+    /**
+     * The rider agreed to remember this companion.
+     *
+     * Generates the key, writes it down and sends it, in that order. Ignored if
+     * nothing is pending, so a double tap cannot mint two keys.
+     */
+    fun acceptPairing() {
+        val holder = controller ?: return
+        if (_pendingPairing.value == null) return
+        _pendingPairing.value = null
+        scope.launch {
+            dispatch(holder, holder.session.acceptPairing(System.currentTimeMillis()))
+        }
+    }
+
+    /** The rider said no. The ride carries on; the code already did its job. */
+    fun declinePairing() {
+        val holder = controller ?: return
+        if (_pendingPairing.value == null) return
+        _pendingPairing.value = null
+        scope.launch {
+            dispatch(holder, holder.session.declinePairing("The rider declined."))
+        }
+    }
+
+    /** Everything the rider has trusted, for a list they can prune. */
+    suspend fun pairedCompanions(): List<PairedCompanion> = pairedStore?.all() ?: emptyList()
+
+    /**
+     * Take the trust back.
+     *
+     * Both copies, in memory and on disk, because the in-memory one is what a
+     * handshake actually consults and a forget that left it behind would be a
+     * forget that did nothing until the next restart.
+     */
+    suspend fun forgetPairing(deviceId: String) {
+        pairedKeys = pairedKeys - deviceId
+        pairedStore?.forget(deviceId)
+    }
 
     /**
      * The rider pressed a control on the pad.
@@ -747,6 +843,9 @@ class CompanionHost(
             resume = null,
         )
     }
+
+    /** A companion waiting on the rider to agree to remember it. */
+    data class PendingPairing(val deviceId: String, val name: String)
 
     private companion object {
         const val TAG = "CompanionHost"

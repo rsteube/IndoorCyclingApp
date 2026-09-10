@@ -103,6 +103,8 @@ object CompanionCodec {
                 "course" -> json.decodeFromJsonElement(CourseFrame.serializer(), root)
                 "controls" -> json.decodeFromJsonElement(ControlsFrame.serializer(), root)
                 "drivetrain" -> json.decodeFromJsonElement(DrivetrainFrame.serializer(), root)
+                "pairRequest" -> json.decodeFromJsonElement(PairRequestFrame.serializer(), root)
+                "pairProof" -> json.decodeFromJsonElement(PairProofFrame.serializer(), root)
                 "setState" -> json.decodeFromJsonElement(SetStateFrame.serializer(), root)
                 "finish" -> json.decodeFromJsonElement(FinishFrame.serializer(), root)
                 "ping" -> json.decodeFromJsonElement(PingFrame.serializer(), root)
@@ -140,6 +142,9 @@ object CompanionCodec {
         is WarningFrame -> json.encodeToString(WarningFrame.serializer(), frame.rounded())
         is ErrorFrame -> json.encodeToString(ErrorFrame.serializer(), frame)
         is PongFrame -> json.encodeToString(PongFrame.serializer(), frame)
+        is ChallengeFrame -> json.encodeToString(ChallengeFrame.serializer(), frame)
+        is PairedFrame -> json.encodeToString(PairedFrame.serializer(), frame)
+        is PairDeclinedFrame -> json.encodeToString(PairDeclinedFrame.serializer(), frame)
     }
 
     private fun TelemetryFrame.rounded() = copy(

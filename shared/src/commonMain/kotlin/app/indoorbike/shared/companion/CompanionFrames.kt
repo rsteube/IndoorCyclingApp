@@ -54,6 +54,20 @@ data class HelloFrame(
     val protoMin: String,
     val protoMax: String,
     val token: String? = null,
+    /**
+     * Stable, opaque identity for this companion, if it has one.
+     *
+     * Generate it once, keep it forever, and never reuse one between two
+     * companions. A UUID is the obvious choice. It is not a secret and not a
+     * credential: it says which stored pairing to look up, and the proof that
+     * follows is what actually decides anything.
+     *
+     * Present with no [token] and a pairing on file, the app answers with a
+     * [ChallengeFrame] rather than a [WelcomeFrame], and the rider is never
+     * asked for a code. Absent, or unknown, and the handshake is the one it
+     * always was.
+     */
+    val deviceId: String? = null,
     val client: ClientInfo = ClientInfo(),
     /** `controller` (default) or `observer`. Unknown values fall back to observer. */
     val role: String = ROLE_CONTROLLER,
@@ -180,6 +194,42 @@ data class CourseFrame(
 data class SetStateFrame(
     val state: String,
     val t: String = "setState",
+) : ClientFrame
+
+/**
+ * Ask to be remembered.
+ *
+ * Sent once, after an ordinary code-authenticated handshake, by a companion
+ * whose user has said they want this. The rider is then asked on the phone, and
+ * agreeing on both devices is the whole ceremony: a shared secret comes back in
+ * a [PairedFrame] and neither person ever types a code at each other again.
+ *
+ * Refused if a pairing already exists, which is not an error worth acting on:
+ * it means the answer to "do these two know each other" is already yes.
+ */
+@Serializable
+data class PairRequestFrame(
+    /** What to call this companion in the rider's list of paired devices. */
+    val name: String? = null,
+    val t: String = "pairRequest",
+) : ClientFrame
+
+/**
+ * Answer a [ChallengeFrame], proving the companion holds the pairing key.
+ *
+ * [nonce] is the companion's own, fresh for this connection, and it goes into
+ * both proofs. That is what makes the exchange worthless to anyone who recorded
+ * yesterday's: neither side is signing anything the other chose alone.
+ *
+ * See [CompanionSecurity.proof] for exactly what is under the tag. It is four
+ * strings joined by colons and one HMAC, and it is written out there so a
+ * companion author can reproduce it from the documentation alone.
+ */
+@Serializable
+data class PairProofFrame(
+    val nonce: String,
+    val proof: String,
+    val t: String = "pairProof",
 ) : ClientFrame
 
 /**
@@ -334,6 +384,18 @@ data class WelcomeFrame(
     val trainer: TrainerInfo,
     val limits: Limits,
     val resume: ResumeInfo? = null,
+    /** The app's own identity, so a companion knows which phone it reached. */
+    val deviceId: String? = null,
+    /**
+     * The app's half of the mutual proof, present only on a connection
+     * authenticated by a pairing.
+     *
+     * **Check it.** Skipping it leaves a companion trusting any host that
+     * answered on the expected port, which is precisely the position pairing
+     * exists to get out of. A wrong or missing proof means the thing on the
+     * other end does not hold the key, whatever else it claims.
+     */
+    val proof: String? = null,
     val t: String = "welcome",
 ) : ServerFrame
 
@@ -373,6 +435,63 @@ data class Limits(
  */
 @Serializable
 data class ResumeInfo(val distanceM: Double, val ascentM: Double)
+
+/**
+ * Prove you are who you say you are.
+ *
+ * Sent instead of a [WelcomeFrame] when a companion presents a [HelloFrame]
+ * with a `deviceId` the app has a pairing for. Answer with a [PairProofFrame];
+ * a correct one is followed by the welcome, and the ride proceeds as though a
+ * code had been typed.
+ *
+ * [deviceId] is the *app's* identity, which the companion needs in order to
+ * look up which of its own stored keys to use. Sent here rather than broadcast
+ * in the discovery beacon on purpose: a stable identifier on the wire once a
+ * connection exists is a different thing from one shouted at the whole subnet
+ * every second.
+ */
+@Serializable
+data class ChallengeFrame(
+    val deviceId: String,
+    val nonce: String,
+    val t: String = "challenge",
+) : ServerFrame
+
+/**
+ * The rider agreed. Here is the secret the two devices will share from now on.
+ *
+ * Sent once, in answer to a [PairRequestFrame] the rider accepted. Store [key]
+ * against [deviceId] and use it for every future connection; the app has
+ * already stored its side.
+ *
+ * The key crosses the socket in the clear exactly once, here, and that is the
+ * one window this scheme leaves open. It is closed for every connection
+ * afterwards. See [CompanionSecurity] for why that trade was made rather than
+ * a key agreement no game engine can implement.
+ */
+@Serializable
+data class PairedFrame(
+    /** The app's identity, to store the key against. */
+    val deviceId: String,
+    /** What the app calls itself, for the companion's own list. */
+    val name: String,
+    /** The shared secret, hex. [CompanionSecurity.KEY_BYTES] bytes. */
+    val key: String,
+    val t: String = "paired",
+) : ServerFrame
+
+/**
+ * The rider said no, or there was nothing to agree to.
+ *
+ * Not an error and not fatal: the ride carries on exactly as it was, with the
+ * pairing code having done its job. A companion should offer to ask again next
+ * time rather than treating this as a failure.
+ */
+@Serializable
+data class PairDeclinedFrame(
+    val reason: String? = null,
+    val t: String = "pairDeclined",
+) : ServerFrame
 
 /**
  * What the trainer is doing, at [CompanionProtocol.TICK_MS].

@@ -76,6 +76,11 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.6 added permanent pairing: `hello.deviceId`, the `pairRequest` /
+     * `paired` ceremony and the `challenge` / `pairProof` handshake, so two
+     * devices that have met once recognise each other afterwards without a
+     * code and without anybody tapping anything.
+     *
      * 0.5 added the `drivetrain` frame, so a game can put the rider on the
      * bike the game thinks they are riding. Optional: leaving it out keeps the
      * drivetrain the rider chose in settings.
@@ -102,7 +107,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 5)
+    val VERSION = ProtocolVersion(0, 6)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -117,6 +122,7 @@ object CompanionProtocol {
     val CAPABILITIES =
         listOf(
             "requestShift", "label", "summary", "course", "setState", "controls", "drivetrain",
+            "pair",
         )
 
     /**

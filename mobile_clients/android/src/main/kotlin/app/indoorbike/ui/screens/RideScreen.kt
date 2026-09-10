@@ -299,6 +299,9 @@ fun RideScreen(
     // A menu on the companion's screen, when it has one up. Null the rest of
     // the time, which is nearly always.
     val companionControls by companionHost.remoteControls.collectAsState()
+    // A companion can ask to be remembered after the ride is under way, in
+    // which case the rider is looking at the HUD rather than the pairing card.
+    val pendingPairing by companionHost.pendingPairing.collectAsState()
     val companionGradient by companionEngine.gradient.collectAsState()
     val companionSpeed by companionEngine.speedMps.collectAsState()
     val companionDistance by companionEngine.distanceMeters.collectAsState()
@@ -617,6 +620,13 @@ fun RideScreen(
                         onControlPress = companionHost::pressControl,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
+                    }
+                    pendingPairing?.let {
+                        app.indoorbike.ui.screens.companion.CompanionPairingDialog(
+                            pending = it,
+                            onAccept = companionHost::acceptPairing,
+                            onDecline = companionHost::declinePairing,
+                        )
                     }
                     // The harness for whoever is building the other end: a hand
                     // on the readings the companion receives, and a way to fire

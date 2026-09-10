@@ -54,6 +54,7 @@ import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.session.WorkoutSessionManager
+import app.indoorbike.companion.AndroidPairedCompanionStore
 import app.indoorbike.companion.CompanionHost
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.companion.CompanionEngine
@@ -217,6 +218,11 @@ class AppContainer(
                     val hrm = heartRateMonitor.heartRate.value
                     if (hrm > 0) hrm else trainerManager.heartRate.value
                 },
+                // The same stable id the backup layer namespaces sessions with.
+                // Not a secret: it says which phone, and the proof says whether
+                // the companion actually knows it.
+                deviceId = { userSettings.deviceId },
+                pairedStore = AndroidPairedCompanionStore(application),
                 trainerName = { trainerManager.connectedTrainerName.value },
                 trainerConnected = {
                     trainerManager.connectionState.value == TrainerConnectionState.Connected ||

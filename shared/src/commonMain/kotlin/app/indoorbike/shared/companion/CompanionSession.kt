@@ -48,6 +48,19 @@ sealed interface CompanionEffect {
     data class SetRideState(val paused: Boolean) : CompanionEffect
 
     /**
+     * A companion has asked to be remembered. The host asks the rider, then
+     * answers with [CompanionSession.acceptPairing] or
+     * [CompanionSession.declinePairing]. Nothing happens until it does.
+     */
+    data class RequestPairing(val deviceId: String, val name: String) : CompanionEffect
+
+    /** The rider agreed. Write this down before the key goes out on the wire. */
+    data class SavePairing(val companion: PairedCompanion) : CompanionEffect
+
+    /** A paired companion proved itself. Worth a timestamp, nothing more. */
+    data class PairingProved(val deviceId: String) : CompanionEffect
+
+    /**
      * Put the rider on a different bike. The ride's drivetrain only; the
      * rider's own setting is untouched and comes back when the ride ends.
      */
@@ -71,6 +84,13 @@ sealed interface CompanionEffect {
 /** Static configuration for one listening socket. */
 data class CompanionConfig(
     val appVersion: String,
+    /**
+     * This app's own stable identity, so a paired companion can tell which
+     * phone it reached and which stored key to use. Not a secret.
+     */
+    val deviceId: String = "",
+    /** What the app calls itself in a companion's list of paired devices. */
+    val appName: String = "Indoor Bike",
     val sessionId: String,
     /** Shown on the phone and required in `hello`. Empty disables the check, for tests only. */
     val token: String,
@@ -106,12 +126,36 @@ class CompanionSession(
     private val config: CompanionConfig,
     private val snapshot: () -> CompanionSnapshot,
     private val controllerConnected: () -> Boolean = { false },
+    /**
+     * The stored pairing key for a companion, or null if it is a stranger.
+     *
+     * A function rather than a store because this class does not get to touch
+     * disk: it stays synchronous, clock-free and testable with no platform
+     * under it, which is the property that lets the whole handshake be tested
+     * at a hundred times real speed.
+     */
+    private val pairedKeyFor: (String) -> String? = { null },
     val road: CompanionRoad = CompanionRoad(),
 ) {
 
-    private enum class Phase { AWAITING_HELLO, READY, CLOSED }
+    private enum class Phase { AWAITING_HELLO, AWAITING_PROOF, READY, CLOSED }
 
     private var phase = Phase.AWAITING_HELLO
+
+    /** The companion's stable identity, once it has claimed one. */
+    var peerDeviceId: String? = null
+        private set
+
+    /** True when this connection was let in by a pairing rather than a code. */
+    var authenticatedByPairing: Boolean = false
+        private set
+
+    /** Set while a pairing key is being proved. */
+    private var pendingKey: String? = null
+    private var challengeNonce: String? = null
+
+    /** Set while the rider is being asked whether to remember this companion. */
+    private var pairRequestPending = false
 
     /** Null until the handshake succeeds. */
     var version: ProtocolVersion? = null
@@ -162,6 +206,21 @@ class CompanionSession(
         fields: Set<String>,
         nowMs: Long,
     ): List<CompanionEffect> {
+        if (phase == Phase.AWAITING_PROOF) {
+            // Nothing else is worth reading from a connection that has claimed
+            // an identity and not yet backed it up. Answering anything here
+            // would be answering a stranger who named somebody they are not.
+            return if (frame is PairProofFrame) {
+                onPairProof(frame)
+            } else {
+                fail(
+                    CompanionError.UNAUTHORIZED,
+                    "Answer the challenge with 'pairProof' before anything else.",
+                    CompanionClose.UNAUTHORIZED,
+                )
+            }
+        }
+
         if (phase == Phase.AWAITING_HELLO) {
             return if (frame is HelloFrame) {
                 onHello(frame)
@@ -187,6 +246,10 @@ class CompanionSession(
             is SetStateFrame -> onSetState(frame)
             is ControlsFrame -> onControls(frame)
             is DrivetrainFrame -> onDrivetrain(frame)
+            is PairRequestFrame -> onPairRequest(frame)
+            // A proof outside the challenge is not an attack, just a companion
+            // that lost track of where it was. Ignored rather than fatal.
+            is PairProofFrame -> emptyList()
             is FinishFrame -> onFinish(frame)
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
@@ -217,7 +280,11 @@ class CompanionSession(
             is Negotiation.Agreed -> result.version
         }
 
-        if (config.token.isNotEmpty() && frame.token != config.token) {
+        // A companion the rider has already trusted skips the code entirely.
+        // It has not proved anything yet: the challenge below is where that
+        // happens, and the welcome waits until it has.
+        val pairedKey = frame.deviceId?.takeIf { it.isNotBlank() }?.let(pairedKeyFor)
+        if (pairedKey == null && config.token.isNotEmpty() && frame.token != config.token) {
             return fail(
                 CompanionError.UNAUTHORIZED,
                 "The pairing code did not match. Check the code shown on the phone.",
@@ -241,12 +308,88 @@ class CompanionSession(
         val granted = if (wantsControl) HelloFrame.ROLE_CONTROLLER else HelloFrame.ROLE_OBSERVER
         version = negotiated
         role = granted
-        phase = Phase.READY
+        peerDeviceId = frame.deviceId?.takeIf { it.isNotBlank() }
 
-        val now = snapshot()
+        if (pairedKey != null) {
+            // Prove it. The role is settled and the version agreed, so a
+            // failure from here is about identity and nothing else.
+            phase = Phase.AWAITING_PROOF
+            pendingKey = pairedKey
+            val nonce = CompanionSecurity.newNonceHex()
+            challengeNonce = nonce
+            return listOf(
+                CompanionEffect.Send(
+                    ChallengeFrame(deviceId = config.deviceId, nonce = nonce)
+                )
+            )
+        }
+
+        phase = Phase.READY
+        return listOf(CompanionEffect.Send(welcomeFrame(negotiated, granted, proof = null)))
+    }
+
+    /**
+     * Check the tag, then answer with one of our own.
+     *
+     * The comparison is constant-time and the companion's nonce is checked for
+     * shape before any of it: a companion sending an empty or fixed nonce would
+     * be signing something only this side chose, which is most of the way back
+     * to a replay being useful.
+     */
+    private fun onPairProof(frame: PairProofFrame): List<CompanionEffect> {
+        val key = pendingKey
+        val nonceApp = challengeNonce
+        val deviceId = peerDeviceId
+        if (key == null || nonceApp == null || deviceId == null) {
+            return fail(
+                CompanionError.UNAUTHORIZED,
+                "There is no challenge outstanding on this connection.",
+                CompanionClose.UNAUTHORIZED,
+            )
+        }
+        if (!CompanionSecurity.looksLikeNonce(frame.nonce)) {
+            return fail(
+                CompanionError.UNAUTHORIZED,
+                "The nonce must be " + CompanionSecurity.NONCE_BYTES +
+                    " bytes of lowercase hex, fresh for this connection.",
+                CompanionClose.UNAUTHORIZED,
+            )
+        }
+        val expected = CompanionSecurity.proof(
+            key, CompanionSecurity.ROLE_COMPANION, nonceApp, frame.nonce,
+        )
+        if (!CompanionSecurity.proofMatches(expected, frame.proof)) {
+            return fail(
+                CompanionError.UNAUTHORIZED,
+                "That proof does not match the pairing on file for this device. " +
+                    "If the pairing was forgotten on one side, pair again with the code.",
+                CompanionClose.UNAUTHORIZED,
+            )
+        }
+
+        phase = Phase.READY
+        authenticatedByPairing = true
+        pendingKey = null
+        val ourProof = CompanionSecurity.proof(
+            key, CompanionSecurity.ROLE_APP, nonceApp, frame.nonce,
+        )
+        val negotiated = version ?: CompanionProtocol.VERSION
+        val granted = role ?: HelloFrame.ROLE_CONTROLLER
         return listOf(
-            CompanionEffect.Send(
-                WelcomeFrame(
+            CompanionEffect.PairingProved(deviceId),
+            CompanionEffect.Send(welcomeFrame(negotiated, granted, proof = ourProof)),
+        )
+    }
+
+    /** One welcome, however the connection was let in. */
+    private fun welcomeFrame(
+        negotiated: ProtocolVersion,
+        granted: String,
+        proof: String?,
+    ): WelcomeFrame {
+        val now = snapshot()
+        return run {
+            WelcomeFrame(
                     proto = negotiated.toString(),
                     app = config.appVersion,
                     sessionId = config.sessionId,
@@ -258,11 +401,80 @@ class CompanionSession(
                     gears = now.gears,
                     gearIndex = now.gearIndex,
                     trainer = now.trainer,
-                    limits = Limits(),
-                    resume = now.resume,
+                limits = Limits(),
+                resume = now.resume,
+                deviceId = config.deviceId.takeIf { it.isNotEmpty() },
+                proof = proof,
+            )
+        }
+    }
+
+    // Pairing ────────────────────────────────────────────────────────────────
+
+    /**
+     * A companion asking to be remembered.
+     *
+     * Answered by the rider, not by this class, so all this does is decide
+     * whether the question is worth asking. It is not worth asking twice, and
+     * it is not worth asking on behalf of a companion that has no identity to
+     * remember.
+     */
+    private fun onPairRequest(frame: PairRequestFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("pairRequest"))
+        val deviceId = peerDeviceId
+            ?: return listOf(
+                CompanionEffect.Send(
+                    PairDeclinedFrame(
+                        reason = "Send a 'deviceId' in your hello first. Without a stable " +
+                            "identity there is nothing to remember you by."
+                    )
                 )
             )
+        if (pairedKeyFor(deviceId) != null) {
+            return listOf(
+                CompanionEffect.Send(PairDeclinedFrame(reason = "Already paired."))
+            )
+        }
+        if (pairRequestPending) return emptyList()
+        pairRequestPending = true
+        return listOf(CompanionEffect.RequestPairing(deviceId, frame.name ?: clientName))
+    }
+
+    /**
+     * The rider said yes.
+     *
+     * The key is generated here and written down before it is sent, so the
+     * failure that matters cannot happen in the wrong order. If the send is
+     * lost the app knows a pairing the companion does not, which resolves
+     * itself: the companion reconnects, cannot answer the challenge, and is
+     * told to pair again with the code.
+     */
+    fun acceptPairing(nowMs: Long): List<CompanionEffect> {
+        if (phase != Phase.READY || !pairRequestPending) return emptyList()
+        val deviceId = peerDeviceId ?: return emptyList()
+        pairRequestPending = false
+        val key = CompanionSecurity.newKeyHex()
+        return listOf(
+            CompanionEffect.SavePairing(
+                PairedCompanion(
+                    deviceId = deviceId,
+                    name = clientName,
+                    keyHex = key,
+                    pairedAtEpochMs = nowMs,
+                    lastSeenEpochMs = nowMs,
+                )
+            ),
+            CompanionEffect.Send(
+                PairedFrame(deviceId = config.deviceId, name = config.appName, key = key)
+            ),
         )
+    }
+
+    /** The rider said no. The ride carries on; the code already did its job. */
+    fun declinePairing(reason: String? = null): List<CompanionEffect> {
+        if (!pairRequestPending) return emptyList()
+        pairRequestPending = false
+        return listOf(CompanionEffect.Send(PairDeclinedFrame(reason = reason)))
     }
 
     // Riding ─────────────────────────────────────────────────────────────────

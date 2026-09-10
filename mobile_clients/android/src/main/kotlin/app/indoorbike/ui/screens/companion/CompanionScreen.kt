@@ -123,6 +123,17 @@ fun CompanionScreen(
         }
     }
 
+    // A companion asks to be remembered right after it connects, which is
+    // usually while this screen is still up.
+    val pendingPairing by host.pendingPairing.collectAsState()
+    pendingPairing?.let {
+        CompanionPairingDialog(
+            pending = it,
+            onAccept = host::acceptPairing,
+            onDecline = host::declinePairing,
+        )
+    }
+
     Column(
         modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0),
     ) {
