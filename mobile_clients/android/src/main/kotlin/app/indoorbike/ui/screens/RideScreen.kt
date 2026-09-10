@@ -549,6 +549,7 @@ fun RideScreen(
                 canEndAndSave = canEndAndSave,
                 onEndAndSave = { confirmingEnd = true },
                 canSkip = !isFreeRide && !isSimulation,
+                awaitingCompanionStart = isCompanion,
                 // Narrow widths (portrait) get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
                 compact = LocalConfiguration.current.screenWidthDp < 600
@@ -1028,12 +1029,21 @@ private fun RideHeader(
     openEnded: Boolean = false,
     /** Skipping ahead only means something when there's a next interval. */
     canSkip: Boolean = true,
+    /**
+     * A companion ride that has not started yet. Pedalling will not start it -
+     * the game will - so the standby line has to say so rather than asking for
+     * something that does nothing.
+     */
+    awaitingCompanionStart: Boolean = false,
 ) {
     val stateText: String? = when (state) {
         // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
         // a ride in progress, not the initial "pedal to start" standby.
-        WorkoutState.Standby ->
-            if (canEndAndSave) "Auto-paused · pedal to resume" else "Standby · pedal to start"
+        WorkoutState.Standby -> when {
+            canEndAndSave -> "Auto-paused · pedal to resume"
+            awaitingCompanionStart -> "Ready · start the ride in the game"
+            else -> "Standby · pedal to start"
+        }
         WorkoutState.Paused -> "Paused · trainer at 0 W"
         else -> null
     }

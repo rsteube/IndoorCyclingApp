@@ -521,7 +521,7 @@ class WorkoutSessionManager(
                 if (isPedaling) lastPedalingEpochMs = now
 
                 when (state) {
-                    WorkoutState.Standby -> if (isPedaling) startCountdown()
+                    WorkoutState.Standby -> if (isPedaling) startStandbyExit()
                     WorkoutState.Active -> {
                         if (now - lastPedalingEpochMs >= AUTO_PAUSE_AFTER_MS) {
                             autoPauseToStandby()
@@ -672,6 +672,31 @@ class WorkoutSessionManager(
      * No-op if the ride never actually started (nothing worth saving) or is
      * already finished/torn down.
      */
+    /**
+     * The companion says the ride is on.
+     *
+     * This is the moment a companion ride starts recording, and the only one.
+     * Until it arrives the app is connected, streaming telemetry and applying
+     * the road, but the clock is not running and nothing is being written down
+     * - which is what lets a rider sit in a game's menus, or spin up on its
+     * start line, without any of it landing in the ride record.
+     *
+     * Deliberately the same frame as resume. To a companion the question is
+     * always "should the ride be running now", and answering it should not
+     * require knowing whether the app happens to think of this as a start or a
+     * continuation.
+     *
+     * A no-op in every other mode, and while a ride is already running.
+     */
+    fun startOrResumeCompanionRide() {
+        if (_activeWorkout.value?.isCompanion != true) return
+        when (_state.value) {
+            WorkoutState.Standby -> startActiveWorkout()
+            WorkoutState.Paused -> resumeWorkout()
+            else -> Unit
+        }
+    }
+
     fun endWorkoutEarly() {
         val state = _state.value
         if (state == WorkoutState.Idle || state == WorkoutState.Completed) return
@@ -755,6 +780,36 @@ class WorkoutSessionManager(
     }
 
     // Internals ──────────────────────────────────────────────────────────────
+
+    /**
+     * Leaving standby because the rider is pedalling, by whichever route this
+     * mode uses.
+     *
+     * Every mode but one counts down: three, two, one, go, which is the right
+     * ceremony for a ride the rider themselves is starting.
+     *
+     * A companion ride is not one of those. The rider is looking at a game on
+     * another screen, and that game has its own idea of when the ride begins:
+     * a menu to get through, a countdown of its own, a start line to roll up
+     * to. Two countdowns fighting each other is worse than either, and the app
+     * cannot see the one that matters. So a companion ride starts when the
+     * companion says so ([startOrResumeCompanionRide]) and pedalling alone
+     * never starts it.
+     *
+     * Once it *has* started, coming back from a stop-pedalling auto-pause is
+     * immediate. A rider who paused for a drink and started again is resuming,
+     * not starting, and counting them back in would put a "3, 2, 1" over a
+     * game that never stopped.
+     */
+    private fun startStandbyExit() {
+        if (_activeWorkout.value?.isCompanion != true) {
+            startCountdown()
+            return
+        }
+        // Never started: the companion owns that moment, not the pedals.
+        if (sessionStartTimeEpoch == 0L) return
+        startActiveWorkout()
+    }
 
     private fun startCountdown() {
         // The detection loop keeps running — it's already a no-op while in

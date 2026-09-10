@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.3** (the app also accepts 0.2 and 0.1)
+- Protocol version: **0.4** (the app also accepts 0.3, 0.2 and 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -239,6 +239,10 @@ Version and capability are separate mechanisms. Version answers "same language";
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
 
+**0.4** moved the moment a ride starts, and is the one change so far that is not purely
+additive: nothing is recorded until you send `setState: "active"`, and there is no countdown.
+A companion that never sends it never starts a ride.
+
 **0.3** added the `controls` frame and the `controlPressed` event.
 
 **0.2** added `telemetry.speedMps`, the `course` frame and the `setState` frame. All three are
@@ -405,7 +409,12 @@ Requires the `setState` capability. Added in protocol 0.2.
 { "t": "setState", "state": "paused" }
 ```
 
-Pauses or resumes the recording on the phone. `state` is `"active"` or `"paused"`; anything
+**Starts** the ride the first time, and resumes it after that. The app prepares the ride on
+connect and streams telemetry and applies the road straight away, but the clock does not run
+and nothing is written down until `"active"` arrives. There is no countdown: your game has its
+own idea of when a ride begins and the app cannot see it.
+
+`state` is `"active"` or `"paused"`; anything
 else is refused with a `rejected` warning rather than guessed at, because reading a misspelt
 word as "paused" would silently stop recording a ride the rider is still doing.
 
@@ -834,6 +843,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Interpolate telemetry for rendering; do not ask for a faster stream
 - [ ] Treat missing `power`/`cadence`/`hr`/`speedMps` as absent, not zero
 - [ ] Send a `course` (name early, shape at the end) so the ride lands in history with a map
+- [ ] Send `setState: "active"` when your world says the ride has begun. **Nothing is recorded
+      until you do**
 - [ ] Send `setState` on your own pause and resume, and keep sending `world` while paused
 - [ ] If you show menus, send `controls` with an accurate `enabled` list, and `visible: false`
       when the menu closes
@@ -865,6 +876,7 @@ Present in the protocol, absent from this build. Do not design around them.
 | Truncating a long `shape` to fit | Refused whole with a `rejected` warning; simplify the track instead |
 | Reading `course.distanceM` as the rider's distance | It is the course's own length; the rider's is `world.distanceM` |
 | Pausing with `setState` and stopping `world` frames | The deadman ramps the gradient to flat under a rider who may still be pedalling |
-| Assuming `setState` always works | It is a request; a ride that has not started cannot be paused |
+| Never sending `setState: "active"` | The rider pedals, the road works, and nothing is ever recorded |
+| Waiting for the app to count the rider in | It does not, in this mode. Your game owns the start |
 | Leaving `controls` visible after a menu closes | The rider is left holding a pad wired to nothing |
 | Listing a control your screen ignores | The rider presses a live-looking button and nothing happens, which is the exact failure `enabled` exists to prevent |

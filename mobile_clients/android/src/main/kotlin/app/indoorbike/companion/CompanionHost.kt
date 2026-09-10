@@ -558,7 +558,10 @@ class CompanionHost(
                     // changes nothing. The `stateChanged` broadcast above is
                     // the answer either way.
                     if (effect.paused) sessionManager.pauseWorkout()
-                    else sessionManager.resumeWorkout()
+                    // Starts the ride the first time, resumes it after that.
+                    // A companion should not have to know which of the two it
+                    // is asking for.
+                    else sessionManager.startOrResumeCompanionRide()
                 }
 
                 is CompanionEffect.Finish -> {

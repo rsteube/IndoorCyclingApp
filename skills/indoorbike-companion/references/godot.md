@@ -19,7 +19,7 @@ signal welcomed(frame: Dictionary)
 signal link_closed(code: int, reason: String)
 
 const PROTO_MIN := "0.1"
-const PROTO_MAX := "0.3"
+const PROTO_MAX := "0.4"
 const WORLD_HZ := 10.0
 
 var _socket := WebSocketPeer.new()

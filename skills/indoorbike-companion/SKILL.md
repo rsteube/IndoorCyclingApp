@@ -48,7 +48,8 @@ fields. Apply them to the speed you compute, then send the result.
    phone's address is the datagram's source, never a field in the payload.
 7. **Add `course`, `setState` and `finish`.** These are what make a companion ride land in the
    rider's history looking like a ride rather than like a log file.
-8. **Add `controls`, if you show menus.** Lends the rider's phone to a screen they cannot
+8. **Send `setState: "active"` when your ride begins.** Nothing is recorded until you do.
+9. **Add `controls`, if you show menus.** Lends the rider's phone to a screen they cannot
    otherwise answer.
 
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
@@ -174,6 +175,27 @@ a week later. All three are optional, and all three are worth the hour.
 
 `finish.summary` is the short form of `course` and merges into the same place. You need one of
 the two, not both.
+
+## Your game owns the start
+
+The app prepares the ride the moment you connect. Telemetry starts flowing, the road is applied,
+the trainer responds. **But the clock does not run and nothing is written down until you send
+`setState: "active"`.**
+
+```json
+{ "t": "setState", "state": "active" }
+```
+
+Send it when your world says the ride has begun: past the menus, off the start line, out of the
+lobby, whenever that is for you. Until then a rider can spin up freely and none of it lands in
+their ride record.
+
+There is no countdown. Your game has its own idea of when a ride begins and the app cannot see
+it, so it does not count anybody in; two countdowns fighting each other is worse than either.
+The phone shows "Ready, start the ride in the game" while it waits.
+
+**If you forget this, the rider pedals, the road works, and nothing is ever recorded.** It is
+the single easiest way to ship a companion that looks right and saves nothing.
 
 ## Menus: lend the rider your phone
 

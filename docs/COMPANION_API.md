@@ -158,7 +158,13 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.3, and this build accepts everything back to 0.1.**
+**Current version: 0.4, and this build accepts everything back to 0.1.**
+
+0.4 moved the moment a ride starts, and is **the one change so far that is not purely
+additive**. The app now records nothing until the companion sends `setState: "active"`, and
+there is no countdown when it does. A companion that never sends it will connect, stream
+telemetry and apply the road, and never start a ride. If you are updating an existing
+companion, this is the line to act on.
 
 0.3 added the `controls` frame and the `controlPressed` event, so a companion showing a menu on
 a screen across the room can borrow the phone as a remote for it.
@@ -387,8 +393,21 @@ Pause or resume the recording on the phone. Requires the `setState` capability.
 than guessed at: reading a misspelt word as "paused" would silently stop recording a ride the
 rider is still doing, and they would find out afterwards.
 
-A game that has its own pause - a menu, a loading screen, a rider who stopped - should use this,
-or the ride record quietly accumulates minutes of zeroes nobody rode.
+**`"active"` is also how a ride starts.** The app prepares the ride the moment you connect and
+begins streaming telemetry and applying the road immediately, but the clock does not run and
+nothing is written down until this frame arrives. Send it when your world says the ride has
+begun: past the menus, off the start line, whenever that is for you.
+
+There is deliberately **no countdown**. Your game has its own idea of when a ride begins and the
+app cannot see it; two countdowns fighting each other is worse than either. The app counts a
+rider in only for the modes it starts itself.
+
+Deliberately the same frame as resume, because the question a companion is answering is always
+"should the ride be running now", and it should not have to know whether the app thinks of this
+as a start or a continuation.
+
+A game that has its own pause - a menu, a loading screen, a rider who stopped - should use
+`"paused"`, or the ride record quietly accumulates minutes of zeroes nobody rode.
 
 **This is a request, and it can legitimately do nothing.** A ride that has not started cannot be
 paused, and one already paused cannot be paused again. The `stateChanged` event is the answer,
@@ -671,6 +690,9 @@ the envelope already exists in the shipped route mode and applies unchanged.
 
 - **`listening`**: the server is up and advertised, the pairing token is on screen, no ride is
   recording yet. A companion may connect and will receive telemetry with `state: "listening"`.
+- **`paused` before the ride has begun**: connected, telemetry flowing, the road being applied,
+  and the clock not running. A companion ride sits here until `setState: "active"` arrives. The
+  phone says "Ready, start the ride in the game", because pedalling will not start it.
 - **`active`**: recording. `world` frames are honoured.
 - **`paused`**: not recording. Reached by auto-pause, by the rider's own pause button, by a
   `setState` frame, or by the foreground service forcing one. The existing rule that a

@@ -76,6 +76,12 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.4 moved the moment a ride starts. The app now records nothing until
+     * the companion sends `setState: active`, and there is no countdown when
+     * it does. **This is the one change so far that is not purely additive**: a
+     * companion that never sends it will connect, stream telemetry and feel the
+     * road, and never start a ride. See `setState` in docs/COMPANION_API.md.
+     *
      * 0.3 added the `controls` frame and the `controlPressed` event, so a
      * companion showing a menu on a screen across the room can borrow the
      * phone as a remote for it.
@@ -92,7 +98,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 3)
+    val VERSION = ProtocolVersion(0, 4)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
