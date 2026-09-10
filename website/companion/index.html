@@ -155,43 +155,6 @@
     .callout p { margin: 0; }
     .callout p + p { margin-top: var(--s-2); }
 
-    /* Demo video. Nothing is requested from YouTube until the visitor asks:
-       the poster frame is self-hosted and the player is built on click. */
-    .demo { margin: 0 0 var(--s-7); }
-    .demo-play {
-      display: block; position: relative; width: 100%; padding: 0;
-      border: 1px solid var(--line-2); border-radius: var(--r-xl);
-      background: var(--bg-1); overflow: hidden; cursor: pointer;
-      aspect-ratio: 16 / 9;
-      transition: border-color var(--dur-base) var(--ease-out);
-    }
-    .demo-play img { display: block; width: 100%; height: 100%; object-fit: cover; }
-    .demo-badge {
-      position: absolute; inset: 0; margin: auto;
-      width: 76px; height: 76px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      background: rgba(49, 62, 80, 0.82); color: var(--fg-1);
-      border: 1px solid var(--line-3);
-      transition: transform var(--dur-base) var(--ease-out),
-                  background var(--dur-base) var(--ease-out);
-    }
-    .demo-badge .icon { margin-left: 3px; }
-    .demo-play:hover { border-color: var(--line-3); }
-    .demo-play:hover .demo-badge { transform: scale(1.07); background: rgba(49, 62, 80, 0.94); }
-    .demo-play:focus-visible { outline: 2px solid var(--fg-1); outline-offset: 3px; }
-    .demo iframe {
-      display: block; width: 100%; aspect-ratio: 16 / 9;
-      border: 1px solid var(--line-2); border-radius: var(--r-xl);
-    }
-    .demo figcaption {
-      color: var(--fg-3); font-size: 13px; line-height: 1.6;
-      margin: var(--s-3) 0 0; max-width: 72ch;
-    }
-    @media (prefers-reduced-motion: reduce) {
-      .demo-play, .demo-badge { transition: none; }
-      .demo-play:hover .demo-badge { transform: none; }
-    }
-
     .api-links { display: flex; flex-wrap: wrap; gap: var(--s-3); margin: var(--s-4) 0 var(--s-5); }
     .req { color: var(--fg-1); font-size: 11px; font-family: var(--font-mono); }
     .opt { color: var(--fg-3); font-size: 11px; font-family: var(--font-mono); }
@@ -204,7 +167,6 @@
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
     <symbol id="i-directions_bike" viewBox="0 -960 960 960"><path d="M612.31-742.31q-29.16 0-49.58-20.42-20.42-20.42-20.42-49.58 0-29.15 20.42-49.57 20.42-20.43 49.58-20.43 29.15 0 49.57 20.43 20.43 20.42 20.43 49.57 0 29.16-20.43 49.58-20.42 20.42-49.57 20.42Zm-191.85 200L510-448.77V-210h-60v-198.85L316.62-517.39q-12.08-10.07-16.7-21.46-4.61-11.39-4.61-27.15 0-15.77 5.11-26.73 5.12-10.96 16.2-22.04l114.3-114.31q11.08-11.07 24.23-16.19 13.16-5.11 28.85-5.11 15.69 0 28.85 5.11 13.15 5.12 24.23 16.19l76 76q26.61 26.62 62.03 43.5 35.43 16.89 78.89 18.81V-530q-58-1.92-104.38-23.27-46.39-21.35-82.7-57.65L528-649.85 420.46-542.31Zm-212.77 74.62q79.77 0 133.73 53.96 53.96 53.96 53.96 133.73 0 79.77-53.96 133.73-53.96 53.96-133.73 53.96-79.77 0-133.73-53.96Q20-200.23 20-280q0-79.77 53.96-133.73 53.96-53.96 133.73-53.96Zm0 327.69q57.77 0 98.89-41.12 41.11-41.11 41.11-98.88 0-57.77-41.11-98.88Q265.46-420 207.69-420t-98.88 41.12Q67.69-337.77 67.69-280q0 57.77 41.12 98.88Q149.92-140 207.69-140Zm544.62-327.69q79.77 0 133.73 53.96Q940-359.77 940-280q0 79.77-53.96 133.73-53.96 53.96-133.73 53.96-79.77 0-133.73-53.96-53.96-53.96-53.96-133.73 0-79.77 53.96-133.73 53.96-53.96 133.73-53.96Zm0 327.69q57.77 0 98.88-41.12 41.12-41.11 41.12-98.88 0-57.77-41.12-98.88Q810.08-420 752.31-420q-57.77 0-98.89 41.12-41.11 41.11-41.11 98.88 0 57.77 41.11 98.88Q694.54-140 752.31-140Z"/></symbol>
     <symbol id="i-smartphone" viewBox="0 -960 960 960"><path d="M292.31-60Q262-60 241-81q-21-21-21-51.31v-695.38Q220-858 241-879q21-21 51.31-21h375.38Q698-900 719-879q21 21 21 51.31v695.38Q740-102 719-81q-21 21-51.31 21H292.31ZM280-170v37.69q0 4.62 3.85 8.46 3.84 3.85 8.46 3.85h375.38q4.62 0 8.46-3.85 3.85-3.84 3.85-8.46V-170H280Zm0-60h400v-500H280v500Zm0-560h400v-37.69q0-4.62-3.85-8.46-3.84-3.85-8.46-3.85H292.31q-4.62 0-8.46 3.85-3.85 3.84-3.85 8.46V-790Zm0 0v-50 50Zm0 620v50-50Z"/></symbol>
-    <symbol id="i-play_arrow" viewBox="0 -960 960 960"><path d="M340-236.16v-487.68L723.07-480 340-236.16ZM400-480Zm0 134 210.77-134L400-614v268Z"/></symbol>
     <symbol id="i-sports_esports" viewBox="0 -960 960 960"><path d="M181.23-220q-40.61 0-63.04-28.77-22.42-28.77-16.96-67.84L144-618.92q7.85-52.69 46.58-86.89Q229.31-740 282-740h396q52.69 0 91.42 34.19 38.73 34.2 46.58 86.89l42.77 302.31q5.46 39.07-16.96 67.84Q819.38-220 778.77-220q-17.15 0-31.5-5.77-14.35-5.77-26.65-18.08L624.46-340H335.54l-96.16 96.15q-12.3 12.31-26.65 18.08-14.35 5.77-31.5 5.77Zm16-66 114-114h337.54l114 114q2 2 15.23 6 11 0 17.5-6.5T800-304l-44-308q-4-29-26.19-48.5T678-680H282q-29.62 0-51.81 19.5T204-612l-44 308q-2 11 4.5 17.5T182-280q2.77 0 15.23-6ZM680-443.85q15.08 0 25.62-10.53 10.53-10.54 10.53-25.62 0-15.08-10.53-25.62-10.54-10.53-25.62-10.53-15.08 0-25.62 10.53-10.53 10.54-10.53 25.62 0 15.08 10.53 25.62 10.54 10.53 25.62 10.53Zm-80-120q15.08 0 25.62-10.53 10.53-10.54 10.53-25.62 0-15.08-10.53-25.62-10.54-10.53-25.62-10.53-15.08 0-25.62 10.53-10.53 10.54-10.53 25.62 0 15.08 10.53 25.62 10.54 10.53 25.62 10.53Zm-283.85 117.7h47.7v-70h70v-47.7h-70v-70h-47.7v70h-70v47.7h70v70ZM480-480Z"/></symbol>
   </svg>
 
@@ -243,22 +205,12 @@
       </p>
     </div>
 
-    <figure class="demo">
-      <button class="demo-play" type="button" data-video="YiJ0zRGMMMY"
-              aria-label="Play the demonstration video (loads a player from YouTube)">
-        <img src="../assets/companion-demo.jpg" width="1280" height="720"
-             alt="A game rendering a road, driving a real trainer through the Indoor Bike app">
-        <span class="demo-badge" aria-hidden="true">
-          <svg class="icon icon-40"><use href="#i-play_arrow"></use></svg>
-        </span>
-      </button>
-      <figcaption>
-        A companion built on this API: a Godot game deciding the road, the phone
-        turning it into resistance on a real trainer.
-        <strong style="color: var(--fg-2)">Nothing is requested from YouTube
-        until you press play</strong> - the still above is served from this site.
-      </figcaption>
-    </figure>
+    <p>
+      <strong>See one working:</strong>
+      <a href="https://www.youtube.com/watch?v=YiJ0zRGMMMY" target="_blank" rel="noopener">Indoor
+      Bike driven by a Godot game &#8599;</a> - the companion decides the road,
+      the phone turns it into resistance on a real trainer.
+    </p>
 
     <nav class="toc" aria-label="On this page">
       <h2>On this page</h2>
@@ -1009,24 +961,6 @@ cp -r indoorbike-src/skills/indoorbike-companion .claude/skills/</code></pre>
     </div>
     <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
   </footer>
-
-  <script>
-    // Click to load. The page makes no third-party request until this runs,
-    // which is what lets the privacy policy keep saying what it says.
-    document.querySelectorAll('.demo-play').forEach(function (button) {
-      button.addEventListener('click', function () {
-        var frame = document.createElement('iframe');
-        frame.src = 'https://www.youtube-nocookie.com/embed/' + button.dataset.video +
-                    '?autoplay=1&rel=0';
-        frame.title = 'Indoor Bike driven by a companion game';
-        frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; ' +
-                      'gyroscope; picture-in-picture; web-share';
-        frame.referrerPolicy = 'strict-origin-when-cross-origin';
-        frame.allowFullscreen = true;
-        button.replaceWith(frame);
-      });
-    });
-  </script>
 
 </body>
 </html>
