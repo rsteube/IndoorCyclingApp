@@ -155,6 +155,22 @@
     .callout p { margin: 0; }
     .callout p + p { margin-top: var(--s-2); }
 
+    /* The setup photo. Portrait, so it sits beside its caption on a wide
+       screen rather than running a thousand pixels down the column. */
+    .setup {
+      display: grid; grid-template-columns: minmax(0, 290px) 1fr;
+      gap: var(--s-5); align-items: center;
+      margin: 0 0 var(--s-7);
+    }
+    .setup img {
+      display: block; width: 100%; height: auto;
+      border-radius: var(--r-xl); border: 1px solid var(--line-2);
+    }
+    .setup figcaption { margin: 0; }
+    .setup figcaption p { font-size: 14px; line-height: 1.65; }
+    .setup figcaption p:last-child { margin-bottom: 0; }
+    @media (max-width: 720px) { .setup { grid-template-columns: 1fr; } }
+
     .api-links { display: flex; flex-wrap: wrap; gap: var(--s-3); margin: var(--s-4) 0 var(--s-5); }
     .req { color: var(--fg-1); font-size: 11px; font-family: var(--font-mono); }
     .opt { color: var(--fg-3); font-size: 11px; font-family: var(--font-mono); }
@@ -205,12 +221,31 @@
       </p>
     </div>
 
-    <p>
-      <strong>See one working:</strong>
-      <a href="https://www.youtube.com/watch?v=YiJ0zRGMMMY" target="_blank" rel="noopener">Indoor
-      Bike driven by a Godot game &#8599;</a> - the companion decides the road,
-      the phone turns it into resistance on a real trainer.
-    </p>
+    <figure class="setup">
+      <img src="../assets/companion-setup.jpg" width="649" height="998"
+           alt="A trainer in front of a wall-mounted TV. The TV shows a game rendering
+                a road through trees with a rider on it and a gradient of +6.3 % in the
+                corner. On a tablet mounted to the handlebars below, the Indoor Bike app
+                shows the same 6.3 % alongside live power, cadence and heart rate.">
+      <figcaption>
+        <p>
+          <strong>The whole arrangement, in one photo.</strong> On the screen, a
+          companion: it owns the world, decides where the rider is on it, and
+          draws the road. On the tablet at the handlebars, Indoor Bike: it owns
+          the Bluetooth link to the trainer, the gears, and the ride record.
+        </p>
+        <p>
+          Both are reading <strong>6.3 %</strong>, and that agreement is the
+          entire protocol doing its job. The game said what the road was; the
+          phone worked out what that road pushes back with, at that speed, in
+          that gear, and told the trainer.
+        </p>
+        <p>
+          <a href="https://www.youtube.com/watch?v=YiJ0zRGMMMY" target="_blank" rel="noopener">Watch
+          it running &#8599;</a>
+        </p>
+      </figcaption>
+    </figure>
 
     <nav class="toc" aria-label="On this page">
       <h2>On this page</h2>
