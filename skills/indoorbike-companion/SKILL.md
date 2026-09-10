@@ -52,7 +52,7 @@ fields. Apply them to the speed you compute, then send the result.
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
 has two untested systems and no way to tell which is wrong.
 
-## The twelve rules that prevent most bugs
+## The thirteen rules that prevent most bugs
 
 1. **Send `hello` first.** Any other first frame is `unauthorized` and a close with 4002.
 2. **`role` defaults to `controller`**, and any value the phone does not recognise (including
@@ -84,6 +84,9 @@ has two untested systems and no way to tell which is wrong.
     between "my course never shows up" and "your polyline is too long".
 12. **Ignore unknown fields, frame types and enum values.** Never treat them as errors. This is
     what lets your build share a socket with a later one.
+13. **Smooth the gradient before you send it.** It does not come out of a route file ready
+    to use, and it goes straight into the force on the rider's legs. See the next section but
+    one.
 
 ## Speed: take it, do not compute it
 
@@ -106,6 +109,51 @@ everywhere else.
 
 When the field is **absent**, the trainer cannot count cadence and there is no drivetrain speed
 to be had. Only then fall back to integrating from power.
+
+## Gradient and distance: a route file gives you neither
+
+A GPX, a TCX or a height field gives you positions and altitudes. Both of the numbers the phone
+wants are one step on from those, and it is an easy step to skip.
+
+**The gradient has to be smoothed, because it is a force.** `world.gradient` goes into the
+force commanded to the trainer, and nothing on the app side filters it: the phone clamps it,
+applies the deadman, and commands it. So whatever shape your gradient has, the rider's legs
+get. Differencing consecutive altitudes gives a step function, and the steps are not small.
+
+There are two smoothing steps and the first one does most of the work. Resample the elevation
+onto a fixed grid, **smooth the elevation itself** over about +/-50 m, and only then take a
+**centred difference over about 40 m**. Measured on a real 6.7 km GPX resampled every 10 m,
+looking at the worst jump between two neighbouring samples:
+
+| how the gradient is derived | steepest | worst jump between samples |
+|---|---|---|
+| raw difference between altitudes | 17.1% | **13.4 points** |
+| 40 m centred difference alone | 11.1% | **3.0 points** |
+| elevation smoothed +/-50 m, then 40 m centred difference | 10.1% | **0.6 points** |
+
+A 13-point step is nearly half the range from flat to the 30% ceiling, arriving in one go, once
+every ten metres of road. What the rider feels is the trainer lurching at a steady rhythm on
+ground that looks smooth. Three points is still a 25 N kick at 84 kg, which is why the
+elevation smoother is not optional: the centred difference alone leaves five times more of the
+problem than it needs to.
+
+The windows are sized against the noise rather than the terrain. Consumer GPS altitude wanders
+a metre or two between samples ten metres apart, and a shorter window leaves several per cent
+of phantom gradient on a road that is dead flat. A hundred metres is still short enough that no
+real ramp is smoothed away, so erring wide is the right way to be wrong.
+
+Do it once, where the route is prepared, and read it back at ride time. Deriving it twice with
+slightly different arithmetic - once for the trainer, once for anything you draw - is the bug
+this rule exists to prevent, and it shows up as resistance that disagrees with the number on
+the screen.
+
+**A note on distance.** `speedMps` and `distanceM` are both defined along the road surface,
+while latitude and longitude give you horizontal distance. The two differ by
+`1 / cos(atan(gradient))`, so converting is one multiplication in the same place you smooth the
+gradient. It is worth doing and it is not worth worrying about: on a hilly 6.7 km route the
+whole correction is under 0.2%, which is far inside the accuracy of the drag and rolling
+coefficients the speed was computed with in the first place. Convert because it is nearly free,
+not because the ride record is wrong without it.
 
 ## Making the ride land in history properly
 

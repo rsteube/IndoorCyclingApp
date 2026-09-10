@@ -19,7 +19,7 @@ signal welcomed(frame: Dictionary)
 signal link_closed(code: int, reason: String)
 
 const PROTO_MIN := "0.1"
-const PROTO_MAX := "0.1"
+const PROTO_MAX := "0.2"
 const WORLD_HZ := 10.0
 
 var _socket := WebSocketPeer.new()
@@ -30,6 +30,8 @@ var _token := ""
 
 # Set by your world each frame.
 var gradient := 0.0
+# Set from telemetry.speedMps and then adjusted by whatever your world adds.
+# Do not integrate it out of power: see "Speed comes off the telemetry".
 var speed_mps := 0.0
 var distance_m := 0.0
 var ascent_m := 0.0
@@ -83,7 +85,7 @@ func _send_hello() -> void:
             "platform": OS.get_name(),
         },
         "role": "controller",       # exact string; any other value grants observer
-        "capabilities": ["summary"],
+        "capabilities": ["summary", "course", "setState"],
     })
 
 
@@ -168,6 +170,26 @@ func _pump_world(delta: float) -> void:
 **Keep pumping while your world is paused.** A loading screen, a menu or an alt-tab that stops
 this loop for 1.5 s triggers the phone's deadman and the hill ramps away under the rider. Send
 the current gradient with `speed_mps = 0.0` rather than sending nothing.
+
+## Speed comes off the telemetry
+
+`telemetry.speedMps` is how fast the rider's legs and their chosen gear are turning the road
+out, and it is there on the first turn of the crank. Take it, apply your world's own effects,
+and send the result back as `world.speedMps`.
+
+Do not integrate a speed out of power instead. That models a bicycle accelerating from a
+standstill, and what the rider sees is watts and cadence arriving from the trainer while the
+speed sits at zero for five to ten seconds - at the start of a course, and again every time
+they stop and start.
+
+```gdscript
+    # In your telemetry handler. Absent means the trainer cannot count cadence,
+    # not that the rider has stopped, so only then fall back to your own model.
+    if frame.has("speedMps"):
+        speed_mps = float(frame["speedMps"]) * _draft_factor() * _surface_factor()
+    else:
+        speed_mps = _integrate_from_power(frame.get("power", 0), delta)
+```
 
 ## Interpolate telemetry
 
