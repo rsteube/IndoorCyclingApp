@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.5 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.6 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -374,6 +374,16 @@
     </p>
 
     <p>
+      <strong>Trust is granted once and can be taken back.</strong> A stranger
+      presents the pairing code shown on the phone. A companion the rider has
+      paired proves itself with a key instead and connects silently. Either way
+      the phone only listens while the rider has Companion mode open: there is
+      no background service and no permanently open port, which is the most
+      valuable property in the whole design and the reason pairing did not
+      spend it.
+    </p>
+
+    <p>
       <strong>The phone never learns where the rider is.</strong> It is told a
       gradient, a speed, and cumulative totals for the ride record. None of those
       is a position and nothing could reconstruct one. If you later choose to hand
@@ -483,6 +493,100 @@
       Branch on it rather than on the version number.
       <strong><code>gears</code></strong> is the rider's whole drivetrain with real
       teeth on it, so you can draw "34 x 17" rather than "gear 11 of 20".
+    </p>
+
+    <h3>Pairing permanently, so nobody types a code again</h3>
+
+    <p>
+      The pairing code is per ride. New code, new port, every time. That is the
+      right ceremony for a stranger and the wrong one for the machine in the
+      same room the rider has already trusted twenty times.
+    </p>
+
+    <p>
+      Pair once, on both devices, and a companion that finds the phone
+      afterwards connects straight into the ride: no code, no prompt, nothing
+      to tap.
+    </p>
+
+    <h4>Pairing, once</h4>
+
+    <p>
+      Send a stable <code>deviceId</code> in your <code>hello</code>, ask
+      <em>your</em> user whether they want this, then ask the phone:
+    </p>
+
+<pre><code>{ "t": "pairRequest", "name": "Alpine Climb" }</code></pre>
+
+    <p>
+      The rider is asked on the phone. Agreeing on both devices is the whole
+      ceremony, and what comes back is a key to keep:
+    </p>
+
+<pre><code>{ "t": "paired", "deviceId": "&lt;the app's id&gt;", "name": "Indoor Bike",
+  "key": "&lt;64 hex chars&gt;" }</code></pre>
+
+    <p>
+      Or a <code>pairDeclined</code>, which is <strong>not an error</strong>.
+      The ride carries on exactly as it was; offer to ask again next time.
+    </p>
+
+    <h4>Reconnecting</h4>
+
+    <p>
+      Send <code>hello</code> with your <code>deviceId</code> and no token. The
+      app answers with a challenge instead of a welcome:
+    </p>
+
+<pre><code>{ "t": "challenge", "deviceId": "&lt;the app's id&gt;", "nonce": "&lt;32 hex chars&gt;" }</code></pre>
+
+    <p>
+      Look up your key for that <code>deviceId</code>, make a
+      <strong>fresh random 16-byte nonce</strong>, and answer:
+    </p>
+
+<pre><code>{ "t": "pairProof", "nonce": "&lt;your 32 hex chars&gt;", "proof": "&lt;64 hex chars&gt;" }
+
+proof = hex(HMAC_SHA256(keyBytes,
+        "indoorbike-companion-v1:companion:" + appNonce + ":" + yourNonce))</code></pre>
+
+    <p>
+      The ordinary <code>welcome</code> follows, carrying the app's own proof
+      over the same two nonces with <code>:app:</code> in place of
+      <code>:companion:</code>. <strong>Verify it.</strong> Skipping that leaves
+      you trusting whatever answered on the expected port, which is the position
+      pairing exists to get you out of.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>A fresh nonce every connection.</strong> Both nonces go into
+        both proofs, so reusing yours means signing something only the app
+        chose, which is most of the way back to a recording being useful.
+      </p>
+      <p>
+        <strong>A stored key is not forever.</strong> The rider can forget you.
+        Then the handshake comes back unauthorised and the answer is to pair
+        again with the code, not to give up.
+      </p>
+    </div>
+
+    <p>
+      Everything is lowercase hex and one HMAC-SHA256, which is in the standard
+      library of every language and engine anyone would reach for. That is
+      deliberate: a key agreement no game engine can implement would protect
+      nobody.
+    </p>
+
+    <h4>What it does not do</h4>
+
+    <p>
+      Encrypt anything. The socket is plaintext before and after pairing, so
+      anything already on the network can read the rider's watts either way.
+      Pairing answers <em>who is driving</em>, not <em>who else can see</em>.
+      Encrypting the stream would mean every companion needing TLS with custom
+      certificate pinning, which is awkward in a game engine and would price out
+      exactly the people this API exists for.
     </p>
 
     <h3>Roles</h3>
