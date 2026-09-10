@@ -871,7 +871,55 @@ alone rather than adopted speculatively, since that type carries a cumulative da
 Android 15.
 
 
-## 10. Known gaps
+## 10. Testing it against a real phone
+
+The protocol's unit tests are fast and thorough and they prove one thing: that the state machine
+agrees with itself. They cannot tell you that a `controls` frame puts buttons on a tablet, that
+`setState: "active"` starts a ride without a countdown, or that a `drivetrain` frame changes the
+ladder a rider is shifting through. Only a socket to a real phone does that, and until
+[`scripts/companion_probe.py`](../scripts/companion_probe.py) existed the only way to open one
+was to build a game.
+
+So the probe is a companion in one file. Standard library only, including a hand-rolled
+WebSocket client: pulling in `websockets` would make the one tool for reproducing a bug the one
+tool nobody has installed.
+
+```bash
+# Prepare a companion ride on the phone, then:
+python scripts/companion_probe.py --discover
+python scripts/companion_probe.py --host 192.168.86.23 --port 45809
+python scripts/companion_probe.py --host 192.168.86.23 --port 45809 --scenario controls
+```
+
+`--discover` listens for the UDP beacon on 47601 and takes the phone's address from the
+datagram's source, which is also the quickest way to prove discovery works on a given network.
+Debug builds pin the pairing code to `AAAAAA`, so `--code` is only needed against a release
+build.
+
+Three scenarios, in `SCENARIOS` at the bottom of the file:
+
+| Scenario | What it does |
+|---|---|
+| `smoke` | The whole protocol in the order a real companion would use it: drivetrain (valid, then deliberately invalid), course, world frames, a menu with half the pad dead, the start frame, a hill, shifts, pause and resume, and optionally `finish` |
+| `world` | Pumps world frames at a fixed gradient. For feeling a hill with your legs |
+| `controls` | Puts a menu up and reports which buttons the rider pressed |
+
+Add a scenario rather than editing one. The value of the file is that a scenario you ran last
+month still runs the same way.
+
+**Two things a desk run shows that are not faults.** With nobody on the trainer,
+`telemetry.speedMps` is absent, because no crank has turned and there is therefore no drivetrain
+speed to report. And the ride will start on `setState: "active"` and then auto-pause a few
+seconds later, because the stop-pedalling watchdog is doing its job. Put a rider on the trainer
+to see either of them hold.
+
+**The probe follows its own advice**, and it is worth knowing why: it keeps sending `world`
+frames while its menu is up. The first version did not, tripped the deadman within 1.5 seconds,
+and produced a `worldTimeout` in its own transcript - which is exactly the mistake this
+specification warns companion authors about, committed by the tool written to demonstrate the
+specification.
+
+## 11. Known gaps
 
 Deliberately unresolved in 0.1, listed so neither end designs around their absence.
 

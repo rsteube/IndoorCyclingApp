@@ -1,0 +1,459 @@
+#!/usr/bin/env python3
+#
+# Copyright (C) 2026 Snapp Technology Ltd
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+"""A companion, in one file, for exercising the Companion API against a phone.
+
+The protocol has unit tests and they are fast and thorough, but they prove the
+state machine agrees with itself. They cannot tell you that a `controls` frame
+puts buttons on a tablet, that `setState: active` starts a ride with no
+countdown, or that a `drivetrain` frame changes the ladder the rider is
+shifting through. Only a real socket to a real phone does that, and until this
+existed the only way to open one was to build a game.
+
+So: no dependencies, no build step, no engine. Standard library only, including
+a hand-rolled WebSocket client, because pulling in `websockets` would make the
+one tool for reproducing a bug the one tool nobody has installed.
+
+    python scripts/companion_probe.py --discover
+    python scripts/companion_probe.py --host 192.168.86.23 --port 45809
+    python scripts/companion_probe.py --host ... --scenario controls
+
+Scenarios are in SCENARIOS at the bottom. Add one rather than editing another:
+the value here is that a scenario you ran last month still runs the same way.
+"""
+
+import argparse
+import base64
+import hashlib
+import json
+import os
+import socket
+import struct
+import sys
+import threading
+import time
+
+WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+DISCOVERY_PORT = 47601
+DISCOVERY_MAGIC = "indoorbike.companion"
+PATH = "/companion"
+
+# Debug builds pin the pairing code so nobody has to squint at a tablet.
+DEBUG_CODE = "AAAAAA"
+
+
+# ── WebSocket, the little of it a companion needs ─────────────────────────────
+
+class WebSocket:
+    """Text frames over RFC 6455. Client-to-server frames are masked, as the
+    spec requires and as Ktor enforces; server-to-server frames are not."""
+
+    def __init__(self, host, port, path=PATH, timeout=10.0):
+        self.sock = socket.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(timeout)
+        self._buf = b""
+        self._handshake(host, port, path)
+
+    def _handshake(self, host, port, path):
+        key = base64.b64encode(os.urandom(16)).decode()
+        request = (
+            "GET %s HTTP/1.1\r\n"
+            "Host: %s:%d\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            "Sec-WebSocket-Key: %s\r\n"
+            "Sec-WebSocket-Version: 13\r\n\r\n" % (path, host, port, key)
+        )
+        self.sock.sendall(request.encode())
+
+        while b"\r\n\r\n" not in self._buf:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("socket closed during the handshake")
+            self._buf += chunk
+        head, self._buf = self._buf.split(b"\r\n\r\n", 1)
+        headers = head.decode("latin-1").split("\r\n")
+        if "101" not in headers[0]:
+            raise ConnectionError("upgrade refused: " + headers[0])
+
+        expected = base64.b64encode(
+            hashlib.sha1((key + WS_GUID).encode()).digest()
+        ).decode()
+        got = next(
+            (h.split(":", 1)[1].strip() for h in headers
+             if h.lower().startswith("sec-websocket-accept")), None
+        )
+        if got != expected:
+            raise ConnectionError("bad Sec-WebSocket-Accept; not a WebSocket peer")
+
+    def _recv_exactly(self, n):
+        while len(self._buf) < n:
+            chunk = self.sock.recv(65536)
+            if not chunk:
+                raise ConnectionError("socket closed")
+            self._buf += chunk
+        out, self._buf = self._buf[:n], self._buf[n:]
+        return out
+
+    def send_text(self, text):
+        payload = text.encode()
+        header = bytearray([0x81])  # FIN + text
+        mask = os.urandom(4)
+        n = len(payload)
+        if n < 126:
+            header.append(0x80 | n)
+        elif n < 65536:
+            header.append(0x80 | 126)
+            header += struct.pack(">H", n)
+        else:
+            header.append(0x80 | 127)
+            header += struct.pack(">Q", n)
+        header += mask
+        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self.sock.sendall(bytes(header) + masked)
+
+    def recv(self):
+        """One frame. Returns (kind, value): ("text", str) or ("close", reason)."""
+        b0, b1 = self._recv_exactly(2)
+        opcode = b0 & 0x0F
+        length = b1 & 0x7F
+        if length == 126:
+            length = struct.unpack(">H", self._recv_exactly(2))[0]
+        elif length == 127:
+            length = struct.unpack(">Q", self._recv_exactly(8))[0]
+        masked = bool(b1 & 0x80)
+        mask = self._recv_exactly(4) if masked else b""
+        payload = self._recv_exactly(length) if length else b""
+        if masked:
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+
+        if opcode == 0x1:
+            return "text", payload.decode("utf-8", "replace")
+        if opcode == 0x8:
+            code = struct.unpack(">H", payload[:2])[0] if len(payload) >= 2 else 0
+            return "close", "%d %s" % (code, payload[2:].decode("utf-8", "replace"))
+        if opcode == 0x9:  # ping
+            self.sock.sendall(b"\x8a\x80" + os.urandom(4))
+            return "ping", ""
+        return "other", ""
+
+    def close(self):
+        try:
+            self.sock.sendall(b"\x88\x80" + os.urandom(4))
+        except OSError:
+            pass
+        self.sock.close()
+
+
+# ── Discovery ─────────────────────────────────────────────────────────────────
+
+def discover(timeout=8.0):
+    """Wait for the phone's UDP beacon. Its source address is the one to use:
+    the payload deliberately does not name an address, because the datagram
+    already arrived from one that is reachable."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("", DISCOVERY_PORT))
+    sock.settimeout(timeout)
+    deadline = time.time() + timeout
+    try:
+        while time.time() < deadline:
+            try:
+                data, addr = sock.recvfrom(2048)
+            except socket.timeout:
+                break
+            try:
+                frame = json.loads(data.decode())
+            except ValueError:
+                continue
+            if frame.get("t") == DISCOVERY_MAGIC:
+                return addr[0], int(frame["port"]), frame
+    finally:
+        sock.close()
+    return None, None, None
+
+
+# ── The companion ─────────────────────────────────────────────────────────────
+
+class Probe:
+    def __init__(self, ws, verbose=True):
+        self.ws = ws
+        self.verbose = verbose
+        self.seq = 0
+        self.welcome = None
+        self.telemetry = None
+        self.events = []
+        self.warnings = []
+        self.errors = []
+        self.gears = []
+        self._stop = threading.Event()
+        self._reader = threading.Thread(target=self._read_loop, daemon=True)
+
+    def start(self):
+        self._reader.start()
+
+    def stop(self):
+        self._stop.set()
+
+    def _read_loop(self):
+        while not self._stop.is_set():
+            try:
+                kind, value = self.ws.recv()
+            except Exception:
+                return
+            if kind == "close":
+                print("  <- CLOSE %s" % value)
+                self._stop.set()
+                return
+            if kind != "text":
+                continue
+            try:
+                frame = json.loads(value)
+            except ValueError:
+                continue
+            self._on_frame(frame)
+
+    def _on_frame(self, frame):
+        t = frame.get("t")
+        if t == "welcome":
+            self.welcome = frame
+            self.gears = frame.get("gears", [])
+            print("  <- welcome proto=%s app=%s role=%s" % (
+                frame.get("proto"), frame.get("app"), frame.get("role")))
+            print("     capabilities: %s" % ", ".join(frame.get("capabilities", [])))
+            print("     %d gears, currently %d" % (len(self.gears), frame.get("gearIndex", -1)))
+        elif t == "telemetry":
+            self.telemetry = frame
+        elif t == "event":
+            self.events.append(frame)
+            extra = {k: v for k, v in frame.items()
+                     if k not in ("t", "event", "gears")}
+            if "gears" in frame and frame["gears"]:
+                self.gears = frame["gears"]
+                extra["gears"] = "%d gears" % len(frame["gears"])
+            print("  <- EVENT %s %s" % (frame.get("event"), extra))
+        elif t == "warning":
+            self.warnings.append(frame)
+            print("  <- WARNING [%s] %s: %s" % (
+                frame.get("code"), frame.get("field"), frame.get("message", "")))
+        elif t == "error":
+            self.errors.append(frame)
+            print("  <- ERROR [%s] %s" % (frame.get("code"), frame.get("message", "")))
+
+    def send(self, frame):
+        if self.verbose:
+            print("  -> %s" % json.dumps(frame))
+        self.ws.send_text(json.dumps(frame))
+
+    def hello(self, code, name="companion_probe"):
+        self.send({
+            "t": "hello",
+            "protoMin": "0.1", "protoMax": "0.5",
+            "token": code,
+            "client": {"name": name, "version": "1.0", "platform": sys.platform},
+            "role": "controller",
+            "capabilities": ["summary", "course", "setState", "controls", "drivetrain"],
+        })
+        for _ in range(50):
+            if self.welcome or self.errors:
+                return self.welcome is not None
+            time.sleep(0.1)
+        return False
+
+    def world(self, gradient, speed_mps, distance_m=None, ascent_m=None):
+        self.seq += 1
+        frame = {"t": "world", "seq": self.seq,
+                 "gradient": round(gradient, 4), "speedMps": round(speed_mps, 3)}
+        if distance_m is not None:
+            frame["distanceM"] = round(distance_m, 1)
+        if ascent_m is not None:
+            frame["ascentM"] = round(ascent_m, 1)
+        # Too chatty to echo at 10 Hz; the ride loop prints a summary instead.
+        self.ws.send_text(json.dumps(frame))
+
+    def drive(self, seconds, gradient=0.0, hz=10.0, distance_m=0.0):
+        """Pump world frames, taking speed from telemetry the way the docs say
+        to: the drivetrain's own speed is known on the first turn of the crank,
+        and integrating one out of power is what makes speed sit at zero."""
+        end = time.time() + seconds
+        distance = distance_m
+        last_print = 0.0
+        while time.time() < end and not self._stop.is_set():
+            speed = 0.0
+            if self.telemetry and self.telemetry.get("speedMps") is not None:
+                speed = float(self.telemetry["speedMps"])
+            distance += speed / hz
+            self.world(gradient, speed, distance_m=distance)
+            if time.time() - last_print > 1.0:
+                last_print = time.time()
+                t = self.telemetry or {}
+                print("     ride: %s W, %s rpm, drivetrain %s m/s, gear %s, %s N" % (
+                    t.get("power"), t.get("cadence"), t.get("speedMps"),
+                    t.get("gearIndex"), t.get("trainerForceN")))
+            time.sleep(1.0 / hz)
+        return distance
+
+
+# ── Scenarios ─────────────────────────────────────────────────────────────────
+
+def scenario_smoke(p, args):
+    """Everything, in the order a real companion would do it."""
+    print("\n[1] the bike the game says the rider is on")
+    p.send({"t": "drivetrain", "name": "Probe bike",
+            "chainrings": [50, 34],
+            "sprockets": [11, 12, 13, 14, 15, 17, 19, 21, 23, 25, 28, 32],
+            "wheelCircumferenceMm": 2105})
+    time.sleep(1.0)
+
+    print("\n[2] a bike that cannot exist, which must be refused by name")
+    p.send({"t": "drivetrain", "chainrings": [50], "sprockets": [0, 11]})
+    time.sleep(1.0)
+
+    print("\n[3] name the ride")
+    p.send({"t": "course", "name": "Probe lap", "world": "Test harness",
+            "distanceM": 5000, "ascentM": 60})
+    time.sleep(0.5)
+
+    # The road has to come first. The phone hands off from pairing to the
+    # HUD on the *first world frame*, and the control pad lives on the HUD,
+    # so a menu sent before this one would have nowhere to appear.
+    print("\n[4] rolling, but not recording yet")
+    p.drive(3.0, gradient=0.0)
+    state = (p.telemetry or {}).get("state")
+    print("     state before the start frame: %s" % state)
+
+    print("\n[5] a menu, with only some of the pad live")
+    p.send({"t": "controls", "visible": True, "title": "Probe menu",
+            "hint": "Only up, down and enter should be pressable",
+            "enabled": ["up", "down", "enter"]})
+    print("     look at the phone: left, right and back should be visibly dead")
+    # Still pumping the road. A menu does not stop the deadman, and a rider
+    # can still be pedalling while they read one.
+    p.drive(args.menu_seconds, gradient=0.0)
+    p.send({"t": "controls", "visible": False})
+
+    print("\n[6] start the ride. No countdown.")
+    p.send({"t": "setState", "state": "active"})
+    time.sleep(1.5)
+    state = (p.telemetry or {}).get("state")
+    print("     state after: %s" % state)
+    if state != "active":
+        print("     (nobody is pedalling, so the ride auto-paused straight back to")
+        print("      standby. That is the stop-pedalling watchdog working, not a")
+        print("      protocol failure. Put a rider on the trainer to see it hold.)")
+
+    print("\n[7] ride, with a hill in it")
+    distance = p.drive(args.ride_seconds / 2, gradient=0.0)
+    print("     ... onto a 6 %% climb")
+    distance = p.drive(args.ride_seconds / 2, gradient=0.06, distance_m=distance)
+
+    print("\n[8] shift down twice")
+    p.send({"t": "requestShift", "steps": -1})
+    time.sleep(0.4)
+    p.send({"t": "requestShift", "steps": -1})
+    time.sleep(1.0)
+
+    print("\n[9] pause, then resume")
+    p.send({"t": "setState", "state": "paused"})
+    p.drive(2.0, gradient=0.0)
+    p.send({"t": "setState", "state": "active"})
+    time.sleep(1.0)
+
+    if args.finish:
+        print("\n[10] finish, handing over the shape of the road")
+        p.send({"t": "finish", "summary": {
+            "shape": "_p~iF~ps|U_ulLnnqC", "profile": [10, 24, 41, 18]}})
+        time.sleep(1.5)
+    else:
+        print("\n[10] leaving the ride running (--finish to end it)")
+
+
+def scenario_world(p, args):
+    """Just drive the trainer. For feeling a gradient with your legs."""
+    print("\npumping world frames at %.0f %% for %ds" % (
+        args.gradient * 100, args.ride_seconds))
+    p.send({"t": "setState", "state": "active"})
+    p.drive(args.ride_seconds, gradient=args.gradient)
+
+
+def scenario_controls(p, args):
+    """Put a menu up and report what the rider presses."""
+    enabled = args.enabled.split(",") if args.enabled else ["up", "down", "enter", "back"]
+    print("\nmenu up with %s enabled; press them on the phone" % enabled)
+    p.send({"t": "controls", "visible": True, "title": "Probe menu",
+            "hint": "Press anything", "enabled": enabled})
+    seen_before = len(p.events)
+    # Pumping the road throughout, for the same reason the smoke scenario does.
+    p.drive(args.menu_seconds, gradient=0.0)
+    p.send({"t": "controls", "visible": False})
+    presses = [e for e in p.events[seen_before:] if e.get("event") == "controlPressed"]
+    print("\n%d press(es): %s" % (len(presses), [e.get("control") for e in presses]))
+
+
+SCENARIOS = {
+    "smoke": scenario_smoke,
+    "world": scenario_world,
+    "controls": scenario_controls,
+}
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Drive the Indoor Bike Companion API.")
+    ap.add_argument("--host")
+    ap.add_argument("--port", type=int)
+    ap.add_argument("--code", default=DEBUG_CODE,
+                    help="pairing code (debug builds pin it to %s)" % DEBUG_CODE)
+    ap.add_argument("--discover", action="store_true",
+                    help="find the phone via its UDP beacon on %d" % DISCOVERY_PORT)
+    ap.add_argument("--scenario", default="smoke", choices=sorted(SCENARIOS))
+    ap.add_argument("--ride-seconds", type=float, default=10.0)
+    ap.add_argument("--menu-seconds", type=float, default=8.0)
+    ap.add_argument("--gradient", type=float, default=0.0)
+    ap.add_argument("--enabled", help="comma-separated controls for the controls scenario")
+    ap.add_argument("--finish", action="store_true", help="end the ride at the end")
+    args = ap.parse_args()
+
+    host, port = args.host, args.port
+    if args.discover or not (host and port):
+        print("listening for the beacon on UDP %d ..." % DISCOVERY_PORT)
+        host, port, beacon = discover()
+        if not host:
+            print("no beacon. Is a companion ride prepared on the phone, and are "
+                  "you on the same network? Pass --host and --port to skip this.")
+            return 2
+        print("found %s:%d (%s, proto %s)" % (
+            host, port, beacon.get("app"), beacon.get("proto")))
+
+    print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
+    ws = WebSocket(host, port)
+    probe = Probe(ws)
+    probe.start()
+
+    try:
+        if not probe.hello(args.code):
+            print("handshake refused. Wrong pairing code?")
+            return 1
+        SCENARIOS[args.scenario](probe, args)
+        time.sleep(0.5)
+    finally:
+        probe.stop()
+        ws.close()
+
+    print("\n%d warning(s), %d error(s)" % (len(probe.warnings), len(probe.errors)))
+    return 1 if probe.errors else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

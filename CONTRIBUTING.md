@@ -44,6 +44,7 @@ Both can sit side-by-side on the same device. They have separate DataStore + SQL
 - **Smoke test** - `.\scripts\smoke_test.ps1` (build + install + onboarding + mock-trainer ride + logcat scan).
 - **Shared-module unit tests** - `.\gradlew.bat :shared:allTests`.
 - **Manual checklist** - see [TESTING.md](TESTING.md) for everything the smoke test cannot assert (real BLE, label correctness, layout).
+- **Companion API against a real phone** - `python scripts/companion_probe.py --discover`. A companion in one file, standard library only. Drives the whole protocol at a phone so you can watch a menu appear on the tablet and a ride start without a countdown. See [COMPANION_API.md](docs/COMPANION_API.md#10-testing-it-against-a-real-phone).
 
 ## Versioning
 

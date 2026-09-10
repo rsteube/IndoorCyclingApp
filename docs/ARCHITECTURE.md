@@ -266,6 +266,8 @@ What the app publishes in return is `telemetry.speedMps`, the *drivetrain's* own
 
 **The companion can pause the recording.** A game with its own pause - a menu, a loading screen, a rider who stopped - sends `setState`, and the ride's timer stops as if the rider had used the phone's own pause button. It is a request rather than a command, and the answer is a `stateChanged` event that is broadcast for rider-initiated pauses as well: the phone has its own pause button, a stop-pedalling watchdog and a foreground service that can force one, and a companion that only heard about the pauses it asked for would carry on rolling its world while the recording sat still. `setState` deliberately does **not** stop the deadman, so a paused game must keep sending `world` frames or the gradient ramps to flat under a rider who may still be turning the pedals.
 
+**Testing it needs a second machine, so there is one in the repository.** [`scripts/companion_probe.py`](../scripts/companion_probe.py) is a companion in one file, standard library only, with a hand-rolled WebSocket client so the tool for reproducing a protocol bug is never the tool nobody has installed. It discovers the phone off the UDP beacon, drives the whole protocol, and prints every frame that comes back. The unit tests prove the state machine agrees with itself; this is what proves a `controls` frame puts buttons on a tablet. Documented in [COMPANION_API.md](COMPANION_API.md#10-testing-it-against-a-real-phone).
+
 **Still open.** `riderInput` is never emitted, and `resume` is always null. Listed in [the companion protocol reference](../skills/indoorbike-companion/references/protocol.md#16-not-implemented).
 
 ## Android UI Architecture

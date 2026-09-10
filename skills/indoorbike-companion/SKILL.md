@@ -342,7 +342,13 @@ one.
 
 ## Testing without a phone
 
-Write a mock server before you have a trainer to hand. It needs to: accept a WebSocket on
+There is a working minimal client in the Indoor Bike repository worth reading before you write
+yours: `scripts/companion_probe.py` is a companion in one file, standard library only, with a
+hand-rolled WebSocket client. It does the handshake, pumps `world` frames, sends `drivetrain`,
+`controls`, `setState` and `finish`, and prints everything that comes back. It is the shortest
+complete example of the client side of this protocol that exists.
+
+For the other direction, write a mock server before you have a trainer to hand. It needs to: accept a WebSocket on
 `/companion`, answer `hello` with a `welcome`, push `telemetry` every 250 ms, and echo
 `gearChanged` on `requestShift`. That covers every path except the trainer feel, and it lets
 you develop on a plane.
