@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Copyright (C) 2026 Juhani Lehtimäki
+ * Copyright (C) 2026 Snapp Technology Ltd
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
