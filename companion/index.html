@@ -1,0 +1,941 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Companion API - Indoor Bike</title>
+  <meta name="description" content="Drive an Indoor Bike ride from your own game or app. Your world sets the road, the phone drives the trainer. WebSocket and JSON on the local network, no account and no SDK.">
+  <meta name="theme-color" content="#313e50">
+  <link rel="icon" type="image/svg+xml" href="../assets/favicon-32.svg">
+  <link rel="stylesheet" href="../styles.css">
+  <style>
+    .api-main { max-width: 860px; margin: 0 auto; padding: var(--s-7) var(--s-5) var(--s-10); }
+    .api-main h1 {
+      font-weight: 800;
+      font-size: clamp(40px, 7vw, 64px); line-height: 1;
+      letter-spacing: -0.03em;
+      margin: var(--s-2) 0 var(--s-3); color: var(--fg-1);
+    }
+    .api-main h2 {
+      font-weight: 800;
+      font-size: 26px; margin: var(--s-9) 0 var(--s-3);
+      color: var(--fg-1); scroll-margin-top: var(--s-5);
+    }
+    .api-main h3 {
+      font-weight: 700;
+      font-size: 18px; margin: var(--s-6) 0 var(--s-2);
+      color: var(--fg-1); scroll-margin-top: var(--s-5);
+    }
+    .api-main h4 {
+      font-weight: 700; font-size: 15px; margin: var(--s-5) 0 var(--s-2); color: var(--fg-1);
+    }
+    .api-main p, .api-main li {
+      color: var(--fg-2); font-size: 15px; line-height: 1.7; max-width: 72ch;
+    }
+    .api-main p { margin: 0 0 var(--s-3); }
+    .api-main ul, .api-main ol { padding-left: 22px; margin: 0 0 var(--s-4); }
+    .api-main li { margin-bottom: 6px; }
+    .api-main li strong, .api-main p strong { color: var(--fg-1); }
+    .api-main a:not(.btn) { color: var(--fg-1); text-decoration: none; border-bottom: 1px dotted var(--line-3); }
+    .api-main a:not(.btn):hover { color: var(--fg-2); }
+    .api-meta {
+      font-family: var(--font-mono); font-size: 11px;
+      color: var(--fg-3); margin: 0 0 var(--s-4);
+    }
+    code {
+      font-family: var(--font-mono); font-size: 0.92em;
+      background: var(--bg-2); border: 1px solid var(--line-1);
+      padding: 1px 6px; border-radius: 4px; color: var(--fg-2);
+    }
+    .tldr {
+      background: var(--bg-1);
+      border: 1px solid var(--line-2);
+      border-left: 3px solid var(--fg-1);
+      border-radius: var(--r-md);
+      padding: var(--s-4) var(--s-5);
+      margin: var(--s-5) 0 var(--s-7);
+    }
+    .tldr p { margin: 0; color: var(--fg-1); }
+    .tldr p + p { margin-top: var(--s-3); }
+
+    /* On this page */
+    .toc {
+      background: var(--bg-1); border: 1px solid var(--line-2);
+      border-radius: var(--r-xl); padding: var(--s-4) var(--s-5);
+      margin: 0 0 var(--s-7);
+    }
+    .toc h2 {
+      font-size: 11px; font-family: var(--font-mono); font-weight: 600;
+      color: var(--fg-3); margin: 0 0 var(--s-3);
+    }
+    .toc ol { margin: 0; padding-left: 20px; }
+    .toc li { margin-bottom: 4px; font-size: 14px; }
+
+    /* Code blocks */
+    pre {
+      font-family: var(--font-mono); font-size: 13px; line-height: 1.6;
+      background: var(--bg-1); border: 1px solid var(--line-2);
+      border-radius: var(--r-md); padding: var(--s-3) var(--s-4);
+      margin: 0 0 var(--s-4); color: var(--fg-2);
+      overflow-x: auto;
+    }
+    pre code { background: none; border: none; padding: 0; font-size: inherit; }
+    .pre-label {
+      font-family: var(--font-mono); font-size: 11px; color: var(--fg-3);
+      margin: 0 0 6px;
+    }
+
+    /* Tables */
+    .api-table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-5); font-size: 14px; }
+    .api-table th, .api-table td {
+      text-align: left; padding: 10px 12px; vertical-align: top;
+      border-bottom: 1px solid var(--line-1); line-height: 1.55;
+    }
+    .api-table th {
+      font-family: var(--font-mono); font-size: 11px; color: var(--fg-3);
+      border-bottom: 1px solid var(--line-2); white-space: nowrap;
+    }
+    .api-table td { color: var(--fg-2); }
+    .api-table td:first-child { color: var(--fg-1); white-space: nowrap; }
+    .api-table td code { white-space: nowrap; }
+    .table-scroll { overflow-x: auto; margin: 0 0 var(--s-5); }
+    .table-scroll .api-table { margin: 0; }
+
+    /* The big picture: three lanes that stack on a phone */
+    .lanes {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: var(--s-3); margin: var(--s-5) 0 var(--s-4);
+    }
+    .lane {
+      background: var(--bg-1); border: 1px solid var(--line-2);
+      border-radius: var(--r-xl); padding: var(--s-4);
+    }
+    .lane.is-you { border-color: var(--line-3); background: var(--bg-2); }
+    .lane h3 { margin: 0 0 2px; font-size: 16px; }
+    .lane .lane-role {
+      font-family: var(--font-mono); font-size: 11px; color: var(--fg-3);
+      margin: 0 0 var(--s-3);
+    }
+    .lane ul { margin: 0; padding-left: 18px; }
+    .lane li { font-size: 13.5px; line-height: 1.55; margin-bottom: 5px; }
+
+    /* Flow rows */
+    .flow { margin: 0 0 var(--s-5); }
+    .flow-row {
+      display: grid; grid-template-columns: 200px 1fr; gap: var(--s-4);
+      padding: var(--s-3) 0; border-bottom: 1px solid var(--line-1);
+      align-items: baseline;
+    }
+    .flow-row:last-child { border-bottom: none; }
+    .flow-who {
+      font-family: var(--font-mono); font-size: 12px; color: var(--fg-1);
+      line-height: 1.5;
+    }
+    .flow-what { color: var(--fg-2); font-size: 14px; line-height: 1.6; }
+    .flow-what strong { color: var(--fg-1); }
+
+    @media (max-width: 720px) {
+      .lanes { grid-template-columns: 1fr; }
+      .flow-row { grid-template-columns: 1fr; gap: 2px; }
+    }
+
+    .callout {
+      background: var(--bg-1); border: 1px solid var(--line-2);
+      border-left: 3px solid var(--zone-4);
+      border-radius: var(--r-md); padding: var(--s-3) var(--s-4);
+      margin: 0 0 var(--s-4);
+    }
+    .callout p { margin: 0; }
+    .callout p + p { margin-top: var(--s-2); }
+
+    .api-links { display: flex; flex-wrap: wrap; gap: var(--s-3); margin: var(--s-4) 0 var(--s-5); }
+    .req { color: var(--fg-1); font-size: 11px; font-family: var(--font-mono); }
+    .opt { color: var(--fg-3); font-size: 11px; font-family: var(--font-mono); }
+  </style>
+</head>
+<body>
+
+  <header class="site-header">
+    <div class="container">
+      <a class="brand" href="../index.html" aria-label="Indoor Bike home">
+        <img src="../assets/logo-mark.svg" alt="">
+        <span>Indoor Bike</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="../index.html#ride">Three ways to ride</a>
+        <a href="../community/index.html">Community</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="../routetool/index.html">Route tool</a>
+        <a href="../index.html#faq">FAQ</a>
+      </nav>
+      <a class="btn btn-primary" href="../index.html#install">Install</a>
+    </div>
+  </header>
+
+  <main class="api-main">
+
+    <p class="api-meta">Protocol 0.2 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <h1>Companion API</h1>
+
+    <div class="tldr">
+      <p>
+        Write a game, a route player, a training world, a dashboard - anything with
+        a screen - and let it drive a real ride. <strong>Your program decides what
+        road the rider is on. The phone decides what that road feels like.</strong>
+      </p>
+      <p>
+        It is a WebSocket on the local network carrying JSON. There is no cloud
+        service in the middle, no account, no SDK to link, and nothing to sign up
+        for. If your language can open a socket and parse JSON, you can build one.
+      </p>
+    </div>
+
+    <nav class="toc" aria-label="On this page">
+      <h2>On this page</h2>
+      <ol>
+        <li><a href="#big-picture">The big picture</a></li>
+        <li><a href="#connecting">Connecting</a></li>
+        <li><a href="#you-send">What your companion sends</a></li>
+        <li><a href="#app-sends">What the phone sends back</a></li>
+        <li><a href="#rules">Rates, the deadman, and failure</a></li>
+        <li><a href="#building">Building one</a></li>
+        <li><a href="#agents">Building one with an agent</a></li>
+      </ol>
+    </nav>
+
+    <h2 id="big-picture">The big picture</h2>
+
+    <p>
+      Three things are involved, and each one is good at something the other two
+      are not. The whole design follows from keeping those jobs apart.
+    </p>
+
+    <div class="lanes">
+      <div class="lane">
+        <h3>The trainer</h3>
+        <p class="lane-role">measures and resists</p>
+        <ul>
+          <li>Reports power, cadence and sometimes heart rate</li>
+          <li>Applies whatever resistance it is told to</li>
+          <li>Knows nothing about roads, games or riders</li>
+        </ul>
+      </div>
+      <div class="lane">
+        <h3>The phone</h3>
+        <p class="lane-role">Indoor Bike</p>
+        <ul>
+          <li>Owns the Bluetooth link, and is the only thing that talks to the trainer</li>
+          <li>Owns the virtual gears and shifting</li>
+          <li>Turns a road into a force, and keeps it inside what a trainer will accept</li>
+          <li>Records the ride and exports it</li>
+        </ul>
+      </div>
+      <div class="lane is-you">
+        <h3>The companion</h3>
+        <p class="lane-role">your program</p>
+        <ul>
+          <li>Owns the world and where the rider is in it</li>
+          <li>Decides the gradient under the wheels</li>
+          <li>Decides how fast the rider is travelling</li>
+          <li>Owns drafting, surfaces, wind, and anything else it invents</li>
+        </ul>
+      </div>
+    </div>
+
+    <p>
+      Nobody has to trust anybody else with a job they are not equipped for. Your
+      game does not need to learn Bluetooth, FTMS quirks or what a given trainer
+      will refuse. The phone does not need to know what a peloton is.
+    </p>
+
+    <h3>How the data moves</h3>
+
+    <p>
+      Four flows, in a loop that closes several times a second. Bluetooth on one
+      side, a WebSocket on the other.
+    </p>
+
+    <div class="flow">
+      <div class="flow-row">
+        <div class="flow-who">trainer &rarr; phone<br><span style="color:var(--fg-3)">Bluetooth</span></div>
+        <div class="flow-what">
+          <strong>What the rider is doing.</strong> Power in watts, cadence in rpm,
+          heart rate if a strap is paired.
+        </div>
+      </div>
+      <div class="flow-row">
+        <div class="flow-who">phone &rarr; companion<br><span style="color:var(--fg-3)">telemetry, 4&nbsp;Hz</span></div>
+        <div class="flow-what">
+          <strong>Everything the rider is producing, plus how fast their gear is
+          turning the road out.</strong> Power, cadence, heart rate, the current
+          gear, and the speed the drivetrain is actually delivering. Also exactly
+          what the trainer was told to do, so you can tell a protocol bug from an
+          honest disagreement about physics.
+        </div>
+      </div>
+      <div class="flow-row">
+        <div class="flow-who">companion &rarr; phone<br><span style="color:var(--fg-3)">the world, 4-10&nbsp;Hz</span></div>
+        <div class="flow-what">
+          <strong>The road.</strong> How steep it is and how fast the rider is
+          moving along it. Plus, when you have something to say: shift requests,
+          the course the ride is on, pause and resume, and the moment the ride is
+          over.
+        </div>
+      </div>
+      <div class="flow-row">
+        <div class="flow-who">phone &rarr; trainer<br><span style="color:var(--fg-3)">Bluetooth</span></div>
+        <div class="flow-what">
+          <strong>One number: a force.</strong> The phone works out what that road
+          pushes back with at that speed, in that gear, and commands exactly that.
+        </div>
+      </div>
+    </div>
+
+    <h3>Three decisions worth knowing about</h3>
+
+    <p>
+      <strong>The phone commands a force, not a gradient.</strong> The obvious
+      design is to pass your gradient straight to the trainer and let its own road
+      model do the rest. That fails twice. On flat ground the gradient is zero, so
+      scaling it by a gear scales zero and shifting does nothing at all. And a
+      trainer's own air-resistance term comes from its flywheel speed, which
+      reflects the one real gear the bike is parked in rather than the virtual gear
+      the rider chose. So the phone runs the road model itself, where the virtual
+      speed is known, and hands the trainer a force.
+    </p>
+
+    <p>
+      <strong>You own speed; the phone tells you what the legs are producing.</strong>
+      Every tick, the phone reports the speed the rider's cadence and chosen gear
+      are turning out. A chain does not slip, so that is not an estimate of their
+      speed, it is their speed, and it is known on the first turn of the crank.
+      Take it, apply whatever your world adds - a draft, a soft surface, a
+      headwind - and send the result back as the speed you want ridden.
+    </p>
+
+    <p>
+      <strong>The phone never learns where the rider is.</strong> It is told a
+      gradient, a speed, and cumulative totals for the ride record. None of those
+      is a position and nothing could reconstruct one. If you later choose to hand
+      over the shape of the course so the ride saves with a map on it, that arrives
+      as a whole road rather than as a location, and it is entirely optional.
+    </p>
+
+    <h2 id="connecting">Connecting</h2>
+
+    <h3>Finding the phone</h3>
+
+    <p>
+      The phone opens a WebSocket server when the rider starts a companion ride,
+      and closes it when the ride ends. It is not a background service and not a
+      permanently open port.
+    </p>
+
+    <p>
+      The port is <strong>ephemeral and different every ride</strong>, so never
+      hardcode it. There are three ways to learn it, and the third always works:
+    </p>
+
+    <ul>
+      <li>
+        <strong>A UDP beacon</strong> on port <code>47601</code>, the one fixed
+        port in the protocol, because a listener cannot discover the port it is
+        supposed to listen on. A small JSON datagram, once a second while nothing
+        is driving the ride and every five seconds once something is. Easiest
+        path for a game engine, which will have a UDP socket but probably not a
+        DNS-SD library.
+      </li>
+      <li>
+        <strong>mDNS / DNS-SD</strong>, service type <code>_indoorbike._tcp</code>,
+        with the port in the SRV record. The standard path, and the one that fails
+        silently on guest Wi-Fi, mesh routers and most corporate networks.
+      </li>
+      <li>
+        <strong>Typed in.</strong> The pairing screen always shows the address, the
+        port and the pairing code as text. Offer a manual connect form and a rider
+        on a hostile network loses the convenience rather than the feature.
+      </li>
+    </ul>
+
+    <div class="pre-label">the UDP beacon, as it arrives</div>
+<pre><code>{ "t": "indoorbike.companion", "proto": "0.1-0.2", "path": "/companion",
+  "port": 47612, "app": "2.1.0", "session": "3f9a1c",
+  "name": "Indoor Bike", "paired": false }</code></pre>
+
+    <p>
+      The phone does not put its own address in the payload. The datagram already
+      arrived from an address that is reachable by construction, which is more than
+      can be said for any of the several addresses a phone might nominate. Take the
+      source address of the packet.
+    </p>
+
+    <p>
+      The <strong>pairing code is deliberately absent</strong> from the beacon.
+      Discovery answers <em>which phone</em>; pairing answers <em>may you drive
+      it</em>. Broadcasting the code to the subnet would collapse the two.
+    </p>
+
+    <h3>The pairing code</h3>
+
+    <p>
+      Six characters, shown on the phone, fresh for every ride and never reused.
+      The alphabet leaves out the characters people confuse - no <code>O</code> or
+      <code>0</code>, no <code>I</code> or <code>1</code>, no <code>S</code> or
+      <code>5</code> - because a rider is typing it off a phone propped on the
+      handlebars.
+    </p>
+
+    <h3>The handshake</h3>
+
+    <p>
+      Open a WebSocket to <code>ws://&lt;address&gt;:&lt;port&gt;/companion</code>
+      and send <code>hello</code> as the very first frame. Anything else first is
+      refused as unauthorised.
+    </p>
+
+    <div class="pre-label">companion &rarr; phone</div>
+<pre><code>{ "t": "hello",
+  "protoMin": "0.1", "protoMax": "0.2",
+  "token": "8F3K2M",
+  "client": { "name": "Alpine Climb", "version": "0.3.1", "platform": "windows" },
+  "role": "controller",
+  "capabilities": ["summary", "course", "setState"] }</code></pre>
+
+    <div class="pre-label">phone &rarr; companion</div>
+<pre><code>{ "t": "welcome",
+  "proto": "0.2", "app": "2.1.0", "sessionId": "3f9a1c", "tickMs": 250,
+  "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
+  "capabilities": ["requestShift", "label", "summary", "course", "setState"],
+  "role": "controller",
+  "rider": { "massKg": 78.0, "ftpWatts": 250 },
+  "bike":  { "massKg": 9.5, "drivetrain": "road-double" },
+  "gears": [ { "i": 0, "ratio": 1.21, "label": "34 x 28", "loadFactor": 0.72 }, ... ],
+  "gearIndex": 6,
+  "trainer": { "name": "KICKR CORE", "connected": true, "control": "sim" },
+  "limits": { "gradient": [-0.3, 0.3], "speedMps": [0.0, 30.0] } }</code></pre>
+
+    <p>
+      Three fields in the welcome carry more weight than they look.
+      <strong><code>honours</code></strong> is what this build actually acts on in
+      a world frame, which is not the same as what the protocol defines - a field
+      not listed is ignored and warned about.
+      <strong><code>capabilities</code></strong> is the same idea for whole frames.
+      Branch on it rather than on the version number.
+      <strong><code>gears</code></strong> is the rider's whole drivetrain with real
+      teeth on it, so you can draw "34 x 17" rather than "gear 11 of 20".
+    </p>
+
+    <h3>Roles</h3>
+
+    <p>
+      One <strong>controller</strong> drives the ride. Any number of
+      <strong>observers</strong> can watch: they receive everything, and may send
+      nothing but <code>ping</code>. A second controller is refused while one is
+      connected.
+    </p>
+
+    <p>
+      An absent <code>role</code> means controller. Any value the phone does not
+      recognise - including the wrong case - grants observer instead, because a
+      value that cannot be interpreted must not be read as a request for control.
+    </p>
+
+    <h2 id="you-send">What your companion sends</h2>
+
+    <h3><code>world</code> - the road, 4 to 10 times a second</h3>
+
+    <p>The one frame the mode cannot work without.</p>
+
+<pre><code>{ "t": "world", "seq": 412, "gradient": 0.062, "speedMps": 7.42,
+  "distanceM": 8412.5, "ascentM": 214.0 }</code></pre>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th></th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>seq</code></td><td class="req">required</td>
+            <td>Must strictly increase. A frame with a sequence at or below the last is dropped <em>silently</em>, which presents as "the road is frozen" with no error anywhere.</td></tr>
+        <tr><td><code>gradient</code></td><td class="req">required</td>
+            <td>Rise over run, so <code>0.06</code> is a 6&nbsp;% climb. Clamped to &plusmn;0.30. <strong>Smooth it before you send it</strong> - see <a href="#building">Building one</a>.</td></tr>
+        <tr><td><code>speedMps</code></td><td class="req">required</td>
+            <td>Metres per second along the road surface. Required because the force the phone commands contains an air-resistance term, and a companion that omits it hands the trainer a road with no air in it.</td></tr>
+        <tr><td><code>distanceM</code></td><td class="opt">optional</td>
+            <td>Cumulative total for the ride record, never a per-frame delta and never decreasing. A dropped frame then costs nothing.</td></tr>
+        <tr><td><code>ascentM</code></td><td class="opt">optional</td>
+            <td>The same for climbing.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3><code>requestShift</code> - ask for a gear</h3>
+
+    <p>
+      Signed steps; positive is harder. Your companion has no shifting logic of its
+      own: it does not know the drivetrain's ratios or its limits, so it asks, and
+      the phone answers with a <code>gearChanged</code> event whether or not the
+      gear actually moved.
+    </p>
+
+<pre><code>{ "t": "requestShift", "steps": -1 }</code></pre>
+
+    <p>
+      Capped at ten a second. A held gamepad button must not dump the rider into
+      the top gear, and must not kill the connection either, so the surplus is
+      warned about and dropped.
+    </p>
+
+    <h3><code>course</code> - the road this ride is on</h3>
+
+    <p>
+      Optional, and the difference between a ride that lands in the rider's history
+      as a named course with a map on it and one that lands as a column of numbers.
+    </p>
+
+<pre><code>{ "t": "course", "name": "Volcano Circuit", "world": "Watopia",
+  "distanceM": 12400, "ascentM": 180,
+  "shape": "_p~iF~ps|U_ulLnnqC...", "profile": [412, 418, 431, 447] }</code></pre>
+
+    <p>
+      A route ride in the app can keep a thin record because its route is not thin:
+      the session names a course in the app's own catalogue and everything
+      downstream fetches it back. Your course exists nowhere the app can reach, so
+      it travels with the ride instead.
+    </p>
+
+    <p>
+      <strong>Send it whenever you like, as often as you like - fields merge.</strong>
+      A later frame that leaves a field out keeps whatever was already known. So
+      the usual shape is a name early, while the ride is happening and the phone's
+      display can show it, and the shape at the end, which is the only order a
+      free-roaming world can manage: you do not know what road the rider took until
+      they have taken it.
+    </p>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>What to call the ride. Becomes the saved session's name.</td></tr>
+        <tr><td><code>world</code></td><td>The game or world it was in, shown beside the name.</td></tr>
+        <tr><td><code>distanceM</code></td><td>The <em>course's</em> own length. Not how far the rider got - that is <code>world.distanceM</code>.</td></tr>
+        <tr><td><code>ascentM</code></td><td>The course's own total climb.</td></tr>
+        <tr><td><code>shape</code></td><td>The road as a precision-5 encoded polyline, the format every mapping library already speaks. Up to 32&nbsp;768 characters.</td></tr>
+        <tr><td><code>profile</code></td><td>Elevation in whole metres, evenly spaced along the shape. 64 samples is plenty. Up to 1&nbsp;024.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      Everything here describes the course, never where on it the rider is. A
+      companion that would rather disclose nothing sends none of it, and the ride
+      saves exactly as it would have: real numbers, no map.
+    </p>
+
+    <p>
+      An over-long shape or profile is <strong>refused whole rather than
+      truncated</strong>, with a warning saying so. Half a polyline is not a
+      shorter road, it is one that leaves the map.
+    </p>
+
+    <h3><code>setState</code> - pause and resume the recording</h3>
+
+<pre><code>{ "t": "setState", "state": "paused" }</code></pre>
+
+    <p>
+      If your world has a pause - a menu, a loading screen, a rider who stopped -
+      use this, or the ride record quietly accumulates minutes of zeroes that
+      nobody rode. <code>state</code> is <code>"active"</code> or
+      <code>"paused"</code>; anything else is refused rather than guessed at,
+      because reading a misspelling as "paused" would silently stop recording a
+      ride the rider is still doing.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>This does not stop the deadman.</strong> Keep sending
+        <code>world</code> frames while you are paused, or the gradient ramps to
+        flat under a rider who may still be turning the pedals.
+      </p>
+    </div>
+
+    <p>
+      It is a request rather than a command, and it can legitimately do nothing: a
+      ride that has not started cannot be paused. The <code>stateChanged</code>
+      event is the answer, and it arrives for pauses you did not ask for too.
+    </p>
+
+    <h3><code>label</code>, <code>finish</code> and <code>ping</code></h3>
+
+    <p>
+      <code>label</code> names the ride, which <code>course</code> also does - send
+      either. <code>finish</code> ends it: companion mode has no route of its own,
+      so nothing but you can know when the ride is over. <code>ping</code> is
+      answered with <code>pong</code> and is usually unnecessary, since the
+      WebSocket has its own.
+    </p>
+
+<pre><code>{ "t": "label", "name": "Stelvio, north side", "world": "Alpine Tour" }
+{ "t": "finish" }
+{ "t": "ping", "id": 17 }</code></pre>
+
+    <h2 id="app-sends">What the phone sends back</h2>
+
+    <h3><code>telemetry</code> - every 250 ms</h3>
+
+    <p>
+      Pushed to every connection that has completed a handshake, controllers and
+      observers alike, at the rate the welcome named. Interpolate for rendering
+      rather than asking for more: the physics only moves four times a second, and
+      a faster stream would be inventing data.
+    </p>
+
+<pre><code>{ "t": "telemetry", "seq": 1043, "tMono": 128500, "state": "active",
+  "power": 243, "cadence": 88, "hr": 152, "speedMps": 8.33,
+  "gearIndex": 11, "loadFactor": 1.18,
+  "appliedGradient": 0.062,
+  "trainerForceN": 96.4, "trainerGradePercent": 11.7,
+  "elapsedS": 512 }</code></pre>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>seq</code>, <code>tMono</code></td><td>A counter that increments by one, and milliseconds since the ride started. A gap in the counter means frames were lost.</td></tr>
+        <tr><td><code>state</code></td><td><code>listening</code>, <code>active</code>, <code>paused</code> or <code>finished</code>.</td></tr>
+        <tr><td><code>power</code>, <code>cadence</code>, <code>hr</code></td><td>From the trainer and the strap. <strong>Omitted when there is no reading</strong>, never sent as zero.</td></tr>
+        <tr><td><code>speedMps</code></td><td><strong>The speed the rider's legs and gear are turning out.</strong> Use this as the bike's speed. Omitted when the trainer cannot report cadence.</td></tr>
+        <tr><td><code>gearIndex</code>, <code>loadFactor</code></td><td>Which gear, and how much of the road's force it asks the rider to carry.</td></tr>
+        <tr><td><code>appliedGradient</code></td><td>The gradient actually in use, after clamping and the deadman. Trust it over your own value for anything you show the rider.</td></tr>
+        <tr><td><code>trainerForceN</code></td><td>Newtons at the wheel, after the gear and the safety ceiling.</td></tr>
+        <tr><td><code>trainerGradePercent</code></td><td>The grade actually written over Bluetooth. It differs from <code>appliedGradient</code> because it encodes a force against an assumed 84&nbsp;kg. <strong>It is not a gradient.</strong> Do not display it as one.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      The last two look like internals and are published on purpose. They are
+      literally what the machine was asked for, and without them nobody building
+      against this can tell a protocol bug from an honest disagreement about
+      physics.
+    </p>
+
+    <h4>A word about <code>speedMps</code></h4>
+
+    <p>
+      This is the single most common way a new companion feels broken. A chain does
+      not slip, so cadence multiplied by the gear's development <em>is</em> the
+      rider's speed, and it is known the moment the crank turns. If you integrate a
+      speed out of power instead, you are modelling a bicycle accelerating from a
+      standstill, and what the rider sees is watts and cadence arriving from the
+      trainer while the speed sits at zero for five to ten seconds - at the start
+      of a course, and again every time they stop and start.
+    </p>
+
+    <p>
+      Take it, apply your world's own effects, send the result back. The two agree
+      wherever the rider is settled and are meant to disagree everywhere else.
+      Only when the field is <em>absent</em> should you fall back to your own
+      model.
+    </p>
+
+    <h3><code>event</code> - things that cannot wait for the next tick</h3>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Event</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>gearChanged</code></td><td>Carries the new index, whether it actually <code>changed</code>, and the <code>source</code> - your request, the on-screen shifter, or the rider's handlebar buttons. <code>changed: false</code> means they are out of gears.</td></tr>
+        <tr><td><code>stateChanged</code></td><td>The ride started, paused, resumed or finished - <strong>whoever caused it</strong>. The rider has their own pause button and the phone has a stop-pedalling watchdog, so follow this rather than assuming your own request took effect.</td></tr>
+        <tr><td><code>worldTimeout</code></td><td>Your frames stopped arriving and the road is being ramped away. Treat it as a bug report about your own frame loop.</td></tr>
+        <tr><td><code>worldResumed</code></td><td>They started again.</td></tr>
+        <tr><td><code>controlRevoked</code></td><td>The rider took the ride back. The recording continues without you.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3><code>warning</code> - non-fatal, and worth reading</h3>
+
+    <p>
+      Surface these in development builds. They are the difference between
+      "drafting does not work" and "this build ignores that field".
+    </p>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>fieldNotHonoured</code></td><td>You sent something this build does not act on. Check <code>welcome.honours</code>. Sent once per field, not once per frame.</td></tr>
+        <tr><td><code>clamped</code></td><td>A value was outside the envelope and was held at the edge. Carries what you sent and what was applied.</td></tr>
+        <tr><td><code>rateLimited</code></td><td>Too many shift requests. The surplus was dropped.</td></tr>
+        <tr><td><code>rejected</code></td><td>A value was dropped rather than trimmed, because trimming it would have been worse than dropping it.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2 id="rules">Rates, the deadman, and failure</h2>
+
+    <h3>Rates</h3>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>What</th><th>Rate</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code>world</code> out</td><td>4 - 10 Hz</td><td>On a fixed timer, <strong>not</strong> once per rendered frame. A 144 Hz game must not send 144 Hz.</td></tr>
+        <tr><td><code>telemetry</code> in</td><td>250 ms</td><td>Read it from <code>welcome.tickMs</code>; do not hardcode it.</td></tr>
+        <tr><td><code>requestShift</code></td><td>max 10/s</td><td>Surplus warned and dropped, never an error.</td></tr>
+        <tr><td><code>course</code></td><td>whenever</td><td>Merged field by field. Once at the start and once at the end is the usual shape.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>The deadman</h3>
+
+    <p>
+      If your <code>world</code> frames stop for <strong>1.5 seconds</strong>, the
+      phone ramps the gradient to flat over the next two seconds and tells you it
+      is doing so. Speed is <em>held</em> rather than zeroed, so the rider lands on
+      an ordinary flat road at their current pace rather than against nothing.
+    </p>
+
+    <p>
+      This fires on a loading screen, an alt-tab that pauses your main loop, a
+      garbage-collection stall, or a menu. <strong>Keep sending
+      <code>world</code> whenever the rider could still be pedalling</strong>, even
+      if your world is paused - send the current gradient and a speed of zero
+      rather than nothing at all.
+    </p>
+
+    <h3>When something goes wrong</h3>
+
+    <p>
+      A fatal failure sends an <code>error</code> frame <em>and</em> closes with a
+      code and a reason. Both, always: a client that fails version negotiation may
+      close the socket before it processes the frame, and then the close reason is
+      the only thing it ever sees.
+    </p>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Close</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><code>4001</code></td><td>No protocol version both ends speak. The message names both ranges and which end to update.</td></tr>
+        <tr><td><code>4002</code></td><td>Wrong or missing pairing code, or a first frame that was not <code>hello</code>.</td></tr>
+        <tr><td><code>4003</code></td><td>Another companion is already driving. Connect as an observer, or disconnect the other one.</td></tr>
+        <tr><td><code>4004</code></td><td>The rider took control back.</td></tr>
+        <tr><td><code>4005</code></td><td>The ride ended.</td></tr>
+        <tr><td><code>4008</code></td><td>A frame could not be read.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Versioning, and how this grows without breaking you</h3>
+
+    <p>
+      You declare a range in <code>hello</code>; the phone picks the highest version
+      both ends speak and states it in <code>welcome</code>. <strong>Check it
+      against your own range</strong> - the phone may legitimately choose a version
+      you listed but have since dropped, and a client that trusts the welcome
+      blindly fails somewhere far less legible.
+    </p>
+
+    <p>Four tolerance rules, in both directions, and they are not optional:</p>
+
+    <ol>
+      <li><strong>Ignore unknown fields.</strong> Never an error.</li>
+      <li><strong>Ignore unknown frame types.</strong> Keep the socket open.</li>
+      <li><strong>Tolerate unknown enum values.</strong> Fall back to a documented default.</li>
+      <li><strong>Never silently drop something meaningful.</strong> The phone warns once per unhonoured field; do the equivalent.</li>
+    </ol>
+
+    <p>
+      These are what let a companion written today share a socket with a phone
+      shipped next year. Breaking them is the most common way a companion becomes
+      fragile.
+    </p>
+
+    <h2 id="building">Building one</h2>
+
+    <h3>The order that works</h3>
+
+    <ol>
+      <li><strong>Connect and handshake.</strong> Manual address, port and code entry first. Discovery can wait; nothing works until the handshake does.</li>
+      <li><strong>Render telemetry.</strong> Prove the socket both ways before driving anything: show power, cadence, heart rate and gear.</li>
+      <li><strong>Send a flat road.</strong> <code>gradient: 0.0</code> and the speed from telemetry. The trainer should feel like flat ground. If it does not, stop and fix it here.</li>
+      <li><strong>Add terrain.</strong> Now the gradient comes from your world.</li>
+      <li><strong>Add gears.</strong> Draw the display from <code>welcome.gears</code>, wire up shift requests, handle <code>changed: false</code>.</li>
+      <li><strong>Add discovery.</strong></li>
+      <li><strong>Add <code>course</code>, <code>setState</code> and <code>finish</code>,</strong> which are what make the ride land in the rider's history looking like a ride.</li>
+    </ol>
+
+    <p>
+      Do not start at step four. A companion that renders a mountain before it has
+      proven a flat road has two untested systems and no way to tell which one is
+      wrong.
+    </p>
+
+    <h3>The mistakes that cost the most time</h3>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Mistake</th><th>What you see</th></tr></thead>
+      <tbody>
+        <tr><td>Integrating speed from power instead of using <code>telemetry.speedMps</code></td><td>Speed sits at zero for 5-10 seconds every time the rider starts pedalling</td></tr>
+        <tr><td>Sending a gradient straight off a route file</td><td>The trainer lurches at a steady rhythm on ground that looks smooth</td></tr>
+        <tr><td><code>seq</code> that does not increase</td><td>Frames dropped silently; the road appears frozen with no error anywhere</td></tr>
+        <tr><td>Sending deltas in <code>distanceM</code></td><td>Distance stalls, because a smaller value than the last is ignored</td></tr>
+        <tr><td>Hardcoding the port</td><td>Works on the ride you tested, fails on every other one</td></tr>
+        <tr><td>Defaulting a missing <code>hr</code> or <code>speedMps</code> to zero</td><td>A heart rate of zero on the HUD; a rider stopped dead on a trainer that cannot count cadence</td></tr>
+        <tr><td>Treating <code>trainerGradePercent</code> as a gradient</td><td>An 11&nbsp;% reading on a 6&nbsp;% hill. It is a force against an assumed mass</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>Smoothing the gradient</h3>
+
+    <p>
+      This one deserves its own note, because a route file does not give you a
+      usable gradient and nothing on the phone will save you: the gradient you send
+      goes into the force on the rider's legs almost unaltered.
+    </p>
+
+    <p>
+      Differencing consecutive altitudes gives a step function. Measured on a real
+      6.7&nbsp;km GPX resampled every ten metres, the worst jump between two
+      neighbouring samples was <strong>13.4 percentage points</strong> - nearly half
+      the range from flat to the 30&nbsp;% ceiling, arriving in one go, once every
+      ten metres of road.
+    </p>
+
+    <p>
+      There are two smoothing steps and the first does most of the work. Resample
+      the elevation onto a fixed grid, <strong>smooth the elevation itself</strong>
+      over about &plusmn;50&nbsp;m, and only then take a <strong>centred difference
+      over about 40&nbsp;m</strong>. On the same route that takes the worst jump
+      from 13.4 points to 3.0 with the difference alone, and to
+      <strong>0.6</strong> with both. Three points is still a 25&nbsp;N kick, which
+      is why the elevation smoother is not the optional half.
+    </p>
+
+    <p>
+      Do it once, where the route is prepared, and read it back at ride time.
+      Deriving it twice with slightly different arithmetic - once for the trainer,
+      once for whatever you draw - shows up as resistance that disagrees with the
+      number on the screen.
+    </p>
+
+    <h2 id="agents">Building one with an agent</h2>
+
+    <p>
+      There is a packaged skill for this. It is written to be read by a coding
+      agent, and it carries the things that are obvious only after you have got
+      them wrong: the exhaustive frame-by-frame reference, the ownership rules, the
+      rates, the deadman, the failure modes, a worked transcript of a whole ride,
+      and a checklist.
+    </p>
+
+    <p>
+      It is meant to be copied out of the repository wholesale. Nothing in it
+      depends on this app's source.
+    </p>
+
+    <h3>Install it</h3>
+
+    <div class="pre-label">for Claude Code, into a project</div>
+<pre><code>git clone --depth 1 https://codefloe.com/SnappTechnology/IndoorCyclingApp.git indoorbike-src
+mkdir -p .claude/skills
+cp -r indoorbike-src/skills/indoorbike-companion .claude/skills/</code></pre>
+
+    <div class="pre-label">or once, for every project on the machine</div>
+<pre><code>cp -r indoorbike-src/skills/indoorbike-companion ~/.claude/skills/</code></pre>
+
+    <p>
+      On Windows the paths are <code>.claude\skills</code> and
+      <code>%USERPROFILE%\.claude\skills</code>; the copy is the same. Other
+      agent tools have their own place for this - the skill is plain Markdown and
+      does not care.
+    </p>
+
+    <p>
+      Then ask for what you want built. The skill is invoked by name, or picked up
+      automatically when the task is about driving an Indoor Bike ride.
+    </p>
+
+    <h3>What is in it</h3>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>File</th><th>Contents</th></tr></thead>
+      <tbody>
+        <tr><td><code>SKILL.md</code></td><td>The rules that prevent most bugs, the order of work, rates, the deadman, and how to debug a connection that will not behave.</td></tr>
+        <tr><td><code>references/protocol.md</code></td><td>Normative frame-by-frame reference. Every field, type, unit, clamp and close code, with a worked transcript and an implementation checklist.</td></tr>
+        <tr><td><code>references/godot.md</code></td><td>Godot specifics: the UDP beacon, the WebSocket peer, and the loop shape.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      If your agent cannot clone, point it at the files directly - they are plain
+      Markdown and fetchable:
+    </p>
+
+    <div class="api-links">
+      <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/raw/branch/main/skills/indoorbike-companion/SKILL.md" target="_blank" rel="noopener">SKILL.md (raw) &#8599;</a>
+      <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/raw/branch/main/skills/indoorbike-companion/references/protocol.md" target="_blank" rel="noopener">protocol.md (raw) &#8599;</a>
+    </div>
+
+    <h3>Where the rest lives</h3>
+
+    <p>
+      This page is the human explanation. Two documents in the repository go
+      further: the specification with the reasoning behind every decision, and the
+      original design argument that produced the split between the phone and the
+      companion in the first place.
+    </p>
+
+    <div class="api-links">
+      <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/src/branch/main/docs/COMPANION_API.md" target="_blank" rel="noopener">COMPANION_API.md &#8599;</a>
+      <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/src/branch/main/skills/indoorbike-companion" target="_blank" rel="noopener">The skill &#8599;</a>
+      <a class="btn btn-secondary" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp" target="_blank" rel="noopener">Source &#8599;</a>
+    </div>
+
+    <h3>Licensing</h3>
+
+    <p>
+      The Indoor Bike app is GPLv3, and its source is linked above. What is
+      described on this page is a wire format: your companion is a separate
+      program that opens a socket and exchanges JSON with it, and it links none
+      of the app's code. The specification and the skill are published to be
+      read, copied and implemented - that is what they are for.
+    </p>
+    <p>
+      If you are building something commercial and want the licensing position in
+      writing rather than inferred from a web page, ask. It is a reasonable thing
+      to want and it is better answered directly than guessed at.
+    </p>
+
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="brand-line">
+        <img src="../assets/logo-mark.svg" alt="">
+        <span>&copy; <span id="copyright-year">2026</span> Juhani Lehtimäki &middot; indoorbike.app &middot;
+          <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPLv3</a> &middot;
+          <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp" target="_blank" rel="noopener">Source</a></span>
+      </div>
+      <nav class="footer-links" aria-label="Site">
+        <a href="../index.html">Home</a>
+        <a href="../editor/index.html">Editor</a>
+        <a href="../routetool/index.html">Route tool</a>
+        <a href="../community/index.html">Community</a>
+        <a href="../api/index.html">Editor API</a>
+        <a href="../companion/index.html">Companion API</a>
+        <a href="../badges/index.html">Badges</a>
+        <a href="../privacy.html">Privacy</a>
+      </nav>
+    </div>
+    <script>document.getElementById('copyright-year').textContent = new Date().getFullYear();</script>
+  </footer>
+
+</body>
+</html>
