@@ -683,7 +683,7 @@ Present in the protocol, absent from this build. Do not design around them.
 |---|---|
 | `crr`, `cda`, `airDensity`, `headwindMps` | Reserved names, not honoured. Warned about |
 | `resume` | Always `null`. Crash-recovery handoff is not wired |
-| Course survival across a crash | `course` is written when the ride is saved, so a ride recovered from the unfinished-ride banner keeps its numbers but loses its shape. Send `course` again if you reconnect to a resumed ride |
+| The live road after a crash | A resumed ride sits on flat until you reconnect and send `world` again. The app has no idea what hill it was on. The `course` itself does survive |
 | `riderInput` | Zwift Click presses are consumed as shifts; unconsumed presses are not forwarded |
 | `trainerLost`, `noTrainer` | Defined, never emitted |
 | Consent scopes | Pairing is one decision; there is no separate grant for biometrics |

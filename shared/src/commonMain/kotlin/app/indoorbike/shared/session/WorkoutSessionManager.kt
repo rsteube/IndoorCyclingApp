@@ -25,6 +25,7 @@ import app.indoorbike.shared.simulation.RouteProgress
 import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
@@ -413,6 +414,15 @@ class WorkoutSessionManager(
                 startDistanceMeters = snapshot.simulationDistanceMeters ?: 0.0,
                 gearIndex = snapshot.simulationGearIndex ?: SimulationEngine.USE_START_GEAR,
                 elevationGainMeters = snapshot.simulationElevationGainMeters ?: 0.0,
+                // The ride being restored is the same ride, so it began
+                // wherever it began. Letting the origin default to the crash
+                // point would quietly stop counting everything ridden before
+                // the process died. Snapshots written before these fields
+                // existed carry null and fall back to the old behaviour.
+                startedAtMeters = snapshot.simulationStartMeters
+                    ?: snapshot.simulationDistanceMeters ?: 0.0,
+                startedAtElevationGainMeters = snapshot.simulationStartElevationGainMeters
+                    ?: snapshot.simulationElevationGainMeters ?: 0.0,
             )
             simulationEngine?.onRouteFinished = { completeWorkout() }
             companionEngine?.clear()
@@ -429,6 +439,12 @@ class WorkoutSessionManager(
                 distanceM = snapshot.simulationDistanceMeters,
                 ascentM = snapshot.simulationElevationGainMeters,
             )
+            // The road does not come back, but what the companion said *about*
+            // it does. Nothing else has a copy: the catalogue never had this
+            // course and the socket did not survive either, so without this a
+            // recovered ride saves as numbers with no shape while the same
+            // ride finished normally saves with one.
+            snapshot.companionCourse?.let { companionEngine?.setCourse(it) }
         } else {
             simulationEngine?.clear()
             companionEngine?.clear()
@@ -866,6 +882,9 @@ class WorkoutSessionManager(
             simulationDistanceMeters = engineDistanceMeters(workout),
             simulationGearIndex = engineGearIndex(workout),
             simulationElevationGainMeters = engineElevationGainMeters(workout),
+            simulationStartMeters = engineStartMeters(workout),
+            simulationStartElevationGainMeters = engineStartElevationGainMeters(workout),
+            companionCourse = engineCourse(workout),
         )
         _persistedSnapshot.value = snapshot
         scope.launch(snapshotDispatcher) {
@@ -996,6 +1015,64 @@ class WorkoutSessionManager(
         else -> null
     }
 
+    /**
+     * Where this ride began. Always zero for a companion ride: its totals are
+     * this session's, because the companion is the thing counting them.
+     */
+    private fun engineStartMeters(workout: Workout): Double? =
+        if (workout.isSimulation) simulationEngine?.startedAtMeters?.value else null
+
+    private fun engineStartElevationGainMeters(workout: Workout): Double? =
+        if (workout.isSimulation) {
+            simulationEngine?.startedAtElevationGainMeters?.value
+        } else {
+            null
+        }
+
+    private fun engineCourse(workout: Workout): CompanionCourse? =
+        if (workout.isCompanion) {
+            companionEngine?.course?.value?.takeUnless { it.isEmpty }
+        } else {
+            null
+        }
+
+    /**
+     * What the ride did on its road, from whichever source still has it.
+     *
+     * The mirror of [pendingRideTelemetry], and it exists for the same reason.
+     * A ride tapped through from the completion screen still has its engines
+     * loaded and every number can be read off them. A ride saved from the
+     * unfinished-ride banner has nothing but the snapshot: the app has just
+     * started and the engines are empty, so reading them returned zeroes and a
+     * recovered route ride saved with no distance and no climbing against a
+     * road it had obviously ridden.
+     *
+     * [snapshot] is the one the caller is saving, or null when there is no
+     * recovery involved.
+     */
+    fun pendingRideRoad(snapshot: ActiveSessionSnapshot? = null): RideRoad {
+        val workout = _activeWorkout.value
+        val live = workout != null &&
+            (snapshot == null || workout.id == snapshot.workoutId)
+        if (live && workout != null) {
+            return RideRoad(
+                distanceMeters = engineDistanceMeters(workout) ?: 0.0,
+                elevationGainMeters = engineElevationGainMeters(workout) ?: 0.0,
+                startedAtMeters = engineStartMeters(workout) ?: 0.0,
+                startedAtElevationGainMeters = engineStartElevationGainMeters(workout) ?: 0.0,
+                course = engineCourse(workout),
+            )
+        }
+        if (snapshot == null) return RideRoad.NONE
+        return RideRoad(
+            distanceMeters = snapshot.simulationDistanceMeters ?: 0.0,
+            elevationGainMeters = snapshot.simulationElevationGainMeters ?: 0.0,
+            startedAtMeters = snapshot.simulationStartMeters ?: 0.0,
+            startedAtElevationGainMeters = snapshot.simulationStartElevationGainMeters ?: 0.0,
+            course = snapshot.companionCourse,
+        )
+    }
+
     private fun updateTrainerTarget() {
         val workout = _activeWorkout.value ?: return
         // A simulated ride has no target: the engine owns the trainer and
@@ -1065,6 +1142,9 @@ class WorkoutSessionManager(
             simulationDistanceMeters = engineDistanceMeters(workout),
             simulationGearIndex = engineGearIndex(workout),
             simulationElevationGainMeters = engineElevationGainMeters(workout),
+            simulationStartMeters = engineStartMeters(workout),
+            simulationStartElevationGainMeters = engineStartElevationGainMeters(workout),
+            companionCourse = engineCourse(workout),
         )
         _persistedSnapshot.value = snapshot
         val store = activeSessionStore ?: return

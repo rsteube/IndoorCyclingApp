@@ -19,8 +19,7 @@ import app.indoorbike.AppContainer
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.db.TelemetryPoint
-import app.indoorbike.shared.workout.isCompanion
-import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.shared.session.RideRoad
 import java.util.UUID
 
 /**
@@ -34,6 +33,14 @@ import java.util.UUID
  * copies afterwards.
  *
  * Returns the new session's row id.
+ *
+ * [road] is handed in rather than read off the engines here, because on one of
+ * the two paths there are no engines to read. A ride saved from the
+ * unfinished-ride banner arrives with the app freshly started and everything
+ * in memory empty, and this used to read those empty engines: a recovered
+ * route ride saved with zero distance and zero climbing against a road it had
+ * plainly ridden. `WorkoutSessionManager.pendingRideRoad` is the one place
+ * that knows which source still has the answer.
  */
 suspend fun saveRideToHistory(
     container: AppContainer,
@@ -41,41 +48,13 @@ suspend fun saveRideToHistory(
     startTimeEpoch: Long,
     durationSeconds: Int,
     telemetry: List<TelemetryPoint>,
+    road: RideRoad,
 ): Long {
-    // A ride's progress along its road, which nothing else can reconstruct once
-    // the engine is torn down. Zero for a workout and a free ride, which have
-    // no road under them at all.
-    //
-    // Both simulated modes fill these in, and that is the point: a companion
-    // ride's distance and climbing are the totals its game reported, and
-    // storing them in the same two columns is what makes a companion ride
-    // read, sort and render exactly like a route ride everywhere downstream.
-    val simulated = workout.isSimulation
-    val companion = workout.isCompanion
-    val routeDistance = when {
-        simulated -> container.simulationEngine.distanceMeters.value
-        companion -> container.companionEngine.distanceMeters.value
-        else -> 0.0
-    }
-    val routeClimb = when {
-        simulated -> container.simulationEngine.elevationGainMeters.value
-        companion -> container.companionEngine.elevationGainMeters.value
-        else -> 0.0
-    }
-    // Where the ride began, so the two above can be read as what this ride did
-    // rather than only as where it ended up. Non-zero when the rider carried
-    // on from a previous sitting. A companion ride always starts at zero: its
-    // totals are this session's, because the companion counts them.
-    val routeStart =
-        if (simulated) container.simulationEngine.startedAtMeters.value else 0.0
-    val routeStartClimb =
-        if (simulated) container.simulationEngine.startedAtElevationGainMeters.value else 0.0
-
     // The road itself, for the one mode whose road is not in the catalogue.
     // Optional in the protocol and therefore usually absent; when it is there,
     // it is what lets a companion ride draw its shape in history and in the
     // share image the way a route ride does.
-    val course = if (companion) container.companionEngine.course.value else null
+    val course = road.course
 
     val avgPower = telemetry.averageOf { it.power }
     val avgCadence = telemetry.averageOf { it.cadence }
@@ -93,10 +72,15 @@ suspend fun saveRideToHistory(
         avgPower = avgPower,
         avgCadence = avgCadence,
         avgHeartRate = avgHeartRate,
-        routeDistanceMeters = routeDistance,
-        routeElevationGainMeters = routeClimb,
-        routeStartMeters = routeStart,
-        routeStartElevationGainMeters = routeStartClimb,
+        // Both simulated modes fill these in, and that is the point: a
+        // companion ride's distance and climbing are the totals its game
+        // reported, and storing them in the same two columns is what makes a
+        // companion ride read, sort and render exactly like a route ride
+        // everywhere downstream.
+        routeDistanceMeters = road.distanceMeters,
+        routeElevationGainMeters = road.elevationGainMeters,
+        routeStartMeters = road.startedAtMeters,
+        routeStartElevationGainMeters = road.startedAtElevationGainMeters,
         routeShape = course?.shape.orEmpty(),
         routeProfile = course?.let { CompanionCourse.encodeProfile(it.profileMeters) }.orEmpty(),
         // Globally-unique stable id for the backup-sync layer. The device-id

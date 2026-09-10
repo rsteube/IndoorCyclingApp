@@ -217,14 +217,28 @@ class SimulationEngine(
         /** [USE_START_GEAR] picks the drivetrain's own opening gear. */
         gearIndex: Int = USE_START_GEAR,
         elevationGainMeters: Double = 0.0,
+        /**
+         * Where *this ride* began, when that is not where it is being placed.
+         *
+         * Defaults to [startDistanceMeters], which is right for a rider
+         * choosing to carry on down a route they part-rode last week: that is
+         * a new ride, and it starts here. It is wrong for crash recovery,
+         * where the ride being restored is the same ride and began wherever it
+         * began. Passing the origin separately is what keeps
+         * [startedAtMeters] a statement about the ride rather than about the
+         * moment it was reloaded.
+         */
+        startedAtMeters: Double = startDistanceMeters,
+        startedAtElevationGainMeters: Double = elevationGainMeters,
     ) {
         stop()
         val drivetrain = drivetrainProvider()
         _drivetrain.value = drivetrain
         _route.value = route
         _distanceMeters.value = startDistanceMeters.coerceIn(0.0, route.totalDistanceMeters)
-        _startedAtMeters.value = _distanceMeters.value
-        _startedAtElevationGainMeters.value = elevationGainMeters.coerceAtLeast(0.0)
+        _startedAtMeters.value = startedAtMeters.coerceIn(0.0, _distanceMeters.value)
+        _startedAtElevationGainMeters.value =
+            startedAtElevationGainMeters.coerceIn(0.0, elevationGainMeters.coerceAtLeast(0.0))
         _gearIndex.value =
             if (gearIndex == USE_START_GEAR) drivetrain.startIndex else drivetrain.clampIndex(gearIndex)
         _elevationGainMeters.value = elevationGainMeters.coerceAtLeast(0.0)

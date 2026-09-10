@@ -479,6 +479,10 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                         durationSeconds = snapshot.actualRideSeconds
                             .takeIf { it > 0 } ?: snapshot.elapsedSeconds,
                         telemetry = container.sessionManager.pendingRideTelemetry(snapshot),
+                        // From the snapshot when the ride is no longer loaded,
+                        // which on this path is the usual case: the app has
+                        // just started and the engines are empty.
+                        road = container.sessionManager.pendingRideRoad(snapshot),
                     )
                     navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = true))
                 }

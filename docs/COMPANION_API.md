@@ -777,12 +777,10 @@ Deliberately unresolved in 0.1, listed so neither end designs around their absen
 - **Scopes.** [LIVE_API.md](LIVE_API.md#scopes) splits consent into `metrics`, `biometrics`,
   `profile` and `control`. Companion mode needs all four, so 0.1 treats pairing as one
   decision. A read-only observer should get a narrower grant before this is published widely.
-- **A course does not survive a crash.** `course` is held on the engine and written when the
-  ride is saved, so a ride recovered from the unfinished-ride banner after a process death keeps
-  its numbers but loses its shape. Route mode does not have this problem because its road is in
-  the catalogue and can be fetched again. Fixing it means putting the course in the
-  crash-recovery snapshot; until then, a companion that reconnects to a resumed ride should send
-  `course` again.
+- **The live road does not survive a crash, deliberately.** A resumed companion ride sits on
+  flat until the companion reconnects and says otherwise, because the app has no idea what hill
+  it was on. The *course* does survive: it is in the crash-recovery snapshot, so a ride
+  recovered from the unfinished-ride banner still saves with its name and its shape.
 - **Progression.** Whether a companion ride counts towards streaks, levels and badges is a
   product decision, open in LIVE_API.md and still open here.
 - **The protocol's own home.** LIVE_API.md argues for a separate Apache-2.0 repository holding

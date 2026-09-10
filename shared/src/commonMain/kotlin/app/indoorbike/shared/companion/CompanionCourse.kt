@@ -15,6 +15,8 @@
  */
 package app.indoorbike.shared.companion
 
+import kotlinx.serialization.Serializable
+
 /**
  * The road a companion says its rider is on.
  *
@@ -47,7 +49,16 @@ package app.indoorbike.shared.companion
  * end. So updates merge field by field rather than replacing: a later frame
  * that omits a field leaves whatever was already known alone. That is the same
  * "omitted, not zeroed" discipline the rest of the protocol follows.
+ *
+ * ## Why it is serialisable
+ *
+ * It goes into the crash-recovery snapshot as well as onto the wire. A route
+ * ride can afford to lose its road to a process death because the catalogue
+ * still has it; this road exists nowhere the app can ask for it twice, so
+ * losing it means the recovered ride saves as numbers with no shape while the
+ * same ride finished normally saves with one.
  */
+@Serializable
 data class CompanionCourse(
     /** What to call the ride. Ends up as the saved session's name. */
     val name: String? = null,

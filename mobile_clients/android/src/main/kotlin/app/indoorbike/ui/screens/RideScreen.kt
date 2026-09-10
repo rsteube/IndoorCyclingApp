@@ -353,6 +353,7 @@ fun RideScreen(
             startTimeEpoch = sessionManager.sessionStartTimeEpoch,
             durationSeconds = sessionManager.actualRideSeconds.value,
             telemetry = sessionManager.telemetrySnapshot(),
+            road = sessionManager.pendingRideRoad(),
         )
         onNavigateToOverview(newSessionId)
     }

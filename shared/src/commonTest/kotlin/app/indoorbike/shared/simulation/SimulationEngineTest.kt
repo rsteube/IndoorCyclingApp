@@ -509,4 +509,52 @@ class SimulationEngineTest {
             absoluteTolerance = 0.6,
         )
     }
+
+    // Resuming ───────────────────────────────────────────────────────────────
+
+    /**
+     * Picking a route back up from the library is a *new* ride, and it starts
+     * where the rider rejoins it. That is what the default is for.
+     */
+    @Test
+    fun `a route picked up part way starts where it is picked up`() {
+        val h = Harness(power = 200)
+        h.engine.load(flatRoad(20_000.0), startDistanceMeters = 6_000.0, elevationGainMeters = 120.0)
+        assertEquals(6_000.0, h.engine.startedAtMeters.value)
+        assertEquals(120.0, h.engine.startedAtElevationGainMeters.value)
+    }
+
+    /**
+     * Crash recovery is not that. The ride being restored is the same ride and
+     * began wherever it began; letting the origin default to the crash point
+     * quietly stops counting everything ridden before the process died.
+     */
+    @Test
+    fun `a recovered ride keeps the origin it actually started from`() {
+        val h = Harness(power = 200)
+        h.engine.load(
+            route = flatRoad(20_000.0),
+            startDistanceMeters = 14_000.0,
+            elevationGainMeters = 400.0,
+            startedAtMeters = 6_000.0,
+            startedAtElevationGainMeters = 120.0,
+        )
+        assertEquals(14_000.0, h.engine.distanceMeters.value)
+        assertEquals(400.0, h.engine.elevationGainMeters.value)
+        assertEquals(6_000.0, h.engine.startedAtMeters.value)
+        assertEquals(120.0, h.engine.startedAtElevationGainMeters.value)
+    }
+
+    @Test
+    fun `an origin ahead of where the ride is placed is refused`() {
+        // Nonsense in, something rideable out: an origin past the current
+        // position would report a negative distance for the ride.
+        val h = Harness(power = 200)
+        h.engine.load(
+            route = flatRoad(20_000.0),
+            startDistanceMeters = 3_000.0,
+            startedAtMeters = 9_999.0,
+        )
+        assertEquals(3_000.0, h.engine.startedAtMeters.value)
+    }
 }

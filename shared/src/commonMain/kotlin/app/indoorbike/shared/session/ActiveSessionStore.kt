@@ -15,6 +15,7 @@
  */
 package app.indoorbike.shared.session
 
+import app.indoorbike.shared.companion.CompanionCourse
 import kotlinx.serialization.Serializable
 
 /**
@@ -59,6 +60,33 @@ data class ActiveSessionSnapshot(
     val simulationGearIndex: Int? = null,
     /** Metres climbed so far, so a resumed ride doesn't reset its ascent. */
     val simulationElevationGainMeters: Double? = null,
+    /**
+     * Where on the road *this ride* began, as distinct from where the crash
+     * left it.
+     *
+     * The two are the same number only for a route started at the trailhead,
+     * and reading one as the other is a bug this codebase has already had
+     * once: resume at 42 km, ride 6, and the summary claims all 48 as this
+     * ride's. Recovery reintroduced it by a different door - restoring put the
+     * origin at the crash point, so everything ridden before the process died
+     * stopped counting as part of the ride.
+     *
+     * Null in snapshots written before this field existed, and for those the
+     * old behaviour is all that can be reconstructed.
+     */
+    val simulationStartMeters: Double? = null,
+    val simulationStartElevationGainMeters: Double? = null,
+    /**
+     * The road a companion ride is on, which is the one road nothing else can
+     * fetch back.
+     *
+     * A route ride names its course in [workoutId] and the catalogue still has
+     * the GPX after a process death. A companion's course lived in a game on
+     * another device, and the socket did not survive either, so if it is not
+     * here it is gone - and a recovered ride would save as numbers with no
+     * shape while the same ride finished normally saved with one.
+     */
+    val companionCourse: CompanionCourse? = null,
 )
 
 /**
