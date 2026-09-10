@@ -79,6 +79,9 @@ Full privacy policy: [website/privacy.html](website/privacy.html).
 
 GNU General Public License v3.0 - see [LICENSE](LICENSE).
 
+Copyright Snapp Technology Ltd. Who wrote it is a different question, answered
+in [AUTHORS.md](AUTHORS.md).
+
 Third-party code and font attributions: [NOTICE.md](NOTICE.md).
 
 ## Repository
