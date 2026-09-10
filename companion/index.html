@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.3 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.4 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -597,9 +597,35 @@
       shorter road, it is one that leaves the map.
     </p>
 
-    <h3><code>setState</code> - pause and resume the recording</h3>
+    <h3><code>setState</code> - start, pause and resume the recording</h3>
 
 <pre><code>{ "t": "setState", "state": "paused" }</code></pre>
+
+    <p>
+      <strong>This is also how a ride starts.</strong> The app prepares the ride
+      the moment you connect and begins streaming telemetry and applying the
+      road immediately, but the clock does not run and nothing is written down
+      until <code>"active"</code> arrives. Send it when your world says the ride
+      has begun: past the menus, off the start line, whenever that is for you.
+      Until then a rider can spin up freely and none of it lands in their ride
+      record.
+    </p>
+
+    <p>
+      There is deliberately <strong>no countdown</strong>. Your game has its own
+      idea of when a ride begins and the app cannot see it, so it does not count
+      anybody in. The phone shows "Ready, start the ride in the game" while it
+      waits.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Forget this and nothing is ever recorded.</strong> The rider
+        pedals, the road works, the trainer responds, and the ride saves
+        nothing. It is the easiest way to ship a companion that looks right and
+        keeps no rides.
+      </p>
+    </div>
 
     <p>
       If your world has a pause - a menu, a loading screen, a rider who stopped -
@@ -894,6 +920,8 @@
     <table class="api-table">
       <thead><tr><th>Mistake</th><th>What you see</th></tr></thead>
       <tbody>
+        <tr><td>Never sending <code>setState: "active"</code></td><td>The rider pedals, the road works, and nothing is ever recorded</td></tr>
+        <tr><td>Leaving <code>controls</code> visible after a menu closes</td><td>The rider is left holding a pad wired to nothing</td></tr>
         <tr><td>Integrating speed from power instead of using <code>telemetry.speedMps</code></td><td>Speed sits at zero for 5-10 seconds every time the rider starts pedalling</td></tr>
         <tr><td>Sending a gradient straight off a route file</td><td>The trainer lurches at a steady rhythm on ground that looks smooth</td></tr>
         <tr><td><code>seq</code> that does not increase</td><td>Frames dropped silently; the road appears frozen with no error anywhere</td></tr>
