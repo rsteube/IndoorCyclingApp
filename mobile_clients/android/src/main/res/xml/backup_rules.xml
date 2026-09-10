@@ -11,10 +11,18 @@
   retained as a convenience for non-credential data (FTP/weight, ride
   history, imported workouts, registry cache).
 
+  `paired_companions.json` is excluded for the same reason and more sharply.
+  It holds the shared keys that let a companion app drive this rider's
+  trainer without a pairing code, and a key that rides an implicit backup
+  channel to a Google account is a key that has left the device the rider
+  agreed to put it on. A restored phone simply pairs again, which is one
+  tap on each device.
+
   After a fresh install + restore, the rider re-enters their Intervals.icu
-  API key (one-off) and re-picks their sync folder if they were using
-  cross-device sync.
+  API key (one-off), re-pairs any companions, and re-picks their sync folder
+  if they were using cross-device sync.
 -->
 <full-backup-content>
     <exclude domain="file" path="datastore/cadence_user_settings.preferences_pb" />
+    <exclude domain="file" path="paired_companions.json" />
 </full-backup-content>

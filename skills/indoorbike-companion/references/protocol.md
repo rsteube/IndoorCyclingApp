@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.5** (the app also accepts 0.4, 0.3, 0.2 and 0.1)
+- Protocol version: **0.6** (the app also accepts 0.5 and everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -165,7 +165,8 @@ Codes are 6 characters, generated per ride, never stored, never reused.
   "token": "8F3K2M",
   "client": { "name": "Alpine Climb", "version": "0.3.1", "platform": "windows" },
   "role": "controller",
-  "capabilities": ["summary", "course", "setState", "controls", "drivetrain"]
+  "capabilities": ["summary", "course", "setState", "controls", "drivetrain", "pair"],
+  "deviceId": "6f1c2b90-....."
 }
 ```
 
@@ -178,7 +179,8 @@ Codes are 6 characters, generated per ride, never stored, never reused.
 | `client.version` | string | no | |
 | `client.platform` | string | no | |
 | `role` | string | no | Absent defaults to `controller` |
-| `capabilities` | string[] | no | Declares what you can do. The app reads `summary`; send `course` and `setState` too if you use them |
+| `capabilities` | string[] | no | Declares what you can do. The app reads `summary`; send `course`, `setState`, `controls`, `drivetrain` and `pair` too if you use them |
+| `deviceId` | string | no | Stable, opaque, yours forever. Enables permanent pairing. Not a credential |
 
 **Role resolution, exactly:**
 
@@ -224,6 +226,8 @@ want control, send `"controller"` or omit the field.
 - `limits` are the clamps. Values outside them are clamped, not rejected.
 - `resume` is `null` in the current build. Reserved for crash recovery.
 - `tickMs` is the telemetry period. Do not hardcode 250; read it.
+- `deviceId` is the *app's* identity. Store your pairing key against it.
+- `proof` is present only on a connection let in by a pairing, and you must check it.
 
 ### 4.3 Version negotiation
 
@@ -239,6 +243,9 @@ Rules from 1.0 onward (0.x may break on a minor bump):
 Version and capability are separate mechanisms. Version answers "same language"; `honours` and
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
+
+**0.6** added permanent pairing: `hello.deviceId`, the `pairRequest` / `paired` ceremony and
+the `challenge` / `pairProof` handshake. Optional; ignore all of it and nothing changes.
 
 **0.5** added the `drivetrain` frame. Optional; leaving it out keeps the rider's own setting.
 
@@ -263,10 +270,85 @@ started pedalling.
 | Wrong or missing token | `error` `unauthorized` | 4002 |
 | A controller already holds the ride | `error` `controllerBusy` | 4003 |
 | First frame is not `hello` | `error` `unauthorized` | 4002 |
+| A proof that does not match the pairing on file | `error` `unauthorized` | 4002 |
+| A nonce that is not 32 hex characters | `error` `unauthorized` | 4002 |
+| Anything but `pairProof` while a challenge is outstanding | `error` `unauthorized` | 4002 |
 
 The app always sends the `error` frame **and then** closes with a code and a reason string.
 Handle both: you may close the socket before you read the frame, and then the close reason is
 all you get. Error messages name both version ranges and which end to update.
+
+---
+
+## 4.5 Permanent pairing
+
+Optional. Requires the `pair` capability. Added in protocol 0.6.
+
+The pairing code is per ride, so the code and the port are different every time and there is
+nothing for you to remember. After one agreement on both devices, you connect straight into the
+ride with no code and nothing for anyone to tap.
+
+### 4.5.1 Pairing, once
+
+1. Connect and hand over the code as usual, sending a `deviceId` in your `hello`.
+2. **Ask your own user first.** Do not send this on your own initiative.
+3. Send `{"t": "pairRequest", "name": "Alpine Climb"}`.
+4. The rider is asked on the phone.
+5. You receive:
+
+```json
+{ "t": "paired", "deviceId": "<the app's id>", "name": "Indoor Bike", "key": "<64 hex chars>" }
+```
+
+Store `key` against the app's `deviceId`. Or you receive `{"t": "pairDeclined", "reason": "..."}`,
+which is **not an error**: the ride continues, and you should offer to ask again next time.
+
+### 4.5.2 Reconnecting without a code
+
+1. Send `hello` with your `deviceId` and **no token**.
+2. The app answers instead of welcoming you:
+
+```json
+{ "t": "challenge", "deviceId": "<the app's id>", "nonce": "<32 hex chars>" }
+```
+
+3. Look up your key for that `deviceId`, generate a **fresh random 16-byte nonce**, and answer:
+
+```json
+{ "t": "pairProof", "nonce": "<your 32 hex chars>", "proof": "<64 hex chars>" }
+```
+
+```
+proof = hex(HMAC_SHA256(keyBytes, "indoorbike-companion-v1:companion:" + appNonce + ":" + yourNonce))
+```
+
+`keyBytes` is the raw bytes the hex in `paired` decodes to. Everything else is the hex strings
+exactly as they appear on the wire, joined with colons.
+
+4. The ordinary `welcome` comes back with the app's own proof:
+
+```
+hex(HMAC_SHA256(keyBytes, "indoorbike-companion-v1:app:" + appNonce + ":" + yourNonce))
+```
+
+**Verify it before you trust the connection.** Skipping it leaves you trusting whatever answered
+on the expected port, which is the position pairing exists to get out of.
+
+### 4.5.3 Rules
+
+- **A fresh random nonce every connection.** Both nonces go into both proofs; reusing yours is
+  signing something only the app chose. The app refuses anything that is not 32 hex characters.
+- **`deviceId` is not a credential.** It selects which pairing to look up; the proof decides.
+  Generate one once, keep it forever, never share one between two companions.
+- **Keep the key private and never log it.** It authenticates you to somebody's trainer.
+- **Fall back, do not fail shut.** If the rider forgets you, your `hello` gets an ordinary
+  `unauthorized` and the answer is to pair again with the code. A stored key is not forever.
+- **Lowercase hex throughout.** No base64.
+
+### 4.5.4 What it does not do
+
+Encrypt anything. The socket is plaintext before and after pairing, so anything on the network
+can read the rider's watts. Pairing answers *who*, not *who else can see*.
 
 ---
 
@@ -879,6 +961,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Discover via mDNS `_indoorbike._tcp`, **and** offer QR scan / manual host+port+code
 - [ ] Read the port from SRV or the QR payload; never hardcode
 - [ ] Send `hello` as the very first frame, with `protoMin`/`protoMax` and the token
+- [ ] Send a stable `deviceId` if you want permanent pairing, and store the key you get back
+- [ ] On reconnect, answer `challenge` with a **fresh** nonce, and verify `welcome.proof`
 - [ ] Verify `welcome.proto` against your own range; fail with a message naming both
 - [ ] Read `welcome.honours` and `welcome.capabilities`, and warn if you rely on something
       not listed. Branch on `capabilities`, never on the version number
@@ -927,6 +1011,10 @@ Present in the protocol, absent from this build. Do not design around them.
 | Reading `course.distanceM` as the rider's distance | It is the course's own length; the rider's is `world.distanceM` |
 | Pausing with `setState` and stopping `world` frames | The deadman ramps the gradient to flat under a rider who may still be pedalling |
 | Assuming the gear ladder matches the `drivetrain` you sent | Near-identical ratios are dropped. Read `drivetrainChanged` |
+| Reusing one nonce for every `pairProof` | You are signing something only the app chose, which is most of the way back to a replay working |
+| Not verifying `welcome.proof` | You trust whatever answered on the port, which is what pairing exists to prevent |
+| Treating a stored key as permanent | The rider can forget you. Fall back to the code rather than failing shut |
+| Logging the pairing key | It authenticates you to somebody's trainer |
 | Never sending `setState: "active"` | The rider pedals, the road works, and nothing is ever recorded |
 | Waiting for the app to count the rider in | It does not, in this mode. Your game owns the start |
 | Leaving `controls` visible after a menu closes | The rider is left holding a pad wired to nothing |

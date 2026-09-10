@@ -106,7 +106,16 @@
       <li><strong>Ride history:</strong> the result of each ride (duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log) in a local SQLite database.</li>
       <li><strong>Optional integration credentials:</strong> if you set them, your Intervals.icu athlete ID and API key, stored in the same on-device key/value store as your profile values. The API key is excluded from Android's Auto Backup (it never leaves your device via that channel).</li>
       <li><strong>Optional sync-folder URI:</strong> if you've configured Backup &amp; sync in Settings, the app stores the location of the folder you picked so it can read and write its slice on each sync. The folder itself can be anywhere your file picker reaches - local storage, Drive, Dropbox, Nextcloud, Syncthing, …; the choice is yours and is made explicitly via Android's system folder picker.</li>
-      <li><strong>Backup &amp; sync slices (only when you've configured a sync folder):</strong> a single JSON file per device, written into the folder you chose. Each slice carries: the rides you've recorded on this device (date, duration, average power / cadence / heart rate - <em>not</em> the per-second telemetry), the imported workouts in your library (with the source-repo attribution sidecar), your profile values (FTP, weight, max HR, onboarding flag, favourites, Intervals.icu athlete ID and auto-upload toggle), and a stable per-install device id + label. The Intervals.icu API key is <strong>never</strong> written to a slice. Bluetooth pairings are not written either; they're hardware-local.</li>
+      <li><strong>Paired companion apps (only if you pair one):</strong> Companion mode
+        can drive your trainer from a program on another device. If you choose to pair one
+        permanently, the app stores that companion's self-declared name, an opaque id it
+        generates for itself, and a random key the two devices share so they can recognise
+        each other next time without you typing a pairing code. The key is generated on your
+        phone, sent once to that companion, and never sent anywhere else. It is
+        <strong>excluded from Android's Auto Backup and from phone-to-phone transfer</strong>,
+        and is never written to a Backup &amp; sync slice, so it does not leave the device you
+        agreed to put it on. You can remove any pairing, which deletes the key.</li>
+      <li><strong>Backup &amp; sync slices (only when you've configured a sync folder):</strong> a single JSON file per device, written into the folder you chose. Each slice carries: the rides you've recorded on this device (date, duration, average power / cadence / heart rate - <em>not</em> the per-second telemetry), the imported workouts in your library (with the source-repo attribution sidecar), your profile values (FTP, weight, max HR, onboarding flag, favourites, Intervals.icu athlete ID and auto-upload toggle), and a stable per-install device id + label. The Intervals.icu API key is <strong>never</strong> written to a slice. Bluetooth pairings are not written either; they're hardware-local, and neither are companion pairing keys.</li>
     </ul>
     <p>
       All of the above lives in the app's private storage on your phone - apart
@@ -124,6 +133,37 @@
       a heart-rate monitor, and a vendor service to a Zwift Click controller
       where applicable. Communication is point-to-point with your devices.
       It doesn't go to a server.
+    </p>
+
+    <h3>What goes over your local network (Companion mode)</h3>
+    <p>
+      Companion mode lets a separate program - a game, a route player, a
+      training world - running on another device on your own network drive the
+      ride. While it is connected, the app sends that program what your trainer
+      is reporting: power, cadence, heart rate if you have a strap paired, the
+      gear you are in and the resistance being applied. The other program sends
+      back the road: how steep it is and how fast you are going.
+    </p>
+    <p>
+      All of it stays on your network. There is no server in the middle, no
+      account, and nothing is uploaded to us. The app is the one listening, and
+      it only listens while you have Companion mode open - not in the
+      background, and not when you are not riding.
+    </p>
+    <p>
+      <strong>The connection is not encrypted.</strong> It is plain JSON over a
+      WebSocket on your own network, which means another device on the same
+      network could read what is being sent if it were looking. A pairing code,
+      or a permanent pairing if you set one up, controls <em>who can connect and
+      drive your trainer</em>; it does not hide the traffic from anything else
+      already on the network. Use Companion mode on a network you trust, and not
+      on public or guest Wi-Fi.
+    </p>
+    <p>
+      The app is never told where you are. A companion sends a gradient, a speed
+      and running totals for distance and climbing. It may hand over the shape of
+      the course after the ride so it can be drawn in your history, and that is
+      the whole road rather than a position on it. None of this reaches us.
     </p>
 
     <h3>Permissions the app requests</h3>

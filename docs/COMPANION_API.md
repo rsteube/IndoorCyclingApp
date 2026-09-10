@@ -115,14 +115,23 @@ acceleration to bill for, and the resistance will be wrong on anything but a sta
 
 ### Security model, stated plainly
 
-Traffic is plaintext on the LAN, authenticated by a pairing token. A device that is already on
-the rider's home network and holds a valid token can change the resistance of a trainer that a
-person is clipped into. That is the threat model, and it is why control is never implicit:
+A device already on the rider's network, once authenticated, can change the resistance of a
+trainer that a person is clipped into. That is the threat model, and it is why control is never
+implicit:
 
-- The rider starts Companion mode deliberately. Nothing listens otherwise.
-- The token is shown on the phone and must be presented by the companion. It is per ride.
+- The rider starts Companion mode deliberately. **Nothing listens otherwise**, which is the
+  single most valuable property here and the reason pairing did not change it.
+- A stranger must present the pairing code, shown on the phone, fresh for every ride.
+- A companion the rider has *permanently paired* skips the code and proves itself with a key
+  instead. See [permanent pairing](#permanent-pairing) below.
 - The connected companion's self-declared name and address are always visible on the HUD, with
   a one-tap **Take back control** that drops to a flat road without ending the recording.
+
+**What is authenticated and what is not.** Pairing establishes who is on the other end. It does
+not encrypt anything: traffic is plaintext on the LAN, so anything on the network can read a
+rider's watts, and that is as true after pairing as before it. This is a deliberate limit, not
+an oversight. Encrypting the stream would mean every companion needing TLS with custom pinning,
+which is awkward in a game engine and would price out exactly the people this API exists for.
 
 Do not run this on a network you do not trust.
 
@@ -132,7 +141,7 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 | TXT key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.1` | Supported protocol range, `min-max` |
+| `proto` | `0.1-0.6` | Supported protocol range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.1.0` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride, for reconnection |
@@ -140,8 +149,13 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 The port is ephemeral and published in the SRV record. Do not hardcode one.
 
-**QR fallback**, for networks where mDNS is blocked. The phone renders a payload the companion
-can scan or the rider can type:
+**Typed fallback**, for networks where discovery is blocked. The pairing screen always shows
+the address, the port and the code as text, in the order a connect form asks for them. There is
+deliberately no QR code: a companion runs on whatever drives the screen the rider is watching,
+which is usually a desktop with no camera pointed anywhere useful.
+
+The deep-link form still exists for anything that wants to hand over a whole connection string
+at once:
 
 ```
 indoorbike://companion?host=192.168.1.42&port=47612&token=8F3K2M&session=3f9a1c
@@ -158,7 +172,12 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.5, and this build accepts everything back to 0.1.**
+**Current version: 0.6, and this build accepts everything back to 0.1.**
+
+0.6 added permanent pairing: `hello.deviceId`, the `pairRequest` / `paired` ceremony and the
+`challenge` / `pairProof` handshake. Two devices that have met once recognise each other
+afterwards with no code and no tapping. Optional, and a companion that ignores all of it keeps
+working exactly as before.
 
 0.5 added the `drivetrain` frame, so a game can put the rider on the bike the game thinks they
 are riding. Optional: leave it out and the rider keeps the drivetrain they chose in settings.
@@ -418,6 +437,29 @@ and it is broadcast for rider-initiated pauses too - the phone has its own pause
 stop-pedalling watchdog, and a foreground service that can force one - so a companion should
 follow `stateChanged` rather than assume its own request took effect.
 
+#### `pairRequest`
+
+Ask to be remembered, so neither person ever types a code at each other again. Requires the
+`pair` capability.
+
+```jsonc
+{ "t": "pairRequest", "name": "Alpine Climb" }
+```
+
+Send it once, after an ordinary code-authenticated handshake, and only when your own user has
+asked for it. The rider is then asked on the phone. Agreeing on both devices is the whole
+ceremony.
+
+The answer is a `paired` frame with a key, or a `pairDeclined` frame. Declining is **not an
+error**: the ride carries on exactly as it was, and you should offer to ask again next time
+rather than treating it as a failure.
+
+You must have sent a `deviceId` in your `hello`, or there is nothing to remember you by.
+
+#### `pairProof`
+
+Answer a `challenge`. See [reconnecting](#reconnecting-without-a-code).
+
 #### `drivetrain`
 
 The bike the rider is pretending to be on. Optional, and requires the `drivetrain` capability.
@@ -570,6 +612,25 @@ Three parts of this are worth calling out:
 - **`resume`** is non-null when a crashed ride is being recovered, and tells the companion how
   far the record already believes the rider has come, so it can place them accordingly.
 
+#### `paired` and `pairDeclined`
+
+```jsonc
+{ "t": "paired", "deviceId": "<the app's id>", "name": "Indoor Bike", "key": "<64 hex chars>" }
+{ "t": "pairDeclined", "reason": "The rider declined." }
+```
+
+Store `key` against `deviceId` and use it for every future connection. The app has already
+stored its half.
+
+#### `challenge`
+
+```jsonc
+{ "t": "challenge", "deviceId": "<the app's id>", "nonce": "<32 hex chars>" }
+```
+
+Sent instead of a `welcome` when your `hello` carried a `deviceId` the app has a pairing for.
+`deviceId` is the *app's* identity, so you know which of your stored keys to use.
+
 #### `telemetry`
 
 Pushed at the phone's tick rate (`tickMs`, currently 250 ms). Interpolate for rendering rather
@@ -671,6 +732,71 @@ Fatal for the current operation, and usually followed by a close. See the close-
 | `notController` | An observer sent a controlling frame |
 | `noTrainer` | No trainer connected |
 | `malformed` | Frame could not be parsed |
+
+## 4a. Permanent pairing
+
+### The problem it solves
+
+The pairing code is the right ceremony for a stranger and the wrong one for the machine in the
+same room the rider has already trusted twenty times. It is also per ride, so the code and the
+port are different every time and there is nothing for a companion to remember.
+
+Pairing fixes that. After one agreement on both devices, a companion that finds the phone
+connects straight into the ride: no code, no prompt, nothing to tap.
+
+### Pairing, once
+
+1. Connect and hand over the code as usual. Send a `deviceId` in your `hello`.
+2. Ask your own user whether they want this. Do not send `pairRequest` on your own initiative.
+3. Send `pairRequest`.
+4. The rider is asked on the phone and accepts.
+5. You receive `paired` with a key. Store it against the app's `deviceId`.
+
+### Reconnecting without a code
+
+1. Find the phone as usual, over the beacon or mDNS.
+2. Send `hello` with your `deviceId` and **no token**.
+3. The app answers `challenge` with its own `deviceId` and a fresh `nonce`.
+4. Look up your key for that `deviceId`, generate your own fresh nonce, and answer:
+
+```jsonc
+{ "t": "pairProof", "nonce": "<your 32 hex chars>", "proof": "<64 hex chars>" }
+```
+
+where
+
+```
+proof = HMAC_SHA256(key, "indoorbike-companion-v1:companion:" + appNonce + ":" + yourNonce)
+```
+
+expressed as lowercase hex, and `key` is the **raw bytes** the hex in `paired` decodes to.
+
+5. A correct proof is answered with the ordinary `welcome`, carrying `proof` of the app's own:
+
+```
+HMAC_SHA256(key, "indoorbike-companion-v1:app:" + appNonce + ":" + yourNonce)
+```
+
+**Check it.** Skipping that leaves you trusting whatever answered on the expected port, which is
+the position pairing exists to get out of.
+
+### Rules that matter
+
+- **Your nonce must be fresh and random every connection.** Both nonces go into both proofs, so
+  a reused one is you signing something only the app chose, which is most of the way back to a
+  recording being useful. 16 bytes. The app refuses anything that is not 32 hex characters.
+- **`deviceId` is not a credential.** It says which pairing to look up; the proof decides
+  everything. Generate one once, keep it forever, never reuse one between two companions.
+- **Keep the key somewhere private** and never log it. It authenticates you to somebody's
+  trainer.
+- **A forgotten pairing falls back, it does not fail shut.** If the rider forgets you on the
+  phone, your `hello` gets the ordinary unauthorized answer and the rider can pair again with
+  the code. Handle that rather than assuming a stored key works forever.
+- **Everything is lowercase hex.** No base64, no padding rules, no alphabet variants.
+
+### What it does not do
+
+Encrypt anything. See [the security model](#security-model-stated-plainly).
 
 ## 5. Units and conventions
 

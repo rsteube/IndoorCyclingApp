@@ -12,12 +12,19 @@
                        point is that the API key shouldn't follow an
                        implicit channel; the only visible move is a
                        deliberate re-entry in Settings.
+
+  Companion pairing keys (`paired_companions.json`) are excluded from both.
+  Each one lets a companion app drive this rider's trainer with no pairing
+  code, so it must not follow an implicit channel to a Google account or to
+  a second handset. Re-pairing is one tap on each device.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="file" path="datastore/cadence_user_settings.preferences_pb" />
+        <exclude domain="file" path="paired_companions.json" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="file" path="datastore/cadence_user_settings.preferences_pb" />
+        <exclude domain="file" path="paired_companions.json" />
     </device-transfer>
 </data-extraction-rules>

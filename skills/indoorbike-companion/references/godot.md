@@ -19,7 +19,7 @@ signal welcomed(frame: Dictionary)
 signal link_closed(code: int, reason: String)
 
 const PROTO_MIN := "0.1"
-const PROTO_MAX := "0.5"
+const PROTO_MAX := "0.6"
 const WORLD_HZ := 10.0
 
 var _socket := WebSocketPeer.new()
@@ -85,7 +85,8 @@ func _send_hello() -> void:
             "platform": OS.get_name(),
         },
         "role": "controller",       # exact string; any other value grants observer
-        "capabilities": ["summary", "course", "setState", "controls", "drivetrain"],
+        "capabilities": ["summary", "course", "setState", "controls", "drivetrain", "pair"],
+        "deviceId": _device_id,
     })
 
 
@@ -170,6 +171,53 @@ func _pump_world(delta: float) -> void:
 **Keep pumping while your world is paused.** A loading screen, a menu or an alt-tab that stops
 this loop for 1.5 s triggers the phone's deadman and the hill ramps away under the rider. Send
 the current gradient with `speed_mps = 0.0` rather than sending nothing.
+
+## Pairing: HMACContext, and a nonce you must not reuse
+
+Godot has everything this needs. `Crypto.generate_random_bytes` is the CSPRNG and `HMACContext`
+does the tag; there is no curve to find and no library to add.
+
+```gdscript
+var _crypto := Crypto.new()
+var _device_id := ""      # generated once, saved to user://, kept forever
+var _pair_key := PackedByteArray()   # raw bytes, from the "paired" frame
+
+func _hex(bytes: PackedByteArray) -> String:
+    var out := ""
+    for b in bytes:
+        out += "%02x" % b
+    return out
+
+func _proof(role: String, app_nonce: String, my_nonce: String) -> String:
+    var msg := "indoorbike-companion-v1:%s:%s:%s" % [role, app_nonce, my_nonce]
+    var ctx := HMACContext.new()
+    ctx.start(HashingContext.HASH_SHA256, _pair_key)
+    ctx.update(msg.to_utf8_buffer())
+    return _hex(ctx.finish())
+
+func _on_challenge(frame: Dictionary) -> void:
+    # A NEW nonce every connection. Never cache this.
+    var my_nonce := _hex(_crypto.generate_random_bytes(16))
+    _pending_app_nonce = frame["nonce"]
+    _pending_my_nonce = my_nonce
+    _send({
+        "t": "pairProof",
+        "nonce": my_nonce,
+        "proof": _proof("companion", frame["nonce"], my_nonce),
+    })
+
+func _on_welcome(frame: Dictionary) -> void:
+    if _pending_app_nonce != "":
+        var want := _proof("app", _pending_app_nonce, _pending_my_nonce)
+        if frame.get("proof", "") != want:
+            _fail("The phone could not prove it holds the pairing key.")
+            return
+    _pending_app_nonce = ""
+```
+
+Store the key with `FileAccess` under `user://`, not in a `.tres` you might ship, and keep it
+out of every `print()` you add while debugging. If the rider forgets you, the handshake comes
+back `unauthorized`: drop the stored key and offer the pairing code again.
 
 ## Speed comes off the telemetry
 

@@ -55,7 +55,7 @@ fields. Apply them to the speed you compute, then send the result.
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
 has two untested systems and no way to tell which is wrong.
 
-## The thirteen rules that prevent most bugs
+## The fourteen rules that prevent most bugs
 
 1. **Send `hello` first.** Any other first frame is `unauthorized` and a close with 4002.
 2. **`role` defaults to `controller`**, and any value the phone does not recognise (including
@@ -87,7 +87,9 @@ has two untested systems and no way to tell which is wrong.
     between "my course never shows up" and "your polyline is too long".
 12. **Ignore unknown fields, frame types and enum values.** Never treat them as errors. This is
     what lets your build share a socket with a later one.
-13. **Smooth the gradient before you send it.** It does not come out of a route file ready
+13. **Send a fresh random nonce in every `pairProof`, and check `welcome.proof`.** A reused
+    nonce and an unchecked proof each undo most of what pairing is for.
+14. **Smooth the gradient before you send it.** It does not come out of a route file ready
     to use, and it goes straight into the force on the rider's legs. See the next section but
     one.
 
@@ -196,6 +198,36 @@ The phone shows "Ready, start the ride in the game" while it waits.
 
 **If you forget this, the rider pedals, the road works, and nothing is ever recorded.** It is
 the single easiest way to ship a companion that looks right and saves nothing.
+
+## Optional: be remembered, and stop typing codes
+
+The pairing code is per ride. New code, new port, every time. Pair permanently once and you
+connect straight into the ride afterwards with no code and nothing for anyone to tap.
+
+**Pairing, once.** Send a stable `deviceId` in your `hello`. Ask *your* user whether they want
+this, then send `{"t": "pairRequest", "name": "Your app"}`. The rider is asked on the phone. You
+get back a `paired` frame with a key; store it against the app's `deviceId`. A `pairDeclined` is
+not an error - offer to ask again next time.
+
+**Reconnecting.** Send `hello` with your `deviceId` and no token. The app answers `challenge`
+with its own id and a nonce instead of welcoming you. Reply:
+
+```
+proof = hex(HMAC_SHA256(keyBytes, "indoorbike-companion-v1:companion:" + appNonce + ":" + yourNonce))
+```
+
+with your own **fresh random 16-byte** nonce. The welcome that follows carries the app's own
+proof over the same nonces with `:app:` instead of `:companion:`. **Verify it.**
+
+Four things to get right:
+
+1. **A new nonce every time.** Reusing one is signing something only the app chose.
+2. **Verify `welcome.proof`**, or you trust whatever answered on the port.
+3. **Fall back, do not fail shut.** The rider can forget you; then it is the code again.
+4. **Never log the key.** It drives somebody's trainer.
+
+It authenticates, it does not encrypt: the socket is plaintext either way, and anything on the
+network can still read the rider's watts.
 
 ## Optional: put the rider on your bike
 
