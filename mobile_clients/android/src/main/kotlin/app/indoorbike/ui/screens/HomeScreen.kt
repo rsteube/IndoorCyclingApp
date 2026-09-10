@@ -208,7 +208,7 @@ fun HomeScreen(
                     title = "Route",
                     body = "A real road, with its hills under the wheel.",
                     onClick = onChooseRoute,
-                    beta = true,
+                    stage = "Beta",
                     modifier = Modifier.enterReveal(index = 1),
                 )
             }
@@ -227,11 +227,15 @@ fun HomeScreen(
                 ModeCard(
                     icon = Icons.Outlined.Cast,
                     title = "Companion",
+                    // Says what it needs before the tap, not after. Somebody
+                    // who does not have a second app should be able to tell
+                    // that from here rather than from a pairing code they
+                    // have nothing to type into.
                     body = if (isTrainerLive)
-                        "Let an app on another screen drive the road."
-                    else "Pair a trainer to ride with a companion app.",
+                        "Hand the trainer to a game or app on another device. Needs one running."
+                    else "Pair a trainer, and a companion app on another device.",
                     onClick = if (isTrainerLive) onChooseCompanion else onOpenTrainerPairing,
-                    beta = true,
+                    stage = "Alpha",
                     modifier = Modifier.enterReveal(index = 3),
                 )
             }
@@ -284,8 +288,11 @@ private fun ModeCard(
     title: String,
     body: String,
     onClick: () -> Unit,
-    /** Marks a mode still being built, so nobody meets a rough edge unwarned. */
-    beta: Boolean = false,
+    /**
+     * How finished this mode is: "Beta", "Alpha", or null for shipped. Marks a
+     * mode still being built, so nobody meets a rough edge unwarned.
+     */
+    stage: String? = null,
     modifier: Modifier = Modifier,
 ) {
     // A card gives a little under the finger and darkens one step, the same
@@ -320,9 +327,9 @@ private fun ModeCard(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(title, style = CadenceType.h3, color = CadenceColors.Fg1)
-                if (beta) {
+                if (stage != null) {
                     Spacer(Modifier.width(Spacing.s2))
-                    BetaTag()
+                    StageTag(stage)
                 }
             }
             Spacer(Modifier.height(3.dp))
@@ -342,14 +349,18 @@ private fun ModeCard(
 }
 
 /**
- * Says a feature is not finished yet. Bg2 rather than a colour of its own: the
+ * Says how finished a feature is. Bg2 rather than a colour of its own: the
  * palette keeps saturation for power zones, and a label that shouted would be
  * competing with the ride the rider came here to start.
+ *
+ * The word carries the weight instead. "Alpha" on a mode that cannot work by
+ * itself is worth more than a colour, because the thing a rider needs to know
+ * is not "this is rough" but "this needs something you may not have".
  */
 @Composable
-private fun BetaTag() {
+private fun StageTag(text: String) {
     Text(
-        text = "Beta",
+        text = text,
         style = CadenceType.micro,
         color = CadenceColors.Fg3,
         modifier = Modifier

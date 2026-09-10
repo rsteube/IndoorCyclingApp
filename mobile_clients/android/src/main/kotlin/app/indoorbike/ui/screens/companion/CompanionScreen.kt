@@ -15,15 +15,22 @@
  */
 package app.indoorbike.ui.screens.companion
 
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material3.Text
@@ -35,7 +42,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -118,7 +128,7 @@ fun CompanionScreen(
     ) {
         AppBar(
             title = "Companion",
-            eyebrow = "Ride mode",
+            eyebrow = "Ride mode · Alpha",
             leading = {
                 IconBtn(
                     icon = Icons.AutoMirrored.Outlined.ArrowBack,
@@ -138,6 +148,10 @@ fun CompanionScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
+            item(key = "what-this-is") {
+                WhatThisIsCard()
+            }
+
             item(key = "status") {
                 ConnectionStatusCard(
                     controllerName = status.controllerName,
@@ -228,6 +242,84 @@ private fun ConnectionStatusCard(
         )
     }
 }
+
+/**
+ * What this screen is, for somebody who tapped "Companion" to find out.
+ *
+ * It is first on the screen and it is not dismissible, because everything
+ * below it - an address, a port, a six-character code - is meaningless to a
+ * rider who does not already have somewhere to type it. Without this they meet
+ * a pairing screen for a thing they have never heard of and conclude the app
+ * is broken.
+ *
+ * Says three things, in the order they are needed: this does nothing by
+ * itself, here is what it needs, and here is what to ride instead if you do
+ * not have one.
+ */
+@Composable
+private fun WhatThisIsCard() {
+    val context = LocalContext.current
+    SlateCard {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Needs a second app",
+                style = CadenceType.h3,
+                color = CadenceColors.Fg1,
+            )
+            Spacer(Modifier.width(Spacing.s2))
+            Text(
+                text = "Alpha",
+                style = CadenceType.micro,
+                color = CadenceColors.Fg3,
+                modifier = Modifier
+                    .clip(CircleShape)
+                    .background(CadenceColors.Bg2)
+                    .padding(horizontal = Spacing.s2, vertical = 2.dp),
+            )
+        }
+        Text(
+            text = "Companion mode does nothing on its own. It hands your trainer " +
+                "over to a separate program - a game, a route player, a training " +
+                "world - running on another device on the same network. That program " +
+                "decides the road; this app turns it into resistance and records the " +
+                "ride.",
+            style = CadenceType.body,
+            color = CadenceColors.Fg2,
+            modifier = Modifier.padding(top = Spacing.s2),
+        )
+        Text(
+            text = "If you do not have one running, there is nothing here to connect " +
+                "to. To ride a real road with nothing but this phone, use Route mode " +
+                "instead.",
+            style = CadenceType.body,
+            color = CadenceColors.Fg2,
+            modifier = Modifier.padding(top = Spacing.s2),
+        )
+        Text(
+            text = "Alpha: the protocol is still moving, and a companion built " +
+                "against it today may need updating.",
+            style = CadenceType.small,
+            color = CadenceColors.Fg3,
+            modifier = Modifier.padding(top = Spacing.s2),
+        )
+        SecondaryBtn(
+            text = "Find or build a companion",
+            onClick = {
+                try {
+                    context.startActivity(
+                        Intent(Intent.ACTION_VIEW, Uri.parse(COMPANION_GUIDE_URL))
+                    )
+                } catch (t: Throwable) {
+                    Toast.makeText(context, "No browser to open", Toast.LENGTH_LONG).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(top = Spacing.s3),
+        )
+    }
+}
+
+/** The public explanation, which is where anyone wanting one should start. */
+private const val COMPANION_GUIDE_URL = "https://indoorbike.app/companion/"
 
 @Composable
 private fun NoticeCard(title: String, body: String) {
