@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.2** (the app also accepts 0.1)
+- Protocol version: **0.3** (the app also accepts 0.2 and 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -165,7 +165,7 @@ Codes are 6 characters, generated per ride, never stored, never reused.
   "token": "8F3K2M",
   "client": { "name": "Alpine Climb", "version": "0.3.1", "platform": "windows" },
   "role": "controller",
-  "capabilities": ["summary", "course", "setState"]
+  "capabilities": ["summary", "course", "setState", "controls"]
 }
 ```
 
@@ -199,7 +199,7 @@ want control, send `"controller"` or omit the field.
   "sessionId": "3f9a1c",
   "tickMs": 250,
   "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
-  "capabilities": ["requestShift", "label", "summary", "course", "setState"],
+  "capabilities": ["requestShift", "label", "summary", "course", "setState", "controls"],
   "role": "controller",
   "rider": { "massKg": 78.0, "ftpWatts": 250 },
   "bike": { "massKg": 9.5, "drivetrain": "road-double" },
@@ -238,6 +238,8 @@ Rules from 1.0 onward (0.x may break on a minor bump):
 Version and capability are separate mechanisms. Version answers "same language"; `honours` and
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
+
+**0.3** added the `controls` frame and the `controlPressed` event.
 
 **0.2** added `telemetry.speedMps`, the `course` frame and the `setState` frame. All three are
 additions, so a 0.1 companion negotiates down and behaves exactly as it always did. Adopt
@@ -422,6 +424,51 @@ still be turning the pedals.
 
 ---
 
+## 7c. `controls` (companion -> app)
+
+Requires the `controls` capability. Added in protocol 0.3.
+
+```json
+{
+  "t": "controls",
+  "visible": true,
+  "title": "Choose a route",
+  "hint": "Pick a lap count",
+  "enabled": ["up", "down", "enter", "back"]
+}
+```
+
+Lends the rider's phone to a screen they cannot otherwise answer. While `visible` is true the
+app draws a control pad; each press comes back as a
+[`controlPressed`](#11-event-app---companion) event.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `visible` | bool | yes | When false, every other field is ignored |
+| `title` | string | no | Shown above the pad. Trimmed to 48 characters |
+| `hint` | string | no | Shown under the title. Same limit |
+| `enabled` | string[] | no | Absent or empty means nothing is pressable, which is legitimate for a loading state |
+
+Control names, and the only ones the app knows:
+
+`up`, `down`, `left`, `right`, `enter`, `back`
+
+**Controls you do not enable are drawn dead, not hidden.** The app cannot see your screen, so
+it cannot guess what will answer. Hiding the rest would reshuffle the pad every time a menu
+changed what was selectable, under a thumb already moving toward a button. Dead-but-present
+also distinguishes "the app forgot it" from "the game does not want it".
+
+An unrecognised name gets a `rejected` warning naming it, and the rest of the frame still
+lands: a misspelt `entre` costs you the Enter button, not the whole pad.
+
+Send a fresh frame whenever selectability changes; the last wins. Send `visible: false` on
+dismissal. The pad is also taken away automatically if you disconnect, because a remote for a
+program that is gone is worse than no remote.
+
+Nothing here reaches the trainer, the physics or the ride record.
+
+---
+
 ## 8. `finish` (companion -> app)
 
 ```json
@@ -572,6 +619,7 @@ encode as `0.0` rather than emitting invalid JSON.
 
 ```json
 { "t": "event", "event": "gearChanged", "index": 12, "changed": true, "source": "zwiftClick" }
+{ "t": "event", "event": "controlPressed", "control": "enter" }
 { "t": "event", "event": "stateChanged", "state": "finished" }
 { "t": "event", "event": "worldTimeout", "fallback": "flat" }
 { "t": "event", "event": "worldResumed" }
@@ -787,6 +835,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Treat missing `power`/`cadence`/`hr`/`speedMps` as absent, not zero
 - [ ] Send a `course` (name early, shape at the end) so the ride lands in history with a map
 - [ ] Send `setState` on your own pause and resume, and keep sending `world` while paused
+- [ ] If you show menus, send `controls` with an accurate `enabled` list, and `visible: false`
+      when the menu closes
 - [ ] Follow `stateChanged`; never assume a `setState` took effect
 - [ ] Handle `warning` frames visibly in development builds
 - [ ] Handle `worldTimeout` / `worldResumed` (pause your world, show a reconnect state)
@@ -816,3 +866,5 @@ Present in the protocol, absent from this build. Do not design around them.
 | Reading `course.distanceM` as the rider's distance | It is the course's own length; the rider's is `world.distanceM` |
 | Pausing with `setState` and stopping `world` frames | The deadman ramps the gradient to flat under a rider who may still be pedalling |
 | Assuming `setState` always works | It is a request; a ride that has not started cannot be paused |
+| Leaving `controls` visible after a menu closes | The rider is left holding a pad wired to nothing |
+| Listing a control your screen ignores | The rider presses a live-looking button and nothing happens, which is the exact failure `enabled` exists to prevent |

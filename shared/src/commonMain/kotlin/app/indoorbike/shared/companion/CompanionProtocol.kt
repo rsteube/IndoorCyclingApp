@@ -76,6 +76,10 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.3 added the `controls` frame and the `controlPressed` event, so a
+     * companion showing a menu on a screen across the room can borrow the
+     * phone as a remote for it.
+     *
      * 0.2 added three things, all of them additions rather than changes:
      * `telemetry.speedMps` (the drivetrain's own speed, so a companion no
      * longer has to integrate one out of power), the `course` frame (so a
@@ -88,7 +92,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 2)
+    val VERSION = ProtocolVersion(0, 3)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -100,7 +104,8 @@ object CompanionProtocol {
      * the negotiated version, for the same reason it should read
      * [HONOURED_WORLD_FIELDS] rather than assume.
      */
-    val CAPABILITIES = listOf("requestShift", "label", "summary", "course", "setState")
+    val CAPABILITIES =
+        listOf("requestShift", "label", "summary", "course", "setState", "controls")
 
     /**
      * Longest encoded polyline a `course` frame may carry.
@@ -118,6 +123,15 @@ object CompanionProtocol {
 
     /** Longest course or ride name that will be stored, in characters. */
     const val MAX_COURSE_NAME_CHARS = 120
+
+    /**
+     * Longest title or hint on a control pad, in characters.
+     *
+     * Shorter than a course name because it is read at arm's length, over a
+     * handlebar, by somebody pedalling. Anything that does not fit on one line
+     * of a phone is not going to be read at all.
+     */
+    const val MAX_CONTROL_LABEL_CHARS = 48
 
     /** WebSocket path. The version is negotiated in-band, not in the path. */
     const val PATH = "/companion"

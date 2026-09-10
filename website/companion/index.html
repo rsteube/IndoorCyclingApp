@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.2 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.3 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -624,6 +624,60 @@
       event is the answer, and it arrives for pauses you did not ask for too.
     </p>
 
+    <h3><code>controls</code> - lend the rider your phone</h3>
+
+    <p>
+      Your game is on a television across the room. The rider is on a bike, with
+      a phone on the bars and no keyboard. When you put a menu up, they have no
+      way to answer it.
+    </p>
+
+<pre><code>{ "t": "controls", "visible": true,
+  "title": "Choose a route", "hint": "Pick a lap count",
+  "enabled": ["up", "down", "enter", "back"] }</code></pre>
+
+    <p>
+      While <code>visible</code> is true the app draws a control pad on the
+      phone, and every press comes back as a <code>controlPressed</code> event
+      naming one of <code>up</code>, <code>down</code>, <code>left</code>,
+      <code>right</code>, <code>enter</code>, <code>back</code>.
+    </p>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>visible</code></td><td>Whether a controllable screen is up. When false, everything else is ignored.</td></tr>
+        <tr><td><code>title</code></td><td>What the screen is. Shown above the pad, trimmed to 48 characters.</td></tr>
+        <tr><td><code>hint</code></td><td>One line of help under the title. Same limit.</td></tr>
+        <tr><td><code>enabled</code></td><td>Which controls will actually answer. Absent or empty is legitimate for a loading state.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      <strong><code>enabled</code> is the part that matters.</strong> The app is
+      driving a screen it cannot see. It has no idea whether what is up is a list
+      of four things, a yes/no dialog, or a loading state that ignores
+      everything, so <strong>controls you do not list are drawn visibly dead
+      rather than hidden</strong>. A rider must never press something that looks
+      live and get nothing, and the pad must not reshuffle under a thumb already
+      moving toward a button.
+    </p>
+
+    <p>
+      Send a fresh frame whenever selectability changes; the last one wins. Send
+      <code>visible: false</code> when the menu closes, or the rider is left
+      holding a remote wired to nothing. The pad is taken away automatically if
+      you disconnect. An unrecognised control name is refused with a warning
+      naming it, and the rest of the frame still lands.
+    </p>
+
+    <p>
+      Nothing here reaches the trainer, the physics or the ride record. It is a
+      remote control that happens to share a socket with a bicycle.
+    </p>
+
     <h3><code>label</code>, <code>finish</code> and <code>ping</code></h3>
 
     <p>
@@ -705,6 +759,7 @@
       <thead><tr><th>Event</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td><code>gearChanged</code></td><td>Carries the new index, whether it actually <code>changed</code>, and the <code>source</code> - your request, the on-screen shifter, or the rider's handlebar buttons. <code>changed: false</code> means they are out of gears.</td></tr>
+        <tr><td><code>controlPressed</code></td><td>The rider pressed one of the controls you offered. Carries <code>control</code>. Only ever sent for a control you listed as enabled, and only while a screen is up.</td></tr>
         <tr><td><code>stateChanged</code></td><td>The ride started, paused, resumed or finished - <strong>whoever caused it</strong>. The rider has their own pause button and the phone has a stop-pedalling watchdog, so follow this rather than assuming your own request took effect.</td></tr>
         <tr><td><code>worldTimeout</code></td><td>Your frames stopped arriving and the road is being ramped away. Treat it as a bug report about your own frame loop.</td></tr>
         <tr><td><code>worldResumed</code></td><td>They started again.</td></tr>
@@ -849,6 +904,32 @@
       </tbody>
     </table>
     </div>
+
+    <h3>The light feeling at the start of a ride</h3>
+
+    <p>
+      Worth knowing before you go looking for it in your own code: the app helps
+      riders off the line, and it is not honouring your gradient any differently
+      while it does.
+    </p>
+
+    <p>
+      Pulling away from a standstill is genuinely hard. At walking pace almost
+      none of the resistance is air, so what is left is gravity, rolling, and the
+      mass of the bike and rider being accelerated. Power is force times speed,
+      so at 2 km/h the power is trivial while the force at the pedals is not:
+      the rider gets a heavy, grinding pedal and no reward for it. Outdoors the
+      answer is to stand up for three strokes. Indoors, seated, with no scenery
+      moving yet, it reads as the app being broken.
+    </p>
+
+    <p>
+      So for the first few seconds the app commands about half the real force,
+      then fades to full physics over ten seconds once the rider passes 5 km/h.
+      A ride that feels light at the start and normal thereafter is this, not
+      your world. <code>telemetry.appliedGradient</code> will confirm your
+      gradient arrived intact.
+    </p>
 
     <h3>Smoothing the gradient</h3>
 

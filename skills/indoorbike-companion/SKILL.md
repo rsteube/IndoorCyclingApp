@@ -48,6 +48,8 @@ fields. Apply them to the speed you compute, then send the result.
    phone's address is the datagram's source, never a field in the payload.
 7. **Add `course`, `setState` and `finish`.** These are what make a companion ride land in the
    rider's history looking like a ride rather than like a log file.
+8. **Add `controls`, if you show menus.** Lends the rider's phone to a screen they cannot
+   otherwise answer.
 
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
 has two untested systems and no way to tell which is wrong.
@@ -173,6 +175,40 @@ a week later. All three are optional, and all three are worth the hour.
 `finish.summary` is the short form of `course` and merges into the same place. You need one of
 the two, not both.
 
+## Menus: lend the rider your phone
+
+Your game is on a television across the room. The rider is on a bike, with a phone on the bars
+and no keyboard. When you put a menu up, they cannot answer it.
+
+`controls` fixes that. While you say a controllable screen is visible, the app draws a pad of
+up, down, left, right, enter and back, and each press comes back as a `controlPressed` event.
+
+```json
+{ "t": "controls", "visible": true, "title": "Choose a route",
+  "enabled": ["up", "down", "enter", "back"] }
+```
+
+**`enabled` is the part that matters.** The app cannot see your screen. It does not know whether
+what is up is a list of four things, a yes/no dialog, or a loading state that ignores
+everything, so it draws every control you do not list as visibly dead rather than hiding it. A
+rider must never press something that looks live and get nothing, and the pad must not reshuffle
+under a thumb already moving toward a button.
+
+Send a new frame whenever selectability changes. Send `visible: false` when the menu closes, or
+the rider is left holding a remote wired to nothing.
+
+## Do not chase the light feeling at the start of a ride
+
+The app helps riders off the line. Pulling away from a standstill is genuinely hard - almost
+none of the resistance is air at walking pace, so what is left is gravity, rolling and the mass
+of the bike, and the rider gets a heavy grinding pedal with no reward for it. For the first few
+seconds the app therefore commands about half the real force, and fades to full physics over ten
+seconds once the rider passes 5 km/h.
+
+This is entirely app-side. Your gradient is being honoured exactly as you sent it, and
+`telemetry.appliedGradient` will confirm that. If a ride feels light for the first few seconds
+and normal thereafter, that is this and not a bug in your world.
+
 ## Rates
 
 | Thing | Rate | Note |
@@ -182,6 +218,7 @@ the two, not both.
 | `requestShift` | max 10/s | Excess is warned and dropped, never an error |
 | `course` out | whenever | Merged field by field. Once at the start and once at the end is the usual shape |
 | `setState` out | on your own transitions | A request, not a command. `stateChanged` is the answer |
+| `controls` out | when a menu opens, changes or closes | The last frame wins. Do not forget `visible: false` |
 | Deadman | 1500 ms | Then the gradient ramps to flat over 2000 ms |
 
 The physics on the phone moves four times a second. A faster telemetry stream would be

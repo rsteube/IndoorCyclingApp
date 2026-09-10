@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.indoorbike.shared.companion.RemoteControls
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.ui.screens.CadenceFlankMetric
 import app.indoorbike.ui.screens.FlankMetric
@@ -97,6 +98,9 @@ fun CompanionHud(
     onShiftDown: () -> Unit,
     onShiftUp: () -> Unit,
     shiftingEnabled: Boolean,
+    /** A controllable screen the companion is showing, or null for none. */
+    remoteControls: RemoteControls? = null,
+    onControlPress: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -227,6 +231,20 @@ fun CompanionHud(
                 speedMps = speedMps,
                 distanceMeters = distanceMeters,
                 elevationGainMeters = elevationGainMeters,
+            )
+        }
+
+        // Over the HUD rather than in it. The pad is a visitor: it belongs to a
+        // menu on somebody else's screen, it comes and goes on that menu's
+        // schedule, and the ride's own readouts must not reflow every time it
+        // does. Bottom-end so it falls under the hand already on the bars.
+        if (remoteControls != null) {
+            CompanionControlPad(
+                controls = remoteControls,
+                onPress = onControlPress,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(Spacing.s4),
             )
         }
     }

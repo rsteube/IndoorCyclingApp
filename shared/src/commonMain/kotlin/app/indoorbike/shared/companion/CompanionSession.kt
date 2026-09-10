@@ -45,6 +45,15 @@ sealed interface CompanionEffect {
     /** Pause or resume the recording. A request: it can legitimately do nothing. */
     data class SetRideState(val paused: Boolean) : CompanionEffect
 
+    /**
+     * A controllable screen came up, or went away when null.
+     *
+     * Reaches the HUD and nothing else. It cannot touch the trainer, the
+     * physics or the ride record, which is the property that makes it safe to
+     * let a companion put buttons on the rider's phone at all.
+     */
+    data class SetControls(val controls: RemoteControls?) : CompanionEffect
+
     /** Cumulative totals for the ride record. Never a position. */
     data class ReportProgress(val distanceM: Double?, val ascentM: Double?) : CompanionEffect
 
@@ -168,6 +177,7 @@ class CompanionSession(
             is LabelFrame -> onLabel(frame)
             is CourseFrame -> onCourse(frame)
             is SetStateFrame -> onSetState(frame)
+            is ControlsFrame -> onControls(frame)
             is FinishFrame -> onFinish(frame)
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
@@ -401,6 +411,46 @@ class CompanionSession(
             profileMeters = profile,
         )
         if (!course.isEmpty) effects += CompanionEffect.SetCourse(course)
+        return effects
+    }
+
+    /**
+     * A controllable screen, and what will answer on it.
+     *
+     * An unrecognised control name is warned about rather than dropped in
+     * silence. The failure that prevents is an implementer sending "entre" and
+     * spending an afternoon wondering why their Enter button never appeared on
+     * the phone.
+     */
+    private fun onControls(frame: ControlsFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("controls"))
+        if (!frame.visible) return listOf(CompanionEffect.SetControls(null))
+
+        val effects = mutableListOf<CompanionEffect>()
+        val unknown = frame.enabled.filterNot(CompanionControl::isKnown).distinct()
+        if (unknown.isNotEmpty()) {
+            effects += CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.REJECTED,
+                    field = "enabled",
+                    message = "Unknown control" + (if (unknown.size > 1) "s " else " ") +
+                        unknown.joinToString(", ") { "'" + it + "'" } +
+                        "; ignored. This build knows " +
+                        CompanionControl.ALL.joinToString(", ") + ".",
+                )
+            )
+        }
+
+        val label = { text: String? ->
+            text?.take(CompanionProtocol.MAX_CONTROL_LABEL_CHARS)?.ifBlank { null }
+        }
+        effects += CompanionEffect.SetControls(
+            RemoteControls(
+                title = label(frame.title),
+                hint = label(frame.hint),
+                enabled = frame.enabled.filter(CompanionControl::isKnown).toSet(),
+            )
+        )
         return effects
     }
 

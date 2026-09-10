@@ -375,4 +375,24 @@ class CompanionDiscoveryTest {
         trainerGradePercent = 9.0,
         elapsedS = 61,
     )
+
+    @Test
+    fun `a controls frame decodes`() {
+        val decoded = CompanionCodec.decodeClientFrame(
+            """{"t":"controls","visible":true,"title":"Menu","enabled":["up","enter"]}"""
+        )
+        val frame = assertIs<ControlsFrame>(assertIs<Decoded.Ok>(decoded).frame)
+        assertTrue(frame.visible)
+        assertEquals("Menu", frame.title)
+        assertEquals(listOf("up", "enter"), frame.enabled)
+    }
+
+    @Test
+    fun `a control press encodes with the control named`() {
+        val json = CompanionCodec.encode(
+            EventFrame(event = EventFrame.CONTROL_PRESSED, control = CompanionControl.ENTER)
+        )
+        assertContains(json, """"event":"controlPressed"""")
+        assertContains(json, """"control":"enter"""")
+    }
 }

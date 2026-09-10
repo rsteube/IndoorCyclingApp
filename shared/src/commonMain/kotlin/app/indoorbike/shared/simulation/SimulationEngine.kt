@@ -181,6 +181,9 @@ class SimulationEngine(
     /** Cadence into road speed, through whatever gear the rider is in. */
     private val driveSpeed = DriveSpeed()
 
+    /** A hand off the line, fading to nothing once the rider is moving. */
+    private val launchAssist = LaunchAssist()
+
     /**
      * The acceleration term of the road load, taken off the route's own
      * integrated speed. Exact here rather than estimated: [advance] has just
@@ -248,6 +251,7 @@ class SimulationEngine(
         _position.value = route.positionAt(_distanceMeters.value)
         driveSpeed.reset()
         roadAcceleration.reset()
+        launchAssist.reset()
         _driveSpeedMps.value = 0.0
         _driveSpeedKnown.value = false
         lastSentForceNewtons = null
@@ -281,8 +285,10 @@ class SimulationEngine(
         lastSentForceNewtons = null
         sendOwed = false
         // A pause leaves stale momentum behind. Resuming must not bill the
-        // rider for an acceleration that happened while they were stopped.
+        // rider for an acceleration that happened while they were stopped, and
+        // a ride resuming from a standstill is pulling away like any other.
         roadAcceleration.reset()
+        launchAssist.reset()
         _running.value = true
         pushRoadToTrainer(force = true)
         loop = scope.launch {
@@ -377,6 +383,7 @@ class SimulationEngine(
         // out, and how hard the bike is changing speed.
         driveSpeed.update(cadenceRpm(), dt)
         roadAcceleration.update(speed, dt)
+        launchAssist.update(speed, dt)
         _driveSpeedMps.value = driveSpeed.speedMps(
             developmentMeters = _drivetrain.value.developmentMeters(_gearIndex.value),
             fallbackMps = speed,
@@ -532,8 +539,11 @@ class SimulationEngine(
         // what keeps a freewheeling rider's legs from spinning against
         // literally nothing. It scales with the gear, so choosing a big gear on
         // a descent still leaves something to push against.
+        // The floor is not assisted: it is already a few newtons, and a rider
+        // pulling away should still feel a chain rather than nothing at all.
         val floor = FREEWHEEL_DRAG_NEWTONS * gearFactor
-        return softCeiling((road * gearFactor).coerceAtLeast(floor))
+        val commanded = road * gearFactor * launchAssist.factor
+        return softCeiling(commanded.coerceAtLeast(floor))
     }
 
     /**

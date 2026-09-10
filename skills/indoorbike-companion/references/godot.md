@@ -19,7 +19,7 @@ signal welcomed(frame: Dictionary)
 signal link_closed(code: int, reason: String)
 
 const PROTO_MIN := "0.1"
-const PROTO_MAX := "0.2"
+const PROTO_MAX := "0.3"
 const WORLD_HZ := 10.0
 
 var _socket := WebSocketPeer.new()
@@ -85,7 +85,7 @@ func _send_hello() -> void:
             "platform": OS.get_name(),
         },
         "role": "controller",       # exact string; any other value grants observer
-        "capabilities": ["summary", "course", "setState"],
+        "capabilities": ["summary", "course", "setState", "controls"],
     })
 
 
@@ -190,6 +190,54 @@ they stop and start.
     else:
         speed_mps = _integrate_from_power(frame.get("power", 0), delta)
 ```
+
+## Menus: hand the rider a remote
+
+Godot menus are the case `controls` exists for. The rider is on the bike and your menu is on a
+television; without this they cannot answer it.
+
+Tell the app what is up and what will answer, and act on the presses that come back. The
+`enabled` list should be built from the same state your own focus handling uses, so the two can
+never disagree.
+
+```gdscript
+func show_menu(title: String, can_move: bool, can_confirm: bool) -> void:
+    var enabled := PackedStringArray()
+    if can_move:
+        enabled.append_array(["up", "down"])
+    if can_confirm:
+        enabled.append("enter")
+    enabled.append("back")
+    _send({
+        "t": "controls",
+        "visible": true,
+        "title": title,
+        "enabled": Array(enabled),
+    })
+
+func hide_menu() -> void:
+    # Never skip this. A pad left up is a remote wired to nothing.
+    _send({"t": "controls", "visible": false})
+```
+
+Presses arrive as events, so feed them into the same input path the keyboard uses rather than a
+second one that will drift:
+
+```gdscript
+func _on_event(frame: Dictionary) -> void:
+    match frame.get("event", ""):
+        "controlPressed":
+            match frame.get("control", ""):
+                "up":    _menu.focus_previous()
+                "down":  _menu.focus_next()
+                "left":  _menu.adjust(-1)
+                "right": _menu.adjust(1)
+                "enter": _menu.activate_focused()
+                "back":  hide_menu()
+```
+
+Call `hide_menu()` from the menu's own close path, not from the `back` handler alone: the rider
+can also close it on the television, and the pad has to go away either way.
 
 ## Interpolate telemetry
 

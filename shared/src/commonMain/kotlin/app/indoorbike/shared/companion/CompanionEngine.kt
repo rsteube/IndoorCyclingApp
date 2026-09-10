@@ -20,6 +20,7 @@ import app.indoorbike.shared.physics.RideDynamics
 import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.simulation.DriveSpeed
 import app.indoorbike.shared.simulation.Drivetrain
+import app.indoorbike.shared.simulation.LaunchAssist
 import app.indoorbike.shared.simulation.RoadAcceleration
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.util.getCurrentEpochMillis
@@ -223,7 +224,10 @@ class CompanionEngine(
      */
     private val roadAcceleration = RoadAcceleration()
 
-    /** Wall clock of the last [advance], for the two filters above. */
+    /** A hand off the line, fading to nothing once the rider is moving. */
+    private val launchAssist = LaunchAssist()
+
+    /** Wall clock of the last [advance], for the filters above. */
     private var lastAdvanceMs = 0L
     private var advanceSeeded = false
 
@@ -263,6 +267,7 @@ class CompanionEngine(
         _driveSpeedMps.value = 0.0
         _driveSpeedKnown.value = false
         _course.value = CompanionCourse()
+        launchAssist.reset()
         driveSpeed.reset()
         roadAcceleration.reset()
         advanceSeeded = false
@@ -279,6 +284,9 @@ class CompanionEngine(
         // rider for an acceleration that happened while they were stopped.
         roadAcceleration.reset()
         advanceSeeded = false
+        // A ride that is starting, or restarting after a pause, is pulling away
+        // from a standstill either way.
+        launchAssist.reset()
         _running.value = true
         pushRoadToTrainer(force = true)
         loop = scope.launch {
@@ -415,6 +423,7 @@ class CompanionEngine(
         advanceSeeded = true
         driveSpeed.update(cadenceRpm(), dt)
         roadAcceleration.update(_speedMps.value, dt)
+        launchAssist.update(_speedMps.value, dt)
         _driveSpeedMps.value = driveSpeed.speedMps(
             developmentMeters = _drivetrain.value.developmentMeters(_gearIndex.value),
             fallbackMps = _speedMps.value,
@@ -467,8 +476,11 @@ class CompanionEngine(
             accelerationMps2 = roadAcceleration.mps2,
             totalMassKg = totalMass,
         )
+        // The floor is not assisted: it is already a few newtons, and a rider
+        // pulling away should still feel a chain rather than nothing at all.
         val floor = SimulationEngine.FREEWHEEL_DRAG_NEWTONS * gearFactor
-        return SimulationEngine.softCeiling((road * gearFactor).coerceAtLeast(floor))
+        val commanded = road * gearFactor * launchAssist.factor
+        return SimulationEngine.softCeiling(commanded.coerceAtLeast(floor))
     }
 
     /**

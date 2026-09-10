@@ -101,6 +101,7 @@ object CompanionCodec {
                 "requestShift" -> json.decodeFromJsonElement(RequestShiftFrame.serializer(), root)
                 "label" -> json.decodeFromJsonElement(LabelFrame.serializer(), root)
                 "course" -> json.decodeFromJsonElement(CourseFrame.serializer(), root)
+                "controls" -> json.decodeFromJsonElement(ControlsFrame.serializer(), root)
                 "setState" -> json.decodeFromJsonElement(SetStateFrame.serializer(), root)
                 "finish" -> json.decodeFromJsonElement(FinishFrame.serializer(), root)
                 "ping" -> json.decodeFromJsonElement(PingFrame.serializer(), root)

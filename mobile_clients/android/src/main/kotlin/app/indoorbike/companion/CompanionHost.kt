@@ -20,6 +20,7 @@ import app.indoorbike.shared.companion.BikeInfo
 import app.indoorbike.shared.companion.CompanionAnnouncement
 import app.indoorbike.shared.companion.CompanionCodec
 import app.indoorbike.shared.companion.CompanionConfig
+import app.indoorbike.shared.companion.CompanionControl
 import app.indoorbike.shared.companion.CompanionEffect
 import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.companion.CompanionProtocol
@@ -29,6 +30,7 @@ import app.indoorbike.shared.companion.CompanionState
 import app.indoorbike.shared.companion.EventFrame
 import app.indoorbike.shared.companion.GearInfo
 import app.indoorbike.shared.companion.HelloFrame
+import app.indoorbike.shared.companion.RemoteControls
 import app.indoorbike.shared.companion.RiderInfo
 import app.indoorbike.shared.companion.ServerFrame
 import app.indoorbike.shared.companion.TelemetryFrame
@@ -158,6 +160,17 @@ class CompanionHost(
 
     private val _status = MutableStateFlow(CompanionStatus())
     val status: StateFlow<CompanionStatus> = _status.asStateFlow()
+
+    /**
+     * A controllable screen the companion is showing, or null for none.
+     *
+     * Its own flow rather than a field on [CompanionStatus] because it has
+     * nothing to do with pairing and everything to do with the HUD, and
+     * because it changes on its own schedule: a menu opening should not make
+     * every pairing-card observer recompose.
+     */
+    private val _remoteControls = MutableStateFlow<RemoteControls?>(null)
+    val remoteControls: StateFlow<RemoteControls?> = _remoteControls.asStateFlow()
 
     private var server: EmbeddedServer<*, *>? = null
     private var telemetryJob: Job? = null
@@ -322,6 +335,7 @@ class CompanionHost(
         val closing = connections.toList()
         connections.clear()
         controller = null
+        _remoteControls.value = null
         ridePrepared = false
 
         if (running != null || closing.isNotEmpty()) {
@@ -423,6 +437,10 @@ class CompanionHost(
             connections.remove(conn)
             if (controller === conn) {
                 controller = null
+                // Whatever menu it was showing is gone with it. Leaving the pad
+                // up would offer the rider buttons with nothing on the other
+                // end of them.
+                _remoteControls.value = null
                 Log.i(TAG, "Controller disconnected; the road will ramp to flat")
             }
             publishConnectionCounts()
@@ -477,7 +495,10 @@ class CompanionHost(
                     // of the code and reason that explain why it was dropped,
                     // which defeats the whole point of sending both.
                     connections.remove(conn)
-                    if (controller === conn) controller = null
+                    if (controller === conn) {
+                        controller = null
+                        _remoteControls.value = null
+                    }
                     runCatching {
                         conn.write.withLock {
                             conn.ws.close(
@@ -527,6 +548,8 @@ class CompanionHost(
                     )
                 }
 
+                is CompanionEffect.SetControls -> _remoteControls.value = effect.controls
+
                 is CompanionEffect.SetRideState -> {
                     // Requests, not commands. `pauseWorkout` ignores anything
                     // that is not an active ride and `resumeWorkout` anything
@@ -556,6 +579,29 @@ class CompanionHost(
     }
 
     // Outbound ───────────────────────────────────────────────────────────────
+
+    /**
+     * The rider pressed a control on the pad.
+     *
+     * Refused unless the companion currently says that control is live, so a
+     * press cannot arrive for a menu that has closed or for a button the
+     * companion never offered. The check is here rather than in the UI because
+     * the UI's idea of what is enabled is a frame old at worst, and the
+     * companion should never have to defend against that.
+     *
+     * Sent to the controller alone. An observer did not put the menu up and has
+     * no business being told somebody is steering it.
+     */
+    fun pressControl(control: String) {
+        if (!CompanionControl.isKnown(control)) return
+        if (_remoteControls.value?.isEnabled(control) != true) return
+        val holder = controller ?: return
+        scope.launch {
+            holder.send(
+                EventFrame(event = EventFrame.CONTROL_PRESSED, control = control)
+            )
+        }
+    }
 
     private fun broadcastGearChanged(index: Int, changed: Boolean, source: String) {
         broadcast(

@@ -20,6 +20,8 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 private const val TOKEN = "8F3K2M"
@@ -562,8 +564,12 @@ class CompanionVersionCompatibilityTest {
     @Test
     fun `a current companion gets the current version`() {
         val s = session()
-        val welcome = s.onFrame(hello(min = "0.1", max = "0.2"), nowMs = 0).sent<WelcomeFrame>()
-        assertEquals(CompanionProtocol.VERSION.toString(), welcome.proto)
+        // Spelled from the constant on both sides. Pinning the client's max at
+        // whatever today's version happens to be turns every future bump into a
+        // failing test that says nothing about compatibility.
+        val current = CompanionProtocol.VERSION.toString()
+        val welcome = s.onFrame(hello(min = "0.1", max = current), nowMs = 0).sent<WelcomeFrame>()
+        assertEquals(current, welcome.proto)
     }
 
     /**
@@ -576,5 +582,101 @@ class CompanionVersionCompatibilityTest {
         val welcome = s.onFrame(hello(), nowMs = 0).sent<WelcomeFrame>()
         assertContains(welcome.capabilities, "course")
         assertContains(welcome.capabilities, "setState")
+    }
+}
+
+/**
+ * Borrowing the phone as a remote for a screen the app cannot see.
+ */
+class CompanionControlsTest {
+
+    private fun ready(): CompanionSession = session().also { it.onFrame(hello(), nowMs = 0) }
+
+    @Test
+    fun `a controllable screen arrives with what will answer on it`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"controls","visible":true,"title":"Choose a route",""" +
+                """"hint":"Pick a lap count","enabled":["up","down","enter","back"]}""",
+            nowMs = 1_000,
+        )
+        val controls = assertNotNull(effects.pick<CompanionEffect.SetControls>().controls)
+        assertEquals("Choose a route", controls.title)
+        assertEquals("Pick a lap count", controls.hint)
+        assertEquals(setOf("up", "down", "enter", "back"), controls.enabled)
+        assertTrue(controls.hasAnyEnabled)
+        assertFalse(controls.isEnabled(CompanionControl.LEFT))
+    }
+
+    @Test
+    fun `dismissing takes the pad away`() {
+        val s = ready()
+        s.onFrame("""{"t":"controls","visible":true,"enabled":["enter"]}""", nowMs = 1_000)
+        val effects = s.onFrame("""{"t":"controls","visible":false}""", nowMs = 1_100)
+        assertNull(effects.pick<CompanionEffect.SetControls>().controls)
+    }
+
+    /**
+     * The failure this prevents is an implementer spending an afternoon
+     * wondering why their Enter never appeared on the phone.
+     */
+    @Test
+    fun `a misspelt control is named in a warning rather than dropped in silence`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"controls","visible":true,"enabled":["up","entre"]}""",
+            nowMs = 1_000,
+        )
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.REJECTED, warning.code)
+        assertEquals("enabled", warning.field)
+        assertContains(warning.message.orEmpty(), "entre")
+
+        // The rest of the frame still lands.
+        val controls = assertNotNull(effects.pick<CompanionEffect.SetControls>().controls)
+        assertEquals(setOf("up"), controls.enabled)
+    }
+
+    @Test
+    fun `a screen with nothing selectable is still a screen`() {
+        // A loading state is a legitimate thing to be showing, and the pad
+        // going dead is more honest than the pad vanishing.
+        val s = ready()
+        val controls = assertNotNull(
+            s.onFrame("""{"t":"controls","visible":true,"title":"Loading"}""", nowMs = 1_000)
+                .pick<CompanionEffect.SetControls>().controls
+        )
+        assertFalse(controls.hasAnyEnabled)
+        assertEquals("Loading", controls.title)
+    }
+
+    @Test
+    fun `labels too long to read at arm's length are trimmed`() {
+        val s = ready()
+        val controls = assertNotNull(
+            s.onFrame(
+                """{"t":"controls","visible":true,"title":"${"x".repeat(400)}"}""",
+                nowMs = 1_000,
+            ).pick<CompanionEffect.SetControls>().controls
+        )
+        assertEquals(
+            CompanionProtocol.MAX_CONTROL_LABEL_CHARS,
+            assertNotNull(controls.title).length,
+        )
+    }
+
+    @Test
+    fun `an observer may not put buttons on the rider's phone`() {
+        val s = session()
+        s.onFrame(hello(role = HelloFrame.ROLE_OBSERVER), nowMs = 0)
+        val error = s.onFrame("""{"t":"controls","visible":true}""", nowMs = 1_000)
+            .sent<ErrorFrame>()
+        assertEquals(CompanionError.NOT_CONTROLLER, error.code)
+    }
+
+    @Test
+    fun `the welcome advertises the capability`() {
+        val s = session()
+        assertContains(s.onFrame(hello(), nowMs = 0).sent<WelcomeFrame>().capabilities, "controls")
     }
 }

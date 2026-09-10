@@ -158,8 +158,12 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.2, and this build accepts 0.1 as well.** 0.2 added three things, all of
-them additions:
+**Current version: 0.3, and this build accepts everything back to 0.1.**
+
+0.3 added the `controls` frame and the `controlPressed` event, so a companion showing a menu on
+a screen across the room can borrow the phone as a remote for it.
+
+0.2 added three things, all of them additions:
 
 - `telemetry.speedMps`, the drivetrain's own speed, so a companion no longer has to integrate
   one out of power. This is the one you should adopt first: it is why speed used to sit at zero
@@ -392,6 +396,42 @@ and it is broadcast for rider-initiated pauses too - the phone has its own pause
 stop-pedalling watchdog, and a foreground service that can force one - so a companion should
 follow `stateChanged` rather than assume its own request took effect.
 
+#### `controls`
+
+A controllable screen is up, or has gone away. Requires the `controls` capability.
+
+```jsonc
+{ "t": "controls", "visible": true,
+  "title": "Choose a route", "hint": "Pick a lap count",
+  "enabled": ["up", "down", "enter", "back"] }
+```
+
+**Why this exists.** Your game is on a television across the room; the rider is on a bike with a
+phone on the bars. When you put a menu up, they have no way to answer it. This lends them the
+phone as a remote: while `visible` is true the app draws a control pad, and every press comes
+back as a `controlPressed` event.
+
+| Field | Type | Notes |
+|---|---|---|
+| `visible` | bool | Whether a controllable screen is up. When false, every other field is ignored |
+| `title` | string | What the screen is. Shown above the pad. Trimmed to 48 characters |
+| `hint` | string | One line of help, shown under the title. Same limit |
+| `enabled` | string[] | Which controls will answer. Any of `up`, `down`, `left`, `right`, `enter`, `back` |
+
+**`enabled` is the whole point.** The app is driving a screen it cannot see, and has no idea
+whether what is up is a list of four things, a yes/no dialog, or a loading state that ignores
+everything. Controls you do not list are drawn **visibly dead** rather than hidden, so a rider
+never presses something that looks live and gets nothing, and the pad never reshuffles under a
+thumb that is already moving toward it.
+
+An unrecognised name is refused with a `rejected` warning naming it, and the rest of the frame
+still lands. Send a fresh frame whenever what is selectable changes; the last one wins. Send
+`visible: false` when the screen is dismissed, or the rider is left holding a pad for a menu
+that is not there.
+
+Nothing here reaches the trainer, the physics or the ride record. It is a remote control that
+happens to share a socket with a bicycle.
+
 #### `finish`
 
 End the ride. Companion mode has no route, so nothing else can know when it is over.
@@ -520,6 +560,7 @@ and mean nothing. Do not read an absent field as a standstill: fall back to your
 
 ```jsonc
 { "t": "event", "event": "gearChanged", "index": 12, "changed": true, "source": "zwiftClick" }
+{ "t": "event", "event": "controlPressed", "control": "enter" }
 { "t": "event", "event": "riderInput", "input": "plus" }
 { "t": "event", "event": "stateChanged", "state": "paused", "reason": "autoPause" }
 { "t": "event", "event": "worldTimeout", "fallback": "flat" }

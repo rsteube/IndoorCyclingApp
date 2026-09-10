@@ -182,6 +182,36 @@ data class SetStateFrame(
     val t: String = "setState",
 ) : ClientFrame
 
+/**
+ * A controllable screen is up, or has gone away.
+ *
+ * The app is driving a screen it cannot see, so this is how it learns there is
+ * something to steer and what will answer. While [visible] is true the rider
+ * gets a control pad on the phone; every press comes back as a
+ * [EventFrame.CONTROL_PRESSED] event naming one of [CompanionControl.ALL].
+ *
+ * Send a fresh frame whenever what is selectable changes; the last one wins.
+ * Send `visible: false` when the screen is dismissed, or the rider is left
+ * holding a pad for a menu that is no longer there.
+ *
+ * @param visible whether a controllable screen is up. When false, every other
+ *   field is ignored.
+ * @param title what the screen is, e.g. "Choose a route". Shown above the pad.
+ * @param hint one line of help, shown under the title.
+ * @param enabled which controls will actually answer. **Anything not listed is
+ *   drawn visibly dead**, which is the point: a rider must never press
+ *   something that looks live and get nothing. An unrecognised name is refused
+ *   with a warning rather than silently dropped.
+ */
+@Serializable
+data class ControlsFrame(
+    val visible: Boolean,
+    val title: String? = null,
+    val hint: String? = null,
+    val enabled: List<String> = emptyList(),
+    val t: String = "controls",
+) : ClientFrame
+
 /** Name the ride. The last value before [FinishFrame] wins. */
 @Serializable
 data class LabelFrame(
@@ -369,6 +399,8 @@ data class EventFrame(
     /** `zwiftClick`, `screen` or `companion`. */
     val source: String? = null,
     val input: String? = null,
+    /** For [CONTROL_PRESSED]: which of [CompanionControl.ALL] the rider pressed. */
+    val control: String? = null,
     val state: String? = null,
     val reason: String? = null,
     val fallback: String? = null,
@@ -377,6 +409,13 @@ data class EventFrame(
 ) : ServerFrame {
     companion object {
         const val GEAR_CHANGED = "gearChanged"
+
+        /**
+         * The rider pressed one of the controls a `controls` frame offered.
+         * Carries [EventFrame.control]. Only ever sent while a controllable
+         * screen is up and only for a control that was listed as enabled.
+         */
+        const val CONTROL_PRESSED = "controlPressed"
         const val RIDER_INPUT = "riderInput"
         const val STATE_CHANGED = "stateChanged"
         const val WORLD_TIMEOUT = "worldTimeout"

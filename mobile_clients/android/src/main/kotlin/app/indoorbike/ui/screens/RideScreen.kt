@@ -296,6 +296,9 @@ fun RideScreen(
     val companionEngine = container.companionEngine
     val companionHost = container.companionHost
     val companionStatus by companionHost.status.collectAsState()
+    // A menu on the companion's screen, when it has one up. Null the rest of
+    // the time, which is nearly always.
+    val companionControls by companionHost.remoteControls.collectAsState()
     val companionGradient by companionEngine.gradient.collectAsState()
     val companionSpeed by companionEngine.speedMps.collectAsState()
     val companionDistance by companionEngine.distanceMeters.collectAsState()
@@ -609,6 +612,8 @@ fun RideScreen(
                         onShiftDown = { companionEngine.shiftDown() },
                         onShiftUp = { companionEngine.shiftUp() },
                         shiftingEnabled = state != WorkoutState.Countdown,
+                        remoteControls = companionControls,
+                        onControlPress = companionHost::pressControl,
                         modifier = Modifier.fillMaxWidth().weight(1f),
                     )
                     }
