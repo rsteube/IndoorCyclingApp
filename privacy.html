@@ -114,7 +114,9 @@
         phone, sent once to that companion, and never sent anywhere else. It is
         <strong>excluded from Android's Auto Backup and from phone-to-phone transfer</strong>,
         and is never written to a Backup &amp; sync slice, so it does not leave the device you
-        agreed to put it on. You can remove any pairing, which deletes the key.</li>
+        agreed to put it on. Companion mode lists every companion you have paired, and
+        forgetting one there deletes its key immediately; that companion needs a pairing
+        code again.</li>
       <li><strong>Backup &amp; sync slices (only when you've configured a sync folder):</strong> a single JSON file per device, written into the folder you chose. Each slice carries: the rides you've recorded on this device (date, duration, average power / cadence / heart rate - <em>not</em> the per-second telemetry), the imported workouts in your library (with the source-repo attribution sidecar), your profile values (FTP, weight, max HR, onboarding flag, favourites, Intervals.icu athlete ID and auto-upload toggle), and a stable per-install device id + label. The Intervals.icu API key is <strong>never</strong> written to a slice. Bluetooth pairings are not written either; they're hardware-local, and neither are companion pairing keys.</li>
     </ul>
     <p>
