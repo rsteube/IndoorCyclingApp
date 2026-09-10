@@ -106,8 +106,12 @@ fun CompanionPairingDialog(
                     modifier = Modifier.weight(1f),
                 )
                 PrimaryBtn(
-                    text = "Remember it",
+                    text = "Remember",
                     onClick = onAccept,
+                    // PrimaryBtn leads with a play arrow by default, which
+                    // belongs on "start a ride" and not on a consent dialog.
+                    // It also ate enough width to clip the label to "Remem".
+                    leadingIcon = null,
                     modifier = Modifier.weight(1f),
                 )
             }

@@ -126,6 +126,8 @@ fun CompanionScreen(
     // A companion asks to be remembered right after it connects, which is
     // usually while this screen is still up.
     val pendingPairing by host.pendingPairing.collectAsState()
+    // The other half of that dialog: it promises the trust can be undone here.
+    val paired by host.pairedCompanions.collectAsState()
     pendingPairing?.let {
         CompanionPairingDialog(
             pending = it,
@@ -194,6 +196,17 @@ fun CompanionScreen(
                 }
                 item(key = "code") {
                     PairingCodeCard(code = status.token)
+                }
+            }
+
+            // Outside the `running` branch: a rider should be able to prune
+            // this list on a night when the socket refuses to open.
+            if (paired.isNotEmpty()) {
+                item(key = "paired") {
+                    PairedCompanionsCard(
+                        companions = paired,
+                        onForget = host::forgetPairing,
+                    )
                 }
             }
 

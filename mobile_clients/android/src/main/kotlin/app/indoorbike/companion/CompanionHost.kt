@@ -198,6 +198,17 @@ class CompanionHost(
     @Volatile
     private var pairedKeys: Map<String, String> = emptyMap()
 
+    /**
+     * The rider's paired companions, for the screen that lets them take a
+     * trust back.
+     *
+     * A flow rather than a suspend call the screen makes once, because the list
+     * changes underneath it: a companion can be paired while that very screen
+     * is open, and a list that only loaded on entry would not show it.
+     */
+    private val _pairedCompanions = MutableStateFlow<List<PairedCompanion>>(emptyList())
+    val pairedCompanions: StateFlow<List<PairedCompanion>> = _pairedCompanions.asStateFlow()
+
     private var server: EmbeddedServer<*, *>? = null
     private var telemetryJob: Job? = null
     private var startJob: Job? = null
@@ -259,6 +270,10 @@ class CompanionHost(
         )
 
         startJob = scope.launch {
+            // Before the server, and outside the try: the rider should still be
+            // able to see and prune their paired companions on a night when the
+            // socket refuses to open.
+            refreshPairedCompanions()
             try {
                 // Port 0 asks the OS for a free one, which is the right answer
                 // for something that only exists for the length of a ride: a
@@ -300,10 +315,6 @@ class CompanionHost(
                         paired = controller != null,
                     )
                 }
-
-                // Read once, up front: a handshake cannot wait on disk.
-                pairedKeys = pairedStore?.all()?.associate { it.deviceId to it.keyHex }
-                    ?: emptyMap()
 
                 engine.onGearChanged = ::broadcastGearChanged
                 engine.onRoadStaleChanged = ::broadcastRoadStale
@@ -593,6 +604,7 @@ class CompanionHost(
                 is CompanionEffect.SavePairing -> {
                     pairedKeys = pairedKeys + (effect.companion.deviceId to effect.companion.keyHex)
                     pairedStore?.save(effect.companion)
+                    refreshPairedCompanions()
                     Log.i(TAG, "Paired with a companion; it will connect without a code from now on")
                 }
 
@@ -601,6 +613,7 @@ class CompanionHost(
                     // obvious when they come to prune it.
                     pairedStore?.find(effect.deviceId)?.let {
                         pairedStore.save(it.copy(lastSeenEpochMs = System.currentTimeMillis()))
+                        refreshPairedCompanions()
                     }
                 }
 
@@ -679,19 +692,39 @@ class CompanionHost(
         }
     }
 
-    /** Everything the rider has trusted, for a list they can prune. */
-    suspend fun pairedCompanions(): List<PairedCompanion> = pairedStore?.all() ?: emptyList()
-
     /**
      * Take the trust back.
      *
      * Both copies, in memory and on disk, because the in-memory one is what a
      * handshake actually consults and a forget that left it behind would be a
      * forget that did nothing until the next restart.
+     *
+     * The already-connected companion is deliberately left alone. It got in
+     * honestly and the rider is revoking future silent access, not ending the
+     * ride under themselves; **Take back control** is the button for that.
      */
-    suspend fun forgetPairing(deviceId: String) {
+    fun forgetPairing(deviceId: String) {
         pairedKeys = pairedKeys - deviceId
-        pairedStore?.forget(deviceId)
+        scope.launch {
+            pairedStore?.forget(deviceId)
+            refreshPairedCompanions()
+        }
+    }
+
+    /**
+     * Reload both views of the paired companions: the list the card is drawn
+     * from, and the key lookup a handshake consults.
+     *
+     * One function on purpose. They were two, and a refactor moved the list
+     * into a flow while quietly leaving the keys behind, so a paired companion
+     * was welcomed on its pairing code instead of being challenged. Nothing
+     * failed loudly - it just silently stopped being paired. Keeping the two
+     * derived from one read means that cannot happen again.
+     */
+    private suspend fun refreshPairedCompanions() {
+        val all = pairedStore?.all() ?: emptyList()
+        _pairedCompanions.value = all
+        pairedKeys = all.associate { it.deviceId to it.keyHex }
     }
 
     /**

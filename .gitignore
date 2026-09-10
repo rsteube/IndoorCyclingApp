@@ -41,3 +41,7 @@ play-service-account.json
 # fastlane run artefacts.
 mobile_clients/android/fastlane/report.xml
 mobile_clients/android/fastlane/README.md
+
+# Python bytecode, from running the companion test harness in scripts/.
+__pycache__/
+*.pyc

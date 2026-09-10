@@ -789,9 +789,10 @@ the position pairing exists to get out of.
   everything. Generate one once, keep it forever, never reuse one between two companions.
 - **Keep the key somewhere private** and never log it. It authenticates you to somebody's
   trainer.
-- **A forgotten pairing falls back, it does not fail shut.** If the rider forgets you on the
-  phone, your `hello` gets the ordinary unauthorized answer and the rider can pair again with
-  the code. Handle that rather than assuming a stored key works forever.
+- **A forgotten pairing falls back, it does not fail shut.** Companion mode lists every paired
+  companion and the rider can forget one at any time, with no confirmation step. When they do,
+  your `hello` gets the ordinary unauthorized answer and they can pair again with the code.
+  Handle that rather than assuming a stored key works forever.
 - **Everything is lowercase hex.** No base64, no padding rules, no alphabet variants.
 
 ### What it does not do

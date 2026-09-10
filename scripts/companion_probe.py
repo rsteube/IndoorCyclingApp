@@ -37,6 +37,7 @@ the value here is that a scenario you ran last month still runs the same way.
 import argparse
 import base64
 import hashlib
+import hmac
 import json
 import os
 import socket
@@ -44,6 +45,7 @@ import struct
 import sys
 import threading
 import time
+import uuid
 
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DISCOVERY_PORT = 47601
@@ -52,6 +54,51 @@ PATH = "/companion"
 
 # Debug builds pin the pairing code so nobody has to squint at a tablet.
 DEBUG_CODE = "AAAAAA"
+
+# Permanent pairing. Kept in the user's home rather than beside the script, so
+# a checkout is never a place where somebody's trainer key is sitting.
+STATE_PATH = os.path.expanduser("~/.indoorbike_companion_probe.json")
+PROOF_PREFIX = "indoorbike-companion-v1"
+
+
+def load_state():
+    try:
+        with open(STATE_PATH, encoding="utf-8") as f:
+            state = json.load(f)
+    except (IOError, OSError, ValueError):
+        state = {}
+    # One identity, generated once and kept forever. It is not a credential:
+    # it says which pairing to look up and the proof decides the rest.
+    if not state.get("deviceId"):
+        state["deviceId"] = str(uuid.uuid4())
+        save_state(state)
+    state.setdefault("pairings", {})
+    return state
+
+
+def save_state(state):
+    try:
+        with open(STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(state, f, indent=2)
+        # Best effort: on a POSIX box, keep the key out of other users' reach.
+        try:
+            os.chmod(STATE_PATH, 0o600)
+        except OSError:
+            pass
+    except (IOError, OSError) as e:
+        print("  ! could not save pairing state: %s" % e)
+
+
+def pair_proof(key_hex, role, app_nonce, my_nonce):
+    """hex(HMAC_SHA256(keyBytes, "prefix:role:appNonce:myNonce")).
+
+    The key is the raw bytes the stored hex decodes to; everything else is the
+    hex strings exactly as they crossed the wire.
+    """
+    message = "%s:%s:%s:%s" % (PROOF_PREFIX, role, app_nonce, my_nonce)
+    return hmac.new(
+        bytes.fromhex(key_hex), message.encode(), hashlib.sha256
+    ).hexdigest()
 
 
 # ── WebSocket, the little of it a companion needs ─────────────────────────────
@@ -188,10 +235,13 @@ def discover(timeout=8.0):
 # ── The companion ─────────────────────────────────────────────────────────────
 
 class Probe:
-    def __init__(self, ws, verbose=True):
+    def __init__(self, ws, verbose=True, state=None):
         self.ws = ws
         self.verbose = verbose
+        self.state = state if state is not None else {"deviceId": "probe", "pairings": {}}
         self.seq = 0
+        self.paired_ok = None      # True/False once a challenge has been answered
+        self.pair_result = None    # "paired" / "declined" once asked
         self.welcome = None
         self.telemetry = None
         self.events = []
@@ -230,10 +280,21 @@ class Probe:
         if t == "welcome":
             self.welcome = frame
             self.gears = frame.get("gears", [])
+            self._check_app_proof(frame)
             print("  <- welcome proto=%s app=%s role=%s" % (
                 frame.get("proto"), frame.get("app"), frame.get("role")))
             print("     capabilities: %s" % ", ".join(frame.get("capabilities", [])))
             print("     %d gears, currently %d" % (len(self.gears), frame.get("gearIndex", -1)))
+        elif t == "challenge":
+            self._answer_challenge(frame)
+        elif t == "paired":
+            self.state["pairings"][frame["deviceId"]] = frame["key"]
+            save_state(self.state)
+            self.pair_result = "paired"
+            print("  <- PAIRED with %s. Key stored; no code needed next time." % frame.get("name"))
+        elif t == "pairDeclined":
+            self.pair_result = "declined"
+            print("  <- pairing declined: %s" % frame.get("reason"))
         elif t == "telemetry":
             self.telemetry = frame
         elif t == "event":
@@ -252,19 +313,59 @@ class Probe:
             self.errors.append(frame)
             print("  <- ERROR [%s] %s" % (frame.get("code"), frame.get("message", "")))
 
+    def _answer_challenge(self, frame):
+        app_device = frame.get("deviceId", "")
+        key = self.state["pairings"].get(app_device)
+        if not key:
+            print("  <- CHALLENGE from %s but no key stored for it" % app_device)
+            self.paired_ok = False
+            return
+        # A fresh nonce every connection. Caching this would be signing
+        # something only the app chose, which is most of the way back to a
+        # recording being useful.
+        my_nonce = os.urandom(16).hex()
+        self._challenge = (key, frame["nonce"], my_nonce)
+        print("  <- challenge from a phone we know; proving it")
+        self.send({
+            "t": "pairProof",
+            "nonce": my_nonce,
+            "proof": pair_proof(key, "companion", frame["nonce"], my_nonce),
+        })
+
+    def _check_app_proof(self, frame):
+        """The half a companion is most likely to skip, and must not."""
+        pending = getattr(self, "_challenge", None)
+        if not pending:
+            return
+        key, app_nonce, my_nonce = pending
+        self._challenge = None
+        want = pair_proof(key, "app", app_nonce, my_nonce)
+        if hmac.compare_digest(want, frame.get("proof", "")):
+            self.paired_ok = True
+            print("  <- the phone proved itself too. Connected with no code.")
+        else:
+            self.paired_ok = False
+            print("  !! the phone could NOT prove it holds the pairing key")
+
     def send(self, frame):
         if self.verbose:
             print("  -> %s" % json.dumps(frame))
         self.ws.send_text(json.dumps(frame))
 
     def hello(self, code, name="companion_probe"):
+        # Both the token and the deviceId, always. If the phone knows us it
+        # challenges and ignores the code; if it does not, the code gets us in.
+        # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.5",
+            "protoMin": "0.1", "protoMax": "0.6",
             "token": code,
+            "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
             "role": "controller",
-            "capabilities": ["summary", "course", "setState", "controls", "drivetrain"],
+            "capabilities": [
+                "summary", "course", "setState", "controls", "drivetrain", "pair",
+            ],
         })
         for _ in range(50):
             if self.welcome or self.errors:
@@ -402,7 +503,26 @@ def scenario_controls(p, args):
     print("\n%d press(es): %s" % (len(presses), [e.get("control") for e in presses]))
 
 
+def scenario_pair(p, args):
+    """Ask to be remembered, then prove it worked."""
+    if p.welcome is not None and p.paired_ok:
+        print("\nalready paired: this connection needed no code at all.")
+        return
+
+    print("\nasking to be remembered; accept the prompt on the phone")
+    p.send({"t": "pairRequest", "name": "companion_probe"})
+    deadline = time.time() + args.menu_seconds
+    while time.time() < deadline and p.pair_result is None and not p._stop.is_set():
+        # Keep the road coming: a dialog does not stop the deadman.
+        p.drive(0.5, gradient=0.0)
+    if p.pair_result == "paired":
+        print("\nrun again without --scenario pair to connect with no code.")
+    elif p.pair_result is None:
+        print("\nnobody answered the prompt.")
+
+
 SCENARIOS = {
+    "pair": scenario_pair,
     "smoke": scenario_smoke,
     "world": scenario_world,
     "controls": scenario_controls,
@@ -437,14 +557,21 @@ def main():
             host, port, beacon.get("app"), beacon.get("proto")))
 
     print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
+    state = load_state()
+    print("this probe's deviceId: %s" % state["deviceId"])
+    if state["pairings"]:
+        print("paired with %d phone(s) already" % len(state["pairings"]))
+
     ws = WebSocket(host, port)
-    probe = Probe(ws)
+    probe = Probe(ws, state=state)
     probe.start()
 
     try:
         if not probe.hello(args.code):
-            print("handshake refused. Wrong pairing code?")
+            print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")
             return 1
+        if probe.paired_ok:
+            print("connected by pairing, no code involved")
         SCENARIOS[args.scenario](probe, args)
         time.sleep(0.5)
     finally:

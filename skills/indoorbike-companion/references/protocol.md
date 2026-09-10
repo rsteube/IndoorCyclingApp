@@ -341,7 +341,8 @@ on the expected port, which is the position pairing exists to get out of.
 - **`deviceId` is not a credential.** It selects which pairing to look up; the proof decides.
   Generate one once, keep it forever, never share one between two companions.
 - **Keep the key private and never log it.** It authenticates you to somebody's trainer.
-- **Fall back, do not fail shut.** If the rider forgets you, your `hello` gets an ordinary
+- **Fall back, do not fail shut.** The rider can forget you from the paired-companions list on
+  the companion screen, at any time and without confirming. Then your `hello` gets an ordinary
   `unauthorized` and the answer is to pair again with the code. A stored key is not forever.
 - **Lowercase hex throughout.** No base64.
 
