@@ -1,0 +1,133 @@
+# Google Play publishing for Indoor Bike.
+#
+# Run every lane from mobile_clients/android (the directory holding this
+# fastlane/ folder), not from the repo root:
+#
+#     cd mobile_clients/android
+#     bundle exec fastlane internal
+#
+# CodeFloe + ObtainX remains the primary channel and is published by
+# scripts/publish_release.ps1. Play is a second channel fed from the same
+# tag and the same release key. See docs/RELEASE.md.
+
+default_platform(:android)
+
+REPO_ROOT  = File.expand_path("../../..", __dir__)
+AAB        = File.join(REPO_ROOT, "mobile_clients", "android", "build", "outputs", "bundle", "release", "android-release.aab")
+RELEASE_CN = "CN=Juhani Lehtimaki"
+
+# An app Play has never published accepts draft releases and nothing else,
+# so draft is the only useful default until the app is live. Pass
+# `status:completed` once it is.
+#
+# Unrelated but easy to confuse with the above: if a lane dies on
+# "Invalid request - The caller does not have permission" *after* the bundle
+# and every image have uploaded happily, the service account is missing the
+# Play Console "Manage store presence" grant. Uploading a binary and editing
+# the listing are separate permissions, the error names neither, and the
+# upload steps all report success because they only stage changes into an
+# edit that the final validate/commit then refuses.
+DEFAULT_RELEASE_STATUS = "draft"
+
+platform :android do
+  desc "Build the signed release App Bundle and verify its signer."
+  lane :build_bundle do
+    gradle(
+      task: ":mobile_clients:android:bundle",
+      build_type: "Release",
+      project_dir: REPO_ROOT,
+      # This repo ships only gradlew.bat. fastlane defaults to ./gradlew and
+      # stops with "Couldn't find gradlew" when the Unix wrapper is absent,
+      # which it always is here.
+      gradle_path: "./gradlew.bat"
+    )
+
+    verify_signer
+  end
+
+  desc "Fail loudly if the bundle carries the debug key instead of the release key."
+  private_lane :verify_signer do
+    UI.user_error!("No bundle at #{AAB}. Run `fastlane build_bundle` first.") unless File.exist?(AAB)
+
+    out = sh("jarsigner", "-verify", "-certs", "-verbose:summary", AAB, log: false)
+
+    if out.include?("CN=Android Debug")
+      UI.user_error!(
+        "This bundle is signed with the DEBUG key. keystore.properties is " \
+        "missing or wrong, and build.gradle.kts silently fell back. Do not " \
+        "upload it: whatever key Play first accepts becomes the permanent " \
+        "upload key for this app."
+      )
+    end
+
+    unless out.include?(RELEASE_CN)
+      UI.user_error!("Expected signer #{RELEASE_CN}, jarsigner did not report it. Refusing to upload.")
+    end
+
+    UI.success("Signer verified: #{RELEASE_CN}")
+  end
+
+  desc "Upload store listing, screenshots and changelogs only. No binary."
+  lane :listing do
+    upload_to_play_store(
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_changelogs: false
+    )
+  end
+
+  desc "First upload for an app that has never been published. Play only accepts a draft release until the Console declarations are complete."
+  lane :draft do
+    build_bundle
+    upload_to_play_store(
+      aab: AAB,
+      track: "internal",
+      release_status: "draft",
+      skip_upload_apk: true
+    )
+  end
+
+  desc "Build and upload to the internal testing track."
+  lane :internal do |options|
+    build_bundle
+    upload_to_play_store(
+      aab: AAB,
+      track: "internal",
+      release_status: options[:status] || DEFAULT_RELEASE_STATUS,
+      skip_upload_apk: true
+    )
+  end
+
+  desc "Dry run. Everything is checked against Play and nothing is committed."
+  lane :validate do |options|
+    build_bundle
+    upload_to_play_store(
+      aab: AAB,
+      track: "internal",
+      release_status: options[:status] || DEFAULT_RELEASE_STATUS,
+      validate_only: true,
+      skip_upload_apk: true
+    )
+  end
+
+  desc "Promote an existing build between tracks. Example: fastlane promote from:internal to:production rollout:0.1"
+  lane :promote do |options|
+    upload_to_play_store(
+      track: options[:from] || "internal",
+      track_promote_to: options[:to] || "production",
+      rollout: options[:rollout] || "0.1",
+      version_code: options[:version_code],
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
+    )
+  end
+
+  desc "Pull the live listing out of Play into fastlane/metadata. Overwrites local copy."
+  lane :bootstrap do
+    download_from_play_store
+  end
+end

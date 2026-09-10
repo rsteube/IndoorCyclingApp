@@ -6,6 +6,38 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.1] (17) - 2026-09-09
+
+### Changed
+
+- **A tablet gets a tablet's layout.** Until now only the two ride HUDs
+  adapted to a large screen; every other screen drew its phone layout at full
+  width, with route cards nearly two thousand points wide, paragraphs running
+  the width of the glass, and dialogs sized at 85% of a tablet. Eleven screens
+  now hold their content to a readable column, left aligned with the title
+  above it, and six dialogs are capped.
+- **Side by side requires the screen to be wider than it is tall.** A tablet
+  held upright gets the stacked layout instead of a map squeezed beside a
+  column of empty space, and the simulation HUD spreads its slack rather than
+  pouring all of it into the power number.
+- The margin a narrower column leaves over carries the app's own horizon:
+  three slate planes, a crest line and one contour, the same motif as the ride
+  backdrop and much quieter. Not animated, not coloured, the same hill every
+  time, and not painted at all until the margin is wide enough to hold it.
+
+### Fixed
+
+- **A continued route ride reported the whole road rather than the part
+  ridden.** Resuming at 42 km and riding 6 more produced a summary claiming
+  48 km, because the stored figure is a position along the route and the
+  post-ride screen read it as a distance covered.
+
+### Notes
+
+- First release published to Google Play. CodeFloe remains the home of the
+  code and ObtainX the way to install without a Google account.
+
+
 ## [2.0.2] (16) - 2026-09-07
 
 ### Changed

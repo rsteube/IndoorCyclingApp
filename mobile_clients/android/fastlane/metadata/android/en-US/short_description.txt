@@ -1,1 +1,1 @@
-Local-first indoor cycling for FTMS smart trainers in ERG mode
+Structured ERG workouts and real GPX routes for your BLE smart trainer.

@@ -31,3 +31,13 @@ forge.properties
 # stays local until the shape is settled rather than reading as committed
 # intent to anyone who clones the repo.
 /docs/LIVE_API.md
+
+# Google Play service-account key, read by fastlane supply (see
+# mobile_clients/android/fastlane/Appfile). Same treatment as
+# keystore.properties and forge.properties: a credential, at the repo root,
+# never committed.
+play-service-account.json
+
+# fastlane run artefacts.
+mobile_clients/android/fastlane/report.xml
+mobile_clients/android/fastlane/README.md

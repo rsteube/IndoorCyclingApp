@@ -1,0 +1,52 @@
+<style>
+  @font-face{
+    font-family:"Manrope";
+    src:url("../../website/fonts/manrope_variable.ttf") format("truetype-variations");
+    font-weight:400 800;
+  }
+  html,body{margin:0;padding:0}
+  .g{
+    width:1024px;height:500px;box-sizing:border-box;
+    background:
+      radial-gradient(120% 140% at 78% 18%, #455561 0%, #3a435e 42%, #313e50 100%);
+    font-family:"Manrope",system-ui,sans-serif;
+    color:#F2F4F7;
+    display:flex;align-items:center;justify-content:center;
+    padding:0 72px;gap:52px;
+    position:relative;overflow:hidden;
+  }
+  /* Ridge motif, echoing the mark, bled across the lower right. */
+  .ridge{
+    position:absolute;right:-40px;bottom:-30px;width:620px;opacity:.10;
+  }
+  .mark{width:184px;height:184px;flex:none}
+  .type{position:relative}
+  h1{
+    margin:0;font-size:82px;line-height:1;font-weight:800;
+    letter-spacing:-.025em;
+  }
+  p{
+    margin:22px 0 0;font-size:29px;line-height:1.32;font-weight:500;
+    color:#C5CAD6;max-width:19ch;
+  }
+</style>
+<div class="g">
+  <svg class="ridge" viewBox="0 0 64 20" fill="none" stroke="#F2F4F7"
+       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 16 14 6 22 12 32 0 44 10 54 4 60 10"/>
+  </svg>
+  <svg class="mark" viewBox="0 0 64 64" fill="none"
+       stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 26 14 16 22 22 32 10 44 20 54 14 60 20" stroke="#9AA1B0"/>
+    <g stroke="#F2F4F7">
+      <circle cx="48" cy="48" r="8"/>
+      <path d="M32 48 28 32 44 30 44 38 48 48 M32 48 44 38 M32 48 16 48 28 32 M24 32 32 32 M40 28 Q44 26 48 28 Q50 30 49 33"/>
+      <circle cx="16" cy="48" r="7" fill="#F2F4F7" stroke="none"/>
+      <path d="M16 55 16 58 M6 58 26 58"/>
+    </g>
+  </svg>
+  <div class="type">
+    <h1>Indoor Bike</h1>
+    <p>Structured ERG workouts for your smart trainer</p>
+  </div>
+</div>
