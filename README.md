@@ -39,6 +39,14 @@ The editor, the community browser and the share page do load `pako` (and
 `qrcode-generator` in the editor) from jsDelivr - they need those to build and
 read the compressed `#wz=` workout links.
 
+- **Video** - [`companion/`](companion/) shows a demonstration video, and does
+  it as a click-to-load facade: the poster frame is self-hosted
+  (`assets/companion-demo.jpg`) and the YouTube player is only built, from
+  `youtube-nocookie.com`, once the visitor presses play. Reading the page sends
+  nothing to YouTube. Any future embed should follow the same pattern rather
+  than dropping an `<iframe>` into the markup, because the privacy policy makes
+  a specific promise about this.
+
 ## Deployment to CodeFloe Pages
 
 The website is hosted using CodeFloe Pages. The content of this directory is pushed to the `pages` branch of the CodeFloe repository by [scripts/deploy_website.ps1](../scripts/deploy_website.ps1).
