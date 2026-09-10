@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.4 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.5 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -650,6 +650,63 @@
       event is the answer, and it arrives for pauses you did not ask for too.
     </p>
 
+    <h3><code>drivetrain</code> - put the rider on your bike</h3>
+
+    <p>
+      Optional, and most companions should leave it alone. Without it the rider
+      rides the drivetrain they chose in the app's settings, which is a
+      reasonable bike and the one they picked. Send this when the <em>game</em>
+      has an opinion: a mountain stage that hands out a 32-tooth granny ring, a
+      track session on a fixed gear, a bike the rider unlocked.
+    </p>
+
+<pre><code>{ "t": "drivetrain", "name": "Race bike",
+  "chainrings": [50, 34],
+  "sprockets": [11, 12, 13, 14, 15, 17, 19, 21, 23, 25, 28, 32],
+  "wheelCircumferenceMm": 2105 }</code></pre>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td><code>chainrings</code></td><td>Teeth. One to three of them, each 20 to 70. Order does not matter.</td></tr>
+        <tr><td><code>sprockets</code></td><td>Teeth on the cassette. One to sixteen, each 9 to 60. One sprocket is a single-speed, which is a real bike.</td></tr>
+        <tr><td><code>wheelCircumferenceMm</code></td><td>Rolling circumference with the tyre on. Absent means 2105, a 700x25.</td></tr>
+        <tr><td><code>name</code></td><td>What to call it on the phone. Absent builds one from the teeth.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      <strong>1x, 2x and 3x is the length of <code>chainrings</code>.</strong>
+      There is no separate field saying which, because a field like that can
+      disagree with the list beside it and then somebody has to decide which one
+      is lying.
+    </p>
+
+    <p>
+      <strong>An invalid bike is refused whole, not repaired.</strong> A
+      drivetrain describes a physical object, so a zero-tooth sprocket is a bug
+      rather than a preference: rounding it up quietly would hide the bug and
+      hand the rider a bike nobody designed. You get a warning naming the
+      offending number, and the rider keeps the bike they had.
+    </p>
+
+    <p>
+      <strong>The ladder you get back is shorter than the list you sent.</strong>
+      Combinations within 2.5&nbsp;% of one already in the ladder are dropped, so
+      a 2x with fifty-odd pairings comes back as about twenty distinct gears.
+      The app answers with a <code>drivetrainChanged</code> event carrying the
+      whole resulting ladder and the gear the rider is now in. Draw your gear
+      display from that, not from what you sent.
+    </p>
+
+    <p>
+      Send it during setup, before <code>setState: "active"</code>. Nothing is
+      persisted: the rider's own setting is untouched underneath and comes back
+      when the ride ends.
+    </p>
+
     <h3><code>controls</code> - lend the rider your phone</h3>
 
     <p>
@@ -785,6 +842,7 @@
       <thead><tr><th>Event</th><th>Meaning</th></tr></thead>
       <tbody>
         <tr><td><code>gearChanged</code></td><td>Carries the new index, whether it actually <code>changed</code>, and the <code>source</code> - your request, the on-screen shifter, or the rider's handlebar buttons. <code>changed: false</code> means they are out of gears.</td></tr>
+        <tr><td><code>drivetrainChanged</code></td><td>The bike changed. Carries the whole resulting <code>gears</code> ladder and, in <code>index</code>, the gear the rider is now in. Only sent if you send a <code>drivetrain</code>.</td></tr>
         <tr><td><code>controlPressed</code></td><td>The rider pressed one of the controls you offered. Carries <code>control</code>. Only ever sent for a control you listed as enabled, and only while a screen is up.</td></tr>
         <tr><td><code>stateChanged</code></td><td>The ride started, paused, resumed or finished - <strong>whoever caused it</strong>. The rider has their own pause button and the phone has a stop-pedalling watchdog, so follow this rather than assuming your own request took effect.</td></tr>
         <tr><td><code>worldTimeout</code></td><td>Your frames stopped arriving and the road is being ramped away. Treat it as a bug report about your own frame loop.</td></tr>
