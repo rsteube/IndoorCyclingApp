@@ -684,11 +684,24 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 },
             )
         }
-        entry<RouteRideScreen> { _ ->
+        entry<RouteRideScreen> { key: RouteRideScreen ->
+            val wasCompanion = key.workoutId == COMPANION_WORKOUT_ID
             RideScreen(
-                onBack = { navigator.goBack() },
+                // Backing out of a companion ride is leaving the ride, not
+                // leaving companion mode. `replace` rather than a push, because
+                // the pairing screen handed this one its place on the stack and
+                // is taking it back; pressing back again still reaches home.
+                onBack = {
+                    if (wasCompanion) navigator.replace(RouteCompanion) else navigator.goBack()
+                },
                 onNavigateToOverview = { sessionId ->
-                    navigator.replace(RouteWorkoutOverview(sessionId, fromRide = true))
+                    navigator.replace(
+                        RouteWorkoutOverview(
+                            sessionId,
+                            fromRide = true,
+                            fromCompanion = wasCompanion,
+                        )
+                    )
                 }
             )
         }
@@ -698,7 +711,18 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 fromRide = key.fromRide,
                 workoutList = workouts,
                 onBack = { navigator.goBack() },
-                onDone = { navigator.popToRoot() }
+                onDone = {
+                    // Back to the root first either way, so the summary never
+                    // stays on the stack: a rider who rides again and presses
+                    // back should reach the home screen, not the last ride's
+                    // numbers.
+                    navigator.popToRoot()
+                    // A companion ride ends with a game still running on the
+                    // other device. Landing on the home screen would make the
+                    // rider get off the bike to tap Companion again before that
+                    // game could start anything, so go and wait for it instead.
+                    if (key.fromCompanion) navigator.navigate(RouteCompanion)
+                }
             )
         }
     }

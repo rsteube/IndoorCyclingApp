@@ -503,6 +503,44 @@ def scenario_controls(p, args):
     print("\n%d press(es): %s" % (len(presses), [e.get("control") for e in presses]))
 
 
+def ride_once(p, args, lap):
+    """The shortest thing that counts as a ride: name it, start it, pedal, end it."""
+    p.send({"t": "course", "name": "Probe lap %d" % lap, "world": "Test harness"})
+    print("  starting the ride")
+    p.send({"t": "setState", "state": "active"})
+    time.sleep(1.0)
+    distance = p.drive(args.ride_seconds, gradient=0.02)
+    print("  finishing after %.0f m" % distance)
+    p.send({"t": "finish", "summary": {"shape": "_p~iF~ps|U_ulLnnqC", "profile": [10, 24, 41]}})
+    # Long enough for the phone to answer with `finished` and the 4005.
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not p._stop.is_set():
+        time.sleep(0.2)
+    finished = any(
+        e.get("event") == "stateChanged" and e.get("state") == "finished" for e in p.events
+    )
+    print("  phone said the ride finished: %s" % ("yes" if finished else "NO"))
+    return finished
+
+
+def rediscover(previous_port, patience):
+    """Wait for the phone to come back to listening, on the new port it will pick.
+
+    Insisting the port has changed is the point of the check. The same port
+    coming back would mean the old socket never actually closed, and a probe
+    that accepted it would pass while the thing being tested was broken.
+    """
+    deadline = time.time() + patience
+    while time.time() < deadline:
+        host, port, beacon = discover(timeout=5.0)
+        if host and port != previous_port:
+            print("  phone is listening again on %s:%d (was port %d)" % (host, port, previous_port))
+            return host, port
+        if host:
+            print("  still the old port %d; waiting for it to reopen" % port)
+    return None, None
+
+
 def scenario_pair(p, args):
     """Ask to be remembered, then prove it worked."""
     if p.welcome is not None and p.paired_ok:
@@ -537,12 +575,16 @@ def main():
                     help="pairing code (debug builds pin it to %s)" % DEBUG_CODE)
     ap.add_argument("--discover", action="store_true",
                     help="find the phone via its UDP beacon on %d" % DISCOVERY_PORT)
-    ap.add_argument("--scenario", default="smoke", choices=sorted(SCENARIOS))
+    ap.add_argument("--scenario", default="smoke",
+                    choices=sorted(list(SCENARIOS) + ["twice"]))
     ap.add_argument("--ride-seconds", type=float, default=10.0)
     ap.add_argument("--menu-seconds", type=float, default=8.0)
     ap.add_argument("--gradient", type=float, default=0.0)
     ap.add_argument("--enabled", help="comma-separated controls for the controls scenario")
     ap.add_argument("--finish", action="store_true", help="end the ride at the end")
+    ap.add_argument("--patience", type=float, default=120.0,
+                    help="seconds to wait for the phone to start listening again "
+                         "between the two rides of the 'twice' scenario")
     args = ap.parse_args()
 
     host, port = args.host, args.port
@@ -556,22 +598,18 @@ def main():
         print("found %s:%d (%s, proto %s)" % (
             host, port, beacon.get("app"), beacon.get("proto")))
 
-    print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
     state = load_state()
     print("this probe's deviceId: %s" % state["deviceId"])
     if state["pairings"]:
         print("paired with %d phone(s) already" % len(state["pairings"]))
 
-    ws = WebSocket(host, port)
-    probe = Probe(ws, state=state)
-    probe.start()
+    if args.scenario == "twice":
+        return run_twice(args, host, port, state)
 
+    probe, ws = connect(host, port, args, state)
+    if probe is None:
+        return 1
     try:
-        if not probe.hello(args.code):
-            print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")
-            return 1
-        if probe.paired_ok:
-            print("connected by pairing, no code involved")
         SCENARIOS[args.scenario](probe, args)
         time.sleep(0.5)
     finally:
@@ -580,6 +618,66 @@ def main():
 
     print("\n%d warning(s), %d error(s)" % (len(probe.warnings), len(probe.errors)))
     return 1 if probe.errors else 0
+
+
+def connect(host, port, args, state):
+    """Open the socket and get through the handshake. (None, None) if refused."""
+    print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
+    ws = WebSocket(host, port)
+    probe = Probe(ws, state=state)
+    probe.start()
+    if not probe.hello(args.code):
+        print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")
+        probe.stop()
+        ws.close()
+        return None, None
+    if probe.paired_ok:
+        print("connected by pairing, no code involved")
+    return probe, ws
+
+
+def run_twice(args, host, port, state):
+    """Two rides back to back, which is where a companion usually breaks.
+
+    The first `finish` closes the socket with 4005. The phone shows the rider
+    their summary and then goes back to listening, on a **new** ephemeral port
+    and, in a release build, a new pairing code. Nothing about the first
+    connection survives, so the second half rediscovers from scratch, exactly
+    as a real companion has to.
+
+    This exists because the app once could not do it at all. The session sat on
+    the finished ride's state, so re-opening the pairing screen closed the
+    socket a moment after opening it, and nothing logged a failure: the second
+    ride of the evening simply never started.
+    """
+    warnings = errors = 0
+    for lap in (1, 2):
+        if lap == 2:
+            print("\n" + "=" * 62)
+            print("ride 1 is over. If the summary is still up, tap Done on the phone.")
+            host, port = rediscover(port, args.patience)
+            if not host:
+                print("\nFAILED: the phone never went back to listening, so a "
+                      "companion cannot start a second ride.")
+                return 1
+        print("\n" + "-" * 62)
+        print("ride %d of 2" % lap)
+        probe, ws = connect(host, port, args, state)
+        if probe is None:
+            return 1
+        try:
+            ok = ride_once(probe, args, lap)
+        finally:
+            probe.stop()
+            ws.close()
+            warnings += len(probe.warnings)
+            errors += len(probe.errors)
+        if not ok:
+            print("\nFAILED: ride %d never finished." % lap)
+            return 1
+
+    print("\nboth rides ran. %d warning(s), %d error(s)" % (warnings, errors))
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

@@ -953,6 +953,12 @@ Present in the protocol, absent from this build. Do not design around them.
 {"t":"finish"}
 // <- {"t":"event","event":"stateChanged","state":"finished"}
 // <- close 4005 "ride ended"
+
+// -> the rider reads their summary, then the phone listens again on a NEW
+//    ephemeral port and, in release builds, a NEW pairing code. Rediscover;
+//    the address above is dead. A permanently paired companion reconnects
+//    with no code and nobody touches the phone.
+// -> {"t":"hello", ...}  // and declare drivetrain / course / label again
 ```
 
 ---
@@ -990,6 +996,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Ignore unknown fields, frame types and enum values
 - [ ] Handle every close code, and read the close reason
 - [ ] Send `finish` when your ride ends
+- [ ] After 4005, **rediscover and reconnect** rather than shutting down, and send your
+      `drivetrain` / `course` / `label` / `controls` again. Riders ride twice
 
 ## 19. Common mistakes
 
@@ -998,6 +1006,8 @@ Present in the protocol, absent from this build. Do not design around them.
 | Omitting `speedMps` | Frame is `malformed`; the socket closes with 4008 |
 | Sending `seq` that does not increase | Frames dropped silently; the road appears frozen |
 | Sending deltas in `distanceM` | Distance stalls, because smaller values are ignored |
+| Treating 4005 as "the rider is done" | The second ride of the evening cannot start without restarting your app |
+| Reconnecting to the remembered `host:port` after 4005 | Connection refused; the port is new every ride |
 | Hardcoding the port | Fails on every ride but the one you tested |
 | Assuming `role` defaults to observer | It defaults to controller |
 | Sending `role: "Controller"` | Case-sensitive; you get observer and cannot steer |

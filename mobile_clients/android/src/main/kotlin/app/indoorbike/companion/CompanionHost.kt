@@ -37,6 +37,7 @@ import app.indoorbike.shared.companion.RiderInfo
 import app.indoorbike.shared.companion.ServerFrame
 import app.indoorbike.shared.companion.TelemetryFrame
 import app.indoorbike.shared.companion.TrainerInfo
+import app.indoorbike.shared.session.RideEndWatch
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.util.Log
@@ -325,14 +326,23 @@ class CompanionHost(
                 // that had been over for minutes.
                 rideWatchJob = scope.launch {
                     var announced: String? = null
+                    // Not `state == Completed`. The session sits on that from
+                    // the moment a ride is saved until the next one is
+                    // prepared, which includes every second of the pairing
+                    // screen the rider comes back to, so the socket would open
+                    // and shut itself and the second ride of an evening could
+                    // never start. [RideEndWatch] carries the rule and the
+                    // tests that pin it.
+                    val rideEnd = RideEndWatch()
                     sessionManager.state.collect { rideState ->
-                        if (rideState == WorkoutState.Completed) {
+                        if (rideEnd.ended(rideState)) {
                             // `stop` sends the finished state and the 4005
                             // itself, so announcing it here as well would
                             // double it up.
                             stop()
                             return@collect
                         }
+                        if (rideState == WorkoutState.Completed) return@collect
                         // Pausing is not only something a companion asks for.
                         // The rider has a pause button, the stop-pedalling
                         // watchdog has its own, and the foreground service can
@@ -654,6 +664,14 @@ class CompanionHost(
                     // which is the whole reason the ordering is fixed there:
                     // ending the ride is what writes the row.
                     sessionManager.endWorkoutEarly()
+                    // A ride nobody ever pedalled has nothing to save, so that
+                    // call deliberately does nothing, and the ride watch never
+                    // sees the `Completed` it would otherwise close on. The
+                    // companion still asked for the ride to end and is still
+                    // owed a `finished` and a 4005, so say it here. Without
+                    // this a game that gave up on its own start line waits on a
+                    // socket that will never answer.
+                    if (sessionManager.state.value != WorkoutState.Completed) stop()
                 }
             }
         }

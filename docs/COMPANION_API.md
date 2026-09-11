@@ -881,6 +881,28 @@ Every transition between these is broadcast as a `stateChanged` event, whoever c
 companion that only reacted to the pauses it asked for would carry on rolling its world while
 the recording sat still.
 
+### Rides come in evenings, not ones
+
+A `4005` ends *that ride*, not the session on the sofa. The rider is shown their summary, and
+the phone then goes back to listening exactly as it was before, ready for the next ride. A game
+that treats `4005` as "the rider is finished for the night" and shuts down is getting it wrong:
+they usually want another lap.
+
+What it does mean is that the old connection is gone for good:
+
+- **The port is new.** It is an ephemeral port taken fresh each time the socket opens, so the
+  address you connected to last is now pointing at nothing. Rediscover; do not reconnect to a
+  remembered `host:port`. [Discovery](#discovery) is the whole reason it exists.
+- **The pairing code is new**, in release builds. A companion that is [permanently
+  paired](#4a-permanent-pairing) does not care, which is the best argument for implementing
+  pairing: without it every ride needs the rider to read six characters off the phone, and with
+  it the second ride starts with nobody touching the phone at all.
+- **Everything you declared goes with it.** Drivetrain, course, label, controls: a new ride
+  starts from the app's defaults, so send them again after the new `welcome`.
+
+So the loop is: `4005`, then discover, then connect, then declare, then `setState: "active"`
+when the rider starts the next one.
+
 The ride is a synthetic single-segment `Workout` with a reserved id, following the free-ride
 and route-ride precedent, so recording, crash recovery, the unfinished-ride banner, history,
 progression and export all work with no new plumbing.
@@ -1023,13 +1045,15 @@ datagram's source, which is also the quickest way to prove discovery works on a 
 Debug builds pin the pairing code to `AAAAAA`, so `--code` is only needed against a release
 build.
 
-Three scenarios, in `SCENARIOS` at the bottom of the file:
+The scenarios, in `SCENARIOS` at the bottom of the file:
 
 | Scenario | What it does |
 |---|---|
 | `smoke` | The whole protocol in the order a real companion would use it: drivetrain (valid, then deliberately invalid), course, world frames, a menu with half the pad dead, the start frame, a hill, shifts, pause and resume, and optionally `finish` |
 | `world` | Pumps world frames at a fixed gradient. For feeling a hill with your legs |
 | `controls` | Puts a menu up and reports which buttons the rider pressed |
+| `pair` | Asks to be remembered, stores the key, and proves the next connection needs no code |
+| `twice` | Rides, finishes, waits for the phone to start listening again, rediscovers and rides a second time. The one that catches a phone which can only do one ride per visit to the pairing screen |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last
 month still runs the same way.

@@ -112,8 +112,22 @@ fun CompanionScreen(
     // to the screen that exists to drive it.
     var handedOff by remember { mutableStateOf(false) }
     DisposableEffect(Unit) {
-        host.start()
         onDispose { if (!handedOff) host.stop() }
+    }
+
+    // Stated as an invariant rather than a single call on entry: while this
+    // screen is up and has not handed off, the socket should be open.
+    //
+    // The difference matters on the way back from a ride. The ride screen stops
+    // the host when it leaves, and nothing orders that against this screen
+    // being composed, so a plain start-once could be undone a moment later by
+    // the outgoing screen's teardown and leave a rider looking at a pairing
+    // card with no address on it. Re-asserting it instead is correct whichever
+    // way that lands. `start` is a no-op while one is already running or
+    // opening, so the usual case is still exactly one call, and a socket that
+    // genuinely failed to open leaves `error` set and is not retried in a loop.
+    LaunchedEffect(status.running, status.error, handedOff) {
+        if (!handedOff && !status.running && status.error == null) host.start()
     }
 
     LaunchedEffect(status.receivingRoad) {

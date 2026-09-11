@@ -54,7 +54,18 @@ data object RouteSimulationSettings : NavKey
 data class RouteRideScreen(val workoutId: String) : NavKey
 
 @Serializable
-data class RouteWorkoutOverview(val sessionId: Long, val fromRide: Boolean = false) : NavKey
+data class RouteWorkoutOverview(
+    val sessionId: Long,
+    val fromRide: Boolean = false,
+    /**
+     * The ride that has just ended was a companion ride, so finishing with the
+     * summary should hand the rider back to the companion screen rather than
+     * to the home tab. The game on the other device is still running and the
+     * rider is still on the bike; the thing they want next is the socket open
+     * again, not a menu.
+     */
+    val fromCompanion: Boolean = false,
+) : NavKey
 
 @Serializable
 data object RouteLibrary : NavKey
