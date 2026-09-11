@@ -20,6 +20,7 @@ import app.indoorbike.shared.companion.BikeInfo
 import app.indoorbike.shared.companion.CompanionAnnouncement
 import app.indoorbike.shared.companion.CompanionCodec
 import app.indoorbike.shared.companion.CompanionConfig
+import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.companion.CompanionControl
 import app.indoorbike.shared.companion.CompanionEffect
 import app.indoorbike.shared.companion.CompanionEngine
@@ -37,6 +38,8 @@ import app.indoorbike.shared.companion.RiderInfo
 import app.indoorbike.shared.companion.ServerFrame
 import app.indoorbike.shared.companion.TelemetryFrame
 import app.indoorbike.shared.companion.TrainerInfo
+import app.indoorbike.ride.CompanionRideRecorder
+import app.indoorbike.ride.SavedCompanionRide
 import app.indoorbike.shared.session.RideEndWatch
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.session.WorkoutState
@@ -210,6 +213,48 @@ class CompanionHost(
     private val _pairedCompanions = MutableStateFlow<List<PairedCompanion>>(emptyList())
     val pairedCompanions: StateFlow<List<PairedCompanion>> = _pairedCompanions.asStateFlow()
 
+    /**
+     * Writes a finished ride to history. Set once, after the container exists,
+     * because saving needs the history repository and this is built before it.
+     */
+    var rideRecorder: CompanionRideRecorder? = null
+
+    /**
+     * Every ride written during this session, oldest first.
+     *
+     * A companion session is not one ride. The rider stays on the bike, the
+     * game runs lap after lap, and each lap is a row in history the moment it
+     * ends. This is what the ride screen counts to tell them it happened, and
+     * what they are shown when the session is over.
+     */
+    private val _sessionRides = MutableStateFlow<List<SavedCompanionRide>>(emptyList())
+    val sessionRides: StateFlow<List<SavedCompanionRide>> = _sessionRides.asStateFlow()
+
+    /**
+     * True once the companion has been gone long enough to call it a night.
+     *
+     * Not the same as the socket closing. A game being restarted, a laptop
+     * sleeping for a moment and a Wi-Fi hiccup all close a socket, and pulling
+     * a rider off their HUD for any of those would be worse than useless. So a
+     * disconnect starts a clock, and only running it out ends the session.
+     */
+    private val _sessionEnded = MutableStateFlow(false)
+    val sessionEnded: StateFlow<Boolean> = _sessionEnded.asStateFlow()
+
+    /**
+     * The last ride written, while it can still be added to.
+     *
+     * Held from the moment a ride is saved until the next one starts, because
+     * that is exactly the window in which a late `course` still belongs to it.
+     */
+    @Volatile
+    private var completableRide: SavedCompanionRide? = null
+
+    /** True between the first active moment of a ride and its ending. */
+    private var rideUnderway = false
+
+    private var sessionEndJob: Job? = null
+
     private var server: EmbeddedServer<*, *>? = null
     private var telemetryJob: Job? = null
     private var startJob: Job? = null
@@ -260,6 +305,7 @@ class CompanionHost(
         hostStartedAtMs = System.currentTimeMillis()
         telemetrySeq = 0
         ridePrepared = false
+        rideUnderway = false
 
         val token = CompanionPairing.newToken()
         val sessionId = CompanionPairing.newSessionId()
@@ -336,13 +382,23 @@ class CompanionHost(
                     val rideEnd = RideEndWatch()
                     sessionManager.state.collect { rideState ->
                         if (rideEnd.ended(rideState)) {
-                            // `stop` sends the finished state and the 4005
-                            // itself, so announcing it here as well would
-                            // double it up.
-                            stop()
+                            onRideEnded()
                             return@collect
                         }
                         if (rideState == WorkoutState.Completed) return@collect
+                        if (rideState == WorkoutState.Active) {
+                            // A ride that is running again is a ride the
+                            // previous one can no longer be added to.
+                            completableRide = null
+                            // The first move into active is where this ride
+                            // starts measuring from. Not a resume: a rider back
+                            // from a pause is continuing, and re-basing there
+                            // would discard everything they had already done.
+                            if (!rideUnderway) {
+                                rideUnderway = true
+                                engine.markRideStart()
+                            }
+                        }
                         // Pausing is not only something a companion asks for.
                         // The rider has a pause button, the stop-pedalling
                         // watchdog has its own, and the foreground service can
@@ -389,6 +445,13 @@ class CompanionHost(
         _remoteControls.value = null
         _pendingPairing.value = null
         ridePrepared = false
+        sessionEndJob?.cancel()
+        sessionEndJob = null
+        _sessionEnded.value = false
+        // The rides stay in history; the list of them belongs to the session
+        // that is ending here, and the next one starts empty.
+        _sessionRides.value = emptyList()
+        completableRide = null
 
         if (running != null || closing.isNotEmpty()) {
             // Stopped off the caller's thread: CIO's shutdown joins its
@@ -498,6 +561,7 @@ class CompanionHost(
                 _remoteControls.value = null
                 _pendingPairing.value = null
                 Log.i(TAG, "Controller disconnected; the road will ramp to flat")
+                startSessionEndCountdown()
             }
             publishConnectionCounts()
         }
@@ -516,6 +580,11 @@ class CompanionHost(
         val role = conn.session.role ?: return
         if (role == HelloFrame.ROLE_CONTROLLER && controller !== conn) {
             controller = conn
+            // Whatever was counting down to the end of the session, this is the
+            // thing it was waiting for.
+            sessionEndJob?.cancel()
+            sessionEndJob = null
+            _sessionEnded.value = false
             if (!ridePrepared) {
                 sessionManager.prepareCompanion(ftp())
                 ridePrepared = true
@@ -598,6 +667,14 @@ class CompanionHost(
                     // happening; the engine keeps the whole course for the
                     // moment the ride is written to history.
                     val merged = engine.course.value
+                    // A course arriving while no ride is running belongs to the
+                    // one that just ended. A game that only knows its polyline
+                    // after the rider stopped drawing it is following the
+                    // specification, not breaking it, and its map should not be
+                    // lost to four hundred milliseconds. Read here, on the
+                    // frame's own thread, so the write cannot pick up a later
+                    // ride's road.
+                    completeRideLater(merged)
                     _status.value = _status.value.copy(
                         label = merged.name ?: _status.value.label,
                         world = merged.world ?: _status.value.world,
@@ -665,13 +742,22 @@ class CompanionHost(
                     // ending the ride is what writes the row.
                     sessionManager.endWorkoutEarly()
                     // A ride nobody ever pedalled has nothing to save, so that
-                    // call deliberately does nothing, and the ride watch never
-                    // sees the `Completed` it would otherwise close on. The
-                    // companion still asked for the ride to end and is still
-                    // owed a `finished` and a 4005, so say it here. Without
-                    // this a game that gave up on its own start line waits on a
-                    // socket that will never answer.
-                    if (sessionManager.state.value != WorkoutState.Completed) stop()
+                    // call deliberately does nothing and the ride watch never
+                    // sees a `Completed` to act on. The companion still asked
+                    // for the ride to end and is owed an answer, so give it the
+                    // same pair of events a real ending produces. Nothing is
+                    // written, because nothing happened.
+                    if (sessionManager.state.value != WorkoutState.Completed) {
+                        broadcast(
+                            EventFrame(
+                                event = EventFrame.STATE_CHANGED,
+                                state = CompanionState.FINISHED,
+                            )
+                        )
+                        broadcast(
+                            EventFrame(event = EventFrame.STATE_CHANGED, state = rideState())
+                        )
+                    }
                 }
             }
         }
@@ -859,6 +945,85 @@ class CompanionHost(
         }
     }
 
+    /**
+     * A ride has finished. Write it down, tell the companion, and get ready for
+     * the next one.
+     *
+     * The socket deliberately stays open. The end of a ride is not the end of
+     * the evening: the game is still running, the rider is still on the bike,
+     * and the most likely next thing either of them does is another lap. So
+     * this is a boundary between rides, not a teardown, and a rider who does
+     * want to stop leaves by the back button like anywhere else.
+     *
+     * The order matters. The companion hears first, because it asked for this
+     * and should not wait on a disk write to find out it happened. The ride is
+     * written second. The session is re-prepared last, because preparing is
+     * what clears the engine, and clearing it before the road had been read
+     * would save a ride with no road on it.
+     */
+    private suspend fun onRideEnded() {
+        broadcast(EventFrame(event = EventFrame.STATE_CHANGED, state = CompanionState.FINISHED))
+
+        rideUnderway = false
+        val saved = runCatching { rideRecorder?.save() }
+            .onFailure { Log.e(TAG, "Could not write the companion ride to history", it) }
+            .getOrNull()
+        if (saved != null) {
+            completableRide = saved
+            _sessionRides.value = _sessionRides.value + saved
+            Log.i(TAG, "Companion ride saved: " + saved.name)
+        }
+
+        // Back to ready. `prepareCompanion` lands the session in Standby, which
+        // the watch above announces as `paused`, so a companion sees
+        // active -> finished -> paused and knows it may start another.
+        sessionManager.prepareCompanion(ftp())
+        ridePrepared = true
+    }
+
+    /**
+     * Apply a course to the ride that has already been written, if there is one
+     * still open to it.
+     *
+     * Reads [completableRide] on the caller's thread and hands the coroutine a
+     * value rather than the field, so a ride that starts while the write is in
+     * flight cannot redirect it.
+     */
+    private fun completeRideLater(course: CompanionCourse) {
+        val ride = completableRide ?: return
+        val recorder = rideRecorder ?: return
+        if (course.isEmpty && course.name.isNullOrBlank()) return
+        scope.launch {
+            val updated = runCatching { recorder.complement(ride, course) }
+                .onFailure { Log.w(TAG, "Could not complete the saved ride's course", it) }
+                .getOrNull() ?: return@launch
+            if (completableRide?.sessionId == updated.sessionId) completableRide = updated
+            _sessionRides.value = _sessionRides.value.map {
+                if (it.sessionId == updated.sessionId) updated else it
+            }
+        }
+    }
+
+    /**
+     * The controller has gone. Start counting, and only call the session over
+     * if it stays gone.
+     *
+     * A game restarting, a laptop sleeping and a Wi-Fi hiccup all look exactly
+     * like a rider finishing for the night at the instant the socket closes.
+     * The difference only shows up afterwards, so the answer is to wait and
+     * see rather than to guess.
+     */
+    private fun startSessionEndCountdown() {
+        sessionEndJob?.cancel()
+        sessionEndJob = scope.launch {
+            delay(SESSION_END_GRACE_MS)
+            if (controller == null) {
+                Log.i(TAG, "No companion for " + (SESSION_END_GRACE_MS / 1000) + "s; session over")
+                _sessionEnded.value = true
+            }
+        }
+    }
+
     private fun rideState(): String = sessionManager.state.value.asCompanionState()
 
     /**
@@ -906,5 +1071,15 @@ class CompanionHost(
 
         /** What a companion's device picker shows. Matches the mDNS service name. */
         const val BEACON_NAME = "Indoor Bike"
+
+        /**
+         * How long a companion may be gone before the session is called over.
+         *
+         * Long enough to cover a game restarting or a laptop waking up, short
+         * enough that a rider who has stopped is not left staring at a HUD with
+         * a flat road on it. The rider is never blocked by it: backing out ends
+         * the session at once and shows the same rides.
+         */
+        const val SESSION_END_GRACE_MS = 25_000L
     }
 }

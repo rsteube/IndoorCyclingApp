@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.6 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.7 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -879,49 +879,58 @@ proof = hex(HMAC_SHA256(keyBytes,
 { "t": "finish" }
 { "t": "ping", "id": 17 }</code></pre>
 
-    <h3>The ride ends, the evening does not</h3>
+    <h3>A session is many rides</h3>
 
     <p>
-      After <code>finish</code> the phone sends a <code>stateChanged</code> of
-      <code>"finished"</code>, closes the socket with <code>4005</code>, shows the
-      rider their summary, and then goes back to listening for the next ride.
-      <strong>Riders ride twice.</strong> A companion that reads
-      <code>4005</code> as "the rider is done for the night" and shuts itself
-      down is the one they have to restart before they can do another lap.
+      <code>finish</code> ends a ride. It does not end the connection. The phone
+      writes that ride to the rider's history immediately, with nobody tapping
+      anything, and stays where it was: connected, negotiated, streaming
+      telemetry, clock stopped. Send <code>setState: "active"</code> again and the
+      next ride starts. Between rides the trainer is not being driven, just as it
+      is not before the first ride: keep your <code>world</code> frames going, and
+      the gradient you are sending takes effect the moment the next ride begins.
     </p>
 
+<pre><code>setState active  -&gt;  ... riding ...  -&gt;  finish
+                                          &lt;- stateChanged finished   (saved to history)
+                                          &lt;- stateChanged paused     (ready for another)
+setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
+
     <p>
-      What <code>4005</code> does mean is that nothing about that connection
-      survives it:
+      A rider on a bike does not get off it to confirm a lap, so nothing asks
+      them to. There is no summary screen between rides; the strip at the top of
+      their HUD names the ride that was just saved and then keeps a count for the
+      rest of the session.
     </p>
 
     <div class="table-scroll">
     <table class="api-table">
-      <thead><tr><th>What changed</th><th>What to do</th></tr></thead>
+      <thead><tr><th>What this means for you</th><th>What to do</th></tr></thead>
       <tbody>
         <tr>
-          <td>The port is new</td>
-          <td>It is an ephemeral port, taken fresh each time the socket opens, so the address you connected to is now pointing at nothing. Rediscover. This is what discovery is for.</td>
+          <td>The socket does not close</td>
+          <td>Never wait for one. A companion that waits for a close before starting the next ride waits forever. Before 0.7 the phone did close with <code>4005</code> on every finish, so this is the one thing an older companion gets wrong.</td>
         </tr>
         <tr>
-          <td>The pairing code is new</td>
-          <td>In release builds. Unless you are <a href="#pairing">permanently paired</a>, in which case there is no code and the rider does not have to touch the phone at all.</td>
+          <td>Your declarations survive; the course does not</td>
+          <td>The pairing, the negotiated version and your <code>controls</code> are all still in place, because the connection never restarted. The <code>course</code> described the ride that ended, so send a new one.</td>
         </tr>
         <tr>
-          <td>Everything you declared is gone</td>
-          <td>Send <code>drivetrain</code>, <code>course</code>, <code>label</code> and <code>controls</code> again after the new <code>welcome</code>.</td>
+          <td>Distance may keep counting</td>
+          <td>The phone takes your first <code>distanceM</code> after each <code>setState: "active"</code> as that ride's origin. A counter that runs all session and one that restarts per ride both record correctly.</td>
+        </tr>
+        <tr>
+          <td>A late course still lands</td>
+          <td>If you only know your polyline once the rider has stopped drawing it, send the <code>course</code> after the <code>finish</code>. The phone folds it into the ride it already wrote.</td>
         </tr>
       </tbody>
     </table>
     </div>
 
     <p>
-      So the loop is: <code>4005</code>, discover, connect, declare, and
-      <code>setState: "active"</code> when the rider starts the next one. This is
-      the strongest practical argument for implementing pairing: without it every
-      ride costs the rider a walk to the phone and six characters read off a
-      screen, and with it the second ride of an evening starts with nobody
-      touching anything.
+      <code>4005</code> now means the rider left Companion mode on the phone.
+      That is the only thing that really ends a session, and it is the last frame
+      you will get.
     </p>
 
     <h2 id="app-sends">What the phone sends back</h2>
@@ -1070,7 +1079,7 @@ proof = hex(HMAC_SHA256(keyBytes,
         <tr><td><code>4002</code></td><td>Wrong or missing pairing code, or a first frame that was not <code>hello</code>.</td></tr>
         <tr><td><code>4003</code></td><td>Another companion is already driving. Connect as an observer, or disconnect the other one.</td></tr>
         <tr><td><code>4004</code></td><td>The rider took control back.</td></tr>
-        <tr><td><code>4005</code></td><td>The ride ended. Not the session: the phone goes back to listening on a new port. Rediscover and reconnect rather than shutting down.</td></tr>
+        <tr><td><code>4005</code></td><td>The app left Companion mode. Since 0.7 a <code>finish</code> does <em>not</em> close the socket; this is the rider backing out of the screen.</td></tr>
         <tr><td><code>4008</code></td><td>A frame could not be read.</td></tr>
       </tbody>
     </table>
@@ -1113,7 +1122,7 @@ proof = hex(HMAC_SHA256(keyBytes,
       <li><strong>Add gears.</strong> Draw the display from <code>welcome.gears</code>, wire up shift requests, handle <code>changed: false</code>.</li>
       <li><strong>Add discovery.</strong></li>
       <li><strong>Add <code>course</code>, <code>setState</code> and <code>finish</code>,</strong> which are what make the ride land in the rider's history looking like a ride.</li>
-      <li><strong>Ride twice without restarting anything.</strong> Finish a ride, then start another one. The port and the code have both changed underneath you, and this is where most companions turn out to have assumed they would not.</li>
+      <li><strong>Ride twice without restarting anything.</strong> Finish a ride, send a new <code>course</code>, and start another on the same connection. This is where most companions turn out to have assumed a ride and a session are the same thing.</li>
     </ol>
 
     <p>
@@ -1135,8 +1144,8 @@ proof = hex(HMAC_SHA256(keyBytes,
         <tr><td><code>seq</code> that does not increase</td><td>Frames dropped silently; the road appears frozen with no error anywhere</td></tr>
         <tr><td>Sending deltas in <code>distanceM</code></td><td>Distance stalls, because a smaller value than the last is ignored</td></tr>
         <tr><td>Hardcoding the port</td><td>Works on the ride you tested, fails on every other one</td></tr>
-        <tr><td>Treating <code>4005</code> as the end of the session</td><td>The rider has to restart your app to do a second lap</td></tr>
-        <tr><td>Reconnecting to the address you remember after <code>4005</code></td><td>Connection refused, on a phone that is sitting right there listening. The port is new every ride</td></tr>
+        <tr><td>Waiting for the socket to close after a <code>finish</code></td><td>It does not close. You wait forever and the rider's second lap never starts</td></tr>
+        <tr><td>Reusing the last ride's <code>course</code> for the next one</td><td>The new ride is recorded under the old ride's name and map</td></tr>
         <tr><td>Defaulting a missing <code>hr</code> or <code>speedMps</code> to zero</td><td>A heart rate of zero on the HUD; a rider stopped dead on a trainer that cannot count cadence</td></tr>
         <tr><td>Treating <code>trainerGradePercent</code> as a gradient</td><td>An 11&nbsp;% reading on a 6&nbsp;% hill. It is a force against an assumed mass</td></tr>
       </tbody>

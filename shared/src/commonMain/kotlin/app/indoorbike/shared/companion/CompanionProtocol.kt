@@ -76,6 +76,16 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.7 made `finish` end the ride and nothing else. The socket stays open,
+     * the app writes the ride to history on the spot, and the companion may
+     * start another whenever it likes with `setState: active`. Before this the
+     * app closed with 4005 on every finish, which made an evening of laps a
+     * sequence of reconnections, each on a new port. 4005 now means the app has
+     * left Companion mode, which is the only thing that actually ends a
+     * session. **Not purely additive**: a companion that treated the close as
+     * its cue to stop will simply never be told to stop, and one that waits for
+     * a socket to shut before starting the next ride waits forever.
+     *
      * 0.6 added permanent pairing: `hello.deviceId`, the `pairRequest` /
      * `paired` ceremony and the `challenge` / `pairProof` handshake, so two
      * devices that have met once recognise each other afterwards without a
@@ -107,7 +117,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 6)
+    val VERSION = ProtocolVersion(0, 7)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -357,6 +367,15 @@ object CompanionClose {
     const val UNAUTHORIZED = 4002
     const val CONTROLLER_BUSY = 4003
     const val CONTROL_REVOKED = 4004
+
+    /**
+     * The app has left Companion mode.
+     *
+     * Named for what it used to mean. Since 0.7 a `finish` ends the ride and
+     * leaves the socket open, so this is sent when the rider backs out of
+     * the mode altogether: the last thing a companion hears, and the one
+     * close that really is the end of the evening.
+     */
     const val RIDE_ENDED = 4005
     const val MALFORMED = 4008
 }

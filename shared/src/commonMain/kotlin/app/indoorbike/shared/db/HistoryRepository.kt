@@ -184,6 +184,40 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
         }
     }
 
+    /**
+     * Fill in a companion ride's road after the row has already been written.
+     *
+     * A companion ride is saved when its game says the ride is over, because
+     * that is the only moment anything knows it is over. The road's shape can
+     * still be in flight at that point: a free-roaming game only knows the
+     * polyline it drew once the rider has stopped drawing it, and the protocol
+     * allows the `course` to arrive after the `finish` for exactly that reason.
+     *
+     * Widening only, which the SQL enforces with MAX on the two totals. A late
+     * frame reporting less than the ride already holds is a game repeating
+     * itself, and a ride that shrank after it was saved would be a worse answer
+     * than the one already on the screen.
+     */
+    suspend fun completeSessionCourse(
+        sessionId: Long,
+        workoutName: String,
+        routeShape: String,
+        routeProfile: String,
+        routeDistanceMeters: Double,
+        routeElevationGainMeters: Double,
+    ) {
+        withContext(Dispatchers.IO) {
+            dbQuery.updateSessionCourse(
+                workoutName = workoutName,
+                routeShape = routeShape,
+                routeProfile = routeProfile,
+                routeDistanceMeters = routeDistanceMeters,
+                routeElevationGainMeters = routeElevationGainMeters,
+                id = sessionId,
+            )
+        }
+    }
+
     suspend fun deleteSession(sessionId: Long) {
         withContext(Dispatchers.IO) {
             database.transaction {

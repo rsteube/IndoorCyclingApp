@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.6** (the app also accepts 0.5 and everything back to 0.1)
+- Protocol version: **0.7** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -243,6 +243,11 @@ Rules from 1.0 onward (0.x may break on a minor bump):
 Version and capability are separate mechanisms. Version answers "same language"; `honours` and
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
+
+**0.7** made `finish` end the ride rather than the connection. The app writes the ride to
+history on the spot and stays connected, so a session is many rides down one socket and `4005`
+now means the rider left Companion mode. **Not purely additive**: a companion that waited for
+the close before starting another ride will wait forever.
 
 **0.6** added permanent pairing: `hello.deviceId`, the `pairRequest` / `paired` ceremony and
 the `challenge` / `pairProof` handshake. Optional; ignore all of it and nothing changes.
@@ -826,7 +831,7 @@ Fatal for the operation, and usually followed by a close.
 | 4002 | Bad or missing token |
 | 4003 | A controller is already connected |
 | 4004 | Control revoked by the rider |
-| 4005 | Ride ended |
+| 4005 | The app left Companion mode. Not sent on a `finish` since 0.7 |
 | 4008 | Malformed frame |
 
 **Close reasons are capped at 123 bytes.** A WebSocket close frame carries at most 125 bytes,
@@ -951,14 +956,13 @@ Present in the protocol, absent from this build. Do not design around them.
 // -> summit. The shape is only known now, so it goes over as a course before the finish.
 {"t":"course","shape":"_p~iF~ps|U_ulLnnqC","profile":[412,418,431,447]}
 {"t":"finish"}
-// <- {"t":"event","event":"stateChanged","state":"finished"}
-// <- close 4005 "ride ended"
+// <- {"t":"event","event":"stateChanged","state":"finished"}  // written to history
+// <- {"t":"event","event":"stateChanged","state":"paused"}    // ready for another
 
-// -> the rider reads their summary, then the phone listens again on a NEW
-//    ephemeral port and, in release builds, a NEW pairing code. Rediscover;
-//    the address above is dead. A permanently paired companion reconnects
-//    with no code and nobody touches the phone.
-// -> {"t":"hello", ...}  // and declare drivetrain / course / label again
+// The socket is still open. Since 0.7 a finish ends the ride and nothing else,
+// so the next lap costs a course and a start, not a reconnection.
+{"t":"course","name":"Stelvio, south side"}
+{"t":"setState","state":"active"}
 ```
 
 ---
@@ -996,8 +1000,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Ignore unknown fields, frame types and enum values
 - [ ] Handle every close code, and read the close reason
 - [ ] Send `finish` when your ride ends
-- [ ] After 4005, **rediscover and reconnect** rather than shutting down, and send your
-      `drivetrain` / `course` / `label` / `controls` again. Riders ride twice
+- [ ] After a `finish`, **stay connected** and send a new `course` plus `setState: active`
+      for the next ride. The socket does not close and riders ride twice
 
 ## 19. Common mistakes
 
@@ -1006,8 +1010,9 @@ Present in the protocol, absent from this build. Do not design around them.
 | Omitting `speedMps` | Frame is `malformed`; the socket closes with 4008 |
 | Sending `seq` that does not increase | Frames dropped silently; the road appears frozen |
 | Sending deltas in `distanceM` | Distance stalls, because smaller values are ignored |
-| Treating 4005 as "the rider is done" | The second ride of the evening cannot start without restarting your app |
-| Reconnecting to the remembered `host:port` after 4005 | Connection refused; the port is new every ride |
+| Waiting for the socket to close after a `finish` | It does not close any more. You wait forever and the second ride never starts |
+| Reusing the previous ride's `course` | The new ride is recorded under the old ride's name and map |
+| Reconnecting to a remembered `host:port` after a real 4005 | Connection refused; the port is ephemeral and new every time the mode is opened |
 | Hardcoding the port | Fails on every ride but the one you tested |
 | Assuming `role` defaults to observer | It defaults to controller |
 | Sending `role: "Controller"` | Case-sensitive; you get observer and cannot steer |

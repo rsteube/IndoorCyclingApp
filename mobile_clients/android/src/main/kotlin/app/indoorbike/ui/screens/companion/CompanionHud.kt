@@ -32,6 +32,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,6 +103,13 @@ fun CompanionHud(
     companionName: String?,
     /** True once the companion has gone quiet past its lease and the road is flattening. */
     roadStale: Boolean,
+    /**
+     * Rides written to history so far this session, and the name of the one
+     * most recently written. Nobody taps through a summary in this mode, so
+     * the strip is where a rider finds out their lap was kept.
+     */
+    savedRideCount: Int = 0,
+    lastSavedRideName: String? = null,
     onShiftDown: () -> Unit,
     onShiftUp: () -> Unit,
     shiftingEnabled: Boolean,
@@ -183,7 +198,12 @@ fun CompanionHud(
                 .padding(bottom = Spacing.s2),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            CompanionSourceStrip(companionName = companionName, roadStale = roadStale)
+            CompanionSourceStrip(
+                companionName = companionName,
+                roadStale = roadStale,
+                savedRideCount = savedRideCount,
+                lastSavedRideName = lastSavedRideName,
+            )
 
             if (wide) {
                 Row(
@@ -251,36 +271,88 @@ fun CompanionHud(
 }
 
 /**
- * Who is driving, and whether they are still talking.
+ * Who is driving, whether they are still talking, and what has been kept.
  *
  * A rider whose pedals just went light deserves to know it was the game that
  * stopped rather than their legs, so the quiet state is stated rather than
  * left to be inferred from a gradient sliding towards zero.
+ *
+ * It also carries the one piece of news this mode has no other way to deliver.
+ * Every other mode confirms a saved ride by showing the rider its summary; a
+ * companion session never leaves the HUD, because the game is still running and
+ * another lap may start at any moment. So the moment a ride is written, this
+ * says so by name for a few seconds, and then keeps a running count for the
+ * rest of the session. Without it a rider has no way to tell a lap that was
+ * recorded from one that was not, which is precisely the doubt that sends
+ * somebody to the history screen mid-ride to check.
  */
 @Composable
 private fun CompanionSourceStrip(
     companionName: String?,
     roadStale: Boolean,
+    savedRideCount: Int = 0,
+    lastSavedRideName: String? = null,
     modifier: Modifier = Modifier,
 ) {
+    // Announce, then settle. Keyed on the count rather than the name, so two
+    // laps of the same course still announce twice.
+    var announcing by remember(savedRideCount) { mutableStateOf(savedRideCount > 0) }
+    LaunchedEffect(savedRideCount) {
+        if (savedRideCount == 0) return@LaunchedEffect
+        delay(SAVED_ANNOUNCE_MS)
+        announcing = false
+    }
+
+    val saved = when {
+        savedRideCount == 0 -> null
+        savedRideCount == 1 -> "1 ride saved"
+        else -> savedRideCount.toString() + " rides saved"
+    }
     val label = when {
+        announcing && lastSavedRideName != null -> "Saved to history: " + lastSavedRideName
+        announcing -> "Ride saved to history"
         companionName == null -> "No companion connected - flat road"
         roadStale -> companionName + " has gone quiet - flattening the road"
         else -> "Driven by " + companionName
     }
-    val tint = if (companionName == null || roadStale) CadenceColors.Warning else CadenceColors.Fg3
+    val tint = when {
+        announcing -> CadenceColors.Success
+        companionName == null || roadStale -> CadenceColors.Warning
+        else -> CadenceColors.Fg3
+    }
 
-    Text(
-        text = label,
-        style = CadenceType.eyebrow,
-        color = tint,
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(Radii.sm))
             .background(CadenceColors.Bg1.copy(alpha = 0.6f))
             .padding(horizontal = Spacing.s3, vertical = Spacing.s2),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = CadenceType.eyebrow,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        // Stays put once anything has been saved, because the useful question
+        // late in a session is "did all of those land", not "did the last one".
+        if (saved != null && !announcing) {
+            Spacer(Modifier.width(Spacing.s2))
+            Text(
+                text = "\u00b7 " + saved,
+                style = CadenceType.eyebrow,
+                color = CadenceColors.Fg3,
+                maxLines = 1,
+            )
+        }
+    }
 }
+
+/** Long enough to read a course name, short enough not to hide the road state. */
+private const val SAVED_ANNOUNCE_MS = 6_000L
 
 /**
  * Power, in the zone colour of what the rider is actually producing.

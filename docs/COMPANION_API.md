@@ -141,7 +141,7 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 | TXT key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.6` | Supported protocol range, `min-max` |
+| `proto` | `0.1-0.7` | Supported protocol range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.1.0` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride, for reconnection |
@@ -172,7 +172,7 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.6, and this build accepts everything back to 0.1.**
+**Current version: 0.7, and this build accepts everything back to 0.1.**
 
 0.6 added permanent pairing: `hello.deviceId`, the `pairRequest` / `paired` ceremony and the
 `challenge` / `pairProof` handshake. Two devices that have met once recognise each other
@@ -259,7 +259,7 @@ not an acceptable message.
 | `4002` | Bad or missing token |
 | `4003` | A controller is already connected |
 | `4004` | Control revoked by the rider |
-| `4005` | Ride ended |
+| `4005` | The app left Companion mode. Since 0.7 a `finish` does **not** close the socket; this is the rider backing out of the screen |
 | `4008` | Malformed frame the server could not parse |
 
 ### How this grows without churn
@@ -875,33 +875,61 @@ the envelope already exists in the shipped route mode and applies unchanged.
   The phone collapses its own richer set of states - paused, stopped pedalling, counting down -
   into this one, because the only fact a game can act on is that the recording is not
   advancing.
-- **`finished`**: the ride is saved. The socket closes with `4005`.
+- **`finished`**: the ride is over and has been written to the rider's history. The socket
+  **stays open**, and `paused` follows immediately: the app is ready for another ride.
 
 Every transition between these is broadcast as a `stateChanged` event, whoever caused it. A
 companion that only reacted to the pauses it asked for would carry on rolling its world while
 the recording sat still.
 
-### Rides come in evenings, not ones
+### A session is many rides (0.7)
 
-A `4005` ends *that ride*, not the session on the sofa. The rider is shown their summary, and
-the phone then goes back to listening exactly as it was before, ready for the next ride. A game
-that treats `4005` as "the rider is finished for the night" and shuts down is getting it wrong:
-they usually want another lap.
+`finish` ends a ride. It does not end the connection, and it never did end the evening.
 
-What it does mean is that the old connection is gone for good:
+When it arrives the app writes the ride to history immediately, with nobody tapping anything,
+and stays where it was: connected, negotiated, streaming telemetry, clock stopped. Send
+`setState: "active"` again and the next ride starts. A rider on a bike does not get off it to
+confirm a lap, so nothing asks them to.
 
-- **The port is new.** It is an ephemeral port taken fresh each time the socket opens, so the
-  address you connected to last is now pointing at nothing. Rediscover; do not reconnect to a
-  remembered `host:port`. [Discovery](#discovery) is the whole reason it exists.
-- **The pairing code is new**, in release builds. A companion that is [permanently
-  paired](#4a-permanent-pairing) does not care, which is the best argument for implementing
-  pairing: without it every ride needs the rider to read six characters off the phone, and with
-  it the second ride starts with nobody touching the phone at all.
-- **Everything you declared goes with it.** Drivetrain, course, label, controls: a new ride
-  starts from the app's defaults, so send them again after the new `welcome`.
+Between rides the trainer is not being driven, exactly as it is not before the first ride of
+a session: no ride is running, so there is no road to hold anybody to. Keep sending `world`
+frames anyway. The deadman is still watching, and the gradient you send is the one that takes
+effect the instant the next ride starts.
 
-So the loop is: `4005`, then discover, then connect, then declare, then `setState: "active"`
-when the rider starts the next one.
+```
+setState active  ->  ... riding ...  ->  finish
+                                          <- stateChanged finished   (written to history)
+                                          <- stateChanged paused     (ready for another)
+setState active  ->  ... riding ...  ->  finish
+```
+
+Three things follow, and they are the whole of what a companion has to get right:
+
+- **Do not wait for a close.** Before 0.7 the app closed with `4005` on every finish, so a
+  companion could treat the socket shutting as its cue. It no longer shuts. A companion that
+  waits for it before starting the next ride waits forever.
+- **Everything you declared is still yours.** The connection did not restart, so the pairing,
+  the negotiated version and your `controls` are all still in place. The *course* is not: it
+  described the ride that just ended, and the app clears it. Send a new `course` for the new
+  ride.
+- **Distance keeps counting if you want it to.** `distanceM` is cumulative and the app no
+  longer assumes it restarts. It takes your first report after each `setState: "active"` as
+  that ride's origin and records the ride as the distance since. Counting through the whole
+  session and restarting per ride both come out right.
+
+**`4005` now means the app has left Companion mode**, which is the only thing that really ends
+a session: the rider backed out of the screen. That is the last frame a companion will get.
+
+### What the rider sees
+
+Nothing that interrupts them. There is no summary screen between rides, because the game is
+still running and the next lap may start in seconds. The strip at the top of their HUD names
+the ride that was just saved and then keeps a count for the rest of the session.
+
+When the session does end, they are shown what it produced: the ride itself if there was one,
+or a list of them if there were several. If you send a `course` after the `finish`, which a
+free-roaming game often has to, the app folds it into the ride it has already written, so the
+map still lands.
 
 The ride is a synthetic single-segment `Workout` with a reserved id, following the free-ride
 and route-ride precedent, so recording, crash recovery, the unfinished-ride banner, history,
@@ -960,8 +988,12 @@ progression and export all work with no new plumbing.
 // ride is what writes the row.
 { "t": "course", "shape": "_p~iF~ps|U…", "profile": [412, 418, …] }
 { "t": "finish" }
-// <- { "t": "event", "event": "stateChanged", "state": "finished" }
-// <- close 4005 "ride ended"
+// <- { "t": "event", "event": "stateChanged", "state": "finished" }   // written to history
+// <- { "t": "event", "event": "stateChanged", "state": "paused" }     // ready for another
+
+// the socket is still open. Another lap needs nothing but a new course and a start.
+{ "t": "course", "name": "Stelvio, south side" }
+{ "t": "setState", "state": "active" }
 ```
 
 ## 9. Where it lives in the code
@@ -1053,7 +1085,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `world` | Pumps world frames at a fixed gradient. For feeling a hill with your legs |
 | `controls` | Puts a menu up and reports which buttons the rider pressed |
 | `pair` | Asks to be remembered, stores the key, and proves the next connection needs no code |
-| `twice` | Rides, finishes, waits for the phone to start listening again, rediscovers and rides a second time. The one that catches a phone which can only do one ride per visit to the pairing screen |
+| `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last
 month still runs the same way.

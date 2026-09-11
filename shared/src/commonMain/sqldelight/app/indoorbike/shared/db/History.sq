@@ -95,6 +95,26 @@ SELECT * FROM WorkoutSession WHERE externalId = '';
 updateSessionExternalId:
 UPDATE WorkoutSession SET externalId = ? WHERE id = ?;
 
+-- A companion ride is written the moment its game says the ride is over, which
+-- is the only way it gets written at all: nobody taps through a summary in the
+-- middle of a session. That timing means the shape of the road can still be in
+-- flight. A game usually knows the polyline it drew only at the end, and the
+-- protocol lets it arrive after the `finish`, so the row is completed here
+-- rather than held back until everything has landed.
+--
+-- Only ever widens the record: the name is replaced when a real one arrives,
+-- and the road figures when the game reports more than was stored. A late frame
+-- carrying less than the ride already has is the game repeating itself, not the
+-- ride shrinking.
+updateSessionCourse:
+UPDATE WorkoutSession
+SET workoutName = :workoutName,
+    routeShape = :routeShape,
+    routeProfile = :routeProfile,
+    routeDistanceMeters = MAX(routeDistanceMeters, :routeDistanceMeters),
+    routeElevationGainMeters = MAX(routeElevationGainMeters, :routeElevationGainMeters)
+WHERE id = :id;
+
 markIntervalsUploaded:
 UPDATE WorkoutSession SET intervalsUploadedEpoch = ? WHERE id = ?;
 

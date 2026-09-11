@@ -358,7 +358,7 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.6",
+            "protoMin": "0.1", "protoMax": "0.7",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
@@ -503,42 +503,57 @@ def scenario_controls(p, args):
     print("\n%d press(es): %s" % (len(presses), [e.get("control") for e in presses]))
 
 
-def ride_once(p, args, lap):
-    """The shortest thing that counts as a ride: name it, start it, pedal, end it."""
-    p.send({"t": "course", "name": "Probe lap %d" % lap, "world": "Test harness"})
-    print("  starting the ride")
+def ride_once(p, args, lap, distance_m=0.0, late_course=False):
+    """The shortest thing that counts as a ride: name it, start it, pedal, end it.
+
+    `distance_m` carries on from the previous lap on purpose. A game is allowed
+    to count distance for the whole session, and the phone has to record each
+    ride as its own, not as everything since the session began.
+    """
+    name = "Probe lap %d" % lap
+    if not late_course:
+        p.send({"t": "course", "name": name, "world": "Test harness"})
+    print("  [lap %d] starting the ride" % lap)
+    seen = len(p.events)
     p.send({"t": "setState", "state": "active"})
     time.sleep(1.0)
-    distance = p.drive(args.ride_seconds, gradient=0.02)
-    print("  finishing after %.0f m" % distance)
-    p.send({"t": "finish", "summary": {"shape": "_p~iF~ps|U_ulLnnqC", "profile": [10, 24, 41]}})
-    # Long enough for the phone to answer with `finished` and the 4005.
-    deadline = time.time() + 5.0
+    distance = p.drive(args.ride_seconds, gradient=0.02, distance_m=distance_m)
+    print("  [lap %d] finishing at %.0f m on the game's counter" % (lap, distance))
+    summary = {"shape": "_p~iF~ps|U_ulLnnqC", "profile": [10, 24, 41]}
+    p.send({"t": "finish", "summary": summary})
+
+    finished = wait_for_state(p, "finished", seen, 6.0)
+    print("  [lap %d] phone said the ride finished: %s" % (lap, "yes" if finished else "NO"))
+    if not p._stop.is_set():
+        print("  [lap %d] socket still open after the finish: yes" % lap)
+    else:
+        print("  [lap %d] SOCKET CLOSED. 0.7 keeps it open across rides." % lap)
+        return False, distance
+
+    if late_course:
+        # The half a game with a free-roaming world actually does: the polyline
+        # is only known once the rider has stopped drawing it. The phone should
+        # fold it into the ride it has already written.
+        print("  [lap %d] sending the course AFTER the finish" % lap)
+        p.send({"t": "course", "name": name, "world": "Test harness",
+                "shape": "_p~iF~ps|U_ulLnnqC", "profile": [10, 24, 41, 52]})
+        time.sleep(1.5)
+
+    # Back to a state that can start another ride.
+    ready = wait_for_state(p, "paused", seen, 6.0)
+    print("  [lap %d] phone is ready for another ride: %s" % (lap, "yes" if ready else "NO"))
+    return finished, distance
+
+
+def wait_for_state(p, state, since, seconds):
+    """True once a stateChanged for `state` shows up after index `since`."""
+    deadline = time.time() + seconds
     while time.time() < deadline and not p._stop.is_set():
+        for e in p.events[since:]:
+            if e.get("event") == "stateChanged" and e.get("state") == state:
+                return True
         time.sleep(0.2)
-    finished = any(
-        e.get("event") == "stateChanged" and e.get("state") == "finished" for e in p.events
-    )
-    print("  phone said the ride finished: %s" % ("yes" if finished else "NO"))
-    return finished
-
-
-def rediscover(previous_port, patience):
-    """Wait for the phone to come back to listening, on the new port it will pick.
-
-    Insisting the port has changed is the point of the check. The same port
-    coming back would mean the old socket never actually closed, and a probe
-    that accepted it would pass while the thing being tested was broken.
-    """
-    deadline = time.time() + patience
-    while time.time() < deadline:
-        host, port, beacon = discover(timeout=5.0)
-        if host and port != previous_port:
-            print("  phone is listening again on %s:%d (was port %d)" % (host, port, previous_port))
-            return host, port
-        if host:
-            print("  still the old port %d; waiting for it to reopen" % port)
-    return None, None
+    return False
 
 
 def scenario_pair(p, args):
@@ -582,9 +597,6 @@ def main():
     ap.add_argument("--gradient", type=float, default=0.0)
     ap.add_argument("--enabled", help="comma-separated controls for the controls scenario")
     ap.add_argument("--finish", action="store_true", help="end the ride at the end")
-    ap.add_argument("--patience", type=float, default=120.0,
-                    help="seconds to wait for the phone to start listening again "
-                         "between the two rides of the 'twice' scenario")
     args = ap.parse_args()
 
     host, port = args.host, args.port
@@ -637,47 +649,46 @@ def connect(host, port, args, state):
 
 
 def run_twice(args, host, port, state):
-    """Two rides back to back, which is where a companion usually breaks.
+    """A session, which is what an evening actually is: several rides, one socket.
 
-    The first `finish` closes the socket with 4005. The phone shows the rider
-    their summary and then goes back to listening, on a **new** ephemeral port
-    and, in a release build, a new pairing code. Nothing about the first
-    connection survives, so the second half rediscovers from scratch, exactly
-    as a real companion has to.
+    Since 0.7 a `finish` ends the ride and nothing else. The phone writes the
+    ride to history on the spot, with nobody tapping anything, and stays
+    connected so the next one can start. That is the whole point: a rider on a
+    bike does not get off it to confirm a lap.
 
-    This exists because the app once could not do it at all. The session sat on
-    the finished ride's state, so re-opening the pairing screen closed the
-    socket a moment after opening it, and nothing logged a failure: the second
-    ride of the evening simply never started.
+    So this rides twice down one connection and checks the three things that
+    were each broken at some point: that the ride is written without a tap,
+    that the socket survives the finish, and that the second lap is recorded as
+    its own distance rather than everything since the session began. The second
+    lap sends its course *after* the finish, which the specification allows and
+    which a free-roaming game has no way to avoid.
     """
-    warnings = errors = 0
-    for lap in (1, 2):
-        if lap == 2:
-            print("\n" + "=" * 62)
-            print("ride 1 is over. If the summary is still up, tap Done on the phone.")
-            host, port = rediscover(port, args.patience)
-            if not host:
-                print("\nFAILED: the phone never went back to listening, so a "
-                      "companion cannot start a second ride.")
-                return 1
-        print("\n" + "-" * 62)
-        print("ride %d of 2" % lap)
-        probe, ws = connect(host, port, args, state)
-        if probe is None:
-            return 1
-        try:
-            ok = ride_once(probe, args, lap)
-        finally:
-            probe.stop()
-            ws.close()
-            warnings += len(probe.warnings)
-            errors += len(probe.errors)
-        if not ok:
-            print("\nFAILED: ride %d never finished." % lap)
-            return 1
+    probe, ws = connect(host, port, args, state)
+    if probe is None:
+        return 1
+    ok = True
+    distance = 0.0
+    try:
+        for lap in (1, 2):
+            print("\n" + "-" * 62)
+            finished, distance = ride_once(
+                probe, args, lap, distance_m=distance, late_course=(lap == 2)
+            )
+            if not finished:
+                ok = False
+                break
+    finally:
+        probe.stop()
+        ws.close()
 
-    print("\nboth rides ran. %d warning(s), %d error(s)" % (warnings, errors))
-    return 1 if errors else 0
+    print("\n" + "=" * 62)
+    if ok:
+        print("two rides, one connection, nothing tapped on the phone.")
+        print("check History: two rides, each with its own distance.")
+    else:
+        print("FAILED: the session could not run two rides.")
+    print("\n%d warning(s), %d error(s)" % (len(probe.warnings), len(probe.errors)))
+    return 0 if ok and not probe.errors else 1
 
 
 if __name__ == "__main__":

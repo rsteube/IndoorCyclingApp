@@ -112,6 +112,17 @@ data object RouteRouteLibrary : NavKey
 data object RouteCompanion : NavKey
 
 /**
+ * What a companion session produced, after the game has gone.
+ *
+ * Carries the ids rather than re-deriving them, because by the time this
+ * screen is reached the host that knew them has been stopped. They are
+ * already rows in history: this is a way to look at what just happened, not
+ * the thing that makes it durable.
+ */
+@Serializable
+data class RouteCompanionSession(val sessionIds: List<Long>) : NavKey
+
+/**
  * Choose a workout. Split off the home screen when home became a chooser of
  * ride *kinds* rather than a list of one kind.
  */

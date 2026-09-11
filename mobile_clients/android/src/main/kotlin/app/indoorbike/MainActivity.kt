@@ -105,9 +105,11 @@ import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.navigation.RouteCompanion
+import app.indoorbike.navigation.RouteCompanionSession
 import app.indoorbike.shared.workout.COMPANION_WORKOUT_ID
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.ui.screens.companion.CompanionScreen
+import app.indoorbike.ui.screens.companion.CompanionSessionScreen
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.simulationWorkoutId
 import app.indoorbike.ui.ControllerPairingScreen
@@ -702,7 +704,35 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                             fromCompanion = wasCompanion,
                         )
                     )
-                }
+                },
+                // A companion session ends with however many rides it made, and
+                // they are already in history. One ride gets the summary every
+                // other mode ends on, because a list of one is a worse version
+                // of it. Several get the list. None means nothing was ridden,
+                // so there is nothing to show and the pairing screen is where a
+                // rider would want to be anyway.
+                onCompanionSessionEnded = { sessionIds ->
+                    when (sessionIds.size) {
+                        0 -> navigator.replace(RouteCompanion)
+                        1 -> navigator.replace(
+                            RouteWorkoutOverview(
+                                sessionIds.first(),
+                                fromRide = true,
+                                fromCompanion = true,
+                            )
+                        )
+                        else -> navigator.replace(RouteCompanionSession(sessionIds))
+                    }
+                },
+            )
+        }
+        entry<RouteCompanionSession> { key: RouteCompanionSession ->
+            CompanionSessionScreen(
+                sessionIds = key.sessionIds,
+                // Push rather than replace: the rider came to look at the list
+                // and should be able to get back to it after opening a ride.
+                onOpenRide = { navigator.navigate(RouteWorkoutOverview(it)) },
+                onDone = { navigator.replace(RouteCompanion) },
             )
         }
         entry<RouteWorkoutOverview> { key: RouteWorkoutOverview ->

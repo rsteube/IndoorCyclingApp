@@ -178,22 +178,34 @@ a week later. All three are optional, and all three are worth the hour.
 `finish.summary` is the short form of `course` and merges into the same place. You need one of
 the two, not both.
 
-## The ride ends, the evening does not
+## A session is many rides
 
-After `finish` the phone sends `stateChanged: "finished"`, closes with `4005`, shows the rider
-their summary, and goes straight back to listening for the next ride. Riders usually want
-another lap, so do not treat `4005` as "shut down".
+`finish` ends a ride, not the connection. The phone writes that ride to the rider's history
+straight away, with nobody tapping anything, and stays connected with the clock stopped. Send
+`setState: "active"` again and the next ride begins.
 
-Everything about the old connection is gone, though:
+```
+setState active -> ride -> finish
+                            <- stateChanged finished   (saved to history)
+                            <- stateChanged paused     (ready for another)
+setState active -> ride -> finish
+```
 
-- **The port is new.** Rediscover. Reconnecting to the `host:port` you remember reaches nothing.
-- **The pairing code is new** in release builds. Unless you are permanently paired, in which
-  case there is no code and the rider does not have to touch the phone at all. This is the
-  strongest reason to implement pairing.
-- **Everything you declared is gone.** Send `drivetrain`, `course`, `label` and `controls`
-  again after the new `welcome`.
+- **Never wait for the socket to close.** It does not close on a finish. A companion that waits
+  for one before starting the next ride waits forever. (Before 0.7 it did close, with `4005`.)
+- **Send a new `course` for the new ride.** The pairing, the version and your `controls` all
+  survive, because the connection did. The course does not: it described the ride that ended.
+- **Keep counting `distanceM` if you like.** The phone takes your first report after each
+  `setState: "active"` as that ride's origin, so a counter that runs all session and one that
+  restarts per ride both record correctly.
+- **A late `course` still lands.** If you only know your polyline after the ride, send it after
+  the `finish` and the phone folds it into the ride it already wrote.
+- **Keep sending `world` between rides.** The trainer is not being driven while no ride is
+  running, the same as before the first one, but the deadman is still watching and the gradient
+  you are sending is the one that bites the instant the next ride starts.
 
-So: `4005`, discover, connect, declare, and `setState: "active"` when the next ride starts.
+`4005` now means the rider left Companion mode on the phone. That is the end of the session and
+the last thing you will hear.
 
 ## Your game owns the start
 
@@ -408,9 +420,9 @@ Also test these, because riders hit all of them:
 - Your app is alt-tabbed for 5 seconds (deadman)
 - The rider shifts on the handlebar (`gearChanged` with `source: "zwiftClick"`)
 - The rider ends the ride on the phone (`stateChanged` `finished`, then close 4005)
-- **A second ride straight after the first**, without restarting your app. The port and the
-  code have both changed underneath you. `companion_probe.py --scenario twice` is this
-  exact test if you want something to compare against
+- **A second ride straight after the first**, on the same connection, without restarting
+  anything. `companion_probe.py --scenario twice` is this exact test if you want something
+  to compare against
 - A second instance of your app connects (4003)
 
 ## Scope

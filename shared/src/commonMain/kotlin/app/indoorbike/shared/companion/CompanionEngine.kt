@@ -157,6 +157,29 @@ class CompanionEngine(
     private val _distanceMeters = MutableStateFlow(0.0)
     val distanceMeters: StateFlow<Double> = _distanceMeters.asStateFlow()
 
+    /**
+     * Where this ride began, along whatever the companion is counting.
+     *
+     * A session is many rides and `distanceM` is defined as cumulative, so a
+     * game is perfectly entitled to keep counting across all of them. Without
+     * an origin to measure from, the evening's second lap would be recorded as
+     * everything ridden since the first one started.
+     *
+     * The origin is taken from the companion's own first report after the ride
+     * begins rather than from whatever the engine happens to hold, because the
+     * two disagree exactly when it matters: the engine is reset between rides
+     * and the game's counter may not be.
+     */
+    private val _rideStartMeters = MutableStateFlow(0.0)
+    val rideStartMeters: StateFlow<Double> = _rideStartMeters.asStateFlow()
+
+    private val _rideStartElevationGainMeters = MutableStateFlow(0.0)
+    val rideStartElevationGainMeters: StateFlow<Double> =
+        _rideStartElevationGainMeters.asStateFlow()
+
+    /** Set while waiting for the first progress report of a new ride. */
+    private var awaitingRideOrigin = false
+
     /** Cumulative ascent the companion has reported. */
     private val _elevationGainMeters = MutableStateFlow(0.0)
     val elevationGainMeters: StateFlow<Double> = _elevationGainMeters.asStateFlow()
@@ -260,6 +283,9 @@ class CompanionEngine(
         _speedMps.value = 0.0
         _distanceMeters.value = 0.0
         _elevationGainMeters.value = 0.0
+        _rideStartMeters.value = 0.0
+        _rideStartElevationGainMeters.value = 0.0
+        awaitingRideOrigin = false
         _roadStale.value = false
         _receivingRoad.value = false
         _trainerForceN.value = 0.0
@@ -356,8 +382,31 @@ class CompanionEngine(
      * distance that goes backwards is worse than one that stalls.
      */
     fun setProgress(distanceM: Double?, ascentM: Double?) {
+        if (awaitingRideOrigin && (distanceM != null || ascentM != null)) {
+            // The first thing the companion says about position after a ride
+            // starts is where that ride starts. A game that resets its counter
+            // per ride reports something near zero and this costs nothing; one
+            // that counts for the whole session reports a large number, and
+            // this is the only chance to learn it.
+            distanceM?.let { _rideStartMeters.value = it }
+            ascentM?.let { _rideStartElevationGainMeters.value = it }
+            awaitingRideOrigin = false
+        }
         distanceM?.let { if (it > _distanceMeters.value) _distanceMeters.value = it }
         ascentM?.let { if (it > _elevationGainMeters.value) _elevationGainMeters.value = it }
+    }
+
+    /**
+     * A ride is starting. Measure it from here.
+     *
+     * Called on the first move into an active ride and not on a resume: a rider
+     * coming back from a pause is continuing the ride they were on, and
+     * re-basing it there would throw away everything they had already done.
+     */
+    fun markRideStart() {
+        awaitingRideOrigin = true
+        _rideStartMeters.value = _distanceMeters.value
+        _rideStartElevationGainMeters.value = _elevationGainMeters.value
     }
 
     /**

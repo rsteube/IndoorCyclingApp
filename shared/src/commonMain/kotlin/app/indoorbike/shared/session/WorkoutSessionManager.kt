@@ -1074,15 +1074,20 @@ class WorkoutSessionManager(
      * Where this ride began. Always zero for a companion ride: its totals are
      * this session's, because the companion is the thing counting them.
      */
-    private fun engineStartMeters(workout: Workout): Double? =
-        if (workout.isSimulation) simulationEngine?.startedAtMeters?.value else null
+    private fun engineStartMeters(workout: Workout): Double? = when {
+        workout.isSimulation -> simulationEngine?.startedAtMeters?.value
+        // A companion session is many rides against one counter the game owns,
+        // so each ride carries the point it began at for the same reason a
+        // route picked up part way does.
+        workout.isCompanion -> companionEngine?.rideStartMeters?.value
+        else -> null
+    }
 
-    private fun engineStartElevationGainMeters(workout: Workout): Double? =
-        if (workout.isSimulation) {
-            simulationEngine?.startedAtElevationGainMeters?.value
-        } else {
-            null
-        }
+    private fun engineStartElevationGainMeters(workout: Workout): Double? = when {
+        workout.isSimulation -> simulationEngine?.startedAtElevationGainMeters?.value
+        workout.isCompanion -> companionEngine?.rideStartElevationGainMeters?.value
+        else -> null
+    }
 
     private fun engineCourse(workout: Workout): CompanionCourse? =
         if (workout.isCompanion) {

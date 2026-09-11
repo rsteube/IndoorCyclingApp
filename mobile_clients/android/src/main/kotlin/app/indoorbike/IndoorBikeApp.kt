@@ -56,6 +56,7 @@ import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.companion.AndroidPairedCompanionStore
 import app.indoorbike.companion.CompanionHost
+import app.indoorbike.ride.CompanionRideRecorder
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.simulation.Drivetrain
@@ -265,7 +266,7 @@ class AppContainer(
                     }
                 },
             )
-            return AppContainer(
+            val container = AppContainer(
                 trainerManager = trainerManager,
                 heartRateMonitor = heartRateMonitor,
                 controllerManager = controllerManager,
@@ -287,6 +288,12 @@ class AppContainer(
                 fitTrackeeUploader = fitTrackeeUploader,
                 syncEngine = syncEngine,
             )
+            // After the container, because writing a ride needs the history
+            // repository and the host is built before it. A companion ride is
+            // saved when its game says the ride is over rather than when a
+            // rider taps through a summary, since in this mode nobody does.
+            companionHost.rideRecorder = CompanionRideRecorder(container)
+            return container
         }
     }
 }

@@ -6,6 +6,34 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Companion rides were not being saved.** A ride was written to history when
+  the rider tapped through to the summary, which is how every other mode works
+  and is a tap a companion rider never makes: the game ends the ride, they are
+  on the bike, and the next lap starts. An hour of riding could exist only as a
+  trophy nobody pressed. A companion ride is now written the moment the game
+  says it is over, by the host rather than by the screen.
+
+### Changed
+
+- **A companion session is many rides (protocol 0.7).** `finish` ends a ride and
+  leaves the socket open, so the game can start another whenever it likes. The
+  app no longer shows a summary between rides, because the game is still running
+  and the rider is still on the bike; the strip at the top of the HUD names the
+  ride that was saved and keeps a count. `4005` now means the rider left
+  Companion mode, which is the only thing that ends a session.
+- **Each ride in a session measures its own distance.** `distanceM` is
+  cumulative and a game may count straight through an evening, so the app takes
+  the first report after each start as that ride's origin. A counter that runs
+  all session and one that restarts per ride both record correctly.
+- **A course arriving after the `finish` completes the ride already written.** A
+  free-roaming game only knows its polyline once the rider has stopped drawing
+  it, and the map should not be lost to a frame that was late by design.
+- **The end of a session shows what it produced.** When the companion has been
+  gone long enough not to be a Wi-Fi blip, the rider gets the ride if there was
+  one and a list of them if there were several.
+
 ## [2.2] (18) - 2026-09-11
 
 ### Added

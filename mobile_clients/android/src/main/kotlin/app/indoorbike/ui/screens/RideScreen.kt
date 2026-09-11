@@ -167,6 +167,12 @@ private fun hasAnyBluetoothPermission(context: Context): Boolean =
 fun RideScreen(
     onBack: () -> Unit,
     onNavigateToOverview: (Long) -> Unit,
+    /**
+     * The companion session is over and these are the rides it produced,
+     * oldest first. Empty is a real answer: a session where nothing was ridden
+     * has nothing to show for itself.
+     */
+    onCompanionSessionEnded: (List<Long>) -> Unit = {},
 ) {
     // Follow the device's own rotation (respecting the user's auto-rotate
     // setting) rather than forcing landscape - the HUD adapts to whichever
@@ -340,7 +346,12 @@ fun RideScreen(
         }
     }
 
-    LaunchedEffect(state, continueRequested) {
+    // Deliberately not the companion path. There, the ride is written by
+    // CompanionHost the moment the game says it is over, because the rider
+    // never comes to this screen's summary: they are mid-session and the next
+    // lap may already be starting. Running this as well would save it twice.
+    LaunchedEffect(state, continueRequested, isCompanion) {
+        if (isCompanion) return@LaunchedEffect
         if (state != WorkoutState.Completed || workout == null || !continueRequested || saved) {
             return@LaunchedEffect
         }
@@ -404,9 +415,28 @@ fun RideScreen(
     // look broken exactly when they're being used to pick an opening effort.
     val displayTarget = if (isFreeRide) freeRideTarget else targetPower
 
+    val companionSessionRides by companionHost.sessionRides.collectAsState()
+    val companionSessionEnded by companionHost.sessionEnded.collectAsState()
+
+    // The companion has been gone long enough that this is not a blip. Leave
+    // the HUD and show what the session produced. The rider is not asked: they
+    // are on a bike, the thing driving the road is gone, and a HUD with a flat
+    // road on it is not a choice worth offering them.
+    LaunchedEffect(companionSessionEnded, isCompanion) {
+        if (!isCompanion || !companionSessionEnded) return@LaunchedEffect
+        if (state != WorkoutState.Completed) sessionManager.stopWorkout()
+        onCompanionSessionEnded(companionSessionRides.map { it.sessionId })
+    }
+
     val handleBack = {
         if (state != WorkoutState.Completed) sessionManager.stopWorkout()
-        onBack()
+        // Backing out of a companion session is the rider saying it is over,
+        // which is the same ending the countdown reaches on its own.
+        if (isCompanion) {
+            onCompanionSessionEnded(companionSessionRides.map { it.sessionId })
+        } else {
+            onBack()
+        }
     }
 
     BackHandler { handleBack() }
@@ -613,6 +643,8 @@ fun RideScreen(
                         zoneColor = animatedZoneColor,
                         companionName = companionStatus.controllerName,
                         roadStale = companionStatus.roadStale,
+                        savedRideCount = companionSessionRides.size,
+                        lastSavedRideName = companionSessionRides.lastOrNull()?.name,
                         onShiftDown = { companionEngine.shiftDown() },
                         onShiftUp = { companionEngine.shiftUp() },
                         shiftingEnabled = state != WorkoutState.Countdown,
@@ -959,7 +991,11 @@ fun RideScreen(
         }
 
         AnimatedVisibility(
-            visible = state == WorkoutState.Completed,
+            // Never in companion mode. A full-screen trophy over a HUD whose
+            // game is still running, and whose next lap may start in seconds,
+            // would cover the road at the moment the rider needs to see it.
+            // The strip at the top says the ride was saved instead.
+            visible = state == WorkoutState.Completed && !isCompanion,
             enter = fadeIn(tween(1000)),
             exit = fadeOut(tween(500)),
             modifier = Modifier.align(Alignment.Center)
