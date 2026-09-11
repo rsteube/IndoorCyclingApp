@@ -1,0 +1,5 @@
+Gear shifts you can feel. Speed now follows cadence through the gear you are in, so downshifting changes what the pedals ask of you immediately. The bike has mass too: accelerating costs you, easing off carries you. Pulling away no longer grinds.
+
+New: Companion mode (Alpha). A game or app on another device on your network drives the road; this app turns it into resistance and records the ride. Pair once and it reconnects on its own.
+
+Fixed: a ride resumed from the banner lost its map.

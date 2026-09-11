@@ -6,6 +6,77 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.2] (18) - 2026-09-11
+
+### Added
+
+- **Companion mode.** A game or app on another device on the same network
+  drives the road; this app turns it into resistance and records the ride. No
+  account and no server in the middle. Labelled **Alpha**: it needs a second
+  program running elsewhere, and the protocol under it is still moving. The
+  protocol, the close codes and a worked example are in
+  [docs/COMPANION_API.md](docs/COMPANION_API.md) and on the website.
+- **Permanent pairing.** The pairing code is per ride, which is the right
+  ceremony for a stranger and the wrong one for a machine in the same room.
+  Agreeing once on both devices leaves a shared key, and a mutual
+  challenge-response over it means a paired companion connects with no code
+  even though the address and port change every ride. The companion screen
+  lists what is paired and forgets one immediately on request. Authentication
+  only: the socket is still plaintext, and that limit is written down rather
+  than left to be inferred.
+- **Remote controls.** While a game shows a menu the app draws a pad of up,
+  down, left, right, enter and back. Controls the game does not list are drawn
+  visibly dead rather than hidden, so a rider never presses something that
+  looks live and gets nothing.
+- **A companion can set the rider's drivetrain**, for a game with an opinion
+  about the bike. Optional, not persisted, and refused whole rather than
+  repaired when the teeth described do not exist.
+
+### Changed
+
+- **Speed follows cadence through the gear.** The kinematic coupling a chain
+  provides was missing, so downshifting barely registered. Shifts now change
+  what the pedals ask for immediately, and the gap between gears grows with
+  speed as it does outdoors. Shared by Route mode and Companion mode.
+- **Acceleration is part of the road load**, so the bike has mass: accelerating
+  costs something and easing off carries the rider.
+- **Launch assist.** Off the line almost none of the resistance is air, leaving
+  gravity, rolling and inertia: heavy pedals and nothing moving. The app
+  commands half the real force and fades to full physics over ten seconds once
+  past 5 km/h, smoothstepped so neither end of the hand-off is a corner. It
+  scales the whole force, so a hill start is helped too, and re-arms below
+  1 km/h so a rider climbing at 4 km/h is never handed it back.
+- **The companion owns the start, and there is no countdown.** Telemetry and
+  the road flow from the moment it connects; the clock waits for
+  `setState: "active"`. Two countdowns fighting each other is worse than
+  either, and the app cannot see the one that matters.
+- **A finished companion ride returns to the companion screen** rather than the
+  home tab, since the game on the other device is still running.
+
+### Fixed
+
+- **A second companion ride could not be started.** The session sits on
+  `Completed` until the next ride is prepared, so the ride watch started by the
+  pairing screen saw the previous ride's ending and closed the socket a moment
+  after opening it. An ending is now a transition into `Completed`, pinned by
+  `RideEndWatch` and its tests.
+- **Pairing keys were not excluded from Android Auto Backup** or phone-to-phone
+  transfer, so a key could have left the device it was agreed on. Excluded from
+  both, and never written to a Backup & sync slice.
+- **A ride resumed from the unfinished-ride banner saved without its road**, so
+  the map and elevation chart it had been recording were lost.
+
+### Notes
+
+- Copyright transferred to **Snapp Technology Ltd** across every notice. The
+  licence is unchanged and the signing key is unchanged, so updates are
+  ordinary. `AUTHORS.md` records who wrote it.
+- The privacy policy now covers Companion mode, including that the connection
+  is not encrypted.
+- `scripts/companion_probe.py` is a companion in one file, standard library
+  only, for testing the protocol against a real phone.
+
+
 ## [2.1] (17) - 2026-09-09
 
 ### Changed
