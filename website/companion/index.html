@@ -495,7 +495,7 @@
       teeth on it, so you can draw "34 x 17" rather than "gear 11 of 20".
     </p>
 
-    <h3>Pairing permanently, so nobody types a code again</h3>
+    <h3 id="pairing">Pairing permanently, so nobody types a code again</h3>
 
     <p>
       The pairing code is per ride. New code, new port, every time. That is the
@@ -879,6 +879,51 @@ proof = hex(HMAC_SHA256(keyBytes,
 { "t": "finish" }
 { "t": "ping", "id": 17 }</code></pre>
 
+    <h3>The ride ends, the evening does not</h3>
+
+    <p>
+      After <code>finish</code> the phone sends a <code>stateChanged</code> of
+      <code>"finished"</code>, closes the socket with <code>4005</code>, shows the
+      rider their summary, and then goes back to listening for the next ride.
+      <strong>Riders ride twice.</strong> A companion that reads
+      <code>4005</code> as "the rider is done for the night" and shuts itself
+      down is the one they have to restart before they can do another lap.
+    </p>
+
+    <p>
+      What <code>4005</code> does mean is that nothing about that connection
+      survives it:
+    </p>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>What changed</th><th>What to do</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>The port is new</td>
+          <td>It is an ephemeral port, taken fresh each time the socket opens, so the address you connected to is now pointing at nothing. Rediscover. This is what discovery is for.</td>
+        </tr>
+        <tr>
+          <td>The pairing code is new</td>
+          <td>In release builds. Unless you are <a href="#pairing">permanently paired</a>, in which case there is no code and the rider does not have to touch the phone at all.</td>
+        </tr>
+        <tr>
+          <td>Everything you declared is gone</td>
+          <td>Send <code>drivetrain</code>, <code>course</code>, <code>label</code> and <code>controls</code> again after the new <code>welcome</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      So the loop is: <code>4005</code>, discover, connect, declare, and
+      <code>setState: "active"</code> when the rider starts the next one. This is
+      the strongest practical argument for implementing pairing: without it every
+      ride costs the rider a walk to the phone and six characters read off a
+      screen, and with it the second ride of an evening starts with nobody
+      touching anything.
+    </p>
+
     <h2 id="app-sends">What the phone sends back</h2>
 
     <h3><code>telemetry</code> - every 250 ms</h3>
@@ -1025,7 +1070,7 @@ proof = hex(HMAC_SHA256(keyBytes,
         <tr><td><code>4002</code></td><td>Wrong or missing pairing code, or a first frame that was not <code>hello</code>.</td></tr>
         <tr><td><code>4003</code></td><td>Another companion is already driving. Connect as an observer, or disconnect the other one.</td></tr>
         <tr><td><code>4004</code></td><td>The rider took control back.</td></tr>
-        <tr><td><code>4005</code></td><td>The ride ended.</td></tr>
+        <tr><td><code>4005</code></td><td>The ride ended. Not the session: the phone goes back to listening on a new port. Rediscover and reconnect rather than shutting down.</td></tr>
         <tr><td><code>4008</code></td><td>A frame could not be read.</td></tr>
       </tbody>
     </table>
@@ -1068,6 +1113,7 @@ proof = hex(HMAC_SHA256(keyBytes,
       <li><strong>Add gears.</strong> Draw the display from <code>welcome.gears</code>, wire up shift requests, handle <code>changed: false</code>.</li>
       <li><strong>Add discovery.</strong></li>
       <li><strong>Add <code>course</code>, <code>setState</code> and <code>finish</code>,</strong> which are what make the ride land in the rider's history looking like a ride.</li>
+      <li><strong>Ride twice without restarting anything.</strong> Finish a ride, then start another one. The port and the code have both changed underneath you, and this is where most companions turn out to have assumed they would not.</li>
     </ol>
 
     <p>
@@ -1089,6 +1135,8 @@ proof = hex(HMAC_SHA256(keyBytes,
         <tr><td><code>seq</code> that does not increase</td><td>Frames dropped silently; the road appears frozen with no error anywhere</td></tr>
         <tr><td>Sending deltas in <code>distanceM</code></td><td>Distance stalls, because a smaller value than the last is ignored</td></tr>
         <tr><td>Hardcoding the port</td><td>Works on the ride you tested, fails on every other one</td></tr>
+        <tr><td>Treating <code>4005</code> as the end of the session</td><td>The rider has to restart your app to do a second lap</td></tr>
+        <tr><td>Reconnecting to the address you remember after <code>4005</code></td><td>Connection refused, on a phone that is sitting right there listening. The port is new every ride</td></tr>
         <tr><td>Defaulting a missing <code>hr</code> or <code>speedMps</code> to zero</td><td>A heart rate of zero on the HUD; a rider stopped dead on a trainer that cannot count cadence</td></tr>
         <tr><td>Treating <code>trainerGradePercent</code> as a gradient</td><td>An 11&nbsp;% reading on a 6&nbsp;% hill. It is a force against an assumed mass</td></tr>
       </tbody>
