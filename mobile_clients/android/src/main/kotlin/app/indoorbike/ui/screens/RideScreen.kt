@@ -567,7 +567,9 @@ fun RideScreen(
                 state = state,
                 elapsed = elapsed,
                 totalDuration = totalDuration,
-                openEnded = isFreeRide || isSimulation,
+                // A companion ride has no total either: the game decides when it
+                // ends, so a "/ 6:00:00" beside the clock is a number nobody set.
+                openEnded = isFreeRide || isSimulation || isCompanion,
                 isMockTrainer = isMockTrainer,
                 onBack = handleBack,
                 onPauseToggle = {
@@ -581,11 +583,20 @@ fun RideScreen(
                 onMockToggle = { trainerManager.toggleMockPedaling() },
                 canEndAndSave = canEndAndSave,
                 onEndAndSave = { confirmingEnd = true },
-                canSkip = !isFreeRide && !isSimulation,
+                // Skip means "the next interval", and only a structured workout has
+                // one. A companion ride is a single synthetic segment the game
+                // drives, so skipping it jumped past the whole ride and left the
+                // session broken, with nothing the rider could have wanted from it.
+                canSkip = !isFreeRide && !isSimulation && !isCompanion,
                 awaitingCompanionStart = isCompanion,
-                // Narrow widths (portrait) get a reflowed two-row header so the
+                // Narrow widths and portrait get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
-                compact = LocalConfiguration.current.screenWidthDp < 600
+                // Width alone missed an upright tablet: 800 dp passed, and one
+                // row of title, status, clock and buttons cut the ride's name
+                // down to its first letter.
+                compact = LocalConfiguration.current.let {
+                    it.screenWidthDp < 600 || it.screenWidthDp < it.screenHeightDp
+                }
             )
 
             // Responsive HUD: the layout is chosen from the ACTUAL space the HUD
@@ -1150,23 +1161,35 @@ private fun RideHeader(
     ) {
         IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
 
-        // The ride name earns its place back now the controls are 44 dp pills
-        // rather than full-height buttons. It ellipsises rather than wraps: the
-        // row has a growing clock in it and must stay one line tall.
-        Text(
-            text = workoutName,
-            style = CadenceType.h3,
-            color = CadenceColors.Fg1,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
-        )
-
-        if (stateText != null) {
-            RideStateText(text = stateText, color = stateColor)
+        // The ride name and the status line share whatever the row has spare,
+        // inside one group that takes all of it. Two things that used to go
+        // wrong here: the status was never allowed to shrink, so on a narrow
+        // landscape screen it pushed the name down to its first letter; and a
+        // non-filling weight leaves its unused share empty rather than handing
+        // it on, so the clock and buttons stopped short of the right edge.
+        // Both ellipsise rather than wrap: the row has a growing clock in it and
+        // must stay one line tall.
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = workoutName,
+                style = CadenceType.h3,
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            if (stateText != null) {
+                RideStateText(
+                    text = stateText,
+                    color = stateColor,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            }
         }
-
-        Spacer(Modifier.weight(1f))
 
         // Fixed width so the elapsed clock ticking from "0:00" → "1:23:45" doesn't
         // resize the time block and shove the buttons around. softWrap = false +

@@ -579,6 +579,12 @@ class WorkoutSessionManager(
 
     fun skipSegment() {
         val workout = _activeWorkout.value ?: return
+        // A companion ride is one synthetic segment standing in for a road the
+        // game owns. There is no next interval to move to, and rolling past the
+        // only one ends the ride out from under the companion still driving it.
+        // Refused here as well as hidden on screen, so the next thing to call
+        // this cannot find the same hole.
+        if (workout.isCompanion) return
         if (_state.value != WorkoutState.Active && _state.value != WorkoutState.Paused) return
         val idx = _currentSegmentIndex.value
         if (idx >= workout.segments.size) return

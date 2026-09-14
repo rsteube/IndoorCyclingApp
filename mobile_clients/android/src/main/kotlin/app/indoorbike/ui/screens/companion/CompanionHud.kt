@@ -20,6 +20,7 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -119,13 +120,180 @@ fun CompanionHud(
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
+        // Where the thumbs are decides where the shifter goes, and that is a
+        // question about the shape of the space, not the device. Landscape puts
+        // the hands at the two sides of the screen; portrait puts them at the
+        // bottom. Tested on the space this HUD actually gets, so split screen
+        // and a folding phone half-open land on whichever is true.
+        val landscape = maxWidth > maxHeight && maxWidth >= 560.dp
+        val roomy = maxWidth >= 560.dp && maxHeight >= 560.dp
+        val symbolSize: TextUnit = if (roomy) 72.sp else 52.sp
+
+        val downEnabled = shiftingEnabled && gearIndex > 0
+        val upEnabled = shiftingEnabled && gearIndex < drivetrain.gearCount - 1
+
+        // Easier on the left and harder on the right, in both layouts: the
+        // same way round as the gear card, the ladder under the number, and
+        // every handlebar remote this app pairs with.
+        val shiftDown = @Composable { slot: Modifier ->
+            ShiftPaddle(
+                symbol = "\u2212",
+                label = "Easier",
+                description = "Shift to an easier gear",
+                enabled = downEnabled,
+                onShift = onShiftDown,
+                symbolSize = symbolSize,
+                modifier = slot,
+            )
+        }
+        val shiftUp = @Composable { slot: Modifier ->
+            ShiftPaddle(
+                symbol = "+",
+                label = "Harder",
+                description = "Shift to a harder gear",
+                enabled = upEnabled,
+                onShift = onShiftUp,
+                symbolSize = symbolSize,
+                modifier = slot,
+            )
+        }
+
+        val readouts = @Composable { slot: Modifier, horizontalPadding: Dp ->
+            Box(modifier = slot) {
+                CompanionReadouts(
+                    gradient = gradient,
+                    speedMps = speedMps,
+                    distanceMeters = distanceMeters,
+                    elevationGainMeters = elevationGainMeters,
+                    drivetrain = drivetrain,
+                    gearIndex = gearIndex,
+                    powerWatts = powerWatts,
+                    isPowerStale = isPowerStale,
+                    wattsPerKg = wattsPerKg,
+                    cadenceRpm = cadenceRpm,
+                    heartRate = heartRate,
+                    isHrStale = isHrStale,
+                    hrColor = hrColor,
+                    hrSublabel = hrSublabel,
+                    zoneColor = zoneColor,
+                    companionName = companionName,
+                    roadStale = roadStale,
+                    savedRideCount = savedRideCount,
+                    lastSavedRideName = lastSavedRideName,
+                    shiftingEnabled = shiftingEnabled,
+                    horizontalPadding = horizontalPadding,
+                )
+                // Over the readouts rather than in them. The pad is a visitor:
+                // it belongs to a menu on somebody else's screen, comes and goes
+                // on that menu's schedule, and the ride's own numbers must not
+                // reflow every time it does. Bottom centre, between the two
+                // paddles, so a rider answering a menu never lands a thumb on a
+                // shift by mistake.
+                if (remoteControls != null) {
+                    CompanionControlPad(
+                        controls = remoteControls,
+                        onPress = onControlPress,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(Spacing.s3),
+                    )
+                }
+            }
+        }
+
+        if (landscape) {
+            // Full-height paddles on the two outer edges. A thumb resting on the
+            // bars finds one anywhere along the side without aiming, which on a
+            // tablet clamped to a handlebar is the difference between a shift
+            // and a glance at the screen to find a button.
+            val paddleWidth = if (roomy) 148.dp else 108.dp
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = Spacing.s3, end = Spacing.s3, bottom = Spacing.s3),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+            ) {
+                shiftDown(Modifier.width(paddleWidth).fillMaxHeight())
+                readouts(Modifier.weight(1f).fillMaxHeight(), 0.dp)
+                shiftUp(Modifier.width(paddleWidth).fillMaxHeight())
+            }
+        } else {
+            // Portrait: the whole bottom of the screen, split in two. That is
+            // where a thumb already is on a phone held upright, and halves of
+            // the full width are the largest targets the screen can give.
+            // Taller on an upright tablet, which has height to spare and is the
+            // one shape where the paddles are furthest from a hand on the bars.
+            val paddleHeight = if (roomy) 176.dp else 112.dp
+            Column(modifier = Modifier.fillMaxSize()) {
+                readouts(Modifier.fillMaxWidth().weight(1f), Spacing.s4)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(paddleHeight + Spacing.s3 * 2)
+                        .padding(
+                            start = Spacing.s4,
+                            end = Spacing.s4,
+                            top = Spacing.s3,
+                            bottom = Spacing.s3,
+                        ),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+                ) {
+                    shiftDown(Modifier.weight(1f).fillMaxHeight())
+                    shiftUp(Modifier.weight(1f).fillMaxHeight())
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Everything the rider reads, laid out in whatever the paddles leave.
+ *
+ * The readouts that were the whole HUD before shifting was given the edges of
+ * the screen. Measures its own space for the same reason the HUD does: the
+ * paddles take a fixed bite out of it, and the choice between side by side and
+ * stacked has to be made on what is actually left.
+ */
+@Composable
+private fun CompanionReadouts(
+    gradient: Double,
+    speedMps: Double,
+    distanceMeters: Double,
+    elevationGainMeters: Double,
+    drivetrain: Drivetrain,
+    gearIndex: Int,
+    powerWatts: Int,
+    isPowerStale: Boolean,
+    wattsPerKg: Float,
+    cadenceRpm: Int,
+    heartRate: Int,
+    isHrStale: Boolean,
+    hrColor: Color,
+    hrSublabel: String?,
+    zoneColor: Color,
+    companionName: String?,
+    roadStale: Boolean,
+    savedRideCount: Int,
+    lastSavedRideName: String?,
+    shiftingEnabled: Boolean,
+    horizontalPadding: Dp,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val availableWidth = maxWidth
         val availableHeight = maxHeight
         // Same test route mode uses: side by side needs width to spare relative
         // to height, not merely an absolute number, or a tablet held upright
         // passes a width check and then gets a squeezed two-column layout.
-        val wide = availableWidth >= 640.dp && availableWidth > availableHeight
+        // Measured between the paddles rather than across the whole HUD, so
+        // the threshold is lower than route mode's: a landscape phone gives up
+        // two paddle widths and still has more than enough for side by side.
+        val wide = availableWidth >= 520.dp && availableWidth > availableHeight
         val short = availableHeight < 420.dp
+        // Landscape with almost no height: a phone on its side, with a paddle
+        // taken off each end. Neither the side-by-side layout nor the stack
+        // fits here, and the stack failed badly, squeezing the power number,
+        // the one the rider is actually watching, down to nothing.
+        val cramped = !wide && availableWidth > availableHeight && availableHeight < 340.dp
 
         val flankWidth: Dp = if (wide) 190.dp else 150.dp
         val flankFont: TextUnit = when {
@@ -150,14 +318,18 @@ fun CompanionHud(
                     valueFontSize = if (compact) 32.sp else 44.sp,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
+                // A readout only. Shifting is the paddles' job, and a second,
+                // smaller pair of buttons in the middle of the screen would only
+                // be the wrong thing to reach for.
                 GearShifter(
                     drivetrain = drivetrain,
                     gearIndex = gearIndex,
                     speedMps = speedMps,
-                    onShiftDown = onShiftDown,
-                    onShiftUp = onShiftUp,
+                    onShiftDown = {},
+                    onShiftUp = {},
                     compact = compact,
                     enabled = shiftingEnabled,
+                    shiftButtons = false,
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
             }
@@ -194,7 +366,7 @@ fun CompanionHud(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = Spacing.s4)
+                .padding(horizontal = horizontalPadding)
                 .padding(bottom = Spacing.s2),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
@@ -205,7 +377,69 @@ fun CompanionHud(
                 lastSavedRideName = lastSavedRideName,
             )
 
-            if (wide) {
+            if (cramped) {
+                // Everything the rider reads off the phone, in two rows. Power
+                // takes its place beside the road rather than below it, where
+                // there was no height left to give it.
+                Row(
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+                ) {
+                    GradientReadout(
+                        gradient = gradient,
+                        compact = true,
+                        valueFontSize = 30.sp,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    GearShifter(
+                        drivetrain = drivetrain,
+                        gearIndex = gearIndex,
+                        speedMps = speedMps,
+                        onShiftDown = {},
+                        onShiftUp = {},
+                        compact = true,
+                        enabled = shiftingEnabled,
+                        shiftButtons = false,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    CompanionPowerReadout(
+                        powerWatts = powerWatts,
+                        isStale = isPowerStale,
+                        wattsPerKg = wattsPerKg,
+                        zoneColor = zoneColor,
+                        powerFontSize = 44.sp,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
+                val cardWidth = ((availableWidth - horizontalPadding * 2 - Spacing.s3) / 2)
+                    .coerceAtMost(170.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Max),
+                    horizontalArrangement = Arrangement.spacedBy(
+                        Spacing.s3, Alignment.CenterHorizontally,
+                    ),
+                ) {
+                    CadenceFlankMetric(
+                        rpm = cadenceRpm,
+                        target = null,
+                        cardWidth = cardWidth,
+                        valueFontSize = 28.sp,
+                        compact = true,
+                        modifier = Modifier.fillMaxHeight(),
+                    )
+                    FlankMetric(
+                        label = "Heart rate",
+                        value = if (isHrStale) "--" else heartRate.toString(),
+                        unit = "bpm",
+                        isStale = isHrStale,
+                        valueColor = hrColor,
+                        cardWidth = cardWidth,
+                        valueFontSize = 28.sp,
+                        compact = true,
+                        modifier = Modifier.fillMaxHeight(),
+                    )
+                }
+            } else if (wide) {
                 Row(
                     modifier = Modifier.fillMaxWidth().weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(Spacing.s4),
@@ -247,25 +481,17 @@ fun CompanionHud(
                 rider(Modifier)
             }
 
-            CompanionTotals(
-                speedMps = speedMps,
-                distanceMeters = distanceMeters,
-                elevationGainMeters = elevationGainMeters,
-            )
-        }
-
-        // Over the HUD rather than in it. The pad is a visitor: it belongs to a
-        // menu on somebody else's screen, it comes and goes on that menu's
-        // schedule, and the ride's own readouts must not reflow every time it
-        // does. Bottom-end so it falls under the hand already on the bars.
-        if (remoteControls != null) {
-            CompanionControlPad(
-                controls = remoteControls,
-                onPress = onControlPress,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(Spacing.s4),
-            )
+            // Not when cramped. Speed, distance and climbing are the game's
+            // numbers first, and it is already showing them on the big screen
+            // the rider is facing; given the choice, the phone's height goes to
+            // what only the phone knows.
+            if (!cramped) {
+                CompanionTotals(
+                    speedMps = speedMps,
+                    distanceMeters = distanceMeters,
+                    elevationGainMeters = elevationGainMeters,
+                )
+            }
         }
     }
 }

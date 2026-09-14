@@ -8,6 +8,11 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **Skip broke a companion ride.** A companion ride is one synthetic segment the
+  game drives, so skipping it rolled straight to the end and completed the ride
+  from under the companion. The button is gone from Companion mode and the
+  session refuses the skip as well. The clock also stopped claiming a
+  "/ 6:00:00" total nobody set.
 - **Companion rides were not being saved.** A ride was written to history when
   the rider tapped through to the summary, which is how every other mode works
   and is a tap a companion rider never makes: the game ends the ride, they are
@@ -17,6 +22,23 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Changed
 
+- **Shifting is the biggest thing on the companion HUD.** In Companion mode the
+  game owns the road and the rider owns the gears, and a rider without a
+  handlebar controller had two 46 dp circles in the middle of a card to do it
+  with. Landscape now puts full-height Easier and Harder paddles on the two
+  outer edges, where a thumb resting on the bars finds one without aiming;
+  portrait splits the bottom of the screen between them. They shift on touch
+  rather than on release, because a thumb that lands and skids on a bouncing bike
+  cancels an ordinary click, and they dim rather than vanish at the end of the
+  range.
+- **A landscape phone keeps its power number.** Between the two paddles there was
+  no height left for it, and it collapsed to nothing. That shape now gets its own
+  two-row arrangement and drops speed, distance and climbing, which the game is
+  already showing on the big screen.
+- **The ride header shares its space instead of fighting over it.** The status
+  line could push the ride's name down to its first letter, an upright tablet
+  missed the two-row header meant for portrait, and the controls stopped short
+  of the right edge. All three affected every ride mode, not only Companion.
 - **A companion session is many rides (protocol 0.7).** `finish` ends a ride and
   leaves the socket open, so the game can start another whenever it likes. The
   app no longer shows a summary between rides, because the game is still running

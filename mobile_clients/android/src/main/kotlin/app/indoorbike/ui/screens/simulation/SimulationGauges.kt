@@ -299,6 +299,13 @@ fun GearShifter(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     enabled: Boolean = true,
+    /**
+     * Draw the two small buttons either side of the number. Off where the HUD
+     * gives shifting its own large controls, as Companion mode does with its
+     * edge paddles: two ways to do the one thing, one of them a 46 dp circle,
+     * only invites the rider to reach for the worse one.
+     */
+    shiftButtons: Boolean = true,
 ) {
     val askedCadence = drivetrain.cadenceRpmFor(speedMps, gearIndex)
     val gear = drivetrain.gearAt(gearIndex)
@@ -322,13 +329,15 @@ fun GearShifter(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.s2, Alignment.CenterHorizontally),
         ) {
-            ShiftButton(
-                label = "−",
-                description = "Shift to an easier gear",
-                accent = accent,
-                enabled = enabled && gearIndex > 0,
-                onClick = onShiftDown,
-            )
+            if (shiftButtons) {
+                ShiftButton(
+                    label = "−",
+                    description = "Shift to an easier gear",
+                    accent = accent,
+                    enabled = enabled && gearIndex > 0,
+                    onClick = onShiftDown,
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -352,13 +361,15 @@ fun GearShifter(
                     modifier = Modifier.fillMaxWidth().height(10.dp),
                 )
             }
-            ShiftButton(
-                label = "+",
-                description = "Shift to a harder gear",
-                accent = accent,
-                enabled = enabled && gearIndex < drivetrain.gearCount - 1,
-                onClick = onShiftUp,
-            )
+            if (shiftButtons) {
+                ShiftButton(
+                    label = "+",
+                    description = "Shift to a harder gear",
+                    accent = accent,
+                    enabled = enabled && gearIndex < drivetrain.gearCount - 1,
+                    onClick = onShiftUp,
+                )
+            }
         }
         if (!compact) {
             Spacer(Modifier.height(4.dp))

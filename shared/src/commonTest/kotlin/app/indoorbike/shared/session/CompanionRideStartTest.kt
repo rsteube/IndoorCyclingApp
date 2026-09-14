@@ -80,6 +80,32 @@ class CompanionRideStartTest {
         }
     }
 
+    /**
+     * Skip means "the next interval", and a companion ride has none. Rolling
+     * past its one synthetic segment used to end the ride from under the game
+     * still driving it, so it is refused rather than merely hidden.
+     */
+    @Test
+    fun skippingACompanionRideDoesNothing() = runTest {
+        withManager { sessionManager, _ ->
+            sessionManager.prepareCompanion(ftp = 240)
+            sessionManager.startOrResumeCompanionRide()
+            val segment = sessionManager.currentSegmentIndex.value
+            val elapsed = sessionManager.elapsedSeconds.value
+
+            sessionManager.skipSegment()
+
+            assertEquals(WorkoutState.Active, sessionManager.state.value)
+            assertEquals(segment, sessionManager.currentSegmentIndex.value)
+            assertEquals(elapsed, sessionManager.elapsedSeconds.value)
+
+            sessionManager.pauseWorkout()
+            sessionManager.skipSegment()
+            assertEquals(WorkoutState.Paused, sessionManager.state.value)
+            assertEquals(segment, sessionManager.currentSegmentIndex.value)
+        }
+    }
+
     @Test
     fun startingTwiceChangesNothing() = runTest {
         withManager { sessionManager, _ ->
