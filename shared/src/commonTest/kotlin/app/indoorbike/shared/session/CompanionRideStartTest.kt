@@ -20,6 +20,7 @@ import app.indoorbike.shared.companion.CompanionEngine
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -103,6 +104,49 @@ class CompanionRideStartTest {
             sessionManager.skipSegment()
             assertEquals(WorkoutState.Paused, sessionManager.state.value)
             assertEquals(segment, sessionManager.currentSegmentIndex.value)
+        }
+    }
+
+    /**
+     * A game that drops mid-ride has stopped driving the ride, not ended it.
+     * The ride pauses hard, and resumes as the same ride.
+     */
+    @Test
+    fun aCompanionThatDropsPausesTheRideAndItResumesAsTheSameRide() = runTest {
+        withManager { sessionManager, _ ->
+            sessionManager.prepareCompanion(ftp = 240)
+            sessionManager.startOrResumeCompanionRide()
+            val startedAt = sessionManager.sessionStartTimeEpoch
+
+            assertTrue(sessionManager.holdCompanionRide(), "a riding ride was held")
+            assertEquals(WorkoutState.Paused, sessionManager.state.value)
+
+            sessionManager.resumeWorkout()
+            assertEquals(WorkoutState.Active, sessionManager.state.value)
+            assertEquals(startedAt, sessionManager.sessionStartTimeEpoch, "the same ride, not a new one")
+        }
+    }
+
+    @Test
+    fun aRideTheGameHadPausedIsNotReportedAsHeld() = runTest {
+        withManager { sessionManager, _ ->
+            sessionManager.prepareCompanion(ftp = 240)
+            sessionManager.startOrResumeCompanionRide()
+            sessionManager.pauseWorkout()
+
+            // False, so the host does not resume it when the game returns: the
+            // game paused it, and the game can resume it.
+            assertFalse(sessionManager.holdCompanionRide())
+            assertEquals(WorkoutState.Paused, sessionManager.state.value)
+        }
+    }
+
+    @Test
+    fun thereIsNothingToHoldBeforeTheRideStarts() = runTest {
+        withManager { sessionManager, _ ->
+            sessionManager.prepareCompanion(ftp = 240)
+            assertFalse(sessionManager.holdCompanionRide())
+            assertEquals(WorkoutState.Standby, sessionManager.state.value)
         }
     }
 

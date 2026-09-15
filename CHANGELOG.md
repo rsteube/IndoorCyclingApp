@@ -24,8 +24,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 - **A companion ride was lost when the game went away before finishing.** The
   game closed mid-ride, the rider pressed back, and five minutes of riding were
-  discarded with nothing on screen to say so. Ending a session now keeps the
-  ride that was underway.
+  discarded with nothing on screen to say so. The ride now pauses and waits,
+  and ending it keeps it.
 - **An interrupted companion ride could never be recovered.** The unfinished-ride
   banner could not resolve a companion ride and so never appeared for one, and
   a companion ride continued from it would not have saved when ended. The banner
@@ -45,13 +45,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Changed
 
-- **The ride screen says when a companion goes away, and what the session
-  produced.** The moment the game disconnects, a panel over the HUD names it,
-  counts down 25 seconds and lists the rides this session, including the one
-  still running. If the game comes back the panel closes by itself; if not, or
-  when the rider ends the session, it becomes the session's summary and stays
-  until dismissed. This replaces the separate end-of-session screen, so the
-  ending is shown where the rider is already looking.
+- **A companion that drops mid-ride pauses the ride and waits for it.** A game
+  that disconnects without sending `finish` has stopped driving the ride, not
+  ended it, so the ride pauses at once (trainer off, nothing recorded, and not
+  the kind of pause pedalling undoes) and a panel over the HUD says "Ride
+  paused" with the rides this session. There is no timeout. When the same game
+  reconnects the ride carries on by itself; a ride the game had paused itself
+  stays paused. If it is not coming back, the rider taps End ride and it is
+  saved as an ordinary completed ride, and the panel becomes the session's
+  summary. This replaces the separate end-of-session screen, so the ending is
+  shown where the rider is already looking.
 - **Shifting is the biggest thing on the companion HUD.** In Companion mode the
   game owns the road and the rider owns the gears, and a rider without a
   handlebar controller had two 46 dp circles in the middle of a card to do it

@@ -32,11 +32,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -54,8 +49,6 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
-import kotlinx.coroutines.delay
-import kotlin.math.ceil
 
 /** The ride that was running when the companion left, as far as the phone knows it. */
 data class RideInProgress(
@@ -77,12 +70,15 @@ data class RideInProgress(
  *
  * ## Two states, one panel
  *
- * While the companion is away the panel says so, counts down to giving up on
- * it, and shows the ride still running underneath. It closes by itself if the
- * game comes back, because a restarted game or a sleeping laptop is not an
- * ending. When the session does end, by the countdown or by the rider, the same
- * panel becomes the ending: every ride the session produced, including the one
- * the companion left unfinished, which was saved rather than lost.
+ * While the companion is away the ride it was driving is paused, and the panel
+ * says so in as many words: the ride is paused, the game has gone, the app is
+ * waiting for it. There is no countdown. A game that dropped without finishing
+ * has not ended the ride, and nothing about it going quiet says the rider is
+ * done. It closes by itself when the game comes back, and the ride carries on.
+ *
+ * The rider's way out is End ride, which saves what they rode as an ordinary
+ * completed ride. The same panel then becomes the ending: every ride the
+ * session produced.
  *
  * It covers the paddles on purpose. A rider reaching for a gear on a session
  * that is over should hit the panel, not shift a trainer nothing is driving.
@@ -92,10 +88,8 @@ fun CompanionSessionPanel(
     phase: SessionPhase,
     companionName: String?,
     rides: List<SavedCompanionRide>,
-    /** Present only while waiting, and only when a ride is actually running. */
+    /** Present only while waiting, and only when a ride is underway, which it paused. */
     inProgress: RideInProgress?,
-    /** When the session will be given up on, epoch ms, while waiting. */
-    endsAtMs: Long?,
     /**
      * The companion's icon and colours, so the panel saying it has gone still
      * looks like the thing that left. The warning colour of "disconnected" is
@@ -149,7 +143,11 @@ fun CompanionSessionPanel(
                     CompanionMark(name = companionName, icon = icon, palette = palette, size = 44.dp)
                 }
                 Text(
-                    text = if (ended) "Session ended" else "$who disconnected",
+                    text = when {
+                        ended -> "Session ended"
+                        inProgress != null -> "Ride paused"
+                        else -> "$who disconnected"
+                    },
                     style = CadenceType.h2,
                     color = if (ended) CadenceColors.Fg1 else CadenceColors.Warning,
                     modifier = Modifier.weight(1f),
@@ -162,9 +160,12 @@ fun CompanionSessionPanel(
                     } else {
                         "Every ride below is saved in History."
                     }
+                } else if (inProgress != null) {
+                    "$who disconnected before the ride finished. The trainer is off and " +
+                        "nothing is being recorded. When it reconnects the ride carries on " +
+                        "by itself; if it is not coming back, end the ride to save it."
                 } else {
-                    "Waiting for it to come back. The road is flat until it does." +
-                        countdownText(endsAtMs)
+                    "Waiting for it to reconnect."
                 },
                 style = CadenceType.body,
                 color = CadenceColors.Fg2,
@@ -189,11 +190,7 @@ fun CompanionSessionPanel(
                                 ride.distanceMeters,
                                 ride.averagePowerWatts,
                             ),
-                            note = if (ride.endedByDisconnect) {
-                                "Saved when $who disconnected before finishing"
-                            } else {
-                                null
-                            },
+                            note = null,
                         )
                     }
                     if (inProgress != null) {
@@ -205,7 +202,7 @@ fun CompanionSessionPanel(
                                     inProgress.distanceMeters,
                                     0,
                                 ),
-                                note = "In progress. Kept if the session ends now.",
+                                note = "Paused. Saved as a completed ride when you end it.",
                                 live = true,
                             )
                         }
@@ -222,6 +219,15 @@ fun CompanionSessionPanel(
                         text = "Done",
                         leadingIcon = null,
                         onClick = onDone,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else if (inProgress != null) {
+                    // Primary: with the game gone this is the only thing there is
+                    // to do, and it is not destructive. The ride is kept.
+                    PrimaryBtn(
+                        text = "End ride",
+                        leadingIcon = null,
+                        onClick = onEndSession,
                         modifier = Modifier.weight(1f),
                     )
                 } else {
@@ -266,21 +272,6 @@ private fun SessionRideRow(
             )
         }
     }
-}
-
-/** Seconds left on the countdown, ticking, or nothing once it has no end. */
-@Composable
-private fun countdownText(endsAtMs: Long?): String {
-    if (endsAtMs == null) return ""
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(endsAtMs) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(250)
-        }
-    }
-    val left = ceil((endsAtMs - now).coerceAtLeast(0L) / 1000.0).toInt()
-    return " Ending the session in $left s."
 }
 
 /** Duration always; distance and power when there are any. */

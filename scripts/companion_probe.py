@@ -646,7 +646,7 @@ def main():
     ap.add_argument("--discover", action="store_true",
                     help="find the phone via its UDP beacon on %d" % DISCOVERY_PORT)
     ap.add_argument("--scenario", default="smoke",
-                    choices=sorted(list(SCENARIOS) + ["twice"]))
+                    choices=sorted(list(SCENARIOS) + ["twice", "drop"]))
     ap.add_argument("--ride-seconds", type=float, default=10.0)
     ap.add_argument("--menu-seconds", type=float, default=8.0)
     ap.add_argument("--gradient", type=float, default=0.0)
@@ -672,6 +672,8 @@ def main():
 
     if args.scenario == "twice":
         return run_twice(args, host, port, state)
+    if args.scenario == "drop":
+        return run_drop(args, host, port, state)
 
     probe, ws = connect(host, port, args, state)
     if probe is None:
@@ -701,6 +703,51 @@ def connect(host, port, args, state):
     if probe.paired_ok:
         print("connected by pairing, no code involved")
     return probe, ws
+
+
+def run_drop(args, host, port, state):
+    """The game vanishes mid-ride without `finish`, then comes back.
+
+    What the phone should do, and what this checks: the ride pauses the moment
+    the socket goes, with no countdown to an ending; it stays paused for as long
+    as the game is away (`--menu-seconds`, so try a long one); and when the
+    same game reconnects the ride carries on by itself, as the same ride, with
+    a `stateChanged: active` to say so. Then it finishes properly.
+    """
+    probe, ws = connect(host, port, args, state)
+    if probe is None:
+        return 1
+    probe.send({"t": "course", "name": "Probe drop", "world": "Test harness"})
+    probe.send({"t": "setState", "state": "active"})
+    ridden = probe.drive(args.ride_seconds / 2, gradient=0.02)
+    print("\n[1] dropping the socket mid-ride, no finish, after %.0f m" % ridden)
+    probe.stop()
+    ws.close()
+
+    print("[2] away for %ds. The phone should say 'Ride paused' and not end anything" % args.menu_seconds)
+    time.sleep(args.menu_seconds)
+
+    print("[3] the same game reconnects")
+    probe, ws = connect(host, port, args, state)
+    if probe is None:
+        return 1
+    ok = True
+    try:
+        resumed = wait_for_state(probe, "active", 0, 6.0)
+        print("     ride carried on by itself: %s" % ("yes" if resumed else "NO"))
+        ok = ok and resumed
+        probe.drive(args.ride_seconds / 2, gradient=0.02, distance_m=ridden)
+        seen = len(probe.events)
+        probe.send({"t": "finish"})
+        finished = wait_for_state(probe, "finished", seen, 6.0)
+        print("[4] finished properly: %s" % ("yes" if finished else "NO"))
+        ok = ok and finished
+    finally:
+        probe.stop()
+        ws.close()
+    print("\n%s. %d warning(s), %d error(s)" % (
+        "the ride survived the drop" if ok else "FAILED", len(probe.warnings), len(probe.errors)))
+    return 0 if ok and not probe.errors else 1
 
 
 def run_twice(args, host, port, state):

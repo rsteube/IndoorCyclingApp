@@ -703,6 +703,39 @@ class WorkoutSessionManager(
         }
     }
 
+    /**
+     * Hold a companion ride while its companion is away.
+     *
+     * A game that drops without sending `finish` has not ended the ride; it has
+     * stopped driving it. So the ride is paused, trainer at 0 W, until the game
+     * comes back or the rider ends it. A hard pause, not the stop-pedalling kind:
+     * that one resumes itself when the rider turns the pedals, and nothing should
+     * restart a ride with no game there to describe the road.
+     *
+     * Returns true when this paused a ride that was riding, either active or
+     * auto-paused, which is what the caller resumes when the game returns. False
+     * when there was nothing to hold: no ride started yet, or one the game had
+     * already paused itself, which stays paused on its return.
+     */
+    fun holdCompanionRide(): Boolean {
+        if (_activeWorkout.value?.isCompanion != true) return false
+        if (sessionStartTimeEpoch == 0L) return false
+        return when (_state.value) {
+            WorkoutState.Active -> {
+                pauseWorkout()
+                true
+            }
+            WorkoutState.Standby -> {
+                // An auto-pause has already stopped the timer, the engine and
+                // the trainer. What it has not done is stop listening for the
+                // pedals, and this is what stops that.
+                _state.value = WorkoutState.Paused
+                true
+            }
+            else -> false
+        }
+    }
+
     fun endWorkoutEarly() {
         val state = _state.value
         if (state == WorkoutState.Idle || state == WorkoutState.Completed) return

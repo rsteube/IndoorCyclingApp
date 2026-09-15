@@ -31,12 +31,6 @@ data class SavedCompanionRide(
     val durationSeconds: Int,
     val distanceMeters: Double,
     val averagePowerWatts: Int = 0,
-    /**
-     * The companion left without finishing it, and the ride was kept when the
-     * session ended. Said on screen, because a lap that stops at 3.4 km of a
-     * 12 km course is otherwise indistinguishable from one that was meant to.
-     */
-    val endedByDisconnect: Boolean = false,
 )
 
 /**
@@ -68,7 +62,7 @@ class CompanionRideRecorder(private val container: AppContainer) {
      * never actually started, and a session with no elapsed time and no samples
      * in it is not a ride, it is an intention.
      */
-    suspend fun save(endedByDisconnect: Boolean = false): SavedCompanionRide? {
+    suspend fun save(): SavedCompanionRide? {
         val sessions = container.sessionManager
         val workout = sessions.activeWorkout.value ?: return null
         if (!workout.isCompanion) return null
@@ -99,7 +93,6 @@ class CompanionRideRecorder(private val container: AppContainer) {
             distanceMeters = road.distanceMeters - road.startedAtMeters,
             averagePowerWatts = if (telemetry.isEmpty()) 0
                 else telemetry.map { it.power }.average().toInt(),
-            endedByDisconnect = endedByDisconnect,
         )
     }
 

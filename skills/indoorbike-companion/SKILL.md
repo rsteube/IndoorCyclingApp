@@ -203,11 +203,12 @@ setState active -> ride -> finish
 - **Keep sending `world` between rides.** The trainer is not being driven while no ride is
   running, the same as before the first one, but the deadman is still watching and the gradient
   you are sending is the one that bites the instant the next ride starts.
-- **Always send `finish`. A disconnect is not a cancel.** If your socket closes mid-ride and
-  does not reconnect within 25 seconds, the phone ends the session and **saves** the ride that
-  was underway, flagged as cut off by a disconnect. The rider sees a "disconnected" panel with a
-  countdown and the session's rides the moment you drop. Reconnect inside the window (a game
-  restart, a sleeping laptop) and nothing is lost or ended.
+- **Always send `finish`. A disconnect is not an ending.** If your socket closes mid-ride, the
+  phone **pauses** the ride (trainer off, nothing recorded) and shows the rider "Ride paused". It
+  waits with no timeout. **Reconnect and the ride carries on by itself**: you get
+  `stateChanged: active` after `welcome`, so send `setState: "paused"` if you came back into a
+  menu. If you had paused the ride before dropping, it stays paused. If you never return, the
+  rider taps End ride and it is saved as a completed ride.
 
 `4005` now means the rider left Companion mode on the phone. That is the end of the session and
 the last thing you will hear.

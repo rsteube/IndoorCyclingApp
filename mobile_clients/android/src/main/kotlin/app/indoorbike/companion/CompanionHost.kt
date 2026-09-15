@@ -293,10 +293,6 @@ class CompanionHost(
     private var lastIconPng: ByteArray? = null
     private var lastIcon: ImageBitmap? = null
 
-    /** When a companion that has gone will be given up on, or null while nothing is counting. */
-    private val _sessionEndsAtMs = MutableStateFlow<Long?>(null)
-    val sessionEndsAtMs: StateFlow<Long?> = _sessionEndsAtMs.asStateFlow()
-
     /**
      * True from [start] until [stop]: this host is hosting a companion session,
      * and so it is the thing that writes the session's rides.
@@ -314,9 +310,13 @@ class CompanionHost(
     @Volatile
     private var sessionClosing = false
 
-    /** Whether the session being ended is ending because the companion left. */
+    /**
+     * The companion whose disconnect paused a riding ride, by its `hello` name.
+     * When it comes back the ride carries on by itself; null when there is
+     * nothing to resume, including a ride the game had paused on its own.
+     */
     @Volatile
-    private var closingByDisconnect = false
+    private var resumeForCompanion: String? = null
 
     /**
      * The last ride written, while it can still be added to.
@@ -330,7 +330,6 @@ class CompanionHost(
     /** True between the first active moment of a ride and its ending. */
     private var rideUnderway = false
 
-    private var sessionEndJob: Job? = null
 
     private var server: EmbeddedServer<*, *>? = null
     private var telemetryJob: Job? = null
@@ -387,9 +386,9 @@ class CompanionHost(
         clearLook()
         _sessionPhase.value = SessionPhase.LIVE
         _sessionCompanionName.value = null
-        _sessionEndsAtMs.value = null
         _sessionRides.value = emptyList()
         sessionClosing = false
+        resumeForCompanion = null
 
         val token = CompanionPairing.newToken()
         val sessionId = CompanionPairing.newSessionId()
@@ -518,8 +517,8 @@ class CompanionHost(
         _hosting.value = false
         _sessionPhase.value = SessionPhase.LIVE
         _sessionCompanionName.value = null
-        _sessionEndsAtMs.value = null
         sessionClosing = false
+        resumeForCompanion = null
         // The rides stay in history; the list of them belongs to the session
         // that is ending here, and the next one starts empty.
         _sessionRides.value = emptyList()
@@ -553,9 +552,6 @@ class CompanionHost(
         _remoteControls.value = null
         _pendingPairing.value = null
         ridePrepared = false
-        sessionEndJob?.cancel()
-        sessionEndJob = null
-
         if (running != null || closing.isNotEmpty()) {
             // Stopped off the caller's thread: CIO's shutdown joins its
             // selector, and doing that on the main thread while a screen is
@@ -663,11 +659,21 @@ class CompanionHost(
                 // end of them.
                 _remoteControls.value = null
                 _pendingPairing.value = null
-                Log.i(TAG, "Controller disconnected; the road will ramp to flat")
                 if (_sessionPhase.value == SessionPhase.LIVE) {
                     _sessionPhase.value = SessionPhase.COMPANION_AWAY
+                    // Gone without a `finish`: the game stopped driving the
+                    // ride, it did not end it. Pause and wait. Not a countdown
+                    // to an ending, because nothing about a game that has gone
+                    // quiet says the rider is done, and a ride ended by a timer
+                    // while they fetched a drink is a ride they did not choose
+                    // to end.
+                    if (sessionManager.holdCompanionRide()) {
+                        resumeForCompanion = conn.session.clientName
+                        Log.i(TAG, "Controller disconnected mid-ride; ride paused until it returns")
+                    } else {
+                        Log.i(TAG, "Controller disconnected; nothing was riding")
+                    }
                 }
-                startSessionEndCountdown()
             }
             publishConnectionCounts()
         }
@@ -686,15 +692,24 @@ class CompanionHost(
         val role = conn.session.role ?: return
         if (role == HelloFrame.ROLE_CONTROLLER && controller !== conn) {
             controller = conn
-            // Whatever was counting down to the end of the session, this is the
-            // thing it was waiting for.
-            sessionEndJob?.cancel()
-            sessionEndJob = null
-            _sessionEndsAtMs.value = null
             if (lookOwner != null && lookOwner != conn.session.clientName) clearLook()
             _sessionCompanionName.value = conn.session.clientName
             if (_sessionPhase.value == SessionPhase.COMPANION_AWAY) {
                 _sessionPhase.value = SessionPhase.LIVE
+            }
+            // The game that dropped is back: the ride it was driving carries on.
+            // Registered after the welcome went out, so the `stateChanged:
+            // active` this produces reaches it. A different companion taking
+            // over is not handed somebody else's ride mid-effort; it finds the
+            // ride paused and can resume it with `setState`, as it would any
+            // pause.
+            val resumeFor = resumeForCompanion
+            if (resumeFor != null) {
+                resumeForCompanion = null
+                if (resumeFor == conn.session.clientName) {
+                    sessionManager.resumeWorkout()
+                    Log.i(TAG, "Controller back; ride resumed")
+                }
             }
             if (!ridePrepared) {
                 sessionManager.prepareCompanion(ftp())
@@ -1130,9 +1145,7 @@ class CompanionHost(
         }
 
         rideUnderway = false
-        val saved = runCatching {
-            rideRecorder?.save(endedByDisconnect = closing && closingByDisconnect)
-        }
+        val saved = runCatching { rideRecorder?.save() }
             .onFailure { Log.e(TAG, "Could not write the companion ride to history", it) }
             .getOrNull()
         if (saved != null) {
@@ -1158,23 +1171,16 @@ class CompanionHost(
     /**
      * End the session now, keeping whatever ride is underway.
      *
-     * Called when the rider says so, and when a companion that left never came
-     * back. A ride in progress is written rather than dropped: the game that
-     * was driving it is gone, so there is nothing to resume, and the effort was
-     * real. Before this, a game that closed mid-ride and a rider who then
-     * pressed back lost the ride entirely, with nothing on screen to say so.
+     * Only ever the rider's decision: from the paused-ride panel after a
+     * companion has gone, or by backing out of a live session. Nothing ends a
+     * session on a timer. A ride in progress, running or paused, is written as
+     * an ordinary completed ride rather than dropped: the effort was real, and
+     * the rider has just said this is where it stops.
      */
     fun endSession() {
-        endSessionNow(byDisconnect = controller == null)
-    }
-
-    private fun endSessionNow(byDisconnect: Boolean) {
         if (_sessionPhase.value == SessionPhase.ENDED || sessionClosing) return
         sessionClosing = true
-        closingByDisconnect = byDisconnect
-        sessionEndJob?.cancel()
-        sessionEndJob = null
-        _sessionEndsAtMs.value = null
+        resumeForCompanion = null
 
         val rideState = sessionManager.state.value
         val underway = sessionManager.sessionStartTimeEpoch != 0L &&
@@ -1220,27 +1226,6 @@ class CompanionHost(
             if (completableRide?.sessionId == updated.sessionId) completableRide = updated
             _sessionRides.value = _sessionRides.value.map {
                 if (it.sessionId == updated.sessionId) updated else it
-            }
-        }
-    }
-
-    /**
-     * The controller has gone. Start counting, and only call the session over
-     * if it stays gone.
-     *
-     * A game restarting, a laptop sleeping and a Wi-Fi hiccup all look exactly
-     * like a rider finishing for the night at the instant the socket closes.
-     * The difference only shows up afterwards, so the answer is to wait and
-     * see rather than to guess.
-     */
-    private fun startSessionEndCountdown() {
-        sessionEndJob?.cancel()
-        _sessionEndsAtMs.value = System.currentTimeMillis() + SESSION_END_GRACE_MS
-        sessionEndJob = scope.launch {
-            delay(SESSION_END_GRACE_MS)
-            if (controller == null) {
-                Log.i(TAG, "No companion for " + (SESSION_END_GRACE_MS / 1000) + "s; session over")
-                endSessionNow(byDisconnect = true)
             }
         }
     }
@@ -1292,15 +1277,5 @@ class CompanionHost(
 
         /** What a companion's device picker shows. Matches the mDNS service name. */
         const val BEACON_NAME = "Indoor Bike"
-
-        /**
-         * How long a companion may be gone before the session is called over.
-         *
-         * Long enough to cover a game restarting or a laptop waking up, short
-         * enough that a rider who has stopped is not left staring at a HUD with
-         * a flat road on it. The rider is never blocked by it: backing out ends
-         * the session at once and shows the same rides.
-         */
-        const val SESSION_END_GRACE_MS = 25_000L
     }
 }

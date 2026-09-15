@@ -244,6 +244,12 @@ Version and capability are separate mechanisms. Version answers "same language";
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
 
+A companion that disconnects mid-ride without `finish` leaves the ride **paused**, with no
+timeout. The same companion (same `hello.client.name`) reconnecting resumes it automatically and
+receives `stateChanged: active` after `welcome`; a ride it had paused itself stays paused. The
+rider can end a paused ride, which saves it as completed. This is app behaviour, not a protocol
+version.
+
 **0.8** added the `brand` frame (section 7d): a name, a square PNG icon and three colours for
 the phone's ride header, and the `adjusted` warning code. Additive.
 
@@ -1064,7 +1070,8 @@ Present in the protocol, absent from this build. Do not design around them.
 | Sending `seq` that does not increase | Frames dropped silently; the road appears frozen |
 | Sending deltas in `distanceM` | Distance stalls, because smaller values are ignored |
 | Waiting for the socket to close after a `finish` | It does not close any more. You wait forever and the second ride never starts |
-| Closing the socket instead of sending `finish` | After 25 s the phone ends the session and saves the ride anyway, flagged as cut off by a disconnect |
+| Closing the socket instead of sending `finish` | The ride pauses and the rider is left on a "Ride paused" screen until you come back or they end it themselves |
+| Assuming the ride is paused after you reconnect | It resumed when you reconnected. Read `stateChanged`, and send `setState: "paused"` if you came back into a menu |
 | Sending a `course` without a `name` | The ride is listed in history as "Companion ride" |
 | Sending the icon as a URL, a JPEG, or a non-square image | `rejected`; the header shows a monogram instead |
 | Choosing a dark brand colour on a light desktop and never reading warnings | The phone lightens it and you never learn why it looks different |

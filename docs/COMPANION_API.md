@@ -1022,23 +1022,33 @@ folds it into the ride it has already written, so the map still lands.
 
 ### When the companion goes away
 
-The moment your socket closes, the rider's screen says so: a panel over their HUD names your
-companion as disconnected, counts down 25 seconds, and lists **Rides this session**, including
-the one still running. A game that is restarting or a laptop that slept reconnects inside that
-window, and the panel closes by itself.
+If your socket closes **without a `finish`**, you have stopped driving the ride, not ended it.
+So the phone pauses it and waits for you:
 
-If you do not come back, the session ends and **the ride that was underway is saved**, marked as
-ended by a disconnect. The same happens if the rider ends the session themselves while you are
-connected: you get `finished` and then `4005`, and the ride in progress is kept. There is nothing
-to resume once the game that was driving the road is gone, and losing the effort would be worse
-than keeping a ride that stopped short.
+- **The ride pauses at once.** Trainer at 0 W, clock stopped, nothing recorded. It is a hard
+  pause: a rider turning the pedals does not restart a ride with no game describing the road.
+- **The rider is told, plainly.** A panel over their HUD says **Ride paused**, names you as
+  disconnected, and lists the rides this session with the paused one among them.
+- **There is no timeout.** The phone waits for as long as you are gone. Nothing about a game
+  going quiet says the rider is done, so nothing ends the ride on a timer.
+- **When you reconnect, the ride carries on by itself.** Same ride, same clock. Your new
+  connection receives `stateChanged: active` straight after `welcome`, so you know it is running.
+  If you have come back into a menu rather than onto the road, send `setState: "paused"`.
+  "Reconnect" means the same companion: a *different* `hello.client.name` finds the ride paused
+  and resumes it with `setState: "active"` like any other pause.
+- **If you had paused the ride yourself before dropping, it stays paused** when you return. You
+  paused it; you resume it.
+- **If you are not coming back, the rider taps End ride.** The ride is saved as an ordinary
+  completed ride, and the panel becomes the session's summary. The same happens when the rider
+  backs out of a live session while you are still connected: you get `finished`, then `4005`.
 
-What this means for you: **send `finish` when a ride ends, every time.** A disconnect is not a
-way to cancel a ride; it is a way to save it with a note saying it was cut off. And send `course`
-with a name for each ride, because a ride saved without one is listed as "Companion ride".
+What this means for you: **send `finish` when a ride ends, every time.** Dropping the socket is
+not a way to end a ride; it leaves the rider on a paused screen deciding what you meant. Handle
+a reconnect that lands in a running ride, which after a two-second Wi-Fi drop is exactly what
+should happen. And send `course` with a name for each ride, or it is listed as "Companion ride".
 
 A ride interrupted by the phone itself (the app killed mid-ride) is offered on the rider's home
-screen afterwards as one to save, never to resume, for the same reason.
+screen afterwards as one to save, never to resume, because nothing is left to drive its road.
 
 The ride is a synthetic single-segment `Workout` with a reserved id, following the free-ride
 and route-ride precedent, so recording, crash recovery, the unfinished-ride banner, history,
@@ -1195,6 +1205,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `controls` | Puts a menu up and reports which buttons the rider pressed |
 | `pair` | Asks to be remembered, stores the key, and proves the next connection needs no code |
 | `brand` | Sends a name, a generated PNG icon and colours, then a deliberately unreadable accent to show the `adjusted` warning, then rides under the brand so it can be looked at |
+| `drop` | Rides, drops the socket with no `finish`, stays away for `--menu-seconds` (make it long), reconnects, and checks the ride carried on by itself before finishing it properly |
 | `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last

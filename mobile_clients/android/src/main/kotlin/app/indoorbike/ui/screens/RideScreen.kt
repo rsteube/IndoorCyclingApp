@@ -323,7 +323,6 @@ fun RideScreen(
     val companionSessionRides by companionHost.sessionRides.collectAsState()
     val companionPhase by companionHost.sessionPhase.collectAsState()
     val companionSessionName by companionHost.sessionCompanionName.collectAsState()
-    val companionEndsAt by companionHost.sessionEndsAtMs.collectAsState()
     val companionHosting by companionHost.hosting.collectAsState()
     val companionLook by companionHost.look.collectAsState()
     // Whose job it is to write this ride. The host's, when it is hosting the
@@ -658,6 +657,11 @@ fun RideScreen(
                 canSkip = !isFreeRide && !isSimulation && !isCompanion,
                 awaitingCompanionStart = isCompanion,
                 companion = companionHeader,
+                // While the panel is up it is the one way to decide what happens
+                // to the ride. A Resume pill beside it would restart a ride with
+                // no game driving the road, and an End pill would be a second,
+                // different ending for the same ride.
+                rideControlsHidden = showSessionPanel,
                 // Narrow widths and portrait get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
                 // Width alone missed an upright tablet: 800 dp passed, and one
@@ -732,6 +736,7 @@ fun RideScreen(
                         modifier = Modifier.fillMaxSize(),
                     )
                     if (showSessionPanel) {
+                        // Underway, which while the companion is away means paused.
                         val rideRunning = companionPhase ==
                             app.indoorbike.companion.CompanionHost.SessionPhase.COMPANION_AWAY &&
                             sessionManager.sessionStartTimeEpoch != 0L &&
@@ -750,7 +755,6 @@ fun RideScreen(
                             } else {
                                 null
                             },
-                            endsAtMs = companionEndsAt,
                             icon = companionLook?.icon,
                             palette = companionLook?.palette,
                             onEndSession = companionHost::endSession,
@@ -1193,6 +1197,8 @@ private fun RideHeader(
      * any notice about the companion in place of the ride's status line.
      */
     companion: CompanionHeaderStyle? = null,
+    /** Hide pause, resume and end, leaving only the debug mock toggle. */
+    rideControlsHidden: Boolean = false,
 ) {
     val rideStateText: String? = when (state) {
         // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
@@ -1242,7 +1248,7 @@ private fun RideHeader(
                 }
                 RideControls(
                     state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-                    canEndAndSave, onEndAndSave, canSkip, compact = true
+                    canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, compact = true
                 )
             }
             Row(
@@ -1321,7 +1327,7 @@ private fun RideHeader(
         }
         RideControls(
             state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-            canEndAndSave, onEndAndSave, canSkip, compact = false
+            canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, compact = false
         )
     }
 }
@@ -1400,6 +1406,7 @@ private fun RideControls(
     canEndAndSave: Boolean,
     onEndAndSave: () -> Unit,
     canSkip: Boolean,
+    hidden: Boolean = false,
     /**
      * Portrait, where these share one row with the back button and the ride
      * name. Three full-width labels leave the name nothing, so the most
@@ -1414,6 +1421,7 @@ private fun RideControls(
         if (isMockTrainer) {
             HudPill(text = "Mock", onClick = onMockToggle)
         }
+        if (hidden) return@Row
         // Hidden on a free ride: its single segment is the whole session, so
         // skipping it would silently end the ride rather than move it on.
         if (canSkip && (state == WorkoutState.Active || state == WorkoutState.Paused)) {
