@@ -347,6 +347,52 @@ _socket.send_text(JSON.stringify({"t": "brand", "colors": {"accent": "#3DA5D9"}}
 Route `warning` frames with code `adjusted` to your log while you design the palette. The
 phone lightens an accent that disappears on its dark screen and says which colour it drew.
 
+## Screenshots: capture, scale, encode
+
+List `"screenshot"` in your `hello` capabilities and the phone sends `requestScreenshot` whenever
+the rider taps its camera button. Two things matter in Godot.
+
+**First, the send buffer.** `WebSocketPeer.outbound_buffer_size` defaults to 65 535 bytes, and a
+single `send_text` larger than that fails with `ERR_OUT_OF_MEMORY`. A screenshot always is. Set it
+on every new peer, before `connect_to_url`:
+
+```gdscript
+_socket = WebSocketPeer.new()
+# A screenshot is hundreds of kB. The default 64 KiB refuses it outright.
+_socket.outbound_buffer_size = 8 * 1024 * 1024
+_socket.connect_to_url(url)
+```
+
+The same limit catches a large `brand` icon (up to 96 000 base64 characters), so set it whether
+or not you do screenshots.
+
+**Then the picture.** Wait for the frame to finish drawing, take the viewport's image, scale it to
+`maxEdgePx`, and send it as JPEG:
+
+```gdscript
+func _on_request_screenshot(frame: Dictionary) -> void:
+    # int(): JSON.parse_string made it a float, and 3.0 is not the id the phone sent.
+    var id := int(frame.get("id", 0))
+    await RenderingServer.frame_post_draw
+    var image := get_viewport().get_texture().get_image()
+    var edge := int(frame.get("maxEdgePx", 1920))
+    var longest := maxi(image.get_width(), image.get_height())
+    if longest > edge:
+        var scale := float(edge) / longest
+        image.resize(roundi(image.get_width() * scale), roundi(image.get_height() * scale),
+            Image.INTERPOLATE_BILINEAR)
+    var jpeg := image.save_jpg_to_buffer(0.85)
+    _socket.send_text(JSON.stringify({
+        "t": "screenshot", "id": id, "image": Marshalls.raw_to_base64(jpeg),
+    }))
+```
+
+Route `requestScreenshot` to it from `_drain_incoming`. If the game cannot take one right now, a
+loading screen say, answer `{"t": "screenshot", "id": id, "error": "Loading"}` rather than
+nothing. `get_image()` and the JPEG encode run on the main thread and take tens of milliseconds
+for a 1080p frame; your `world` pump is on its own timer, so it keeps the deadman fed, but do not
+capture on a frame that is already late.
+
 ## Interpolate telemetry
 
 `telemetry` arrives at 4 Hz. Rendering a power number that steps four times a second looks

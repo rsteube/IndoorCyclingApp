@@ -467,7 +467,7 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 container.sessionManager.restoreFromSnapshot(snapshot, workout, route)
                 navigator.continueRide(workout.id)
             },
-            abandonRide = { container.sessionManager.abandonUnfinishedRide() },
+            abandonRide = { container.abandonUnfinishedRide() },
             saveFinishedRide = { workout, snapshot ->
                 resumerScope.launch {
                     val sessionId = saveRideToHistory(

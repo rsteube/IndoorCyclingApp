@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.8** (the app also accepts everything back to 0.1)
+- Protocol version: **0.9** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -249,6 +249,10 @@ timeout. The same companion (same `hello.client.name`) reconnecting resumes it a
 receives `stateChanged: active` after `welcome`; a ride it had paused itself stays paused. The
 rider can end a paused ride, which saves it as completed. This is app behaviour, not a protocol
 version.
+
+**0.9** added screenshots (section 8a): the app sends `requestScreenshot` when the rider taps
+the camera button, and a companion that listed `screenshot` in `hello` answers with a
+`screenshot` frame carrying a JPEG or PNG, kept with the ride. Additive.
 
 **0.8** added the `brand` frame (section 7d): a name, a square PNG icon and three colours for
 the phone's ride header, and the `adjusted` warning code. Additive.
@@ -706,6 +710,46 @@ the row. That ordering is the app's business, not yours - it holds whether the s
 
 ---
 
+## 8a. Screenshots: `requestScreenshot` (app -> companion) and `screenshot` (companion -> app)
+
+Requires `screenshot` in **both** `hello.capabilities` (you answer) and `welcome.capabilities`
+(this build asks). Added in protocol 0.9. Controller only.
+
+```json
+{ "t": "requestScreenshot", "id": 3, "maxEdgePx": 1920 }
+{ "t": "screenshot", "id": 3, "image": "/9j/4AAQSkZJRgABAQAAAQABAAD..." }
+{ "t": "screenshot", "id": 4, "error": "The game is on a loading screen" }
+```
+
+`requestScreenshot` is sent when the rider taps the camera button on the ride header, only while
+a ride is underway, and one at a time.
+
+| Field | Type | Rules |
+|---|---|---|
+| `requestScreenshot.id` | integer | Unique on the connection. Echo it |
+| `requestScreenshot.maxEdgePx` | integer | Scale so the longest edge is at most this |
+| `screenshot.id` | integer | Required. Must match an outstanding request |
+| `screenshot.image` | string | Base64 JPEG or PNG, detected from the bytes. Each edge 16 to 4 096 px. At most 6 000 000 base64 characters |
+| `screenshot.error` | string | Instead of `image`: why not. Shown to the rider. Trimmed to 200 characters |
+
+| What you send | What happens |
+|---|---|
+| A valid image for an outstanding `id` | Kept on the phone with the ride that was underway when the rider asked. Shown on the ride summary, in History and on the session panel |
+| `error` | The rider is told the reason |
+| An `id` never asked for, or already answered | `rejected` warning, field `id`. Ignored |
+| An image that is not JPEG/PNG, not base64, or out of range | `rejected` warning, field `image`. The rider is told it could not be kept |
+| Nothing for 15 s | The rider is told no screenshot came. A later answer is still kept |
+
+Size is read from the PNG `IHDR` or the JPEG start-of-frame header, never by decoding. Not
+exported, uploaded or synced; deleting the ride deletes its screenshots.
+
+**Large frames.** A screenshot is hundreds of kilobytes to megabytes in one text frame. Raise
+your WebSocket client's outbound buffer before connecting (Godot's `WebSocketPeer` defaults to
+65 535 bytes and refuses larger sends with `ERR_OUT_OF_MEMORY`). Keep sending `world` while you
+capture and encode.
+
+---
+
 ## 9. `ping` / `pong`
 
 ```json
@@ -1073,6 +1117,9 @@ Present in the protocol, absent from this build. Do not design around them.
       for the next ride. The socket does not close and riders ride twice
 - [ ] If `welcome.capabilities` has `brand`, send `brand` after `welcome`: a 256 px PNG
       icon, your name and an `accent`. Log `adjusted` warnings in development
+- [ ] If you can capture your screen, list `screenshot` in `hello`, raise your WebSocket
+      outbound buffer to a few MB, and answer each `requestScreenshot` with a JPEG echoing
+      its `id` (or an `error`)
 
 ## 19. Common mistakes
 
@@ -1091,6 +1138,8 @@ Present in the protocol, absent from this build. Do not design around them.
 | Reusing the previous ride's `course` | The new ride is recorded under the old ride's name and map |
 | Reconnecting to a remembered `host:port` after a real 4005 | Connection refused; the port is ephemeral and new every time the mode is opened |
 | Hardcoding the port | Fails on every ride but the one you tested |
+| Sending a screenshot through Godot's default 64 KiB WebSocket buffer | `send_text` fails with `ERR_OUT_OF_MEMORY`; the phone tells the rider no screenshot came |
+| Sending a screenshot nobody asked for, or not echoing `id` | `rejected` warning on `id`; nothing is kept |
 | Assuming `role` defaults to observer | It defaults to controller |
 | Sending `role: "Controller"` | Case-sensitive; you get observer and cannot steer |
 | Treating `trainerGradePercent` as a gradient | It is a force expressed against 84 kg |

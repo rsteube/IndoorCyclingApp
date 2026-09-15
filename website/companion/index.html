@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.8 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.9 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -932,6 +932,48 @@ proof = hex(HMAC_SHA256(keyBytes,
       refused with a <code>rejected</code> warning saying why, and your name and
       colours still land. Nothing is stored; it lasts for the session.
     </p>
+
+    <h3><code>screenshot</code> - a picture the rider keeps</h3>
+
+    <p>
+      List <code>screenshot</code> in your <code>hello</code> capabilities and
+      the rider gets a camera button on the phone's ride header. Each tap sends
+      you a <code>requestScreenshot</code>; answer with a picture of your screen
+      and the phone keeps it with the ride, on its summary, in History and on the
+      session panel. Controller only, from protocol 0.9.
+    </p>
+
+<pre><code>{ "t": "requestScreenshot", "id": 3, "maxEdgePx": 1920 }
+{ "t": "screenshot", "id": 3, "image": "/9j/4AAQSkZJRgABAQAAAQABAAD..." }
+{ "t": "screenshot", "id": 4, "error": "The game is on a loading screen" }</code></pre>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>id</code></td><td>The request's id, echoed. A screenshot nobody asked for is refused: the rider decides when a picture is taken.</td></tr>
+        <tr><td><code>image</code></td><td>A JPEG or PNG, base64, told apart by its bytes. Each edge 16 to 4&nbsp;096 px, at most 6&nbsp;000&nbsp;000 characters. Scale to <code>maxEdgePx</code>; a JPEG at quality 85 is right for a game frame.</td></tr>
+        <tr><td><code>error</code></td><td>Instead of an image: why you cannot take one, shown to the rider.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      The phone waits 15 seconds, then tells the rider no screenshot came; a
+      picture that arrives later is still kept. Screenshots stay on the phone:
+      they are not exported, uploaded or synced, and deleting the ride deletes
+      them.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Raise your WebSocket's send buffer before you connect.</strong> A
+        screenshot is hundreds of kilobytes in one frame. Godot's
+        <code>WebSocketPeer</code> defaults to 64&nbsp;KiB and refuses anything
+        larger with <code>ERR_OUT_OF_MEMORY</code>, so the picture never leaves
+        the game. Set <code>outbound_buffer_size</code> to a few megabytes.
+      </p>
+    </div>
 
     <h3><code>label</code>, <code>finish</code> and <code>ping</code></h3>
 

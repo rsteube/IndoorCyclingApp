@@ -346,6 +346,32 @@ one thing. Check `welcome.capabilities` contains `brand` first (protocol 0.8).
   Zone colours, warnings, the app's navigation and the pairing dialog are never yours to style,
   so do not design a look that depends on them.
 
+## Optional: screenshots the rider keeps
+
+List `screenshot` in your `hello` capabilities and the rider gets a camera button on the phone's
+ride header. Each tap sends you a request; answer with a picture of your screen and the phone
+keeps it with the ride, on its summary and in History. Check `welcome.capabilities` contains
+`screenshot` first (protocol 0.9).
+
+```json
+{ "t": "requestScreenshot", "id": 3, "maxEdgePx": 1920 }
+{ "t": "screenshot", "id": 3, "image": "<base64 JPEG>" }
+{ "t": "screenshot", "id": 4, "error": "The game is on a loading screen" }
+```
+
+- **Echo the `id`, answer once, and never send one unasked.** Anything else is refused with a
+  `rejected` warning on `id`. The rider decides when a picture is taken.
+- **JPEG at quality about 85, longest edge at most `maxEdgePx`.** JPEG or PNG are both accepted,
+  told apart by their bytes; each edge 16 to 4 096 px, at most 6 000 000 base64 characters. A
+  game frame as PNG is megabytes, as JPEG a few hundred kilobytes.
+- **Raise your WebSocket's outbound buffer before connecting.** A screenshot is far bigger than
+  a typical client's default send buffer. In Godot the default is 64 KiB and `send_text`
+  fails with `ERR_OUT_OF_MEMORY`, so nothing arrives and the phone reports no answer. See
+  `references/godot.md`.
+- **Say `error` when you cannot take one.** The phone waits 15 s and then tells the rider none
+  came; a reason is better than silence. A late picture is still kept.
+- **Keep sending `world` while you capture and encode**, or the deadman flattens the road.
+
 ## Do not chase the light feeling at the start of a ride
 
 The app helps riders off the line. Pulling away from a standstill is genuinely hard - almost
@@ -395,6 +421,7 @@ all. Treat `worldTimeout` as a bug report about your own frame loop.
 | Connected but cannot steer | You were granted `observer`. Check `welcome.role` |
 | `error` `notController` | Same. Reconnect with `role: "controller"` |
 | Road frozen, no errors | `seq` is not increasing |
+| Rider taps the camera, phone says no screenshot came | Your send failed: raise the WebSocket outbound buffer (Godot: 64 KiB default). Or you did not echo `id` |
 | Resistance feels flat on hills | Check `telemetry.appliedGradient`, not what you sent |
 | Resistance wrong at speed | You are not sending a real `speedMps` |
 | Distance stuck | You are sending deltas instead of cumulative totals |

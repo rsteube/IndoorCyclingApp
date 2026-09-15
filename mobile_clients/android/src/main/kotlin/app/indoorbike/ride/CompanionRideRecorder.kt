@@ -31,6 +31,8 @@ data class SavedCompanionRide(
     val durationSeconds: Int,
     val distanceMeters: Double,
     val averagePowerWatts: Int = 0,
+    /** When the ride started, which is how its screenshots find it. */
+    val startTimeEpoch: Long = 0L,
 )
 
 /**
@@ -93,6 +95,7 @@ class CompanionRideRecorder(private val container: AppContainer) {
             distanceMeters = road.distanceMeters - road.startedAtMeters,
             averagePowerWatts = if (telemetry.isEmpty()) 0
                 else telemetry.map { it.power }.average().toInt(),
+            startTimeEpoch = startedAt,
         )
     }
 

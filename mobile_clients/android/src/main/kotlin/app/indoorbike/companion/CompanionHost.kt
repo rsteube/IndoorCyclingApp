@@ -79,7 +79,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import app.indoorbike.ride.RideScreenshotStore
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Everything the pairing screen and the HUD need to know about the socket.
@@ -163,6 +167,8 @@ class CompanionHost(
     private val deviceId: () -> String = { "" },
     /** Companions the rider has trusted. Null disables pairing entirely. */
     private val pairedStore: PairedCompanionStore? = null,
+    /** Where screenshots are kept. Null offers the rider no screenshot button. */
+    private val screenshots: RideScreenshotStore? = null,
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -293,6 +299,30 @@ class CompanionHost(
     /** The last icon decoded, so a frame that only changes colours does not decode it again. */
     private var lastIconPng: ByteArray? = null
     private var lastIcon: ImageBitmap? = null
+
+    /**
+     * Where the last screenshot the rider asked for has got to, for the line
+     * under the ride's name. [seq] changes with every status, so the same
+     * message twice still shows twice; SAVED and FAILED clear themselves.
+     */
+    data class ScreenshotStatus(val seq: Int, val kind: Kind, val message: String) {
+        enum class Kind { WAITING, SAVED, FAILED }
+    }
+
+    private val _screenshotStatus = MutableStateFlow<ScreenshotStatus?>(null)
+    val screenshotStatus: StateFlow<ScreenshotStatus?> = _screenshotStatus.asStateFlow()
+
+    private val _screenshotsOffered = MutableStateFlow(false)
+
+    /** The companion driving the ride said it answers screenshots, and there is somewhere to keep them. */
+    val screenshotsOffered: StateFlow<Boolean> = _screenshotsOffered.asStateFlow()
+
+    /** A screenshot asked for: the ride it belongs to, and when on that ride the rider asked. */
+    private data class PendingShot(val rideStartEpochMs: Long, val rideSeconds: Int, val requestedAtMs: Long)
+
+    private val pendingShots = ConcurrentHashMap<Long, PendingShot>()
+    private val nextShotId = AtomicLong(1)
+    private val screenshotSeq = AtomicInteger(0)
 
     /**
      * True from [start] until [stop]: this host is hosting a companion session,
@@ -524,6 +554,8 @@ class CompanionHost(
         // that is ending here, and the next one starts empty.
         _sessionRides.value = emptyList()
         completableRide = null
+        pendingShots.clear()
+        _screenshotStatus.value = null
     }
 
     /**
@@ -645,7 +677,10 @@ class CompanionHost(
             for (frame in ws.incoming) {
                 if (frame !is Frame.Text) continue
                 val wasController = controller === conn
-                val effects = session.onFrame(frame.readText(), System.currentTimeMillis())
+                val text = frame.readText()
+                // The session is also asked for screenshots from the rider's
+                // tap, on another thread, and it is not built to be shared.
+                val effects = synchronized(session) { session.onFrame(text, System.currentTimeMillis()) }
                 val open = dispatch(conn, effects)
                 // Registering after the close check, not before it: a
                 // connection that has just been closed must not be put back as
@@ -743,6 +778,7 @@ class CompanionHost(
     }
 
     private fun publishConnectionCounts() {
+        _screenshotsOffered.value = screenshots != null && controller?.session?.answersScreenshots == true
         _status.value = _status.value.copy(
             controllerName = controller?.session?.clientName,
             observers = connections.count { it.session.role == HelloFrame.ROLE_OBSERVER },
@@ -857,6 +893,18 @@ class CompanionHost(
                     pairedStore?.find(effect.deviceId)?.let {
                         pairedStore.save(it.copy(lastSeenEpochMs = System.currentTimeMillis()))
                         refreshPairedCompanions()
+                    }
+                }
+
+                is CompanionEffect.SaveScreenshot -> keepScreenshot(conn, effect)
+
+                is CompanionEffect.ScreenshotFailed -> {
+                    if (pendingShots.remove(effect.id) != null) {
+                        Log.w(TAG, "No screenshot from " + conn.session.clientName + ": " + effect.reason)
+                        showScreenshotStatus(
+                            ScreenshotStatus.Kind.FAILED,
+                            companionLabel(conn) + " could not take a screenshot: " + effect.reason,
+                        )
                     }
                 }
 
@@ -1056,6 +1104,86 @@ class CompanionHost(
                 EventFrame(event = EventFrame.CONTROL_PRESSED, control = control)
             )
         }
+    }
+
+    /**
+     * Ask the companion for a picture of its screen, to keep with the ride.
+     *
+     * Only while a ride is underway, so there is a ride to keep it with, and one
+     * at a time: a rider tapping twice gets one picture, not two a frame apart.
+     * The ride and the moment are taken now, not when the picture arrives, so a
+     * picture that lands after the ride has ended still belongs to that ride.
+     */
+    fun requestScreenshot() {
+        val holder = controller ?: return
+        if (screenshots == null || !holder.session.answersScreenshots) return
+        val rideStart = sessionManager.sessionStartTimeEpoch
+        if (rideStart == 0L) return
+        if (_screenshotStatus.value?.kind == ScreenshotStatus.Kind.WAITING) return
+
+        val id = nextShotId.getAndIncrement()
+        pendingShots[id] = PendingShot(
+            rideStartEpochMs = rideStart,
+            rideSeconds = sessionManager.actualRideSeconds.value,
+            requestedAtMs = System.currentTimeMillis(),
+        )
+        val waiting = showScreenshotStatus(
+            ScreenshotStatus.Kind.WAITING,
+            "Asking " + companionLabel(holder) + " for a screenshot",
+        )
+        scope.launch {
+            dispatch(holder, synchronized(holder.session) { holder.session.requestScreenshot(id) })
+            delay(SCREENSHOT_ANSWER_MS)
+            // Still waiting on this one. A late picture is still kept when it
+            // comes; the rider is only told it has not come yet.
+            if (pendingShots.containsKey(id) && _screenshotStatus.value?.seq == waiting) {
+                showScreenshotStatus(
+                    ScreenshotStatus.Kind.FAILED,
+                    companionLabel(holder) + " did not send a screenshot",
+                )
+            }
+        }
+    }
+
+    private fun keepScreenshot(conn: Conn, effect: CompanionEffect.SaveScreenshot) {
+        val pending = pendingShots.remove(effect.id) ?: return
+        val store = screenshots ?: return
+        scope.launch {
+            runCatching {
+                store.save(
+                    rideStartEpochMs = pending.rideStartEpochMs,
+                    image = effect.image,
+                    takenAtEpochMs = pending.requestedAtMs,
+                    rideSeconds = pending.rideSeconds,
+                )
+            }.onSuccess {
+                Log.i(
+                    TAG,
+                    "Screenshot from " + conn.session.clientName + ", " + effect.image.widthPx + "x" +
+                        effect.image.heightPx + " " + effect.image.format + ", kept with the ride",
+                )
+                showScreenshotStatus(ScreenshotStatus.Kind.SAVED, "Screenshot saved with this ride")
+            }.onFailure {
+                Log.e(TAG, "Could not keep a screenshot", it)
+                showScreenshotStatus(ScreenshotStatus.Kind.FAILED, "The screenshot could not be stored")
+            }
+        }
+    }
+
+    /** The name the rider knows the companion by: its brand name, else its `hello` name. */
+    private fun companionLabel(conn: Conn): String = _look.value?.name ?: conn.session.clientName
+
+    /** Show a status, and clear it after a while unless it is still waiting. Returns its seq. */
+    private fun showScreenshotStatus(kind: ScreenshotStatus.Kind, message: String): Int {
+        val seq = screenshotSeq.incrementAndGet()
+        _screenshotStatus.value = ScreenshotStatus(seq, kind, message)
+        if (kind != ScreenshotStatus.Kind.WAITING) {
+            scope.launch {
+                delay(SCREENSHOT_NOTICE_MS)
+                if (_screenshotStatus.value?.seq == seq) _screenshotStatus.value = null
+            }
+        }
+        return seq
     }
 
     private fun broadcastGearChanged(index: Int, changed: Boolean, source: String) {
@@ -1307,5 +1435,15 @@ class CompanionHost(
 
         /** What a companion's device picker shows. Matches the mDNS service name. */
         const val BEACON_NAME = "Indoor Bike"
+
+        /**
+         * How long the rider waits before being told no screenshot came. A
+         * game has to finish a frame, encode it and send a few hundred
+         * kilobytes over Wi-Fi, which on a busy network is seconds, not frames.
+         */
+        const val SCREENSHOT_ANSWER_MS = 15_000L
+
+        /** How long "saved" or "could not" stays under the ride's name. */
+        const val SCREENSHOT_NOTICE_MS = 5_000L
     }
 }

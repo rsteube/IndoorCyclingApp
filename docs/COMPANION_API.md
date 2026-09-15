@@ -141,7 +141,7 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 | TXT key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.8` | Supported protocol range, `min-max` |
+| `proto` | `0.1-0.9` | Supported protocol range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.1.0` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride, for reconnection |
@@ -172,7 +172,12 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.8, and this build accepts everything back to 0.1.**
+**Current version: 0.9, and this build accepts everything back to 0.1.**
+
+0.9 added screenshots: the phone sends [`requestScreenshot`](#requestscreenshot) when the rider
+taps the camera button, and a companion that listed `screenshot` in its `hello` answers with a
+[`screenshot`](#screenshot) frame carrying a JPEG or PNG, kept with the ride. Additive in both
+directions: nothing is requested from a companion that did not say it answers.
 
 0.8 added the [`brand`](#brand) frame: a name, a square PNG icon and three colours, so the
 phone's ride header looks like it belongs to the game driving it. Additive in both directions.
@@ -311,7 +316,7 @@ First frame. See [Negotiation](#negotiation).
 | `token` | string | yes | From the QR payload or typed by the rider |
 | `client` | object | yes | `name`, `version`, `platform`. `name` is shown on the HUD |
 | `role` | string | no | `controller` (default) or `observer` |
-| `capabilities` | string[] | no | What the companion can do, e.g. `["summary"]` |
+| `capabilities` | string[] | no | What the companion can do, e.g. `["summary"]`. `screenshot` gets the rider a camera button |
 
 **One controller, many observers.** A second controller is refused with close code `4003`. An
 observer receives telemetry and events but may not send `world`, `requestShift` or `finish`.
@@ -674,6 +679,47 @@ on top of it under the new name.
 During the ride the phone still knows nothing about where the rider was. A companion that
 would rather not disclose even this simply omits `summary`.
 
+#### `screenshot`
+
+A picture of your screen, in answer to a [`requestScreenshot`](#requestscreenshot). Declare the
+`screenshot` capability in `hello` and the rider gets a camera button in the phone's ride header;
+without it the phone never asks. Controller only.
+
+```jsonc
+{ "t": "screenshot", "id": 3, "image": "/9j/4AAQSkZJRgABAQAAAQABAAD..." }
+{ "t": "screenshot", "id": 4, "error": "The game is on a loading screen" }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | The request's `id`, echoed. Required |
+| `image` | string | A JPEG or a PNG, base64. Each edge 16 to 4 096 px. At most 6 000 000 base64 characters |
+| `error` | string | Instead of `image`: why you cannot take one, in words the rider can be shown. Up to 200 characters |
+
+**Take what the rider is looking at.** The rendered frame of your main view, scaled so its longest
+edge is at most the request's `maxEdgePx`. A JPEG at quality 85 is a few hundred kilobytes and is
+the right choice for a game frame; a PNG of the same frame can be ten times that. There is no
+format field: the phone reads the first bytes, so nothing can disagree with the picture.
+
+**Keep the road coming while you encode.** Encoding a frame can take longer than the deadman's
+1.5 seconds on a slow machine if you do it on the thread that sends `world`. Do it off that
+thread, or at least send `world` before and after.
+
+**Only when asked, and once per request.** A `screenshot` with an `id` the phone did not ask for,
+or one already answered, is refused with a `rejected` warning on field `id`: the rider decides
+when a picture is taken, not the game. An image that is not a JPEG or PNG, is not valid base64,
+or is too big is refused with `rejected` on field `image`, and the rider is told it could not be
+kept. The size is read from the image header, never by decoding it.
+
+**The phone waits 15 seconds**, then tells the rider no screenshot came. A picture that arrives
+later is still kept. Send `error` rather than nothing when you cannot take one: silence reads to
+the rider as the game ignoring them.
+
+**Where it goes.** The picture is kept on the phone with the ride that was underway when the
+rider asked, even if that ride has ended by the time it arrives. It shows on the ride's summary,
+in History and on the session panel, and a tap opens it full screen. It is not exported, uploaded
+or synced, and deleting the ride deletes it.
+
 #### `ping`
 
 `{ "t": "ping", "id": 17 }`. Answered with `pong`. Optional; the WebSocket's own ping/pong is
@@ -808,6 +854,20 @@ arrives at once rather than up to 250 ms later, which matters for a shift sound.
 
 `riderInput` forwards controller presses the phone did not consume as shifts, so a companion
 can bind them to its own actions.
+
+#### `requestScreenshot`
+
+The rider tapped the camera button. Sent only to a controller whose `hello` listed the
+`screenshot` capability, only while a ride is underway, and one at a time.
+
+```jsonc
+{ "t": "requestScreenshot", "id": 3, "maxEdgePx": 1920 }
+```
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | integer | Unique on this connection. Echo it in your [`screenshot`](#screenshot) |
+| `maxEdgePx` | integer | Scale so the longest edge is at most this. The phone accepts up to 4 096 |
 
 #### `warning`
 
@@ -1155,6 +1215,7 @@ speed with no waiting and no flakiness. It also comes along free when iOS happen
 | [`CompanionCodec.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionCodec.kt) | JSON in and out, with the tolerance the growth rules require |
 | [`CompanionRoad.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionRoad.kt) | The road, its clamps, sequencing, and the deadman ramp |
 | [`CompanionSession.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionSession.kt) | One connection as a state machine: handshake, roles, warn-once, rate limiting |
+| [`CompanionScreenshot.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionScreenshot.kt) | A screenshot's format and size, read from its header without decoding it |
 
 `CompanionSession.onFrame(text, nowMs)` returns a list of `CompanionEffect`. The transport turns
 `Send` and `Close` into WebSocket writes; the ride turns `ApplyRoad`, `Shift`, `SetLabel`,
@@ -1181,6 +1242,8 @@ The Android side, which is where the sockets and the platform live:
 | [`CompanionPairing.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/companion/CompanionPairing.kt) | Pairing code, local addresses, the QR payload |
 | [`CompanionScreen.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/companion/CompanionScreen.kt) | Pairing, then hand-off on the first `world` frame |
 | [`CompanionHud.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/companion/CompanionHud.kt) | The HUD, which is the route HUD minus its three "where" elements |
+| [`RideScreenshotStore.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ride/RideScreenshotStore.kt) | Screenshots on disk, one folder per ride, keyed by the ride's start time |
+| [`RideScreenshots.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/components/RideScreenshots.kt) | The screenshots card, the strip on the session panel, and the full-screen viewer |
 
 And the ride itself: [`CompanionEngine`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionEngine.kt)
 commands the trainer from a road it is handed rather than one it reads off a track, reusing the
@@ -1230,6 +1293,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `controls` | Puts a menu up and reports which buttons the rider pressed |
 | `pair` | Asks to be remembered, stores the key, and proves the next connection needs no code |
 | `brand` | Sends a name, a generated PNG icon and colours, then a deliberately unreadable accent to show the `adjusted` warning, then rides under the brand so it can be looked at |
+| `screenshot` | Rides and answers every `requestScreenshot` with a generated PNG. Tap the camera button on the phone. `--screenshot-reply error` answers with a reason, `silent` never answers so the phone's timeout shows |
 | `drop` | Rides, drops the socket with no `finish`, stays away for `--menu-seconds` (make it long), reconnects, and checks the ride carried on by itself before finishing it properly |
 | `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
 

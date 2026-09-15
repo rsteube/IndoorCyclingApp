@@ -76,6 +76,12 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.9 added screenshots: the phone sends `requestScreenshot` when the rider
+     * asks for a picture of the game, and a companion that listed `screenshot`
+     * in its `hello` answers with a `screenshot` frame carrying a PNG or JPEG.
+     * The picture is kept with the ride. Additive in both directions: nothing
+     * is ever requested from a companion that did not say it answers.
+     *
      * 0.8 added the `brand` frame: a name, a square PNG icon and three colours,
      * so the phone's ride header looks like it belongs to the game driving it.
      * Additive in both directions. The app adjusts colours it cannot draw
@@ -122,7 +128,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 8)
+    val VERSION = ProtocolVersion(0, 9)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -137,8 +143,15 @@ object CompanionProtocol {
     val CAPABILITIES =
         listOf(
             "requestShift", "label", "summary", "course", "setState", "controls", "drivetrain",
-            "pair", "brand",
+            "pair", "brand", SCREENSHOT_CAPABILITY,
         )
+
+    /**
+     * In `welcome.capabilities`, this build asks for screenshots and keeps
+     * them. In `hello.capabilities`, the companion answers `requestScreenshot`.
+     * The phone offers the rider a screenshot button only when both are true.
+     */
+    const val SCREENSHOT_CAPABILITY = "screenshot"
 
     /**
      * Longest encoded polyline a `course` frame may carry.

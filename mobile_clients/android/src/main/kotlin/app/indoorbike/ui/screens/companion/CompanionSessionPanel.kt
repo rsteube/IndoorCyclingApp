@@ -44,6 +44,7 @@ import app.indoorbike.companion.CompanionHost.SessionPhase
 import app.indoorbike.ride.SavedCompanionRide
 import app.indoorbike.shared.companion.BrandPalette
 import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.ScreenshotStrip
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
@@ -55,6 +56,8 @@ data class RideInProgress(
     val name: String,
     val durationSeconds: Int,
     val distanceMeters: Double,
+    /** When it started, so the screenshots taken on it can be shown with it. */
+    val startTimeEpoch: Long = 0L,
 )
 
 /**
@@ -191,6 +194,7 @@ fun CompanionSessionPanel(
                                 ride.averagePowerWatts,
                             ),
                             note = null,
+                            rideStartEpochMs = ride.startTimeEpoch,
                         )
                     }
                     if (inProgress != null) {
@@ -204,6 +208,7 @@ fun CompanionSessionPanel(
                                 ),
                                 note = "Paused. Saved as a completed ride when you end it.",
                                 live = true,
+                                rideStartEpochMs = inProgress.startTimeEpoch,
                             )
                         }
                     }
@@ -248,6 +253,7 @@ private fun SessionRideRow(
     detail: String,
     note: String?,
     live: Boolean = false,
+    rideStartEpochMs: Long = 0L,
 ) {
     Column(
         modifier = Modifier
@@ -271,6 +277,7 @@ private fun SessionRideRow(
                 color = if (live) CadenceColors.Fg3 else CadenceColors.Warning,
             )
         }
+        if (rideStartEpochMs != 0L) ScreenshotStrip(rideStartEpochMs)
     }
 }
 

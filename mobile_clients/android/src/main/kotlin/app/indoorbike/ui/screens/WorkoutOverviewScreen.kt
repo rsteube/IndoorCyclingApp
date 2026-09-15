@@ -57,6 +57,7 @@ import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.progression.timeInZoneSeconds
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
+import app.indoorbike.shared.workout.COMPANION_WORKOUT_ID
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.ui.screens.simulation.RouteSummaryPanel
 import app.indoorbike.ui.components.AppBar
@@ -66,6 +67,7 @@ import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.ListCard
 import app.indoorbike.ui.components.MetaPill
 import app.indoorbike.ui.components.PrimaryBtn
+import app.indoorbike.ui.components.RideScreenshotsCard
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.components.SheetScrim
 import app.indoorbike.ui.components.SlateCard
@@ -364,6 +366,14 @@ fun WorkoutOverviewScreen(
                 )
             }
 
+            // Pictures a companion sent while the ride was on. Found by the
+            // ride's start, which is all a picture taken before the ride had a
+            // history row could know about it.
+            RideScreenshotsCard(
+                rideStartEpochMs = activeSession.startTimeEpoch,
+                modifier = Modifier.enterReveal(index = 2),
+            )
+
             // A trainer measures no ground speed, so these are estimates from
             // power rather than readings. Absent entirely when the rider has no
             // weight set, since there is then nothing to estimate from.
@@ -386,12 +396,13 @@ fun WorkoutOverviewScreen(
             }
 
             // Adherence is a ride measured against its plan. Neither a free
-            // ride nor a route ride had one, so the section is dropped rather
+            // ride, a route ride nor a companion ride had one, so the section is dropped rather
             // than shown empty - an empty chart there reads as missing data
             // instead of as an answer. A structured ride whose workout has
             // since been deleted still gets the empty state, because there the
             // data really is missing.
             val hadAPlan = activeSession.workoutId != FREE_RIDE_WORKOUT_ID &&
+                activeSession.workoutId != COMPANION_WORKOUT_ID &&
                 simulationRouteId(activeSession.workoutId) == null
             if (hadAPlan) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
@@ -503,9 +514,11 @@ fun WorkoutOverviewScreen(
             onCancel = { confirmDelete = false },
             onConfirm = {
                 confirmDelete = false
+                val rideStart = session?.startTimeEpoch
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         historyRepository.deleteSession(sessionId)
+                        rideStart?.let(container.rideScreenshots::deleteRide)
                     }
                     onBack()
                 }

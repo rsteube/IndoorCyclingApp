@@ -58,6 +58,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -325,6 +326,8 @@ fun RideScreen(
     val companionSessionName by companionHost.sessionCompanionName.collectAsState()
     val companionHosting by companionHost.hosting.collectAsState()
     val companionLook by companionHost.look.collectAsState()
+    val screenshotsOffered by companionHost.screenshotsOffered.collectAsState()
+    val screenshotStatus by companionHost.screenshotStatus.collectAsState()
     // Whose job it is to write this ride. The host's, when it is hosting the
     // session this ride belongs to; this screen's for every other ride,
     // including a companion ride continued from the unfinished-ride banner,
@@ -603,6 +606,7 @@ fun RideScreen(
                 savedRideCount = companionSessionRides.size,
                 lastSavedRideName = companionSessionRides.lastOrNull()?.name,
                 panelShowing = showSessionPanel,
+                screenshot = screenshotStatus,
             )
             // Only for a ride a companion host is hosting. A companion ride
             // continued from the banner has no companion to speak of.
@@ -662,6 +666,21 @@ fun RideScreen(
                 // no game driving the road, and an End pill would be a second,
                 // different ending for the same ride.
                 rideControlsHidden = showSessionPanel,
+                // Offered only while a ride is underway: a picture is kept with
+                // a ride, and between rides there is none to keep it with.
+                screenshot = if (
+                    hostSavesRide && screenshotsOffered &&
+                    sessionManager.sessionStartTimeEpoch != 0L &&
+                    state != WorkoutState.Completed && state != WorkoutState.Idle
+                ) {
+                    ScreenshotButton(
+                        busy = screenshotStatus?.kind ==
+                            app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.WAITING,
+                        onClick = companionHost::requestScreenshot,
+                    )
+                } else {
+                    null
+                },
                 // Narrow widths and portrait get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
                 // Width alone missed an upright tablet: 800 dp passed, and one
@@ -751,6 +770,7 @@ fun RideScreen(
                                         ?: workout!!.name,
                                     durationSeconds = actualRide,
                                     distanceMeters = companionDistance - companionRideStart,
+                                    startTimeEpoch = sessionManager.sessionStartTimeEpoch,
                                 )
                             } else {
                                 null
@@ -1199,6 +1219,8 @@ private fun RideHeader(
     companion: CompanionHeaderStyle? = null,
     /** Hide pause, resume and end, leaving only the debug mock toggle. */
     rideControlsHidden: Boolean = false,
+    /** Ask the companion for a picture of its screen. Null when there is nobody to ask. */
+    screenshot: ScreenshotButton? = null,
 ) {
     val rideStateText: String? = when (state) {
         // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
@@ -1248,7 +1270,7 @@ private fun RideHeader(
                 }
                 RideControls(
                     state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-                    canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, compact = true
+                    canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, screenshot = screenshot, compact = true
                 )
             }
             Row(
@@ -1327,7 +1349,7 @@ private fun RideHeader(
         }
         RideControls(
             state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-            canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, compact = false
+            canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, screenshot = screenshot, compact = false
         )
     }
 }
@@ -1407,6 +1429,7 @@ private fun RideControls(
     onEndAndSave: () -> Unit,
     canSkip: Boolean,
     hidden: Boolean = false,
+    screenshot: ScreenshotButton? = null,
     /**
      * Portrait, where these share one row with the back button and the ride
      * name. Three full-width labels leave the name nothing, so the most
@@ -1422,6 +1445,21 @@ private fun RideControls(
             HudPill(text = "Mock", onClick = onMockToggle)
         }
         if (hidden) return@Row
+        // Before pause and end: it is the one a rider reaches for mid-effort,
+        // and the one that must not be mistaken for ending the ride.
+        if (screenshot != null) {
+            HudPill(
+                text = when {
+                    compact -> null
+                    screenshot.busy -> "Asking"
+                    else -> "Screenshot"
+                },
+                icon = Icons.Outlined.PhotoCamera,
+                contentDescription = "Take a screenshot of the companion",
+                enabled = !screenshot.busy,
+                onClick = screenshot.onClick,
+            )
+        }
         // Hidden on a free ride: its single segment is the whole session, so
         // skipping it would silently end the ride rather than move it on.
         if (canSkip && (state == WorkoutState.Active || state == WorkoutState.Paused)) {
@@ -1463,40 +1501,50 @@ private fun RideControls(
  */
 @Composable
 private fun HudPill(
-    text: String,
+    /** Null for an icon alone, where the header has no room for a word. */
+    text: String?,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
     primary: Boolean = false,
+    /** Said for the icon when there is no [text] to say it. */
+    contentDescription: String? = null,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
-    val fg = if (primary) CadenceColors.OnBrand else CadenceColors.Fg1
+    val fg = (if (primary) CadenceColors.OnBrand else CadenceColors.Fg1)
+        .let { if (enabled) it else it.copy(alpha = 0.5f) }
     Row(
         modifier = modifier
             .height(44.dp)
             .clip(CircleShape)
             .background(if (primary) CadenceColors.Fg1 else CadenceColors.Bg1)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp),
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = if (text == null) 12.dp else 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s2)
     ) {
         if (icon != null) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = if (text == null) contentDescription else null,
                 tint = fg,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(if (text == null) 20.dp else 18.dp)
             )
         }
-        Text(
-            text = text,
-            style = CadenceType.bodyStrong,
-            color = fg,
-            maxLines = 1,
-            softWrap = false
-        )
+        if (text != null) {
+            Text(
+                text = text,
+                style = CadenceType.bodyStrong,
+                color = fg,
+                maxLines = 1,
+                softWrap = false
+            )
+        }
     }
 }
+
+/** The header's screenshot control: whether a picture is already on its way, and how to ask. */
+internal data class ScreenshotButton(val busy: Boolean, val onClick: () -> Unit)
 
 /**
  * Confirmation shown when the rider taps "End & save" on a paused ride. Ending

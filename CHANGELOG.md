@@ -8,6 +8,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Added
 
+- **Screenshots from the companion, kept with the ride (protocol 0.9).** A
+  companion that says it can take them gets a camera button on the ride
+  header. A tap asks the game for a picture of its screen, and the picture it
+  sends back is kept on the phone with the ride that was underway, even if that
+  ride has ended by the time it arrives. The ride's summary and its page in
+  History show them as a row of thumbnails that open full screen, and the
+  session panel shows them under each ride. The header says when one is saved,
+  when the game could not take one, and when none came. Pictures are checked
+  from their header before anything decodes them, stay on the phone, and are
+  deleted with their ride.
 - **A companion can bring its own look to the phone (protocol 0.8).** A new
   `brand` frame carries a name, a square PNG icon and three colours, and the
   ride header takes them on: the companion's header colour behind the whole
@@ -22,6 +32,9 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **A companion ride's summary showed an empty "Power adherence" card.** A ride
+  a game drove had no plan to adhere to, so the card is gone for companion rides,
+  as it already was for free rides and route rides.
 - **Two companion rides were saved as one.** A game that loads its routes from
   JSON sent the ride's elevations as `921.0` rather than `921`, and the app
   refused that `finish` as unreadable: it closed the connection, the ride never

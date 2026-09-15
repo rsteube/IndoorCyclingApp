@@ -147,6 +147,7 @@ object CompanionCodec {
             "pairProof" -> PairProofFrame.serializer()
             "setState" -> SetStateFrame.serializer()
             "finish" -> FinishFrame.serializer()
+            "screenshot" -> ScreenshotFrame.serializer()
             "ping" -> PingFrame.serializer()
             else -> return Decoded.Unknown(type)
         }
@@ -280,6 +281,7 @@ object CompanionCodec {
         is WarningFrame -> json.encodeToString(WarningFrame.serializer(), frame.rounded())
         is ErrorFrame -> json.encodeToString(ErrorFrame.serializer(), frame)
         is PongFrame -> json.encodeToString(PongFrame.serializer(), frame)
+        is ScreenshotRequestFrame -> json.encodeToString(ScreenshotRequestFrame.serializer(), frame)
         is ChallengeFrame -> json.encodeToString(ChallengeFrame.serializer(), frame)
         is PairedFrame -> json.encodeToString(PairedFrame.serializer(), frame)
         is PairDeclinedFrame -> json.encodeToString(PairDeclinedFrame.serializer(), frame)

@@ -85,6 +85,16 @@ sealed interface CompanionEffect {
     data class ReportProgress(val distanceM: Double?, val ascentM: Double?) : CompanionEffect
 
     data class Finish(val summary: RideSummary?) : CompanionEffect
+
+    /**
+     * The screenshot asked for with [id] arrived and passed its checks. Keeping
+     * it, and with which ride, is the host's: it knows which ride was underway
+     * when the rider asked.
+     */
+    class SaveScreenshot(val id: Long, val image: ScreenshotImage) : CompanionEffect
+
+    /** The screenshot asked for with [id] is not coming: the companion said why, or sent one that was refused. */
+    data class ScreenshotFailed(val id: Long, val reason: String) : CompanionEffect
 }
 
 /** Static configuration for one listening socket. */
@@ -176,6 +186,18 @@ class CompanionSession(
 
     val isController: Boolean get() = role == HelloFrame.ROLE_CONTROLLER
 
+    /** What the companion said it can do, from its `hello`. */
+    var clientCapabilities: Set<String> = emptySet()
+        private set
+
+    /** A controller that said it answers `requestScreenshot`. The only kind ever asked. */
+    val answersScreenshots: Boolean
+        get() = phase == Phase.READY && isController &&
+            CompanionProtocol.SCREENSHOT_CAPABILITY in clientCapabilities
+
+    /** Screenshots asked for and not yet answered, by id. */
+    private val pendingScreenshots = mutableSetOf<Long>()
+
     /** Fields already complained about, so a warning is once per connection, not once per frame. */
     private val warnedFields = mutableSetOf<String>()
 
@@ -259,6 +281,7 @@ class CompanionSession(
             // that lost track of where it was. Ignored rather than fatal.
             is PairProofFrame -> emptyList()
             is FinishFrame -> onFinish(frame)
+            is ScreenshotFrame -> onScreenshot(frame)
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
     }
@@ -340,6 +363,7 @@ class CompanionSession(
         val granted = if (wantsControl) HelloFrame.ROLE_CONTROLLER else HelloFrame.ROLE_OBSERVER
         version = negotiated
         role = granted
+        clientCapabilities = frame.capabilities.toSet()
         peerDeviceId = frame.deviceId?.takeIf { it.isNotBlank() }
 
         if (pairedKey != null) {
@@ -887,7 +911,64 @@ class CompanionSession(
         return emptyList()
     }
 
+    /**
+     * A picture the rider asked for, or the companion saying it cannot take one.
+     *
+     * Refused, with a warning, when nobody asked: an unknown or already
+     * answered id. The image is checked from its header before anything
+     * decodes it, and a refused one is reported both ways, to the companion as
+     * a warning it can fix and to the host as a failure the rider can be told.
+     */
+    private fun onScreenshot(frame: ScreenshotFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("screenshot"))
+        val id = frame.id
+        if (id == null || !pendingScreenshots.remove(id)) {
+            return listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.REJECTED,
+                        field = "id",
+                        message = "No screenshot was asked for with id " + id + ", or it was already " +
+                            "answered. Send one only in answer to requestScreenshot, echoing its id.",
+                    )
+                )
+            )
+        }
+        val error = frame.error?.trim()?.take(ScreenshotImage.MAX_ERROR_CHARS)
+        if (!error.isNullOrEmpty()) return listOf(CompanionEffect.ScreenshotFailed(id, error))
+
+        val image = frame.image
+        val refusal = if (image.isNullOrBlank()) {
+            "The screenshot frame carried neither an image nor an error."
+        } else {
+            when (val checked = ScreenshotImage.check(image)) {
+                is ScreenshotImage.Companion.Checked.Ok ->
+                    return listOf(CompanionEffect.SaveScreenshot(id, checked.image))
+                is ScreenshotImage.Companion.Checked.Rejected -> checked.reason
+            }
+        }
+        return listOf(
+            CompanionEffect.Send(
+                WarningFrame(code = CompanionWarning.REJECTED, field = "image", message = refusal)
+            ),
+            CompanionEffect.ScreenshotFailed(id, refusal),
+        )
+    }
+
     // Host-initiated ─────────────────────────────────────────────────────────
+
+    /**
+     * Ask the companion for a picture of its screen.
+     *
+     * Nothing at all for a companion that did not list `screenshot`: asking one
+     * that never said it answers would leave the rider waiting on a reply that
+     * was never coming. [id] must be unique on this connection.
+     */
+    fun requestScreenshot(id: Long): List<CompanionEffect> {
+        if (!answersScreenshots) return emptyList()
+        pendingScreenshots += id
+        return listOf(CompanionEffect.Send(ScreenshotRequestFrame(id = id)))
+    }
 
     /** The rider took back control. The recording continues without a companion. */
     fun revoke(): List<CompanionEffect> {

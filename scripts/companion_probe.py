@@ -112,6 +112,9 @@ class WebSocket:
         self.sock = socket.create_connection((host, port), timeout=timeout)
         self.sock.settimeout(timeout)
         self._buf = b""
+        # The reader thread answers screenshot requests while the ride loop
+        # sends world frames, and two frames written at once interleave.
+        self._send_lock = threading.Lock()
         self._handshake(host, port, path)
 
     def _handshake(self, host, port, path):
@@ -170,7 +173,8 @@ class WebSocket:
             header += struct.pack(">Q", n)
         header += mask
         masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-        self.sock.sendall(bytes(header) + masked)
+        with self._send_lock:
+            self.sock.sendall(bytes(header) + masked)
 
     def recv(self):
         """One frame. Returns (kind, value): ("text", str) or ("close", reason)."""
@@ -256,10 +260,14 @@ def godot_spelling(value):
 
 
 class Probe:
-    def __init__(self, ws, verbose=True, state=None, godot_numbers=False):
+    def __init__(self, ws, verbose=True, state=None, godot_numbers=False, screenshot_reply="png"):
         self.ws = ws
         self.verbose = verbose
         self.godot_numbers = godot_numbers
+        # How to answer requestScreenshot: "png" sends a picture, "error" says
+        # it cannot, "silent" never answers, so the phone's timeout shows.
+        self.screenshot_reply = screenshot_reply
+        self.screenshots_asked = 0
         self.state = state if state is not None else {"deviceId": "probe", "pairings": {}}
         self.seq = 0
         self.paired_ok = None      # True/False once a challenge has been answered
@@ -319,6 +327,12 @@ class Probe:
             print("  <- pairing declined: %s" % frame.get("reason"))
         elif t == "telemetry":
             self.telemetry = frame
+        elif t == "requestScreenshot":
+            self.screenshots_asked += 1
+            print("  <- requestScreenshot id=%s maxEdgePx=%s (answering: %s)" % (
+                frame.get("id"), frame.get("maxEdgePx"), self.screenshot_reply))
+            # Off the reader thread: building a PNG in pure Python takes a moment.
+            threading.Thread(target=self._answer_screenshot, args=(frame,), daemon=True).start()
         elif t == "event":
             self.events.append(frame)
             extra = {k: v for k, v in frame.items()
@@ -334,6 +348,23 @@ class Probe:
         elif t == "error":
             self.errors.append(frame)
             print("  <- ERROR [%s] %s" % (frame.get("code"), frame.get("message", "")))
+
+    def _answer_screenshot(self, frame):
+        """What a game does: take the frame it is drawing, scaled to maxEdgePx, and send it."""
+        shot_id = frame.get("id")
+        if self.screenshot_reply == "silent":
+            return
+        if self.screenshot_reply == "error":
+            self.send({"t": "screenshot", "id": shot_id, "error": "The probe has no screen to take"})
+            return
+        edge = int(frame.get("maxEdgePx", 1920))
+        width = min(edge, 640)
+        png = make_screenshot_png(width, width * 9 // 16, self.screenshots_asked)
+        encoded = base64.b64encode(png).decode()
+        if self.verbose:
+            print("  -> screenshot id=%s, %dx%d PNG, %d base64 chars" % (
+                shot_id, width, width * 9 // 16, len(encoded)))
+        self.ws.send_text(json.dumps({"t": "screenshot", "id": shot_id, "image": encoded}))
 
     def _answer_challenge(self, frame):
         app_device = frame.get("deviceId", "")
@@ -382,13 +413,14 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.8",
+            "protoMin": "0.1", "protoMax": "0.9",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
             "role": "controller",
             "capabilities": [
                 "summary", "course", "setState", "controls", "drivetrain", "pair", "brand",
+                "screenshot",
             ],
         })
         for _ in range(50):
@@ -543,6 +575,56 @@ def make_icon_png(side=128):
             chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b""))
 
 
+def make_screenshot_png(width, height, n=1):
+    """A landscape a game might draw: sky, a sun that moves with each shot, hills.
+
+    Each picture differs from the last, so a row of them on the phone shows it
+    kept every one rather than the same picture several times.
+    """
+    sun_x, sun_y, sun_r = width * (0.15 + 0.14 * (n % 6)), height * 0.3, height * 0.09
+    rows = []
+    for y in range(height):
+        row = bytearray([0])
+        t = y / (height - 1)
+        for x in range(width):
+            hill = height * (0.62 + 0.08 * ((x * 7 // width) % 2))
+            if y > hill:
+                px = (58, 110 - int(30 * t), 64)
+            elif (x - sun_x) ** 2 + (y - sun_y) ** 2 <= sun_r ** 2:
+                px = (250, 214, 120)
+            else:
+                px = (int(90 + 120 * t), int(150 + 70 * t), 235)
+            row += bytes(px)
+        rows.append(bytes(row))
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)  # 8-bit RGB
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) +
+            chunk(b"IDAT", zlib.compress(b"".join(rows), 6)) + chunk(b"IEND", b""))
+
+
+def scenario_screenshot(p, args):
+    """Ride, and answer every screenshot the phone asks for.
+
+    Tap Screenshot in the ride header on the phone while this runs. Each tap
+    should come back as a picture on the ride's summary and in History.
+    `--screenshot-reply error` answers with a reason instead, and `silent` never
+    answers, so the phone's "did not send a screenshot" can be seen.
+    """
+    p.send({"t": "course", "name": "Probe screenshots", "world": "Test harness"})
+    p.send({"t": "setState", "state": "active"})
+    print("\nriding for %ds. Tap Screenshot on the phone." % args.ride_seconds)
+    p.drive(args.ride_seconds, gradient=0.02)
+    time.sleep(2.0)
+    print("\nthe phone asked for %d screenshot(s)" % p.screenshots_asked)
+    if args.finish:
+        p.send({"t": "finish"})
+        time.sleep(1.0)
+
+
 def scenario_brand(p, args):
     """Put the companion's look on the phone, then drive a road under it.
 
@@ -656,6 +738,7 @@ def scenario_pair(p, args):
 SCENARIOS = {
     "brand": scenario_brand,
     "pair": scenario_pair,
+    "screenshot": scenario_screenshot,
     "smoke": scenario_smoke,
     "world": scenario_world,
     "controls": scenario_controls,
@@ -677,6 +760,8 @@ def main():
     ap.add_argument("--gradient", type=float, default=0.0)
     ap.add_argument("--enabled", help="comma-separated controls for the controls scenario")
     ap.add_argument("--finish", action="store_true", help="end the ride at the end")
+    ap.add_argument("--screenshot-reply", choices=["png", "error", "silent"], default="png",
+                    help="how to answer the phone's requestScreenshot")
     ap.add_argument("--godot-numbers", action="store_true",
                     help="spell every whole number as Godot does (921.0), in every frame")
     args = ap.parse_args()
@@ -720,7 +805,8 @@ def connect(host, port, args, state):
     """Open the socket and get through the handshake. (None, None) if refused."""
     print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
     ws = WebSocket(host, port)
-    probe = Probe(ws, state=state, godot_numbers=args.godot_numbers)
+    probe = Probe(ws, state=state, godot_numbers=args.godot_numbers,
+                  screenshot_reply=args.screenshot_reply)
     probe.start()
     if not probe.hello(args.code):
         print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")

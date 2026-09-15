@@ -117,6 +117,11 @@
         agreed to put it on. Companion mode lists every companion you have paired, and
         forgetting one there deletes its key immediately; that companion needs a pairing
         code again.</li>
+      <li><strong>Companion screenshots (only if you take one):</strong> in Companion mode you
+        can ask the connected program for a picture of its screen. The picture it sends is
+        stored in the app's private storage with the ride you were on, and shown with that
+        ride. It is not exported, uploaded, synced or included in Backup &amp; sync slices, and
+        deleting the ride deletes it.</li>
       <li><strong>Backup &amp; sync slices (only when you've configured a sync folder):</strong> a single JSON file per device, written into the folder you chose. Each slice carries: the rides you've recorded on this device (date, duration, average power / cadence / heart rate - <em>not</em> the per-second telemetry), the imported workouts in your library (with the source-repo attribution sidecar), your profile values (FTP, weight, max HR, onboarding flag, favourites, Intervals.icu athlete ID and auto-upload toggle), and a stable per-install device id + label. The Intervals.icu API key is <strong>never</strong> written to a slice. Bluetooth pairings are not written either; they're hardware-local, and neither are companion pairing keys.</li>
     </ul>
     <p>
@@ -165,7 +170,9 @@
       The app is never told where you are. A companion sends a gradient, a speed
       and running totals for distance and climbing. It may hand over the shape of
       the course after the ride so it can be drawn in your history, and that is
-      the whole road rather than a position on it. None of this reaches us.
+      the whole road rather than a position on it. If you tap the camera button,
+      it sends a picture of its own screen, which is kept on your phone with the
+      ride. None of this reaches us.
     </p>
 
     <h3>Permissions the app requests</h3>

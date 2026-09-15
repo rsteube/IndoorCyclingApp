@@ -127,7 +127,7 @@ fun UnfinishedRideBanner(
         // telemetry log exists to go with them, so saving would only add an
         // empty session to history. Discard silently, as before.
         LaunchedEffect(current.workoutId, current.elapsedSeconds) {
-            container.sessionManager.abandonUnfinishedRide()
+            container.abandonUnfinishedRide()
         }
         return
     }

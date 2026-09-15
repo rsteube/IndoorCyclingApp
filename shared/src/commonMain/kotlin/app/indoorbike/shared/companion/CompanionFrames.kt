@@ -389,6 +389,26 @@ data class RideSummary(
     val profile: List<Int> = emptyList(),
 )
 
+/**
+ * A picture of the companion's screen, in answer to a [ScreenshotRequestFrame].
+ *
+ * Exactly one of [image] and [error]. [image] is a PNG or a JPEG, base64, and
+ * which of the two is read from the bytes: there is no format field to disagree
+ * with them. [error] is the companion saying it could not take one, in words
+ * the rider can be shown ("the game is loading"), and is better than silence,
+ * which the phone can only report as no answer.
+ *
+ * @param id the request being answered. A screenshot nobody asked for is
+ *   refused: the rider decides when a picture is taken, not the game.
+ */
+@Serializable
+data class ScreenshotFrame(
+    val id: Long? = null,
+    val image: String? = null,
+    val error: String? = null,
+    val t: String = "screenshot",
+) : ClientFrame
+
 /** Liveness check. The WebSocket's own ping is usually enough. */
 @Serializable
 data class PingFrame(
@@ -681,6 +701,25 @@ data class ErrorFrame(
 data class PongFrame(
     val id: Long? = null,
     val t: String = "pong",
+) : ServerFrame
+
+/**
+ * The rider wants a picture of the game's screen, kept with the ride.
+ *
+ * Sent only to a controller whose `hello` listed the `screenshot` capability,
+ * and only while a ride is underway, so there is always a ride to keep it with.
+ * Answered with a [ScreenshotFrame] carrying the same [id].
+ *
+ * @param id unique on this connection. Echo it back.
+ * @param maxEdgePx scale the picture so its longest edge is at most this. The
+ *   phone accepts larger, up to [ScreenshotImage.MAX_EDGE_PX], but a picture
+ *   bigger than the screen it is looked at on is bytes the rider pays for.
+ */
+@Serializable
+data class ScreenshotRequestFrame(
+    val id: Long,
+    val maxEdgePx: Int = ScreenshotImage.REQUESTED_EDGE_PX,
+    val t: String = "requestScreenshot",
 ) : ServerFrame
 
 /** Ride states, as they appear in [TelemetryFrame.state]. */
