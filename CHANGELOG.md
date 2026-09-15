@@ -22,6 +22,20 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **Two companion rides were saved as one.** A game that loads its routes from
+  JSON sent the ride's elevations as `921.0` rather than `921`, and the app
+  refused that `finish` as unreadable: it closed the connection, the ride never
+  ended, and the game reconnected and started the next ride on top of it. One
+  evening's Mittenwald loop and Weilheim loop were saved as a single ride under
+  the second name with both rides' time. Whole numbers are now read however they
+  are written, elevations with a fraction are rounded, and a `finish` always
+  ends the ride: a summary it cannot read is left out with a warning naming the
+  field. A `course` with an unreadable field keeps the rest in the same way.
+- **A companion the app disconnected left no trace.** When the app closed a
+  game's connection over a frame it could not read, nothing was logged and the
+  ride carried on as if the game were still there. It is now logged with the
+  reason, and a ride in progress pauses and waits for the game, exactly as when
+  the game drops. Refused fields are logged too.
 - **A companion ride was lost when the game went away before finishing.** The
   game closed mid-ride, the rider pressed back, and five minutes of riding were
   discarded with nothing on screen to say so. The ride now pauses and waits,

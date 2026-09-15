@@ -123,6 +123,27 @@ func _drain_incoming() -> void:
                 pass
 ```
 
+## Integers: `JSON.parse_string` hands you floats
+
+`JSON.parse_string` returns every number as a `float`, and `JSON.stringify` writes a whole float
+with its `.0`. So anything you loaded from JSON and send on unchanged goes out as `921.0` where
+the protocol says integer. The usual victim is a baked route's elevation profile:
+
+```gdscript
+# The pack stores [921, 919, ...]; after JSON.parse_string they are floats,
+# and JSON.stringify would send [921.0, 919.0, ...]. Convert on load.
+var metres: Array[int] = []
+for sample: Variant in pack["summary"]["profile"]:
+    metres.append(roundi(float(sample)))
+pack["summary"]["profile"] = metres
+```
+
+Current phone builds read `921.0`. Builds up to 2.2 refused the frame as `malformed`, and when
+the frame was the `finish` the ride never ended: the socket closed, your game reconnected, and
+the rider's next ride was saved on top of the last one. Integers you make in GDScript
+(`roundi()`, `int()`, `_seq += 1`) stringify as integers and are fine. To check, print
+`JSON.stringify(frame)` once and look for `.0` in an integer field.
+
 ## Verify the negotiated version yourself
 
 Both ends must check. The phone may pick a version you listed but have since dropped.

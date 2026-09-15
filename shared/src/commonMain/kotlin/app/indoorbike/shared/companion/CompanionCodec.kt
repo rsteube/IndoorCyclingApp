@@ -15,9 +15,15 @@
  */
 package app.indoorbike.shared.companion
 
+import kotlin.math.abs
+import kotlin.math.floor
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
@@ -34,8 +40,17 @@ sealed interface Decoded {
      *   caller can tell a field that was sent-and-ignored from one that was
      *   never sent at all. Deserialisation alone cannot answer that: an
      *   unhonoured field and an absent one both arrive as a default.
+     * @param unreadable fields that were sent but could not be read, and were
+     *   left out so the rest of the frame could be used, each with the reason.
+     *   Only ever filled for `course` and `finish`; see
+     *   [CompanionCodec.decodeClientFrame]. Nested fields are dotted, e.g.
+     *   `summary.profile`.
      */
-    data class Ok(val frame: ClientFrame, val fields: Set<String>) : Decoded
+    data class Ok(
+        val frame: ClientFrame,
+        val fields: Set<String>,
+        val unreadable: Map<String, String> = emptyMap(),
+    ) : Decoded
 
     data class Unknown(val type: String) : Decoded
 
@@ -79,44 +94,166 @@ object CompanionCodec {
      * Never throws. Anything that is not parseable JSON, is not an object, or
      * has no usable `t` comes back as [Decoded.Malformed] with a reason a human
      * can read, because that reason is what ends up in the close frame.
+     *
+     * ## Numbers are read for their value, not their spelling
+     *
+     * `921.0` is a whole number, and an integer field takes it. Godot's
+     * `JSON.parse_string` turns every number into a float and `JSON.stringify`
+     * writes a whole float with its `.0`, so a game that loads its own data
+     * from JSON sends integers spelled that way without ever meaning to. This
+     * was found in a real ride: a `finish` whose `profile` read
+     * `[921.0, 919.0, ...]` was refused as malformed, the socket closed, the
+     * ride never ended, and the next ride was saved on top of it. A number with
+     * a genuine fraction is still refused where a count is expected: `steps:
+     * 1.5` is a bug, not a spelling. Profile samples are the exception, rounded
+     * to the metre, because they are measurements and a metre is all the
+     * precision a 64-point elevation strip has.
+     *
+     * ## A `course` or `finish` is used even when part of it is not
+     *
+     * These two describe a ride rather than steer it, and refusing one whole
+     * costs far more than the field that was wrong. A `finish` that is refused
+     * does not end the ride; a `course` that is refused closes the socket in the
+     * middle of it. So when one of them will not decode, each field is tried on
+     * its own, the ones that cannot be read are left out and named in
+     * [Decoded.Ok.unreadable], and the rest is used. Every field of both is
+     * optional, which is what makes that sound. Every other frame is still
+     * all-or-nothing.
      */
     fun decodeClientFrame(text: String): Decoded {
-        val root = try {
+        val parsed = try {
             json.parseToJsonElement(text)
         } catch (e: Exception) {
             return Decoded.Malformed("not valid JSON: " + (e.message ?: "parse failed"))
         }
-        if (root !is JsonObject) return Decoded.Malformed("frame is not a JSON object")
+        if (parsed !is JsonObject) return Decoded.Malformed("frame is not a JSON object")
 
-        val type = root["t"]?.let {
+        val type = parsed["t"]?.let {
             runCatching { it.jsonPrimitive.content }.getOrNull()
         } ?: return Decoded.Malformed("frame has no 't' discriminator")
 
-        val fields = root.keys.toSet()
+        val fields = parsed.keys.toSet()
 
+        val serializer: DeserializationStrategy<ClientFrame> = when (type) {
+            "hello" -> HelloFrame.serializer()
+            "world" -> WorldFrame.serializer()
+            "requestShift" -> RequestShiftFrame.serializer()
+            "label" -> LabelFrame.serializer()
+            "course" -> CourseFrame.serializer()
+            "controls" -> ControlsFrame.serializer()
+            "drivetrain" -> DrivetrainFrame.serializer()
+            "brand" -> BrandFrame.serializer()
+            "pairRequest" -> PairRequestFrame.serializer()
+            "pairProof" -> PairProofFrame.serializer()
+            "setState" -> SetStateFrame.serializer()
+            "finish" -> FinishFrame.serializer()
+            "ping" -> PingFrame.serializer()
+            else -> return Decoded.Unknown(type)
+        }
+
+        val root = roundedProfiles(type, wholeNumbers(parsed) as JsonObject)
         return try {
-            val frame: ClientFrame = when (type) {
-                "hello" -> json.decodeFromJsonElement(HelloFrame.serializer(), root)
-                "world" -> json.decodeFromJsonElement(WorldFrame.serializer(), root)
-                "requestShift" -> json.decodeFromJsonElement(RequestShiftFrame.serializer(), root)
-                "label" -> json.decodeFromJsonElement(LabelFrame.serializer(), root)
-                "course" -> json.decodeFromJsonElement(CourseFrame.serializer(), root)
-                "controls" -> json.decodeFromJsonElement(ControlsFrame.serializer(), root)
-                "drivetrain" -> json.decodeFromJsonElement(DrivetrainFrame.serializer(), root)
-                "brand" -> json.decodeFromJsonElement(BrandFrame.serializer(), root)
-                "pairRequest" -> json.decodeFromJsonElement(PairRequestFrame.serializer(), root)
-                "pairProof" -> json.decodeFromJsonElement(PairProofFrame.serializer(), root)
-                "setState" -> json.decodeFromJsonElement(SetStateFrame.serializer(), root)
-                "finish" -> json.decodeFromJsonElement(FinishFrame.serializer(), root)
-                "ping" -> json.decodeFromJsonElement(PingFrame.serializer(), root)
-                else -> return Decoded.Unknown(type)
-            }
-            Decoded.Ok(frame, fields)
+            Decoded.Ok(json.decodeFromJsonElement(serializer, root), fields)
         } catch (e: Exception) {
-            Decoded.Malformed(
+            salvage(type, root, fields) ?: Decoded.Malformed(
                 "frame '" + type + "' could not be read: " + (e.message ?: "missing or wrong-typed field")
             )
         }
+    }
+
+    /** The largest magnitude at which every whole double is exactly a long. */
+    private const val EXACT_WHOLE_LIMIT = 9_007_199_254_740_992.0
+
+    /**
+     * Every whole number spelled with a fraction or an exponent, respelled as
+     * an integer. Strings are untouched: `"1.0"` is text.
+     */
+    private fun wholeNumbers(element: JsonElement): JsonElement = when (element) {
+        is JsonObject -> JsonObject(element.mapValues { wholeNumbers(it.value) })
+        is JsonArray -> JsonArray(element.map(::wholeNumbers))
+        is JsonPrimitive -> {
+            val content = element.content
+            val spelledAsFraction = !element.isString && content.any { it == '.' || it == 'e' || it == 'E' }
+            val value = if (spelledAsFraction) content.toDoubleOrNull() else null
+            if (value != null && value.isFinite() && abs(value) <= EXACT_WHOLE_LIMIT &&
+                value == floor(value)
+            ) {
+                JsonPrimitive(value.toLong())
+            } else {
+                element
+            }
+        }
+    }
+
+    /** `course.profile` and `finish.summary.profile`, each number rounded to the metre. */
+    private fun roundedProfiles(type: String, root: JsonObject): JsonObject = when (type) {
+        "course" -> roundedProfile(root)
+        "finish" -> (root["summary"] as? JsonObject)
+            ?.let { JsonObject(root + ("summary" to roundedProfile(it))) }
+            ?: root
+        else -> root
+    }
+
+    private fun roundedProfile(holder: JsonObject): JsonObject {
+        val profile = holder["profile"] as? JsonArray ?: return holder
+        return JsonObject(
+            holder + ("profile" to JsonArray(
+                profile.map { sample ->
+                    val metres = (sample as? JsonPrimitive)
+                        ?.takeUnless { it.isString }
+                        ?.content?.toDoubleOrNull()
+                        ?.takeIf { it.isFinite() && abs(it) <= EXACT_WHOLE_LIMIT }
+                    if (metres != null) JsonPrimitive(kotlin.math.round(metres).toLong()) else sample
+                }
+            ))
+        )
+    }
+
+    /**
+     * The readable part of a `course` or `finish` that would not decode whole,
+     * or null for any other frame, or if even that will not decode.
+     */
+    private fun salvage(type: String, root: JsonObject, fields: Set<String>): Decoded? {
+        val unreadable = linkedMapOf<String, String>()
+        val serializer: DeserializationStrategy<ClientFrame> = when (type) {
+            "course" -> CourseFrame.serializer()
+            "finish" -> FinishFrame.serializer()
+            else -> return null
+        }
+        var body = root
+        val summary = root["summary"]
+        if (type == "finish" && summary is JsonObject) {
+            // One level down first, so a readable shape survives a broken profile.
+            val (kept, lost) = readableFields(summary, RideSummary.serializer())
+            lost.forEach { (field, reason) -> unreadable["summary.$field"] = reason }
+            body = JsonObject(root + ("summary" to kept))
+        }
+        val (kept, lost) = readableFields(body, serializer)
+        unreadable.putAll(lost)
+        return runCatching {
+            Decoded.Ok(json.decodeFromJsonElement(serializer, kept), fields, unreadable)
+        }.getOrNull()
+    }
+
+    /**
+     * [obj] without the fields that cannot be read on their own, and why each
+     * could not. Only sound for a type whose every field is optional, where an
+     * object holding one field decodes exactly when that field is readable.
+     */
+    private fun readableFields(
+        obj: JsonObject,
+        serializer: DeserializationStrategy<*>,
+    ): Pair<JsonObject, Map<String, String>> {
+        val lost = linkedMapOf<String, String>()
+        val kept = obj.filter { (field, value) ->
+            if (field == "t") return@filter true
+            val alone = runCatching {
+                json.decodeFromJsonElement(serializer, JsonObject(mapOf(field to value)))
+            }
+            alone.exceptionOrNull()?.let { lost[field] = it.message ?: "wrong type" }
+            alone.isSuccess
+        }
+        return JsonObject(kept) to lost
     }
 
     /**

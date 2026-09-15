@@ -496,6 +496,59 @@ class CompanionCourseFrameTest {
         assertIs<CompanionEffect.Finish>(effects.single())
     }
 
+    /**
+     * The ride this was found on: a Godot game's `finish`, with every elevation
+     * spelled `921.0`, closed the socket instead of ending the ride.
+     */
+    @Test
+    fun `the finish a Godot game sent ends the ride, with its map`() {
+        val s = ready()
+        val effects = s.onFrame(GODOT_FINISH_FRAME, nowMs = 1_000)
+        assertTrue(effects.none { it is CompanionEffect.Close }, effects.toString())
+        assertTrue(effects.sentFrames().isEmpty(), effects.toString())
+        assertEquals(64, effects.pick<CompanionEffect.SetCourse>().course.profileMeters.size)
+        assertIs<CompanionEffect.Finish>(effects.last())
+    }
+
+    /**
+     * Ending the ride matters more than the map that came with it. The part that
+     * could not be read is left out and named, and the rest still lands, in the
+     * usual order.
+     */
+    @Test
+    fun `a finish with an unreadable profile still ends the ride, and says what it left out`() {
+        val s = ready()
+        val effects = s.onFrame(
+            """{"t":"finish","summary":{"shape":"abc","profile":[null,"x"]}}""",
+            nowMs = 1_000,
+        )
+        assertTrue(effects.none { it is CompanionEffect.Close }, effects.toString())
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.REJECTED, warning.code)
+        assertEquals("summary.profile", warning.field)
+        val courseAt = effects.indexOfFirst { it is CompanionEffect.SetCourse }
+        assertTrue(courseAt >= 0 && courseAt < effects.indexOfFirst { it is CompanionEffect.Finish })
+        assertEquals("abc", effects.pick<CompanionEffect.SetCourse>().course.shape)
+    }
+
+    @Test
+    fun `an over-long summary shape is said to be dropped, not dropped in silence`() {
+        val s = ready()
+        val huge = "a".repeat(CompanionProtocol.MAX_COURSE_SHAPE_CHARS + 1)
+        val effects = s.onFrame("""{"t":"finish","summary":{"shape":"$huge"}}""", nowMs = 1_000)
+        assertEquals("summary.shape", effects.sent<WarningFrame>().field)
+        assertIs<CompanionEffect.Finish>(effects.last())
+    }
+
+    @Test
+    fun `a course with an unreadable field keeps the rest and stays connected`() {
+        val s = ready()
+        val effects = s.onFrame("""{"t":"course","name":"Weilheim loop","ascentM":[15]}""", nowMs = 1_000)
+        assertTrue(effects.none { it is CompanionEffect.Close }, effects.toString())
+        assertEquals("ascentM", effects.sent<WarningFrame>().field)
+        assertEquals("Weilheim loop", effects.pick<CompanionEffect.SetCourse>().course.name)
+    }
+
     @Test
     fun `an observer may not describe the course`() {
         val s = session()

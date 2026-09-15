@@ -264,7 +264,7 @@ not an acceptable message.
 | `4003` | A controller is already connected |
 | `4004` | Control revoked by the rider |
 | `4005` | The app left Companion mode. Since 0.7 a `finish` does **not** close the socket; this is the rider backing out of the screen |
-| `4008` | Malformed frame the server could not parse |
+| `4008` | Malformed frame the server could not parse. Mid-ride the ride pauses, exactly as for a disconnect |
 
 ### How this grows without churn
 
@@ -285,6 +285,14 @@ Required receiver behaviour, both directions:
    honour, it must emit a `warning` **once per connection** naming the field. This is the
    single most useful debugging affordance in an evolving protocol: it is the difference
    between "drafting doesn't work" and "this build ignores `cda`".
+
+**Numbers are read for their value, not their spelling.** Where a field is an integer, the phone
+takes any whole number however it is written: `921`, `921.0` and `9.21e2` are the same value.
+Engines that load their data from JSON write integers with a trailing `.0` without being asked
+(Godot's `JSON.stringify` does it to every number that went through `JSON.parse_string`), and
+builds up to 2.2 refused such a frame as malformed. A number with a real fraction is still
+refused where a count belongs: `steps: 1.5` is a bug, and closes with 4008. Send plain integers
+anyway, because a released phone that refuses them is still out there.
 
 ## 4. Frames
 
@@ -396,7 +404,7 @@ it.
 | `distanceM` | number | The **course's** length. Not how far the rider got - that is `world.distanceM` |
 | `ascentM` | number | The course's own total climb, on the same footing |
 | `shape` | string | Precision-5 encoded polyline, the same encoding as `RoutePolyline`. Max 32 768 characters |
-| `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. 64 samples is plenty. Max 1 024 |
+| `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. A sample with a fraction is rounded to the metre. 64 samples is plenty. Max 1 024 |
 
 `shape` and `profile` describe the course, never a position on it, and nothing in the protocol
 ever asks where on that road the rider is. A companion that would rather disclose nothing sends
@@ -406,6 +414,12 @@ An over-long `shape` or `profile` is **refused whole, not truncated**, with a `r
 warning. Half a polyline is not a shorter road, it is one that leaves the map. The rest of the
 frame still lands, so a companion that sends an enormous track alongside a perfectly good name
 still gets the name.
+
+A field that cannot be read at all, a `distanceM` of `"3.4 km"` or a `profile` with a `null` in
+it, is **left out with a `rejected` warning naming it**, and the rest of the frame lands the same
+way. `course` and `finish` are the only frames taken in part like this. They describe the ride
+rather than steer it, and refusing one whole would close the socket in the middle of a ride.
+Every other frame that cannot be read is `malformed`.
 
 #### `setState`
 
@@ -647,7 +661,14 @@ record before the ride is told to end, because ending it is what writes the row.
 | Field | Type | Notes |
 |---|---|---|
 | `shape` | string | Precision-5 encoded polyline, the same encoding as `RoutePolyline` |
-| `profile` | int[] | 64 elevation samples in metres, the same shape as `RouteEntry.profile` |
+| `profile` | int[] | 64 elevation samples in metres, the same shape as `RouteEntry.profile`. Fractions are rounded |
+
+**A `finish` always ends the ride.** If its `summary`, or a field inside it, cannot be read, that
+part is left out with a `rejected` warning whose `field` names it (`summary`, or
+`summary.profile`), and the ride ends and saves without it. Ending the ride is the part that
+matters, and a missing map is not worth a lost ride. Builds up to 2.2 refused the whole frame
+instead: the socket closed with 4008, the ride never ended, and the rider's next ride was saved
+on top of it under the new name.
 
 **This is the only frame that may carry geography, and it arrives after the ride is over.**
 During the ride the phone still knows nothing about where the rider was. A companion that
@@ -807,7 +828,7 @@ Non-fatal. Something was ignored, clamped or rate-limited, and the sender should
 | `fieldNotHonoured` | A field this build ignores. Once per field per connection |
 | `clamped` | A value was held inside its range; `sent` and `applied` say how far |
 | `rateLimited` | A frame arrived faster than the app acts on it |
-| `rejected` | A value was dropped rather than trimmed, because trimming would be worse than nothing. The frame's other fields still applied |
+| `rejected` | A value was dropped rather than trimmed, because trimming would be worse than nothing, or a field of `course` or `finish` could not be read. `field` names it, dotted when nested (`summary.profile`). The frame's other fields still applied |
 | `adjusted` | A value was changed to keep the screen legible, and the message names the value used. The frame took effect (0.8) |
 
 #### `error`
@@ -822,7 +843,7 @@ Fatal for the current operation, and usually followed by a close. See the close-
 | `controllerBusy` | Another controller holds the session |
 | `notController` | An observer sent a controlling frame |
 | `noTrainer` | No trainer connected |
-| `malformed` | Frame could not be parsed |
+| `malformed` | Frame could not be parsed. Followed by 4008 |
 
 ## 4a. Permanent pairing
 
@@ -1031,6 +1052,10 @@ So the phone pauses it and waits for you:
   disconnected, and lists the rides this session with the paused one among them.
 - **There is no timeout.** The phone waits for as long as you are gone. Nothing about a game
   going quiet says the rider is done, so nothing ends the ride on a timer.
+- **A socket the phone closed counts the same.** A frame of yours that was `malformed` mid-ride
+  gets an `error` and a 4008, and the ride pauses exactly as if you had dropped. The `error`
+  names the frame and the field; read it before you reconnect, or you will send the same frame
+  again.
 - **When you reconnect, the ride carries on by itself.** Same ride, same clock. Your new
   connection receives `stateChanged: active` straight after `welcome`, so you know it is running.
   If you have come back into a menu rather than onto the road, send `setState: "paused"`.
@@ -1210,6 +1235,11 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last
 month still runs the same way.
+
+`--godot-numbers` spells every whole number in every frame the probe sends as Godot does,
+`921.0`, so any scenario doubles as a check that the phone reads numbers for their value.
+`--scenario twice --godot-numbers` is the evening that found it: two rides whose `finish`
+carries a profile written that way, which must still save as two rides.
 
 **Two things a desk run shows that are not faults.** With nobody on the trainer,
 `telemetry.speedMps` is absent, because no crank has turned and there is therefore no drivetrain

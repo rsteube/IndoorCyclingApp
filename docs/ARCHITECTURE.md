@@ -240,7 +240,7 @@ What the app publishes in return is `telemetry.speedMps`, the *drivetrain's* own
 |---|---|
 | Versions, negotiation and its messages, close codes, clamps | [`CompanionProtocol.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionProtocol.kt) |
 | Every frame, both directions | [`CompanionFrames.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionFrames.kt) |
-| JSON in and out, plus wire-precision rounding | [`CompanionCodec.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionCodec.kt) |
+| JSON in and out: numbers read for their value, `course` and `finish` taken in part, wire-precision rounding | [`CompanionCodec.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionCodec.kt) |
 | The road, its clamps, sequencing, the deadman ramp | [`CompanionRoad.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionRoad.kt) |
 | One connection as a state machine | [`CompanionSession.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionSession.kt) |
 

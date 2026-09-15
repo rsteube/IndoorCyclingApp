@@ -473,7 +473,7 @@ GPX. Your course exists nowhere the app can reach, so it travels with the ride.
 | `distanceM` | number | The **course's** length. Not how far the rider got - that is `world.distanceM` |
 | `ascentM` | number | The course's own total climb |
 | `shape` | string | Precision-5 encoded polyline (Google polyline algorithm). Max 32 768 chars |
-| `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. 64 is plenty. Max 1 024 |
+| `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. Fractions are rounded. 64 is plenty. Max 1 024 |
 
 **Every field is optional and fields merge.** A later frame that omits a field leaves whatever
 was already known alone. The usual shape is:
@@ -498,6 +498,10 @@ no `course` at all and the ride saves exactly as before: real numbers, no shape.
 An over-long `shape` or `profile` is **refused whole, not truncated**, with a `rejected`
 warning. Half a polyline is not a shorter road, it is one that leaves the map. The rest of the
 frame still lands, so an enormous track alongside a good name still gets you the name.
+
+A field that cannot be read at all (`"distanceM": "3.4 km"`, a `null` in `profile`) is **left out
+with a `rejected` warning naming it**, and the rest of the frame lands. Only `course` and
+`finish` are taken in part; every other unreadable frame is `malformed` and closes with 4008.
 
 ---
 
@@ -686,7 +690,12 @@ at the end, `course` if you also want to name the ride.
 | Field | Type | Notes |
 |---|---|---|
 | `shape` | string | Precision-5 encoded polyline (the Google polyline algorithm) |
-| `profile` | int[] | 64 elevation samples in metres |
+| `profile` | int[] | 64 elevation samples in metres. Fractions are rounded |
+
+**A `finish` always ends the ride.** A `summary`, or a field in it, that cannot be read is left
+out with a `rejected` warning (`field`: `summary` or `summary.profile`) and the ride saves
+without it. Builds up to 2.2 refused the whole frame: 4008, the ride never ended, and the next
+ride was saved on top of it.
 
 Geography arrives after the ride is over. A companion that would rather not disclose even this
 omits `summary`; the ride still saves with its numbers.
@@ -859,7 +868,7 @@ Non-fatal. Something was ignored, clamped or rate-limited.
 | `fieldNotHonoured` | A `world` field this build ignores. Emitted once per field per connection |
 | `clamped` | A value was outside `welcome.limits`. `sent` and `applied` both given |
 | `rateLimited` | Too many frames of that kind. `frame` names which |
-| `rejected` | A value was dropped rather than trimmed; the frame's other fields still applied |
+| `rejected` | A value was dropped rather than trimmed, or a `course`/`finish` field could not be read. `field` names it, dotted when nested. The frame's other fields still applied |
 | `adjusted` | A value was changed to stay legible; the message names the value used (0.8) |
 
 **Surface these in your development build.** `fieldNotHonoured` is the difference between
@@ -878,7 +887,7 @@ Fatal for the operation, and usually followed by a close.
 | `controllerBusy` | 4003 | Another controller holds the ride |
 | `notController` | **none** | An observer sent a controlling frame. Socket stays open |
 | `noTrainer` | none | Defined, not currently emitted |
-| `malformed` | 4008 | Frame could not be parsed |
+| `malformed` | 4008 | Frame could not be parsed. Mid-ride the ride pauses, as for a disconnect |
 
 ### 13.1 Close codes
 
@@ -908,8 +917,11 @@ what should have been a 4001 arrives as a bare 1006.
    documented default.
 4. **Never silently drop something meaningful.** The app warns once per unhonoured field. A
    companion should do the equivalent.
+5. **Read a number for its value, not its spelling.** The app takes `921.0` where an integer
+   belongs (builds up to 2.2 did not). A number with a real fraction in a count, `steps: 1.5`,
+   is still `malformed`. Send integers as integers regardless.
 
-These four are what let a 0.1 peer share a socket with a later one. Breaking them is the most
+These five are what let a 0.1 peer share a socket with a later one. Breaking them is the most
 common way a companion becomes fragile.
 
 ---
@@ -1067,6 +1079,7 @@ Present in the protocol, absent from this build. Do not design around them.
 | Mistake | Result |
 |---|---|
 | Omitting `speedMps` | Frame is `malformed`; the socket closes with 4008 |
+| Sending integers as `921.0` (Godot: anything through `JSON.parse_string` then `JSON.stringify`) | Read by current builds. Builds up to 2.2 close with 4008, and a `finish` written that way never ends the ride |
 | Sending `seq` that does not increase | Frames dropped silently; the road appears frozen |
 | Sending deltas in `distanceM` | Distance stalls, because smaller values are ignored |
 | Waiting for the socket to close after a `finish` | It does not close any more. You wait forever and the second ride never starts |

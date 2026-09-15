@@ -203,13 +203,14 @@ class CompanionSession(
             // having to know it happened.
             is Decoded.Unknown -> emptyList()
 
-            is Decoded.Ok -> onDecoded(decoded.frame, decoded.fields, nowMs)
+            is Decoded.Ok -> onDecoded(decoded.frame, decoded.fields, decoded.unreadable, nowMs)
         }
     }
 
     private fun onDecoded(
         frame: ClientFrame,
         fields: Set<String>,
+        unreadable: Map<String, String>,
         nowMs: Long,
     ): List<CompanionEffect> {
         if (phase == Phase.AWAITING_PROOF) {
@@ -243,7 +244,7 @@ class CompanionSession(
             }
         }
 
-        return when (frame) {
+        return unreadableWarnings(unreadable) + when (frame) {
             is HelloFrame -> emptyList() // a second hello is meaningless, not fatal
             is WorldFrame -> onWorld(frame, fields, nowMs)
             is RequestShiftFrame -> onRequestShift(frame, nowMs)
@@ -261,6 +262,30 @@ class CompanionSession(
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
     }
+
+    /**
+     * One `rejected` warning per field of a `course` or `finish` that could not
+     * be read, sent before whatever the rest of the frame did.
+     *
+     * The frame was used without them, and without this nobody would know: the
+     * ride ends, the name lands, and the map is simply missing from the saved
+     * ride with nothing anywhere to say why.
+     */
+    private fun unreadableWarnings(unreadable: Map<String, String>): List<CompanionEffect> =
+        if (!isController) {
+            emptyList()
+        } else {
+            unreadable.map { (field, reason) ->
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.REJECTED,
+                        field = field,
+                        message = "'" + field + "' could not be read, so it was left out and the " +
+                            "rest of the frame was used: " + reason,
+                    )
+                )
+            }
+        }
 
     // Handshake ──────────────────────────────────────────────────────────────
 
@@ -598,37 +623,8 @@ class CompanionSession(
         if (!isController) return listOf(notController("course"))
 
         val effects = mutableListOf<CompanionEffect>()
-
-        var shape = frame.shape.orEmpty()
-        if (shape.length > CompanionProtocol.MAX_COURSE_SHAPE_CHARS) {
-            shape = ""
-            effects += CompanionEffect.Send(
-                WarningFrame(
-                    code = CompanionWarning.REJECTED,
-                    field = "shape",
-                    message = "The course shape is " + frame.shape.orEmpty().length +
-                        " characters; the limit is " + CompanionProtocol.MAX_COURSE_SHAPE_CHARS +
-                        ". It was dropped rather than truncated, because half a polyline " +
-                        "decodes into a road that leaves the map. Simplify the track first.",
-                )
-            )
-        }
-
-        var profile = frame.profile
-        if (profile.size > CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES) {
-            profile = emptyList()
-            effects += CompanionEffect.Send(
-                WarningFrame(
-                    code = CompanionWarning.REJECTED,
-                    field = "profile",
-                    message = "The course profile has " + frame.profile.size +
-                        " samples; the limit is " +
-                        CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES +
-                        ". Resample it: 64 evenly spaced points is what the app's own " +
-                        "route listings carry and is plenty to draw.",
-                )
-            )
-        }
+        val shape = keptShape(frame.shape, "shape", effects)
+        val profile = keptProfile(frame.profile, "profile", effects)
 
         val course = CompanionCourse(
             name = frame.name?.take(CompanionProtocol.MAX_COURSE_NAME_CHARS)?.ifBlank { null },
@@ -831,24 +827,64 @@ class CompanionSession(
      */
     private fun onFinish(frame: FinishFrame): List<CompanionEffect> {
         if (!isController) return listOf(notController("finish"))
+        val effects = mutableListOf<CompanionEffect>()
         val summary = frame.summary
         val course = summary?.let {
             CompanionCourse(
-                // Dropped whole rather than trimmed, for the reason [onCourse]
-                // gives: a truncated polyline is a corrupt road, not a short one.
-                shape = it.shape
-                    .orEmpty()
-                    .takeIf { text -> text.length <= CompanionProtocol.MAX_COURSE_SHAPE_CHARS }
-                    .orEmpty(),
-                profileMeters = it.profile
-                    .takeIf { p -> p.size <= CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES }
-                    ?: emptyList(),
+                shape = keptShape(it.shape, "summary.shape", effects),
+                profileMeters = keptProfile(it.profile, "summary.profile", effects),
             )
         }
-        return buildList {
-            if (course != null && !course.isEmpty) add(CompanionEffect.SetCourse(course))
-            add(CompanionEffect.Finish(summary))
-        }
+        if (course != null && !course.isEmpty) effects += CompanionEffect.SetCourse(course)
+        effects += CompanionEffect.Finish(summary)
+        return effects
+    }
+
+    /**
+     * [shape], or empty with a warning when it is too long to keep.
+     *
+     * Dropped whole rather than truncated, because half a polyline decodes into
+     * a road that leaves the map.
+     */
+    private fun keptShape(
+        shape: String?,
+        field: String,
+        effects: MutableList<CompanionEffect>,
+    ): String {
+        val text = shape.orEmpty()
+        if (text.length <= CompanionProtocol.MAX_COURSE_SHAPE_CHARS) return text
+        effects += CompanionEffect.Send(
+            WarningFrame(
+                code = CompanionWarning.REJECTED,
+                field = field,
+                message = "The course shape is " + text.length +
+                    " characters; the limit is " + CompanionProtocol.MAX_COURSE_SHAPE_CHARS +
+                    ". It was dropped rather than truncated, because half a polyline " +
+                    "decodes into a road that leaves the map. Simplify the track first.",
+            )
+        )
+        return ""
+    }
+
+    /** [profile], or empty with a warning when it has too many samples to keep. */
+    private fun keptProfile(
+        profile: List<Int>,
+        field: String,
+        effects: MutableList<CompanionEffect>,
+    ): List<Int> {
+        if (profile.size <= CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES) return profile
+        effects += CompanionEffect.Send(
+            WarningFrame(
+                code = CompanionWarning.REJECTED,
+                field = field,
+                message = "The course profile has " + profile.size +
+                    " samples; the limit is " +
+                    CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES +
+                    ". Resample it: 64 evenly spaced points is what the app's own " +
+                    "route listings carry and is plenty to draw.",
+            )
+        )
+        return emptyList()
     }
 
     // Host-initiated ─────────────────────────────────────────────────────────

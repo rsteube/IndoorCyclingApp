@@ -235,10 +235,31 @@ def discover(timeout=8.0):
 
 # ── The companion ─────────────────────────────────────────────────────────────
 
+def godot_spelling(value):
+    """Every whole number spelled the way Godot writes it: 921 becomes 921.0.
+
+    Godot's JSON.parse_string makes every number a float and JSON.stringify
+    writes a whole float with its `.0`, so a game that loads anything from JSON
+    sends integers like this without meaning to. Indoor Bike 2.2 refused them
+    where an integer belongs, and a `finish` spelled this way never ended the
+    ride.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return float(value)
+    if isinstance(value, dict):
+        return {k: godot_spelling(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [godot_spelling(v) for v in value]
+    return value
+
+
 class Probe:
-    def __init__(self, ws, verbose=True, state=None):
+    def __init__(self, ws, verbose=True, state=None, godot_numbers=False):
         self.ws = ws
         self.verbose = verbose
+        self.godot_numbers = godot_numbers
         self.state = state if state is not None else {"deviceId": "probe", "pairings": {}}
         self.seq = 0
         self.paired_ok = None      # True/False once a challenge has been answered
@@ -349,6 +370,8 @@ class Probe:
             print("  !! the phone could NOT prove it holds the pairing key")
 
     def send(self, frame):
+        if self.godot_numbers:
+            frame = godot_spelling(frame)
         if self.verbose:
             print("  -> %s" % json.dumps(frame))
         self.ws.send_text(json.dumps(frame))
@@ -382,6 +405,8 @@ class Probe:
             frame["distanceM"] = round(distance_m, 1)
         if ascent_m is not None:
             frame["ascentM"] = round(ascent_m, 1)
+        if self.godot_numbers:
+            frame = godot_spelling(frame)
         # Too chatty to echo at 10 Hz; the ride loop prints a summary instead.
         self.ws.send_text(json.dumps(frame))
 
@@ -652,6 +677,8 @@ def main():
     ap.add_argument("--gradient", type=float, default=0.0)
     ap.add_argument("--enabled", help="comma-separated controls for the controls scenario")
     ap.add_argument("--finish", action="store_true", help="end the ride at the end")
+    ap.add_argument("--godot-numbers", action="store_true",
+                    help="spell every whole number as Godot does (921.0), in every frame")
     args = ap.parse_args()
 
     host, port = args.host, args.port
@@ -693,7 +720,7 @@ def connect(host, port, args, state):
     """Open the socket and get through the handshake. (None, None) if refused."""
     print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
     ws = WebSocket(host, port)
-    probe = Probe(ws, state=state)
+    probe = Probe(ws, state=state, godot_numbers=args.godot_numbers)
     probe.start()
     if not probe.hello(args.code):
         print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")

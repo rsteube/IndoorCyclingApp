@@ -35,6 +35,7 @@ import app.indoorbike.shared.companion.CompanionProtocol
 import app.indoorbike.shared.companion.CompanionSession
 import app.indoorbike.shared.companion.CompanionSnapshot
 import app.indoorbike.shared.companion.CompanionState
+import app.indoorbike.shared.companion.ErrorFrame
 import app.indoorbike.shared.companion.EventFrame
 import app.indoorbike.shared.companion.GearInfo
 import app.indoorbike.shared.companion.HelloFrame
@@ -637,22 +638,43 @@ class CompanionHost(
         )
         val conn = Conn(session, ws)
         connections.add(conn)
+        // The controller this app closed for something it sent. Gone just the
+        // same as one that closed its own socket, and handled the same way below.
+        var refusedController = false
         try {
             for (frame in ws.incoming) {
                 if (frame !is Frame.Text) continue
+                val wasController = controller === conn
                 val effects = session.onFrame(frame.readText(), System.currentTimeMillis())
                 val open = dispatch(conn, effects)
                 // Registering after the close check, not before it: a
                 // connection that has just been closed must not be put back as
                 // the controller on its way out.
-                if (!open) break
+                if (!open) {
+                    // Said out loud. A controller closed from this end used to
+                    // leave no trace at all: dispatch had already let go of it,
+                    // so nothing below ran, the ride carried on as if the game
+                    // were still there, and a game that reconnected a second
+                    // later named its next ride onto this one.
+                    val close = effects.filterIsInstance<CompanionEffect.Close>().firstOrNull()
+                    val error = effects.filterIsInstance<CompanionEffect.Send>()
+                        .map { it.frame }.filterIsInstance<ErrorFrame>().firstOrNull()
+                    Log.w(
+                        TAG,
+                        "Closed " + session.clientName + " (" + close?.code + "): " +
+                            (error?.message ?: close?.reason),
+                    )
+                    refusedController = wasController
+                    break
+                }
                 registerRoleIfNeeded(conn)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Companion connection ended: " + (e.message ?: e::class.simpleName))
         } finally {
             connections.remove(conn)
-            if (controller === conn) {
+            // A refused controller only counts while nobody has taken its place.
+            if (controller === conn || (refusedController && controller == null)) {
                 controller = null
                 // Whatever menu it was showing is gone with it. Leaving the pad
                 // up would offer the rider buttons with nothing on the other
@@ -736,7 +758,15 @@ class CompanionHost(
         var open = true
         for (effect in effects) {
             when (effect) {
-                is CompanionEffect.Send -> conn.send(effect.frame)
+                is CompanionEffect.Send -> {
+                    // A refused field is a bug in the game that the rider only
+                    // ever sees as something missing, so it goes in the log too.
+                    val frame = effect.frame
+                    if (frame is WarningFrame && frame.code == CompanionWarning.REJECTED) {
+                        Log.w(TAG, "Refused from " + conn.session.clientName + ": " + frame.message)
+                    }
+                    conn.send(frame)
+                }
 
                 is CompanionEffect.Close -> {
                     // Retire the connection *before* closing it. The telemetry

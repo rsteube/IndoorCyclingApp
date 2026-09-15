@@ -701,6 +701,14 @@ proof = hex(HMAC_SHA256(keyBytes,
       shorter road, it is one that leaves the map.
     </p>
 
+    <p>
+      A field that cannot be read at all, a <code>distanceM</code> of
+      <code>"3.4 km"</code> or a <code>null</code> in the profile, is left out
+      with a <code>rejected</code> warning naming it, and the rest of the frame
+      still lands. Elevations are whole metres; a sample with a fraction is
+      rounded.
+    </p>
+
     <h3><code>setState</code> - start, pause and resume the recording</h3>
 
 <pre><code>{ "t": "setState", "state": "paused" }</code></pre>
@@ -939,6 +947,25 @@ proof = hex(HMAC_SHA256(keyBytes,
 { "t": "finish" }
 { "t": "ping", "id": 17 }</code></pre>
 
+    <p>
+      <strong>A <code>finish</code> always ends the ride.</strong> If its
+      <code>summary</code> cannot be read, the unreadable part is left out with a
+      <code>rejected</code> warning, and the ride saves without the map. Builds up
+      to 2.2 refused the whole frame instead, so the ride never ended and the
+      next one was saved on top of it.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>Numbers are read for their value.</strong> An integer field takes
+        <code>921.0</code> as well as <code>921</code>, which matters because
+        Godot's <code>JSON.stringify</code> writes every number that went through
+        <code>JSON.parse_string</code> that way. A real fraction where a count
+        belongs, <code>steps: 1.5</code>, is still malformed. Send plain integers
+        anyway: a phone on 2.2 or earlier refuses <code>921.0</code>.
+      </p>
+    </div>
+
     <h3>A session is many rides</h3>
 
     <p>
@@ -1112,7 +1139,7 @@ setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
         <tr><td><code>fieldNotHonoured</code></td><td>You sent something this build does not act on. Check <code>welcome.honours</code>. Sent once per field, not once per frame.</td></tr>
         <tr><td><code>clamped</code></td><td>A value was outside the envelope and was held at the edge. Carries what you sent and what was applied.</td></tr>
         <tr><td><code>rateLimited</code></td><td>Too many shift requests. The surplus was dropped.</td></tr>
-        <tr><td><code>rejected</code></td><td>A value was dropped rather than trimmed, because trimming it would have been worse than dropping it.</td></tr>
+        <tr><td><code>rejected</code></td><td>A value was dropped rather than trimmed, because trimming it would have been worse than dropping it, or a field of <code>course</code> or <code>finish</code> could not be read. <code>field</code> names it, dotted when nested (<code>summary.profile</code>).</td></tr>
       </tbody>
     </table>
     </div>
@@ -1168,7 +1195,7 @@ setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
         <tr><td><code>4003</code></td><td>Another companion is already driving. Connect as an observer, or disconnect the other one.</td></tr>
         <tr><td><code>4004</code></td><td>The rider took control back.</td></tr>
         <tr><td><code>4005</code></td><td>The app left Companion mode. Since 0.7 a <code>finish</code> does <em>not</em> close the socket; this is the rider backing out of the screen.</td></tr>
-        <tr><td><code>4008</code></td><td>A frame could not be read.</td></tr>
+        <tr><td><code>4008</code></td><td>A frame could not be read. The <code>error</code> before it names the frame. Mid-ride, the ride pauses until you reconnect.</td></tr>
       </tbody>
     </table>
     </div>
@@ -1232,6 +1259,7 @@ setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
         <tr><td><code>seq</code> that does not increase</td><td>Frames dropped silently; the road appears frozen with no error anywhere</td></tr>
         <tr><td>Sending deltas in <code>distanceM</code></td><td>Distance stalls, because a smaller value than the last is ignored</td></tr>
         <tr><td>Hardcoding the port</td><td>Works on the ride you tested, fails on every other one</td></tr>
+        <tr><td>Sending integers as <code>921.0</code>, as Godot does after <code>JSON.parse_string</code></td><td>Read by current builds. On 2.2 and earlier the frame is refused, and a <code>finish</code> written that way never ends the ride</td></tr>
         <tr><td>Waiting for the socket to close after a <code>finish</code></td><td>It does not close. You wait forever and the rider's second lap never starts</td></tr>
         <tr><td>Reusing the last ride's <code>course</code> for the next one</td><td>The new ride is recorded under the old ride's name and map</td></tr>
         <tr><td>Defaulting a missing <code>hr</code> or <code>speedMps</code> to zero</td><td>A heart rate of zero on the HUD; a rider stopped dead on a trainer that cannot count cadence</td></tr>

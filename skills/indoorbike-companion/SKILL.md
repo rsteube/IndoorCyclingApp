@@ -55,7 +55,7 @@ fields. Apply them to the speed you compute, then send the result.
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
 has two untested systems and no way to tell which is wrong.
 
-## The fourteen rules that prevent most bugs
+## The fifteen rules that prevent most bugs
 
 1. **Send `hello` first.** Any other first frame is `unauthorized` and a close with 4002.
 2. **`role` defaults to `controller`**, and any value the phone does not recognise (including
@@ -92,6 +92,10 @@ has two untested systems and no way to tell which is wrong.
 14. **Smooth the gradient before you send it.** It does not come out of a route file ready
     to use, and it goes straight into the force on the rider's legs. See the next section but
     one.
+15. **Write integer fields as plain integers.** `profile`, `seq`, `steps`, teeth. Godot's
+    `JSON.stringify` writes every number that went through `JSON.parse_string` as `921.0`.
+    Current phones read it; builds up to 2.2 refused the frame, and a `finish` refused that way
+    never ended the ride. Convert with `int()` or `roundi()` before you send.
 
 ## Speed: take it, do not compute it
 
@@ -177,6 +181,11 @@ a week later. All three are optional, and all three are worth the hour.
 
 `finish.summary` is the short form of `course` and merges into the same place. You need one of
 the two, not both.
+
+**A `finish` always ends the ride**, even when its `summary` cannot be read: the unreadable part
+is left out with a `rejected` warning naming it (`summary.profile`), and the ride saves without
+the map. The same goes for any field of a `course`. So read your warnings, or a map goes missing
+and nothing else tells you why.
 
 ## A session is many rides
 
@@ -381,7 +390,8 @@ all. Treat `worldTimeout` as a bug report about your own frame loop.
 |---|---|
 | Socket closes immediately, code 4002 | First frame was not `hello`, or the token is wrong |
 | Socket closes, code 4001 | Version ranges do not overlap. The error names both |
-| Socket closes, code 4008 | A frame failed to parse. Usually a missing `speedMps` |
+| Socket closes, code 4008 | A frame failed to parse. Usually a missing `speedMps`. Mid-ride the ride pauses until you reconnect; the `error` before the close names the frame |
+| Two rides saved as one, under the second name, with both rides' time | Your `finish` was refused with 4008 and you reconnected. On builds up to 2.2 a `profile` written as `921.0` does this: send integers |
 | Connected but cannot steer | You were granted `observer`. Check `welcome.role` |
 | `error` `notController` | Same. Reconnect with `role: "controller"` |
 | Road frozen, no errors | `seq` is not increasing |
@@ -454,7 +464,7 @@ Also test these, because riders hit all of them:
 - The rider ends the ride on the phone (`stateChanged` `finished`, then close 4005)
 - **A second ride straight after the first**, on the same connection, without restarting
   anything. `companion_probe.py --scenario twice` is this exact test if you want something
-  to compare against
+  to compare against, and adding `--godot-numbers` sends every integer as `921.0`
 - A second instance of your app connects (4003)
 
 ## Scope
