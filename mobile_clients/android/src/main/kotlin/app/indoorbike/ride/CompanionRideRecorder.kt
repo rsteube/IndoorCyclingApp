@@ -30,6 +30,13 @@ data class SavedCompanionRide(
     val name: String,
     val durationSeconds: Int,
     val distanceMeters: Double,
+    val averagePowerWatts: Int = 0,
+    /**
+     * The companion left without finishing it, and the ride was kept when the
+     * session ended. Said on screen, because a lap that stops at 3.4 km of a
+     * 12 km course is otherwise indistinguishable from one that was meant to.
+     */
+    val endedByDisconnect: Boolean = false,
 )
 
 /**
@@ -61,7 +68,7 @@ class CompanionRideRecorder(private val container: AppContainer) {
      * never actually started, and a session with no elapsed time and no samples
      * in it is not a ride, it is an intention.
      */
-    suspend fun save(): SavedCompanionRide? {
+    suspend fun save(endedByDisconnect: Boolean = false): SavedCompanionRide? {
         val sessions = container.sessionManager
         val workout = sessions.activeWorkout.value ?: return null
         if (!workout.isCompanion) return null
@@ -75,13 +82,14 @@ class CompanionRideRecorder(private val container: AppContainer) {
         // has to agree with.
         val name = road.course?.name?.takeIf { it.isNotBlank() } ?: workout.name
         val duration = sessions.actualRideSeconds.value
+        val telemetry = sessions.telemetrySnapshot()
 
         val sessionId = saveRideToHistory(
             container = container,
             workout = workout,
             startTimeEpoch = startedAt,
             durationSeconds = duration,
-            telemetry = sessions.telemetrySnapshot(),
+            telemetry = telemetry,
             road = road,
         )
         return SavedCompanionRide(
@@ -89,6 +97,9 @@ class CompanionRideRecorder(private val container: AppContainer) {
             name = name,
             durationSeconds = duration,
             distanceMeters = road.distanceMeters - road.startedAtMeters,
+            averagePowerWatts = if (telemetry.isEmpty()) 0
+                else telemetry.map { it.power }.average().toInt(),
+            endedByDisconnect = endedByDisconnect,
         )
     }
 

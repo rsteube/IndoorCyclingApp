@@ -933,6 +933,24 @@ setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
       you will get.
     </p>
 
+    <h3>When your companion goes away</h3>
+
+    <p>
+      The moment your socket closes, the rider's screen says so: a panel over
+      their HUD names your companion as disconnected, counts down 25 seconds and
+      lists <strong>Rides this session</strong>, including the one still running.
+      Reconnect inside that window, after a game restart or a laptop waking up,
+      and the panel closes by itself.
+    </p>
+
+    <p>
+      If you do not come back, the session ends and <strong>the ride that was
+      underway is saved</strong>, marked as cut off by a disconnect. So always send
+      <code>finish</code> when a ride ends: dropping the socket is not a way to
+      cancel a ride, only a way to save it with a note that it stopped short. And
+      name each ride in its <code>course</code>, or it is listed as "Companion ride".
+    </p>
+
     <h2 id="app-sends">What the phone sends back</h2>
 
     <h3><code>telemetry</code> - every 250 ms</h3>

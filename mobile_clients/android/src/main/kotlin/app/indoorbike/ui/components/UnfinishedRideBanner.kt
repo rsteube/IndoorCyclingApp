@@ -47,6 +47,7 @@ import app.indoorbike.LocalRideResumer
 import app.indoorbike.LocalWorkouts
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
+import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.shared.workout.isSimulation
 import app.indoorbike.shared.workout.resolveRideWorkout
@@ -105,12 +106,17 @@ fun UnfinishedRideBanner(
     ) ?: return
     // Both plan-less modes have a six-hour backstop segment rather than a
     // planned length, so neither can report progress as a fraction of it.
-    val openEnded = workout.isFreeRide || workout.isSimulation
+    val openEnded = workout.isFreeRide || workout.isSimulation || workout.isCompanion
 
     // A finished ride that never reached history: either the app died between
     // the trophy screen and the summary, or the rider backed out of it. The
     // samples are the whole value here, so offer to save rather than resume.
-    val isFinished = current.state == WorkoutState.Completed ||
+    //
+    // A companion ride is always offered as one to save. Resuming it would put
+    // the rider back on a HUD whose game is gone, with nothing to drive the
+    // road, so the only useful thing left to do with the effort is keep it.
+    val isFinished = workout.isCompanion ||
+        current.state == WorkoutState.Completed ||
         current.currentSegmentIndex >= workout.segments.size ||
         current.elapsedSeconds >= workout.segments.sumOf { it.lengthInSeconds }
     val recovered = remember(current) { container.sessionManager.pendingRideTelemetry(current) }
@@ -181,7 +187,9 @@ fun UnfinishedRideBanner(
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            text = workout.name,
+            // A companion's own name for the ride when it gave one, which is
+            // how the ride will be listed once it is saved.
+            text = current.companionCourse?.name?.takeIf { it.isNotBlank() } ?: workout.name,
             style = CadenceType.h3,
             color = CadenceColors.Fg1,
             maxLines = 1,

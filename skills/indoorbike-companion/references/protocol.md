@@ -1011,6 +1011,8 @@ Present in the protocol, absent from this build. Do not design around them.
 | Sending `seq` that does not increase | Frames dropped silently; the road appears frozen |
 | Sending deltas in `distanceM` | Distance stalls, because smaller values are ignored |
 | Waiting for the socket to close after a `finish` | It does not close any more. You wait forever and the second ride never starts |
+| Closing the socket instead of sending `finish` | After 25 s the phone ends the session and saves the ride anyway, flagged as cut off by a disconnect |
+| Sending a `course` without a `name` | The ride is listed in history as "Companion ride" |
 | Reusing the previous ride's `course` | The new ride is recorded under the old ride's name and map |
 | Reconnecting to a remembered `host:port` after a real 4005 | Connection refused; the port is ephemeral and new every time the mode is opened |
 | Hardcoding the port | Fails on every ride but the one you tested |

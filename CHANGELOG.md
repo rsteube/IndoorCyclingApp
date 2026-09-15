@@ -8,6 +8,15 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **A companion ride was lost when the game went away before finishing.** The
+  game closed mid-ride, the rider pressed back, and five minutes of riding were
+  discarded with nothing on screen to say so. Ending a session now keeps the
+  ride that was underway.
+- **An interrupted companion ride could never be recovered.** The unfinished-ride
+  banner could not resolve a companion ride and so never appeared for one, and
+  a companion ride continued from it would not have saved when ended. The banner
+  now offers it as a ride to save, never to resume, since the game that drove it
+  is gone.
 - **Skip broke a companion ride.** A companion ride is one synthetic segment the
   game drives, so skipping it rolled straight to the end and completed the ride
   from under the companion. The button is gone from Companion mode and the
@@ -22,6 +31,13 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Changed
 
+- **The ride screen says when a companion goes away, and what the session
+  produced.** The moment the game disconnects, a panel over the HUD names it,
+  counts down 25 seconds and lists the rides this session, including the one
+  still running. If the game comes back the panel closes by itself; if not, or
+  when the rider ends the session, it becomes the session's summary and stays
+  until dismissed. This replaces the separate end-of-session screen, so the
+  ending is shown where the rider is already looking.
 - **Shifting is the biggest thing on the companion HUD.** In Companion mode the
   game owns the road and the rider owns the gears, and a rider without a
   handlebar controller had two 46 dp circles in the middle of a card to do it

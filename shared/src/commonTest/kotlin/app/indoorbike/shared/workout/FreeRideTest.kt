@@ -85,6 +85,10 @@ class FreeRideTest {
         // synthesised per ride rather than stored - a plain library lookup
         // would drop a recoverable session on the floor.
         assertEquals(freeRideWorkout(), resolveRideWorkout(FREE_RIDE_WORKOUT_ID, emptyList()))
+        // The same is true of a companion ride. It resolved to null here once,
+        // and the banner then showed nothing for a ride that was sitting on
+        // disk waiting to be recovered.
+        assertEquals(companionWorkout(), resolveRideWorkout(COMPANION_WORKOUT_ID, emptyList()))
         assertEquals(library.first(), resolveRideWorkout("starter-15min", library))
         assertNull(resolveRideWorkout("deleted-workout", library))
     }

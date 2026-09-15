@@ -926,10 +926,28 @@ Nothing that interrupts them. There is no summary screen between rides, because 
 still running and the next lap may start in seconds. The strip at the top of their HUD names
 the ride that was just saved and then keeps a count for the rest of the session.
 
-When the session does end, they are shown what it produced: the ride itself if there was one,
-or a list of them if there were several. If you send a `course` after the `finish`, which a
-free-roaming game often has to, the app folds it into the ride it has already written, so the
-map still lands.
+If you send a `course` after the `finish`, which a free-roaming game often has to, the app
+folds it into the ride it has already written, so the map still lands.
+
+### When the companion goes away
+
+The moment your socket closes, the rider's screen says so: a panel over their HUD names your
+companion as disconnected, counts down 25 seconds, and lists **Rides this session**, including
+the one still running. A game that is restarting or a laptop that slept reconnects inside that
+window, and the panel closes by itself.
+
+If you do not come back, the session ends and **the ride that was underway is saved**, marked as
+ended by a disconnect. The same happens if the rider ends the session themselves while you are
+connected: you get `finished` and then `4005`, and the ride in progress is kept. There is nothing
+to resume once the game that was driving the road is gone, and losing the effort would be worse
+than keeping a ride that stopped short.
+
+What this means for you: **send `finish` when a ride ends, every time.** A disconnect is not a
+way to cancel a ride; it is a way to save it with a note saying it was cut off. And send `course`
+with a name for each ride, because a ride saved without one is listed as "Companion ride".
+
+A ride interrupted by the phone itself (the app killed mid-ride) is offered on the rider's home
+screen afterwards as one to save, never to resume, for the same reason.
 
 The ride is a synthetic single-segment `Workout` with a reserved id, following the free-ride
 and route-ride precedent, so recording, crash recovery, the unfinished-ride banner, history,

@@ -118,6 +118,10 @@ fun resolveRideWorkout(
     routeNames: Map<String, String> = emptyMap(),
 ): Workout? {
     if (workoutId == FREE_RIDE_WORKOUT_ID) return freeRideWorkout()
+    // Synthesised like a free ride, and missed like one would have been: with
+    // no case here an interrupted companion ride resolved to nothing, and the
+    // unfinished-ride banner quietly declined to show a ride it had on disk.
+    if (workoutId == COMPANION_WORKOUT_ID) return companionWorkout()
     val routeId = simulationRouteId(workoutId)
     if (routeId != null) {
         return simulationWorkout(routeId, routeNames[routeId] ?: routeId)

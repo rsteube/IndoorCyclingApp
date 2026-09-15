@@ -168,11 +168,10 @@ fun RideScreen(
     onBack: () -> Unit,
     onNavigateToOverview: (Long) -> Unit,
     /**
-     * The companion session is over and these are the rides it produced,
-     * oldest first. Empty is a real answer: a session where nothing was ridden
-     * has nothing to show for itself.
+     * The rider has finished with a companion session: they dismissed its
+     * summary panel, or backed out of one nothing ever drove.
      */
-    onCompanionSessionEnded: (List<Long>) -> Unit = {},
+    onCompanionSessionDone: () -> Unit = {},
 ) {
     // Follow the device's own rotation (respecting the user's auto-rotate
     // setting) rather than forcing landscape - the HUD adapts to whichever
@@ -314,6 +313,18 @@ fun RideScreen(
     val companionClimb by companionEngine.elevationGainMeters.collectAsState()
     val companionDrivetrain by companionEngine.drivetrain.collectAsState()
     val companionGear by companionEngine.gearIndex.collectAsState()
+    val companionRideStart by companionEngine.rideStartMeters.collectAsState()
+    val companionCourse by companionEngine.course.collectAsState()
+    val companionSessionRides by companionHost.sessionRides.collectAsState()
+    val companionPhase by companionHost.sessionPhase.collectAsState()
+    val companionSessionName by companionHost.sessionCompanionName.collectAsState()
+    val companionEndsAt by companionHost.sessionEndsAtMs.collectAsState()
+    val companionHosting by companionHost.hosting.collectAsState()
+    // Whose job it is to write this ride. The host's, when it is hosting the
+    // session this ride belongs to; this screen's for every other ride,
+    // including a companion ride continued from the unfinished-ride banner,
+    // which runs here with no host at all and used to end saving nothing.
+    val hostSavesRide = isCompanion && companionHosting
 
     // The socket outlives the pairing screen so the ride can use it, which
     // makes this screen the one that has to close it. Leaving here means the
@@ -346,12 +357,12 @@ fun RideScreen(
         }
     }
 
-    // Deliberately not the companion path. There, the ride is written by
-    // CompanionHost the moment the game says it is over, because the rider
-    // never comes to this screen's summary: they are mid-session and the next
-    // lap may already be starting. Running this as well would save it twice.
-    LaunchedEffect(state, continueRequested, isCompanion) {
-        if (isCompanion) return@LaunchedEffect
+    // Not for a ride the companion host is hosting. That one is written by the
+    // host the moment the game says it is over, because the rider never comes
+    // to this screen's summary: they are mid-session and the next lap may
+    // already be starting. Running this as well would save it twice.
+    LaunchedEffect(state, continueRequested, hostSavesRide) {
+        if (hostSavesRide) return@LaunchedEffect
         if (state != WorkoutState.Completed || workout == null || !continueRequested || saved) {
             return@LaunchedEffect
         }
@@ -415,27 +426,34 @@ fun RideScreen(
     // look broken exactly when they're being used to pick an opening effort.
     val displayTarget = if (isFreeRide) freeRideTarget else targetPower
 
-    val companionSessionRides by companionHost.sessionRides.collectAsState()
-    val companionSessionEnded by companionHost.sessionEnded.collectAsState()
-
-    // The companion has been gone long enough that this is not a blip. Leave
-    // the HUD and show what the session produced. The rider is not asked: they
-    // are on a bike, the thing driving the road is gone, and a HUD with a flat
-    // road on it is not a choice worth offering them.
-    LaunchedEffect(companionSessionEnded, isCompanion) {
-        if (!isCompanion || !companionSessionEnded) return@LaunchedEffect
-        if (state != WorkoutState.Completed) sessionManager.stopWorkout()
-        onCompanionSessionEnded(companionSessionRides.map { it.sessionId })
-    }
+    // A companion session shows its ending on this screen rather than moving
+    // the rider somewhere else. The panel is up while the companion is away and
+    // once the session has ended; only a session a companion actually drove has
+    // anything to say.
+    val showSessionPanel = hostSavesRide && companionSessionName != null &&
+        companionPhase != app.indoorbike.companion.CompanionHost.SessionPhase.LIVE
 
     val handleBack = {
-        if (state != WorkoutState.Completed) sessionManager.stopWorkout()
-        // Backing out of a companion session is the rider saying it is over,
-        // which is the same ending the countdown reaches on its own.
-        if (isCompanion) {
-            onCompanionSessionEnded(companionSessionRides.map { it.sessionId })
-        } else {
-            onBack()
+        when {
+            // Backing out of a live companion session is the rider ending it.
+            // End it the way the countdown would, which keeps the ride that is
+            // underway, and let the panel show what the session produced.
+            // Discarding it here is how a five-minute ride used to vanish.
+            hostSavesRide && companionSessionName != null &&
+                companionPhase != app.indoorbike.companion.CompanionHost.SessionPhase.ENDED ->
+                companionHost.endSession()
+            isCompanion -> {
+                // An ended session, a HUD no companion ever drove, or a ride
+                // continued from the banner with no host: nothing left to keep
+                // here. A ride that was never completed stays resumable from
+                // the banner, exactly as any other ride backed out of.
+                if (state != WorkoutState.Completed) sessionManager.stopWorkout()
+                onCompanionSessionDone()
+            }
+            else -> {
+                if (state != WorkoutState.Completed) sessionManager.stopWorkout()
+                onBack()
+            }
         }
     }
 
@@ -632,6 +650,7 @@ fun RideScreen(
                 if (isCompanion) {
                   Column(modifier = Modifier.fillMaxSize()) {
                     if (!companionDebugExpanded) {
+                    Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     // SimulationHud minus its three "where" elements - the map,
                     // the profile and the progress bar - because where the
                     // rider is is exactly what this mode does not know.
@@ -661,8 +680,33 @@ fun RideScreen(
                         shiftingEnabled = state != WorkoutState.Countdown,
                         remoteControls = companionControls,
                         onControlPress = companionHost::pressControl,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
+                        modifier = Modifier.fillMaxSize(),
                     )
+                    if (showSessionPanel) {
+                        val rideRunning = companionPhase ==
+                            app.indoorbike.companion.CompanionHost.SessionPhase.COMPANION_AWAY &&
+                            sessionManager.sessionStartTimeEpoch != 0L &&
+                            state != WorkoutState.Completed && state != WorkoutState.Idle
+                        app.indoorbike.ui.screens.companion.CompanionSessionPanel(
+                            phase = companionPhase,
+                            companionName = companionSessionName,
+                            rides = companionSessionRides,
+                            inProgress = if (rideRunning) {
+                                app.indoorbike.ui.screens.companion.RideInProgress(
+                                    name = companionCourse.name?.takeIf { it.isNotBlank() }
+                                        ?: workout!!.name,
+                                    durationSeconds = actualRide,
+                                    distanceMeters = companionDistance - companionRideStart,
+                                )
+                            } else {
+                                null
+                            },
+                            endsAtMs = companionEndsAt,
+                            onEndSession = companionHost::endSession,
+                            onDone = onCompanionSessionDone,
+                        )
+                    }
+                    }
                     }
                     pendingPairing?.let {
                         app.indoorbike.ui.screens.companion.CompanionPairingDialog(
@@ -1006,7 +1050,7 @@ fun RideScreen(
             // game is still running, and whose next lap may start in seconds,
             // would cover the road at the moment the rider needs to see it.
             // The strip at the top says the ride was saved instead.
-            visible = state == WorkoutState.Completed && !isCompanion,
+            visible = state == WorkoutState.Completed && !hostSavesRide,
             enter = fadeIn(tween(1000)),
             exit = fadeOut(tween(500)),
             modifier = Modifier.align(Alignment.Center)
