@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.7** (the app also accepts everything back to 0.1)
+- Protocol version: **0.8** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -179,7 +179,7 @@ Codes are 6 characters, generated per ride, never stored, never reused.
 | `client.version` | string | no | |
 | `client.platform` | string | no | |
 | `role` | string | no | Absent defaults to `controller` |
-| `capabilities` | string[] | no | Declares what you can do. The app reads `summary`; send `course`, `setState`, `controls`, `drivetrain` and `pair` too if you use them |
+| `capabilities` | string[] | no | Declares what you can do. The app reads `summary`; send `course`, `setState`, `controls`, `drivetrain`, `pair` and `brand` too if you use them |
 | `deviceId` | string | no | Stable, opaque, yours forever. Enables permanent pairing. Not a credential |
 
 **Role resolution, exactly:**
@@ -243,6 +243,9 @@ Rules from 1.0 onward (0.x may break on a minor bump):
 Version and capability are separate mechanisms. Version answers "same language"; `honours` and
 `capabilities` answer "what does this build do". Gaining a road parameter is a capability
 change, not a version bump.
+
+**0.8** added the `brand` frame (section 7d): a name, a square PNG icon and three colours for
+the phone's ride header, and the `adjusted` warning code. Additive.
 
 **0.7** made `finish` end the ride rather than the connection. The app writes the ride to
 history on the spot and stays connected, so a session is many rides down one socket and `4005`
@@ -614,6 +617,52 @@ Nothing here reaches the trainer, the physics or the ride record.
 
 ---
 
+## 7d. `brand` (companion -> app)
+
+Requires the `brand` capability. Added in protocol 0.8. Controller only.
+
+```json
+{ "t": "brand",
+  "name": "Col de Berg",
+  "icon": "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEA...",
+  "colors": { "accent": "#E4572E", "onAccent": "#FFFFFF", "header": "#3B1F2B" } }
+```
+
+| Field | Type | Rules |
+|---|---|---|
+| `name` | string | Header name, replaces `hello.client.name` on screen. Trimmed to 40 characters |
+| `icon` | string | Base64 PNG. Square, 48 to 512 px, at most 96 000 base64 characters. PNG only |
+| `colors.accent` | `#RRGGBB` | Required when `colors` is present |
+| `colors.onAccent` | `#RRGGBB` | Optional. Text on the accent |
+| `colors.header` | `#RRGGBB` | Optional. Header band; derived from the accent when absent |
+
+**Merge semantics.** Absent field: unchanged. Field sent as `null`: cleared. The merged result
+is kept for the session, including while the companion is disconnected; a different companion
+connecting (a different `hello.client.name`) clears it.
+
+**Legibility, enforced by the app.** Checked against the app's surfaces:
+
+| Colour | Must reach | Otherwise |
+|---|---|---|
+| `accent` | 2.5:1 against `#3A435E` | Lightened toward white until it does |
+| `onAccent` | 4.5:1 against the accent | Replaced with `#F2F4F7` or `#14181F`, whichever reads better |
+| `header` | 4.5:1 against the app's text `#F2F4F7` | Darkened toward black until it does |
+
+Each change produces `{"t":"warning","code":"adjusted","field":"colors.accent","message":"... The phone is using #828AA4."}`.
+
+**Refusals.** Invalid or oversized icon: `rejected`, field `icon`, the rest applies. `colors`
+with no valid `accent`: `rejected`, field `colors.accent`, previous colours kept. An icon whose
+header passes but whose image will not decode: `rejected`, field `icon`, sent after the fact.
+
+**Where it shows.** Header band (`header`, `accent` bottom line), header icon or monogram,
+`name` plus the course name and world, shift paddles and remote pad **while pressed**
+(`accent`/`onAccent`), and the disconnected/session-ended panel. **Never**: power, heart-rate
+and gradient colours, warnings and notices, the app's navigation, the pairing dialog.
+
+Not persisted, not written to the ride record.
+
+---
+
 ## 8. `finish` (companion -> app)
 
 ```json
@@ -804,6 +853,8 @@ Non-fatal. Something was ignored, clamped or rate-limited.
 | `fieldNotHonoured` | A `world` field this build ignores. Emitted once per field per connection |
 | `clamped` | A value was outside `welcome.limits`. `sent` and `applied` both given |
 | `rateLimited` | Too many frames of that kind. `frame` names which |
+| `rejected` | A value was dropped rather than trimmed; the frame's other fields still applied |
+| `adjusted` | A value was changed to stay legible; the message names the value used (0.8) |
 
 **Surface these in your development build.** `fieldNotHonoured` is the difference between
 "drafting doesn't work" and "this build ignores `cda`".
@@ -1002,6 +1053,8 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Send `finish` when your ride ends
 - [ ] After a `finish`, **stay connected** and send a new `course` plus `setState: active`
       for the next ride. The socket does not close and riders ride twice
+- [ ] If `welcome.capabilities` has `brand`, send `brand` after `welcome`: a 256 px PNG
+      icon, your name and an `accent`. Log `adjusted` warnings in development
 
 ## 19. Common mistakes
 
@@ -1013,6 +1066,8 @@ Present in the protocol, absent from this build. Do not design around them.
 | Waiting for the socket to close after a `finish` | It does not close any more. You wait forever and the second ride never starts |
 | Closing the socket instead of sending `finish` | After 25 s the phone ends the session and saves the ride anyway, flagged as cut off by a disconnect |
 | Sending a `course` without a `name` | The ride is listed in history as "Companion ride" |
+| Sending the icon as a URL, a JPEG, or a non-square image | `rejected`; the header shows a monogram instead |
+| Choosing a dark brand colour on a light desktop and never reading warnings | The phone lightens it and you never learn why it looks different |
 | Reusing the previous ride's `course` | The new ride is recorded under the old ride's name and map |
 | Reconnecting to a remembered `host:port` after a real 4005 | Connection refused; the port is ephemeral and new every time the mode is opened |
 | Hardcoding the port | Fails on every ride but the one you tested |

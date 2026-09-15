@@ -310,6 +310,32 @@ under a thumb already moving toward a button.
 Send a new frame whenever selectability changes. Send `visible: false` when the menu closes, or
 the rider is left holding a remote wired to nothing.
 
+## Optional: bring your look to the phone
+
+The rider sees two screens, yours and the phone on the bars. Send `brand` once, right after
+`welcome`, and the phone's ride header takes on your icon, name and colours, so the two read as
+one thing. Check `welcome.capabilities` contains `brand` first (protocol 0.8).
+
+```json
+{ "t": "brand", "name": "Col de Berg", "icon": "<base64 PNG>",
+  "colors": { "accent": "#E4572E", "header": "#3B1F2B" } }
+```
+
+- **The icon is a PNG, base64, square, 48 to 512 px, at most 96 000 characters.** 256 px with
+  transparency is right. No URLs: the phone makes no internet requests for you. Anything else is
+  refused with a `rejected` warning naming the problem, and the rest of the frame still lands.
+- **`accent` is your brand colour** and is required whenever `colors` is sent. `header` is the
+  band behind the header (derived from the accent if absent). `onAccent` is text on the accent
+  (chosen for you if absent).
+- **The phone keeps colours legible and tells you.** A colour it cannot draw readably on its dark
+  screen is lightened or darkened, and an `adjusted` warning gives the value it used. Log
+  warnings in development builds, or you will wonder why your navy looks grey.
+- **Fields merge.** Send the icon once; change colours later without resending it. `null` clears
+  a field.
+- **It only decorates.** Header band, icon, and the flash of a pressed paddle or remote button.
+  Zone colours, warnings, the app's navigation and the pairing dialog are never yours to style,
+  so do not design a look that depends on them.
+
 ## Do not chase the light feeling at the start of a ride
 
 The app helps riders off the line. Pulling away from a standstill is genuinely hard - almost

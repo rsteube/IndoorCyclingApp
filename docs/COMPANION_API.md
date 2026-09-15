@@ -141,7 +141,7 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 | TXT key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.7` | Supported protocol range, `min-max` |
+| `proto` | `0.1-0.8` | Supported protocol range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.1.0` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride, for reconnection |
@@ -172,7 +172,11 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.7, and this build accepts everything back to 0.1.**
+**Current version: 0.8, and this build accepts everything back to 0.1.**
+
+0.8 added the [`brand`](#brand) frame: a name, a square PNG icon and three colours, so the
+phone's ride header looks like it belongs to the game driving it. Additive in both directions.
+The app adjusts colours it cannot draw legibly and says what it used in an `adjusted` warning.
 
 0.6 added permanent pairing: `hello.deviceId`, the `pairRequest` / `paired` ceremony and the
 `challenge` / `pairProof` handshake. Two devices that have met once recognise each other
@@ -540,6 +544,85 @@ that is not there.
 Nothing here reaches the trainer, the physics or the ride record. It is a remote control that
 happens to share a socket with a bicycle.
 
+#### `brand`
+
+How your companion looks on the phone. Requires the `brand` capability. Controller only.
+
+```jsonc
+{ "t": "brand",
+  "name": "Col de Berg",
+  "icon": "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEA...",
+  "colors": { "accent": "#E4572E", "onAccent": "#FFFFFF", "header": "#3B1F2B" } }
+```
+
+**Why this exists.** The rider has two screens in front of them, yours and the phone on the
+bars, and until 0.8 nothing on the phone said they belonged together. Send this and the phone's
+ride header takes on your identity: your icon, your name, your colours. It is the visual
+handshake between the two ends.
+
+| Field | Type | Notes |
+|---|---|---|
+| `name` | string | Shown on the header in place of `hello.client.name`. Trimmed to 40 characters |
+| `icon` | string | A **PNG**, base64. Square, 48 to 512 px, at most 96 000 characters. 256 px with transparency is a good choice |
+| `colors.accent` | `#RRGGBB` | Required whenever `colors` is sent. Your main brand colour |
+| `colors.onAccent` | `#RRGGBB` | Text and glyphs drawn on the accent. Absent picks light or dark, whichever reads |
+| `colors.header` | `#RRGGBB` | The header band. Absent is derived from the accent |
+
+**Fields merge, like `course`.** A field you leave out keeps what it had; a field sent as `null`
+clears it. So send everything once after `welcome`, and change the colours later (a night stage,
+a different team) without sending the picture again. Everything you declared is kept for the
+whole session, including while you are disconnected, so the "disconnected" panel still looks
+like you. A *different* companion taking over does not inherit it.
+
+**What it styles, and what it does not.**
+
+| On the phone | Styled | Why |
+|---|---|---|
+| Ride header band | `header`, with a line of `accent` along its bottom edge, running up under the system bar | The header is the one place that says what is driving the ride |
+| Icon on the header | `icon`, or a monogram of `name` on `accent` if there is no icon | Identity at a glance, and a header that does not change shape when the icon arrives |
+| Name and course on the header | `name`, then your `course` name and world underneath | |
+| Shift paddles, while pressed | `accent` fill, `onAccent` glyph | A press lighting up in your colour is where the phone most obviously feels like part of the game. The idle paddle stays the app's |
+| Remote control pad, while pressed | `accent` fill, `onAccent` glyph | It is your menu, borrowed. Which buttons are live stays the app's call |
+| Disconnected and session-ended panel | `icon` and an `accent` line | It should still look like the thing that left |
+| Power, heart-rate and gradient colours | **Never** | They carry meaning, and the rider has learnt them in every other mode |
+| Warnings, errors, the "saved" notice | **Never** | Amber has to keep meaning "look at this" |
+| Back, pause, end, the app's navigation | **Never** | The rider's way out is not the game's to decorate |
+| The pairing dialog | **Never** | It is where the rider decides whether to trust you. The thing asking does not get to dress the question |
+
+**Colours are adjusted, not refused, and you are told.** The phone is a dark screen, glanced at
+from a saddle. The app checks each colour against its own surfaces:
+
+- `accent` must reach **2.5:1** against the app's card colour (`#3A435E`). Below that it is
+  lightened until it does. That is deliberately under WCAG's 3:1: the accent only fills large
+  areas, where hue does work that a luminance ratio cannot see, and 3:1 would lighten an
+  ordinary brand red. A navy or a deep purple, which really do vanish on blue-grey, still get
+  corrected.
+- `onAccent` must reach **4.5:1** on the accent, or it is replaced with light or dark text,
+  whichever reads better.
+- `header` always carries the app's light text (`#F2F4F7`), so it must reach **4.5:1** against
+  it, and is darkened until it does.
+
+Every change arrives as an `adjusted` warning with the value actually drawn, so a colour that
+looks different on the phone is never a mystery:
+
+```jsonc
+{ "t": "warning", "code": "adjusted", "field": "colors.accent",
+  "message": "#1B2A5A was too dark to see on the app's dark surface; lightened to reach 2.5:1. The phone is using #828AA4." }
+```
+
+**A bad field costs that field, not the frame.** An icon that is not a PNG, not square, out of
+range or not valid base64 is refused with a `rejected` warning that says which, and the name and
+colours still land. `colors` without a valid `accent` is refused whole and the previous colours
+are kept. The size check reads the PNG header rather than decoding it, so a small file claiming
+to be forty thousand pixels wide is turned away before anything tries to draw it.
+
+**Why a PNG in the frame, and not a URL.** The app makes no requests to the internet on the
+rider's behalf and has to work on a network that has none. An image travels on the socket that
+is already open. Keep it small: it shares that socket with the road.
+
+Nothing here is stored. It lives for the session and is gone when the rider leaves Companion
+mode. It is not written to the ride record or to history.
+
 #### `finish`
 
 End the ride. Companion mode has no route, so nothing else can know when it is over.
@@ -718,6 +801,14 @@ Non-fatal. Something was ignored, clamped or rate-limited, and the sender should
 ```
 
 `fieldNotHonoured` is emitted **once per field per connection**, not per frame.
+
+| Code | Meaning |
+|---|---|
+| `fieldNotHonoured` | A field this build ignores. Once per field per connection |
+| `clamped` | A value was held inside its range; `sent` and `applied` say how far |
+| `rateLimited` | A frame arrived faster than the app acts on it |
+| `rejected` | A value was dropped rather than trimmed, because trimming would be worse than nothing. The frame's other fields still applied |
+| `adjusted` | A value was changed to keep the screen legible, and the message names the value used. The frame took effect (0.8) |
 
 #### `error`
 
@@ -1103,6 +1194,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `world` | Pumps world frames at a fixed gradient. For feeling a hill with your legs |
 | `controls` | Puts a menu up and reports which buttons the rider pressed |
 | `pair` | Asks to be remembered, stores the key, and proves the next connection needs no code |
+| `brand` | Sends a name, a generated PNG icon and colours, then a deliberately unreadable accent to show the `adjusted` warning, then rides under the brand so it can be looked at |
 | `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last

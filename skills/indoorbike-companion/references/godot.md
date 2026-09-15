@@ -287,6 +287,45 @@ func _on_event(frame: Dictionary) -> void:
 Call `hide_menu()` from the menu's own close path, not from the `back` handler alone: the rider
 can also close it on the television, and the pad has to go away either way.
 
+## Brand: your icon and colours on the phone
+
+Send it once, straight after a `welcome` that lists `brand` in its capabilities. Godot has
+everything this needs built in: `FileAccess` for the bytes and `Marshalls` for base64.
+
+```gdscript
+const BRAND_ICON := "res://brand/icon_256.png"  # square PNG, 48 to 512 px
+
+func _send_brand() -> void:
+    if not "brand" in _welcome.get("capabilities", []):
+        return
+    var png := FileAccess.get_file_as_bytes(BRAND_ICON)
+    var frame := {
+        "t": "brand",
+        "name": "Col de Berg",
+        "icon": Marshalls.raw_to_base64(png),
+        "colors": {"accent": "#E4572E", "header": "#3B1F2B"},
+    }
+    _socket.send_text(JSON.stringify(frame))
+```
+
+Export the icon as a **PNG** file, not a texture resource: `res://` PNGs are imported into
+`.ctex` on export, and `get_file_as_bytes` on an exported build then finds nothing. Either keep
+the PNG under a folder listed in the export's "Filters to export non-resource files", or build
+the bytes at runtime with `Image.save_png_to_buffer()`:
+
+```gdscript
+var png := (preload("res://brand/icon_256.png") as Texture2D).get_image().save_png_to_buffer()
+```
+
+Change colours later without resending the picture, because fields merge:
+
+```gdscript
+_socket.send_text(JSON.stringify({"t": "brand", "colors": {"accent": "#3DA5D9"}}))
+```
+
+Route `warning` frames with code `adjusted` to your log while you design the palette. The
+phone lightens an accent that disappears on its dark screen and says which colour it drew.
+
 ## Interpolate telemetry
 
 `telemetry` arrives at 4 Hz. Rendering a power number that steps four times a second looks

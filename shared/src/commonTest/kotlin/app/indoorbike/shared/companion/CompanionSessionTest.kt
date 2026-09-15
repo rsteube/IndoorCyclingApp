@@ -788,3 +788,122 @@ class CompanionDrivetrainTest {
         )
     }
 }
+
+/**
+ * A companion's look on the phone: merged frame by frame, cleared on request,
+ * and only ever partly refused.
+ */
+class CompanionBrandFrameTest {
+
+    // A 256 px PNG header is all the session checks; it never decodes pixels.
+    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
+    private val icon: String = kotlin.io.encoding.Base64.encode(
+        ByteArray(33).also { b ->
+            byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A).copyInto(b)
+            byteArrayOf(0, 0, 0, 13).copyInto(b, 8)
+            "IHDR".encodeToByteArray().copyInto(b, 12)
+            b[18] = 1; b[22] = 1 // 256 x 256
+        }
+    )
+
+    private fun controller(): CompanionSession {
+        val s = session()
+        s.onFrame(hello(max = CompanionProtocol.VERSION.toString(), role = "controller"), nowMs = 0)
+        return s
+    }
+
+    @Test
+    fun `brand is advertised as a capability`() {
+        val s = session()
+        val welcome = s.onFrame(hello(max = CompanionProtocol.VERSION.toString()), nowMs = 0)
+            .sent<WelcomeFrame>()
+        assertContains(welcome.capabilities, "brand")
+    }
+
+    @Test
+    fun `a full brand frame lands whole`() {
+        val s = controller()
+        val effects = s.onFrame(
+            """{"t":"brand","name":"Col de Berg","icon":"$icon","colors":{"accent":"#F2A541"}}""",
+            nowMs = 1,
+        )
+        val brand = effects.pick<CompanionEffect.SetBrand>().brand
+        assertEquals("Col de Berg", brand.name)
+        assertNotNull(brand.iconPng)
+        assertEquals("#F2A541", BrandColors.format(brand.palette!!.accent))
+        assertTrue(effects.sentFrames().none { it is WarningFrame }, "nothing to complain about")
+    }
+
+    @Test
+    fun `fields merge, so the icon survives a colour change`() {
+        val s = controller()
+        s.onFrame("""{"t":"brand","name":"Col de Berg","icon":"$icon"}""", nowMs = 1)
+        val brand = s.onFrame("""{"t":"brand","colors":{"accent":"#00A36C"}}""", nowMs = 2)
+            .pick<CompanionEffect.SetBrand>().brand
+        assertEquals("Col de Berg", brand.name, "absent keeps the name")
+        assertNotNull(brand.iconPng, "absent keeps the icon")
+        assertNotNull(brand.palette)
+    }
+
+    @Test
+    fun `null clears a field and leaves the others`() {
+        val s = controller()
+        s.onFrame("""{"t":"brand","name":"Col de Berg","icon":"$icon","colors":{"accent":"#F2A541"}}""", 1)
+        val brand = s.onFrame("""{"t":"brand","icon":null}""", nowMs = 2).pick<CompanionEffect.SetBrand>().brand
+        assertNull(brand.iconPng)
+        assertEquals("Col de Berg", brand.name)
+        assertNotNull(brand.palette)
+    }
+
+    @Test
+    fun `a bad icon costs the icon and nothing else`() {
+        val s = controller()
+        val effects = s.onFrame(
+            """{"t":"brand","name":"Col de Berg","icon":"bm90IGEgcG5n","colors":{"accent":"#F2A541"}}""",
+            nowMs = 1,
+        )
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.REJECTED, warning.code)
+        assertEquals("icon", warning.field)
+        val brand = effects.pick<CompanionEffect.SetBrand>().brand
+        assertEquals("Col de Berg", brand.name)
+        assertNotNull(brand.palette)
+        assertNull(brand.iconPng)
+    }
+
+    @Test
+    fun `an unreadable colour is adjusted and the warning names the colour used`() {
+        val s = controller()
+        val effects = s.onFrame("""{"t":"brand","colors":{"accent":"#1B2A5A"}}""", nowMs = 1)
+        val warning = effects.sent<WarningFrame>()
+        assertEquals(CompanionWarning.ADJUSTED, warning.code)
+        assertEquals("colors.accent", warning.field)
+        val used = BrandColors.format(effects.pick<CompanionEffect.SetBrand>().brand.palette!!.accent)
+        assertContains(warning.message.orEmpty(), used)
+    }
+
+    @Test
+    fun `colours without an accent are refused and the old ones kept`() {
+        val s = controller()
+        s.onFrame("""{"t":"brand","colors":{"accent":"#F2A541"}}""", nowMs = 1)
+        val effects = s.onFrame("""{"t":"brand","colors":{"header":"#3B1F2B"}}""", nowMs = 2)
+        assertEquals("colors.accent", effects.sent<WarningFrame>().field)
+        assertEquals("#F2A541", BrandColors.format(effects.pick<CompanionEffect.SetBrand>().brand.palette!!.accent))
+    }
+
+    @Test
+    fun `a long name is cut to what a header can show`() {
+        val s = controller()
+        val brand = s.onFrame("""{"t":"brand","name":"${"x".repeat(200)}"}""", nowMs = 1)
+            .pick<CompanionEffect.SetBrand>().brand
+        assertEquals(CompanionProtocol.MAX_BRAND_NAME_CHARS, brand.name!!.length)
+    }
+
+    @Test
+    fun `an observer cannot restyle the phone`() {
+        val s = session(controllerConnected = { true })
+        s.onFrame(hello(max = CompanionProtocol.VERSION.toString(), role = "observer"), nowMs = 0)
+        val effects = s.onFrame("""{"t":"brand","name":"Not Me"}""", nowMs = 1)
+        assertTrue(effects.none { it is CompanionEffect.SetBrand })
+    }
+}

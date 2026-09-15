@@ -80,6 +80,13 @@ fun CompanionControlPad(
     controls: RemoteControls,
     onPress: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The companion's accent, for a button while it is pressed. The pad is the
+     * game's menu borrowed onto the phone, so its presses light up in the game's
+     * colour; which buttons are live and which are dead stays the app's call.
+     */
+    accent: Color? = null,
+    onAccent: Color? = null,
 ) {
     Column(
         modifier = modifier
@@ -101,19 +108,24 @@ fun CompanionControlPad(
             Spacer(Modifier.height(Spacing.s1))
         }
 
-        PadButton(CompanionControl.UP, Icons.Outlined.KeyboardArrowUp, "Up", controls, onPress)
+        PadButton(CompanionControl.UP, Icons.Outlined.KeyboardArrowUp, "Up", controls, onPress, accent = accent, onAccent = onAccent)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
             PadButton(
                 CompanionControl.LEFT, Icons.Outlined.KeyboardArrowLeft, "Left", controls, onPress,
+                accent = accent, onAccent = onAccent,
             )
-            PadButton(CompanionControl.ENTER, Icons.Outlined.Check, "Select", controls, onPress)
+            PadButton(
+                CompanionControl.ENTER, Icons.Outlined.Check, "Select", controls, onPress,
+                accent = accent, onAccent = onAccent,
+            )
             PadButton(
                 CompanionControl.RIGHT, Icons.Outlined.KeyboardArrowRight, "Right",
-                controls, onPress,
+                controls, onPress, accent = accent, onAccent = onAccent,
             )
         }
         PadButton(
             CompanionControl.DOWN, Icons.Outlined.KeyboardArrowDown, "Down", controls, onPress,
+            accent = accent, onAccent = onAccent,
         )
 
         Spacer(Modifier.height(Spacing.s1))
@@ -125,6 +137,8 @@ fun CompanionControlPad(
             onPress = onPress,
             // As wide as the cross above it, so the pad reads as one block.
             width = BUTTON * 3 + Spacing.s2 * 2,
+            accent = accent,
+            onAccent = onAccent,
         )
     }
 }
@@ -137,6 +151,8 @@ private fun PadButton(
     controls: RemoteControls,
     onPress: (String) -> Unit,
     width: Dp = BUTTON,
+    accent: Color? = null,
+    onAccent: Color? = null,
 ) {
     val enabled = controls.isEnabled(control)
     val interaction = remember { MutableInteractionSource() }
@@ -144,13 +160,17 @@ private fun PadButton(
     val background by animateColorAsState(
         targetValue = when {
             !enabled -> CadenceColors.Bg0
-            pressed -> CadenceColors.Bg3
+            pressed -> accent ?: CadenceColors.Bg3
             else -> CadenceColors.Bg2
         },
         animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
         label = "padButtonBg",
     )
-    val tint: Color = if (enabled) CadenceColors.Fg1 else CadenceColors.Fg4
+    val tint: Color = when {
+        !enabled -> CadenceColors.Fg4
+        pressed && accent != null -> onAccent ?: CadenceColors.Fg1
+        else -> CadenceColors.Fg1
+    }
 
     Box(
         modifier = Modifier

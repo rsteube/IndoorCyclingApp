@@ -76,6 +76,11 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.8 added the `brand` frame: a name, a square PNG icon and three colours,
+     * so the phone's ride header looks like it belongs to the game driving it.
+     * Additive in both directions. The app adjusts colours it cannot draw
+     * legibly and reports what it used in an `adjusted` warning.
+     *
      * 0.7 made `finish` end the ride and nothing else. The socket stays open,
      * the app writes the ride to history on the spot, and the companion may
      * start another whenever it likes with `setState: active`. Before this the
@@ -117,7 +122,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 7)
+    val VERSION = ProtocolVersion(0, 8)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -132,7 +137,7 @@ object CompanionProtocol {
     val CAPABILITIES =
         listOf(
             "requestShift", "label", "summary", "course", "setState", "controls", "drivetrain",
-            "pair",
+            "pair", "brand",
         )
 
     /**
@@ -148,6 +153,13 @@ object CompanionProtocol {
 
     /** Elevation samples a `course` frame may carry. The app's own listings use 64. */
     const val MAX_COURSE_PROFILE_SAMPLES = 1_024
+
+    /**
+     * Longest companion name the header will show, in characters. A header is
+     * one line on a phone held sideways; a subtitle is where anything longer
+     * belongs, and `course` is where it goes.
+     */
+    const val MAX_BRAND_NAME_CHARS = 40
 
     /** Longest course or ride name that will be stored, in characters. */
     const val MAX_COURSE_NAME_CHARS = 120
@@ -405,4 +417,16 @@ object CompanionWarning {
      * field is refused and this says so.
      */
     const val REJECTED = "rejected"
+
+    /**
+     * A value was changed so the screen stays legible, and the message says what
+     * was used instead.
+     *
+     * Distinct from [REJECTED] because the frame took effect. A brand red that
+     * is too dark for a dark screen is still that brand a little lighter, and
+     * refusing it would cost the game its identity over a problem the app can
+     * fix. The developer still needs telling, or they will spend an afternoon
+     * wondering why their colour looks different on the phone.
+     */
+    const val ADJUSTED = "adjusted"
 }

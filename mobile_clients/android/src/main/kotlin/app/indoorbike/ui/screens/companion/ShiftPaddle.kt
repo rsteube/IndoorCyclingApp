@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -90,6 +91,13 @@ fun ShiftPaddle(
     onShift: () -> Unit,
     modifier: Modifier = Modifier,
     symbolSize: TextUnit = 56.sp,
+    /**
+     * The companion's accent, for the press flash only. The idle paddle stays
+     * the app's own, because that is the state a rider reads at a glance and
+     * it has to look the same whatever game is on the other screen.
+     */
+    accent: Color? = null,
+    onAccent: Color? = null,
 ) {
     val haptics = rememberHaptics()
     val reduceMotion = rememberReducedMotion()
@@ -104,7 +112,7 @@ fun ShiftPaddle(
     val fill by animateColorAsState(
         targetValue = when {
             !enabled -> CadenceColors.Bg1.copy(alpha = 0.45f)
-            pressed -> CadenceColors.Fg1
+            pressed -> accent ?: CadenceColors.Fg1
             else -> CadenceColors.Bg1
         },
         animationSpec = tween(if (pressed) 40 else SlateMotion.Fast, easing = SlateMotion.Easing),
@@ -112,7 +120,7 @@ fun ShiftPaddle(
     )
     val ink = when {
         !enabled -> CadenceColors.Fg4
-        pressed -> CadenceColors.OnBrand
+        pressed -> if (accent != null) onAccent ?: CadenceColors.Fg1 else CadenceColors.OnBrand
         else -> CadenceColors.Fg1
     }
     val shape = RoundedCornerShape(Radii.lg)

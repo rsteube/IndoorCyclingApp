@@ -6,6 +6,20 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A companion can bring its own look to the phone (protocol 0.8).** A new
+  `brand` frame carries a name, a square PNG icon and three colours, and the
+  ride header takes them on: the companion's header colour behind the whole
+  header, reaching the top edge, its icon or a monogram, its name with the
+  course and world underneath, and a line of its accent along the bottom. The
+  shift paddles and the remote pad flash in the accent while pressed, and the
+  disconnected panel keeps the icon. Zone colours, warnings, the app's own
+  navigation and the pairing dialog are never styled. Colours the app cannot
+  draw legibly on its dark screen are adjusted rather than refused, and an
+  `adjusted` warning names the colour actually used. Fields merge, `null` clears
+  one, and nothing is stored.
+
 ### Fixed
 
 - **A companion ride was lost when the game went away before finishing.** The

@@ -40,11 +40,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.indoorbike.companion.CompanionHost.SessionPhase
 import app.indoorbike.ride.SavedCompanionRide
+import app.indoorbike.shared.companion.BrandPalette
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.theme.CadenceColors
@@ -93,6 +96,13 @@ fun CompanionSessionPanel(
     inProgress: RideInProgress?,
     /** When the session will be given up on, epoch ms, while waiting. */
     endsAtMs: Long?,
+    /**
+     * The companion's icon and colours, so the panel saying it has gone still
+     * looks like the thing that left. The warning colour of "disconnected" is
+     * the app's, not the companion's.
+     */
+    icon: ImageBitmap? = null,
+    palette: BrandPalette? = null,
     onEndSession: () -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
@@ -118,14 +128,33 @@ fun CompanionSessionPanel(
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
+                .drawBehind {
+                    // The companion's accent along the top edge, the same line
+                    // that sits under its header on the ride screen.
+                    if (palette != null) {
+                        drawRect(
+                            color = palette.accent.brandColor(),
+                            size = androidx.compose.ui.geometry.Size(size.width, 4.dp.toPx()),
+                        )
+                    }
+                }
                 .padding(Spacing.s5),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            Text(
-                text = if (ended) "Session ended" else "$who disconnected",
-                style = CadenceType.h2,
-                color = if (ended) CadenceColors.Fg1 else CadenceColors.Warning,
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (companionName != null) {
+                    CompanionMark(name = companionName, icon = icon, palette = palette, size = 44.dp)
+                }
+                Text(
+                    text = if (ended) "Session ended" else "$who disconnected",
+                    style = CadenceType.h2,
+                    color = if (ended) CadenceColors.Fg1 else CadenceColors.Warning,
+                    modifier = Modifier.weight(1f),
+                )
+            }
             Text(
                 text = if (ended) {
                     if (rides.isEmpty()) {

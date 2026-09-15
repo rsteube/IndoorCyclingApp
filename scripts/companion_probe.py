@@ -42,6 +42,7 @@ import json
 import os
 import socket
 import struct
+import zlib
 import sys
 import threading
 import time
@@ -358,13 +359,13 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.7",
+            "protoMin": "0.1", "protoMax": "0.8",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
             "role": "controller",
             "capabilities": [
-                "summary", "course", "setState", "controls", "drivetrain", "pair",
+                "summary", "course", "setState", "controls", "drivetrain", "pair", "brand",
             ],
         })
         for _ in range(50):
@@ -489,6 +490,59 @@ def scenario_world(p, args):
     p.drive(args.ride_seconds, gradient=args.gradient)
 
 
+def make_icon_png(side=128):
+    """A square PNG built with the standard library, so the probe needs no images.
+
+    A warm gradient with a white mountain on it: enough shape to see that the
+    phone drew the picture it was sent rather than its monogram fallback.
+    """
+    rows = []
+    for y in range(side):
+        row = bytearray([0])  # filter byte: none
+        for x in range(side):
+            t = y / (side - 1)
+            r, g, b = int(228 - 60 * t), int(87 + 30 * t), int(46 + 70 * t)
+            # A mountain: inside the triangle with its peak at the top centre.
+            peak_y, base_y = side * 0.28, side * 0.78
+            half = (y - peak_y) / (base_y - peak_y) * side * 0.38
+            inside = peak_y <= y <= base_y and abs(x - side / 2) <= half
+            row += bytes((255, 255, 255, 255)) if inside else bytes((r, g, b, 255))
+        rows.append(bytes(row))
+
+    def chunk(kind, data):
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body) & 0xFFFFFFFF)
+
+    ihdr = struct.pack(">IIBBBBB", side, side, 8, 6, 0, 0, 0)  # 8-bit RGBA
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) +
+            chunk(b"IDAT", zlib.compress(b"".join(rows), 9)) + chunk(b"IEND", b""))
+
+
+def scenario_brand(p, args):
+    """Put the companion's look on the phone, then drive a road under it.
+
+    Also sends one colour the phone cannot draw legibly, so the `adjusted`
+    warning can be seen, and then puts the real one back.
+    """
+    icon = base64.b64encode(make_icon_png()).decode()
+    print("\n[1] name, icon (%d base64 chars) and colours" % len(icon))
+    p.send({"t": "brand", "name": "Probe Peaks", "icon": icon,
+            "colors": {"accent": "#E4572E", "header": "#3B1F2B"}})
+    p.send({"t": "course", "name": "Probe loop", "world": "Test harness"})
+    p.drive(2.0, gradient=0.0)
+
+    print("\n[2] an accent too dark for a dark screen: expect an 'adjusted' warning")
+    p.send({"t": "brand", "colors": {"accent": "#1B2A5A"}})
+    p.drive(2.0, gradient=0.0)
+
+    print("\n[3] the real colours back, icon untouched (fields merge)")
+    p.send({"t": "brand", "colors": {"accent": "#E4572E", "header": "#3B1F2B"}})
+
+    print("\n[4] riding for %ds under the brand; look at the phone" % args.ride_seconds)
+    p.send({"t": "setState", "state": "active"})
+    p.drive(args.ride_seconds, gradient=0.03)
+
+
 def scenario_controls(p, args):
     """Put a menu up and report what the rider presses."""
     enabled = args.enabled.split(",") if args.enabled else ["up", "down", "enter", "back"]
@@ -575,6 +629,7 @@ def scenario_pair(p, args):
 
 
 SCENARIOS = {
+    "brand": scenario_brand,
     "pair": scenario_pair,
     "smoke": scenario_smoke,
     "world": scenario_world,

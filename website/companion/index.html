@@ -205,7 +205,7 @@
 
   <main class="api-main">
 
-    <p class="api-meta">Protocol 0.7 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
+    <p class="api-meta">Protocol 0.8 &middot; WebSocket + JSON &middot; local network &middot; no account, no SDK</p>
     <h1>Companion API</h1>
 
     <div class="tldr">
@@ -863,6 +863,66 @@ proof = hex(HMAC_SHA256(keyBytes,
     <p>
       Nothing here reaches the trainer, the physics or the ride record. It is a
       remote control that happens to share a socket with a bicycle.
+    </p>
+
+    <h3><code>brand</code> - your look on the phone</h3>
+
+    <p>
+      The rider has two screens in front of them: yours, and the phone on the
+      bars. Send <code>brand</code> once after <code>welcome</code> and the
+      phone's ride header takes on your icon, your name and your colours, so the
+      two ends read as one thing. Optional, controller only, and advertised as the
+      <code>brand</code> capability from protocol 0.8.
+    </p>
+
+<pre><code>{ "t": "brand",
+  "name": "Col de Berg",
+  "icon": "iVBORw0KGgoAAAANSUhEUgAAAQAAAAEA...",
+  "colors": { "accent": "#E4572E", "onAccent": "#FFFFFF", "header": "#3B1F2B" } }</code></pre>
+
+    <div class="table-scroll">
+    <table class="api-table">
+      <thead><tr><th>Field</th><th>What it is</th></tr></thead>
+      <tbody>
+        <tr><td><code>name</code></td><td>Shown on the header instead of your <code>hello</code> name. Up to 40 characters.</td></tr>
+        <tr><td><code>icon</code></td><td>A PNG, base64. Square, 48 to 512 px, at most 96 000 characters. 256 px with transparency is right. No URLs: the phone makes no internet requests on your behalf.</td></tr>
+        <tr><td><code>colors.accent</code></td><td>Your brand colour, <code>#RRGGBB</code>. Required whenever <code>colors</code> is sent.</td></tr>
+        <tr><td><code>colors.onAccent</code></td><td>Text on the accent. Chosen for you if absent.</td></tr>
+        <tr><td><code>colors.header</code></td><td>The header band. Derived from the accent if absent.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>
+      <strong>Fields merge.</strong> Leave a field out and it keeps what it had;
+      send it as <code>null</code> to clear it. So send the icon once and change
+      colours later without sending the picture again.
+    </p>
+
+    <p>
+      <strong>It decorates, and never touches meaning.</strong> Your colours go on
+      the header band, the line under it, your icon, the flash of a shift paddle or
+      remote button while it is pressed, and the panel that appears if you
+      disconnect. Power, heart-rate and gradient colours, warnings, the app's own
+      buttons and the pairing dialog stay the app's: the rider has learnt what
+      those colours mean, and the dialog that asks them to trust you is not yours
+      to dress.
+    </p>
+
+    <div class="callout">
+      <p>
+        <strong>The phone keeps your colours legible, and tells you.</strong> It
+        is a dark screen glanced at from a saddle. An accent too dark to see is
+        lightened, a header too light for white text is darkened, and every change
+        arrives as an <code>adjusted</code> warning naming the colour actually
+        drawn. Log warnings while you design your palette.
+      </p>
+    </div>
+
+    <p>
+      A bad field costs only that field: an icon that is not a square PNG is
+      refused with a <code>rejected</code> warning saying why, and your name and
+      colours still land. Nothing is stored; it lasts for the session.
     </p>
 
     <h3><code>label</code>, <code>finish</code> and <code>ping</code></h3>

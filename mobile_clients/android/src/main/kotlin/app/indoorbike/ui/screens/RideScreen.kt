@@ -105,7 +105,12 @@ import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
 import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isSimulation
 import app.indoorbike.ui.screens.companion.CompanionDebugPanel
+import app.indoorbike.ui.screens.companion.CompanionHeaderStyle
 import app.indoorbike.ui.screens.companion.CompanionHud
+import app.indoorbike.ui.screens.companion.CompanionTitle
+import app.indoorbike.ui.screens.companion.brandColor
+import app.indoorbike.ui.screens.companion.companionBand
+import app.indoorbike.ui.screens.companion.rememberCompanionNotice
 import app.indoorbike.ui.screens.simulation.SimulationHud
 import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.formatClock
@@ -320,6 +325,7 @@ fun RideScreen(
     val companionSessionName by companionHost.sessionCompanionName.collectAsState()
     val companionEndsAt by companionHost.sessionEndsAtMs.collectAsState()
     val companionHosting by companionHost.hosting.collectAsState()
+    val companionLook by companionHost.look.collectAsState()
     // Whose job it is to write this ride. The host's, when it is hosting the
     // session this ride belongs to; this screen's for every other ride,
     // including a companion ride continued from the unfinished-ride banner,
@@ -557,6 +563,18 @@ fun RideScreen(
                 onDismiss = { showReportDialog = false }
             )
         }
+        // A companion's header colour under the system bar as well, so its band
+        // reaches the top edge rather than starting a status bar's height down
+        // with a strip of the app's slate above it.
+        val bandPalette = companionLook?.palette
+        if (hostSavesRide && bandPalette != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsTopHeight(WindowInsets.safeDrawing)
+                    .background(bandPalette.header.brandColor())
+            )
+        }
         Column(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
             fgsFailure?.let { msg ->
                 ForegroundServiceFailureBanner(
@@ -579,6 +597,38 @@ fun RideScreen(
                     onReport = { reportContext = "ERG mode: $msg"; showReportDialog = true },
                     onDismiss = { trainerManager.clearErgError() }
                 )
+            }
+            val companionNotice = rememberCompanionNotice(
+                connectedName = companionStatus.controllerName,
+                roadStale = companionStatus.roadStale,
+                savedRideCount = companionSessionRides.size,
+                lastSavedRideName = companionSessionRides.lastOrNull()?.name,
+                panelShowing = showSessionPanel,
+            )
+            // Only for a ride a companion host is hosting. A companion ride
+            // continued from the banner has no companion to speak of.
+            val companionHeader = if (hostSavesRide) {
+                val saved = companionSessionRides.size
+                CompanionHeaderStyle(
+                    name = companionLook?.name
+                        ?: companionSessionName
+                        ?: companionStatus.controllerName
+                        ?: workout!!.name,
+                    subtitle = listOfNotNull(
+                        companionCourse.name ?: companionStatus.label,
+                        companionCourse.world ?: companionStatus.world,
+                        when (saved) {
+                            0 -> null
+                            1 -> "1 ride saved"
+                            else -> "$saved rides saved"
+                        },
+                    ).joinToString(" \u00b7 ").ifBlank { null },
+                    icon = companionLook?.icon,
+                    palette = companionLook?.palette,
+                    notice = companionNotice,
+                )
+            } else {
+                null
             }
             RideHeader(
                 workoutName = workout!!.name,
@@ -607,6 +657,7 @@ fun RideScreen(
                 // session broken, with nothing the rider could have wanted from it.
                 canSkip = !isFreeRide && !isSimulation && !isCompanion,
                 awaitingCompanionStart = isCompanion,
+                companion = companionHeader,
                 // Narrow widths and portrait get a reflowed two-row header so the
                 // title and state don't collapse into a one-letter-wide column.
                 // Width alone missed an upright tablet: 800 dp passed, and one
@@ -671,10 +722,8 @@ fun RideScreen(
                         hrSublabel = if (showStaleHr) null
                             else hrZone?.let { "Z${it.number} · ${it.label}" },
                         zoneColor = animatedZoneColor,
-                        companionName = companionStatus.controllerName,
-                        roadStale = companionStatus.roadStale,
-                        savedRideCount = companionSessionRides.size,
-                        lastSavedRideName = companionSessionRides.lastOrNull()?.name,
+                        accent = companionLook?.palette?.accent?.brandColor(),
+                        onAccent = companionLook?.palette?.onAccent?.brandColor(),
                         onShiftDown = { companionEngine.shiftDown() },
                         onShiftUp = { companionEngine.shiftUp() },
                         shiftingEnabled = state != WorkoutState.Countdown,
@@ -689,7 +738,7 @@ fun RideScreen(
                             state != WorkoutState.Completed && state != WorkoutState.Idle
                         app.indoorbike.ui.screens.companion.CompanionSessionPanel(
                             phase = companionPhase,
-                            companionName = companionSessionName,
+                            companionName = companionLook?.name ?: companionSessionName,
                             rides = companionSessionRides,
                             inProgress = if (rideRunning) {
                                 app.indoorbike.ui.screens.companion.RideInProgress(
@@ -702,6 +751,8 @@ fun RideScreen(
                                 null
                             },
                             endsAtMs = companionEndsAt,
+                            icon = companionLook?.icon,
+                            palette = companionLook?.palette,
                             onEndSession = companionHost::endSession,
                             onDone = onCompanionSessionDone,
                         )
@@ -1136,8 +1187,14 @@ private fun RideHeader(
      * something that does nothing.
      */
     awaitingCompanionStart: Boolean = false,
+    /**
+     * A companion ride's header: the companion's mark, name and course in place
+     * of the ride name, on the companion's own colours when it sent some, and
+     * any notice about the companion in place of the ride's status line.
+     */
+    companion: CompanionHeaderStyle? = null,
 ) {
-    val stateText: String? = when (state) {
+    val rideStateText: String? = when (state) {
         // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
         // a ride in progress, not the initial "pedal to start" standby.
         WorkoutState.Standby -> when {
@@ -1148,7 +1205,11 @@ private fun RideHeader(
         WorkoutState.Paused -> "Paused · trainer at 0 W"
         else -> null
     }
-    val stateColor = if (state == WorkoutState.Paused || canEndAndSave) CadenceColors.Warning else CadenceColors.Fg3
+    val rideStateColor = if (state == WorkoutState.Paused || canEndAndSave) CadenceColors.Warning else CadenceColors.Fg3
+    // A notice about the companion outranks the ride's own state: "no companion,
+    // flat road" matters more to a rider than "ready".
+    val stateText = companion?.notice?.text ?: rideStateText
+    val stateColor = companion?.notice?.color ?: rideStateColor
 
     if (compact) {
         // Portrait: two rows so nothing has to share a single narrow line.
@@ -1157,6 +1218,7 @@ private fun RideHeader(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .companionBand(companion?.palette)
                 .padding(horizontal = Spacing.s5, vertical = Spacing.s3),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
@@ -1166,14 +1228,18 @@ private fun RideHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
-                Text(
-                    text = workoutName,
-                    style = CadenceType.h3,
-                    color = CadenceColors.Fg1,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
+                if (companion != null) {
+                    CompanionTitle(style = companion, markSize = 36.dp, modifier = Modifier.weight(1f))
+                } else {
+                    Text(
+                        text = workoutName,
+                        style = CadenceType.h3,
+                        color = CadenceColors.Fg1,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
                 RideControls(
                     state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
                     canEndAndSave, onEndAndSave, canSkip, compact = true
@@ -1199,6 +1265,7 @@ private fun RideHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .companionBand(companion?.palette)
             .padding(horizontal = Spacing.s5, vertical = Spacing.s3),
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         verticalAlignment = Alignment.CenterVertically
@@ -1218,14 +1285,22 @@ private fun RideHeader(
             horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = workoutName,
-                style = CadenceType.h3,
-                color = CadenceColors.Fg1,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f, fill = false)
-            )
+            if (companion != null) {
+                CompanionTitle(
+                    style = companion,
+                    markSize = 40.dp,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+            } else {
+                Text(
+                    text = workoutName,
+                    style = CadenceType.h3,
+                    color = CadenceColors.Fg1,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+            }
             if (stateText != null) {
                 RideStateText(
                     text = stateText,

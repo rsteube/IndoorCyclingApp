@@ -67,6 +67,12 @@ sealed interface CompanionEffect {
     data class SetDrivetrain(val drivetrain: Drivetrain) : CompanionEffect
 
     /**
+     * The companion's look, merged across every `brand` frame so far. An empty
+     * brand means the companion cleared everything it had set.
+     */
+    data class SetBrand(val brand: CompanionBrand) : CompanionEffect
+
+    /**
      * A controllable screen came up, or went away when null.
      *
      * Reaches the HUD and nothing else. It cannot touch the trainer, the
@@ -246,6 +252,7 @@ class CompanionSession(
             is SetStateFrame -> onSetState(frame)
             is ControlsFrame -> onControls(frame)
             is DrivetrainFrame -> onDrivetrain(frame)
+            is BrandFrame -> onBrand(frame, fields)
             is PairRequestFrame -> onPairRequest(frame)
             // A proof outside the challenge is not an attack, just a companion
             // that lost track of where it was. Ignored rather than fatal.
@@ -671,6 +678,81 @@ class CompanionSession(
             )
         )
     }
+
+    /** The look this connection has asked for so far. Fields merge frame by frame. */
+    private var brand = CompanionBrand()
+
+    /**
+     * How the companion wants to look on the phone.
+     *
+     * Merged rather than replaced, so a game can send its icon once and change
+     * colours without sending the picture again, and `null` clears a field.
+     * Whatever cannot be used is refused by name and the rest still lands: a bad
+     * icon costs the icon, not the colours.
+     */
+    private fun onBrand(frame: BrandFrame, fields: Set<String>): List<CompanionEffect> {
+        if (!isController) return listOf(notController("brand"))
+        val effects = mutableListOf<CompanionEffect>()
+        var next = brand
+
+        if ("name" in fields) {
+            next = next.copy(
+                name = frame.name?.trim()?.take(CompanionProtocol.MAX_BRAND_NAME_CHARS)?.ifBlank { null },
+            )
+        }
+
+        if ("icon" in fields) {
+            val icon = frame.icon
+            next = if (icon == null) {
+                next.copy(iconPng = null)
+            } else {
+                when (val checked = BrandIcon.check(icon)) {
+                    is BrandIcon.Checked.Ok -> next.copy(iconPng = checked.png)
+                    is BrandIcon.Checked.Rejected -> {
+                        effects += rejectedBrandField("icon", checked.reason)
+                        next
+                    }
+                }
+            }
+        }
+
+        if ("colors" in fields) {
+            val colors = frame.colors
+            next = if (colors == null) {
+                next.copy(palette = null)
+            } else {
+                val (palette, adjustments) = BrandColors.resolve(colors.accent, colors.onAccent, colors.header)
+                if (palette == null) {
+                    effects += rejectedBrandField(
+                        "colors.accent",
+                        "'colors' needs an accent as #RRGGBB; got " +
+                            (colors.accent?.let { "'$it'" } ?: "none") + ". The colours were left as they were.",
+                    )
+                    next
+                } else {
+                    adjustments.forEach { a ->
+                        effects += CompanionEffect.Send(
+                            WarningFrame(
+                                code = CompanionWarning.ADJUSTED,
+                                field = a.field,
+                                message = a.requested + " was " + a.why + ". The phone is using " +
+                                    a.used + ".",
+                            )
+                        )
+                    }
+                    next.copy(palette = palette)
+                }
+            }
+        }
+
+        brand = next
+        effects += CompanionEffect.SetBrand(next)
+        return effects
+    }
+
+    private fun rejectedBrandField(field: String, message: String) = CompanionEffect.Send(
+        WarningFrame(code = CompanionWarning.REJECTED, field = field, message = message)
+    )
 
     /**
      * A controllable screen, and what will answer on it.

@@ -103,6 +103,7 @@ object CompanionCodec {
                 "course" -> json.decodeFromJsonElement(CourseFrame.serializer(), root)
                 "controls" -> json.decodeFromJsonElement(ControlsFrame.serializer(), root)
                 "drivetrain" -> json.decodeFromJsonElement(DrivetrainFrame.serializer(), root)
+                "brand" -> json.decodeFromJsonElement(BrandFrame.serializer(), root)
                 "pairRequest" -> json.decodeFromJsonElement(PairRequestFrame.serializer(), root)
                 "pairProof" -> json.decodeFromJsonElement(PairProofFrame.serializer(), root)
                 "setState" -> json.decodeFromJsonElement(SetStateFrame.serializer(), root)

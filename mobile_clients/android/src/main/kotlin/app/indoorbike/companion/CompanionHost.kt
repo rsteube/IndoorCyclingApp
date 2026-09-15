@@ -16,6 +16,13 @@
 package app.indoorbike.companion
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import app.indoorbike.shared.companion.BrandPalette
+import app.indoorbike.shared.companion.CompanionBrand
+import app.indoorbike.shared.companion.CompanionWarning
+import app.indoorbike.shared.companion.WarningFrame
 import app.indoorbike.shared.companion.BikeInfo
 import app.indoorbike.shared.companion.CompanionAnnouncement
 import app.indoorbike.shared.companion.CompanionCodec
@@ -261,6 +268,31 @@ class CompanionHost(
     private val _sessionCompanionName = MutableStateFlow<String?>(null)
     val sessionCompanionName: StateFlow<String?> = _sessionCompanionName.asStateFlow()
 
+    /**
+     * How the companion driving this session wants to look, decoded and ready to
+     * draw. Null until it sends a `brand` frame, and after it clears one.
+     *
+     * Kept while the companion is away, so the panel saying it has gone still
+     * looks like the thing that left. Dropped when a different companion takes
+     * over, because another game's colours on this one's ride would be a lie.
+     */
+    data class Look(
+        val name: String?,
+        val icon: ImageBitmap?,
+        val palette: BrandPalette?,
+    )
+
+    private val _look = MutableStateFlow<Look?>(null)
+    val look: StateFlow<Look?> = _look.asStateFlow()
+
+    /** Which companion the current [look] came from, by its `hello` name. */
+    @Volatile
+    private var lookOwner: String? = null
+
+    /** The last icon decoded, so a frame that only changes colours does not decode it again. */
+    private var lastIconPng: ByteArray? = null
+    private var lastIcon: ImageBitmap? = null
+
     /** When a companion that has gone will be given up on, or null while nothing is counting. */
     private val _sessionEndsAtMs = MutableStateFlow<Long?>(null)
     val sessionEndsAtMs: StateFlow<Long?> = _sessionEndsAtMs.asStateFlow()
@@ -352,6 +384,7 @@ class CompanionHost(
         ridePrepared = false
         rideUnderway = false
         _hosting.value = true
+        clearLook()
         _sessionPhase.value = SessionPhase.LIVE
         _sessionCompanionName.value = null
         _sessionEndsAtMs.value = null
@@ -481,6 +514,7 @@ class CompanionHost(
      */
     fun stop() {
         stopListening()
+        clearLook()
         _hosting.value = false
         _sessionPhase.value = SessionPhase.LIVE
         _sessionCompanionName.value = null
@@ -657,6 +691,7 @@ class CompanionHost(
             sessionEndJob?.cancel()
             sessionEndJob = null
             _sessionEndsAtMs.value = null
+            if (lookOwner != null && lookOwner != conn.session.clientName) clearLook()
             _sessionCompanionName.value = conn.session.clientName
             if (_sessionPhase.value == SessionPhase.COMPANION_AWAY) {
                 _sessionPhase.value = SessionPhase.LIVE
@@ -782,6 +817,8 @@ class CompanionHost(
 
                 is CompanionEffect.SetControls -> _remoteControls.value = effect.controls
 
+                is CompanionEffect.SetBrand -> applyLook(conn, effect.brand)
+
                 is CompanionEffect.SetDrivetrain -> {
                     engine.setDrivetrain(effect.drivetrain)
                     // The ladder that came out is not the one that went in:
@@ -838,6 +875,52 @@ class CompanionHost(
             }
         }
         return open
+    }
+
+    /**
+     * Decode the icon off the connection's thread and publish the look.
+     *
+     * The shared session has already checked the PNG's header, size and shape,
+     * so this is a bounded decode of at most 512 px. A PNG that passed those
+     * checks and still will not decode is corrupt past its header, and the
+     * companion is told so rather than left wondering where its icon went.
+     */
+    private suspend fun applyLook(conn: Conn, brand: CompanionBrand) {
+        if (brand.isEmpty) {
+            clearLook()
+            return
+        }
+        val png = brand.iconPng
+        val icon = when {
+            png == null -> null
+            lastIconPng?.contentEquals(png) == true -> lastIcon
+            else -> runCatching {
+                BitmapFactory.decodeByteArray(png, 0, png.size)?.asImageBitmap()
+            }.getOrNull().also { decoded ->
+                if (decoded == null) {
+                    conn.send(
+                        WarningFrame(
+                            code = CompanionWarning.REJECTED,
+                            field = "icon",
+                            message = "The icon's PNG header was fine but the image would not " +
+                                "decode. Re-export it; the colours and name were still applied.",
+                        )
+                    )
+                } else {
+                    lastIconPng = png
+                    lastIcon = decoded
+                }
+            }
+        }
+        lookOwner = conn.session.clientName
+        _look.value = Look(name = brand.name, icon = icon, palette = brand.palette)
+    }
+
+    private fun clearLook() {
+        _look.value = null
+        lookOwner = null
+        lastIconPng = null
+        lastIcon = null
     }
 
     private suspend fun Conn.send(frame: ServerFrame) {

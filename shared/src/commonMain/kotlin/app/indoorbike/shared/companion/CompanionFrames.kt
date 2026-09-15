@@ -263,6 +263,51 @@ data class PairProofFrame(
  * @param name what to call it on the phone. Absent gets a description built
  *   from the teeth, e.g. "2x, 50/34 with 11-32".
  */
+/**
+ * How the companion looks on the phone: a name, an icon and three colours.
+ *
+ * The rider has two screens in front of them, the game's and the phone's, and
+ * this is what makes them read as one thing. The phone draws it on the ride
+ * header and on the brief flash of a control being pressed, and nowhere that
+ * carries meaning: zone colours, warnings and the app's own navigation stay the
+ * app's. See [CompanionBrand].
+ *
+ * **Fields merge, like `course`.** Send the icon once and change the colours
+ * later without sending the picture again. A field that is absent keeps what it
+ * had; a field sent as `null` clears it.
+ *
+ * Optional, and controller only. A companion that never sends it gets a header
+ * with its `hello` name and a monogram.
+ *
+ * @param name shown on the header in place of `hello.client.name`. Up to 40
+ *   characters.
+ * @param icon a square PNG, base64, 48 to 512 px, at most 96 000 characters.
+ * @param colors see [BrandColorsFrame]. The app adjusts anything it cannot draw
+ *   legibly and says what it used in an `adjusted` warning.
+ */
+@Serializable
+data class BrandFrame(
+    val name: String? = null,
+    val icon: String? = null,
+    val colors: BrandColorsFrame? = null,
+    val t: String = "brand",
+) : ClientFrame
+
+/**
+ * A companion's colours, each `#RRGGBB`.
+ *
+ * @param accent required when `colors` is sent: highlights, and the fill of a
+ *   pressed paddle or remote button.
+ * @param onAccent text and glyphs on the accent. Absent picks light or dark by contrast.
+ * @param header the header band. Absent is derived from the accent.
+ */
+@Serializable
+data class BrandColorsFrame(
+    val accent: String? = null,
+    val onAccent: String? = null,
+    val header: String? = null,
+)
+
 @Serializable
 data class DrivetrainFrame(
     val chainrings: List<Int> = emptyList(),
