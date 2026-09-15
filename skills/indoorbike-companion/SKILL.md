@@ -208,7 +208,9 @@ setState active -> ride -> finish
   `setState: "active"` as that ride's origin, so a counter that runs all session and one that
   restarts per ride both record correctly.
 - **A late `course` still lands.** If you only know your polyline after the ride, send it after
-  the `finish` and the phone folds it into the ride it already wrote.
+  the `finish` and the phone folds it into the ride it already wrote. Leave `name` out of it,
+  or repeat the saved ride's: a `course` between rides that names a *different* ride is taken as
+  the next ride's, and the saved one is left alone.
 - **Keep sending `world` between rides.** The trainer is not being driven while no ride is
   running, the same as before the first one, but the deadman is still watching and the gradient
   you are sending is the one that bites the instant the next ride starts.

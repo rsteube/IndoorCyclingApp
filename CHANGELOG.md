@@ -32,6 +32,12 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Fixed
 
+- **A companion's next ride renamed the last one, and wiped its map.** A game
+  that names each ride before starting it sent the new ride's `course` between
+  rides, and the app took it for a late course for the ride just saved: that
+  ride was renamed after the next one and its map was replaced with none. A
+  course that names a different ride is now the next ride's, and a course with
+  no shape in it never clears a stored map.
 - **A companion ride's summary showed an empty "Power adherence" card.** A ride
   a game drove had no plan to adhere to, so the card is gone for companion rides,
   as it already was for free rides and route rides.

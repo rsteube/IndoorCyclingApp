@@ -1377,6 +1377,14 @@ class CompanionHost(
         val ride = completableRide ?: return
         val recorder = rideRecorder ?: return
         if (course.isEmpty && course.name.isNullOrBlank()) return
+        // A course naming a different ride is the next ride's, sent before the
+        // game starts it. The saved ride is finished with: nothing that arrives
+        // from here on is about it.
+        if (!course.continuesSavedRide(ride.courseName)) {
+            completableRide = null
+            Log.i(TAG, "Course for the next ride: " + course.name + "; " + ride.name + " left as saved")
+            return
+        }
         scope.launch {
             val updated = runCatching { recorder.complement(ride, course) }
                 .onFailure { Log.w(TAG, "Could not complete the saved ride's course", it) }

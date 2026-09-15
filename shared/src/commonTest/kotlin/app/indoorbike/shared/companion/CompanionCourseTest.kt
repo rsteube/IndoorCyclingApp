@@ -27,6 +27,28 @@ import kotlin.test.assertTrue
 class CompanionCourseTest {
 
     /**
+     * The evening that found it: Mittenwald was saved, then the game named the
+     * Weilheim loop before starting it, and Mittenwald became "Weilheim loop"
+     * with no map. A late shape for Mittenwald must still land on Mittenwald.
+     */
+    @Test
+    fun `a course naming the next ride is not the saved ride's`() {
+        val nextRide = CompanionCourse(name = "Weilheim loop", world = "Col de Berg", distanceMeters = 3426.0)
+        assertFalse(nextRide.continuesSavedRide(savedName = "Mittenwald Gravel loop"))
+
+        val lateShape = CompanionCourse(shape = "_p~iF~ps|U", profileMeters = listOf(921, 919))
+        assertTrue(lateShape.continuesSavedRide(savedName = "Mittenwald Gravel loop"))
+
+        val sameName = CompanionCourse(name = "Mittenwald Gravel loop", shape = "_p~iF~ps|U")
+        assertTrue(sameName.continuesSavedRide(savedName = "Mittenwald Gravel loop"))
+    }
+
+    @Test
+    fun `a ride the game never named takes the first name that arrives`() {
+        assertTrue(CompanionCourse(name = "Probe lap 2").continuesSavedRide(savedName = null))
+    }
+
+    /**
      * The order a free-roaming game can actually manage: name the ride while it
      * is happening, hand over the road once the rider has taken it.
      */

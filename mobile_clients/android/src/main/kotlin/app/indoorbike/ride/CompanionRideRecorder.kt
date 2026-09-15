@@ -33,6 +33,12 @@ data class SavedCompanionRide(
     val averagePowerWatts: Int = 0,
     /** When the ride started, which is how its screenshots find it. */
     val startTimeEpoch: Long = 0L,
+    /**
+     * The name the game gave this ride, or null when it gave none and [name] is
+     * the app's own. How a course arriving after the ride tells whether it is
+     * about this ride or the next one.
+     */
+    val courseName: String? = null,
 )
 
 /**
@@ -96,6 +102,7 @@ class CompanionRideRecorder(private val container: AppContainer) {
             averagePowerWatts = if (telemetry.isEmpty()) 0
                 else telemetry.map { it.power }.average().toInt(),
             startTimeEpoch = startedAt,
+            courseName = road.course?.name?.takeIf { it.isNotBlank() },
         )
     }
 
@@ -119,6 +126,6 @@ class CompanionRideRecorder(private val container: AppContainer) {
             routeDistanceMeters = course.distanceMeters ?: 0.0,
             routeElevationGainMeters = course.ascentMeters ?: 0.0,
         )
-        return ride.copy(name = name)
+        return ride.copy(name = name, courseName = course.name?.takeIf { it.isNotBlank() } ?: ride.courseName)
     }
 }

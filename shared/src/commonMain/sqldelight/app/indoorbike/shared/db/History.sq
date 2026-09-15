@@ -103,14 +103,15 @@ UPDATE WorkoutSession SET externalId = ? WHERE id = ?;
 -- rather than held back until everything has landed.
 --
 -- Only ever widens the record: the name is replaced when a real one arrives,
--- and the road figures when the game reports more than was stored. A late frame
--- carrying less than the ride already has is the game repeating itself, not the
--- ride shrinking.
+-- the shape and profile when a frame carries some, and the road figures when the
+-- game reports more than was stored. A late frame carrying less than the ride
+-- already has is the game repeating itself, not the ride shrinking, and a frame
+-- with no shape in it must not wipe the map the finish already stored.
 updateSessionCourse:
 UPDATE WorkoutSession
 SET workoutName = :workoutName,
-    routeShape = :routeShape,
-    routeProfile = :routeProfile,
+    routeShape = CASE WHEN :routeShape = '' THEN routeShape ELSE :routeShape END,
+    routeProfile = CASE WHEN :routeProfile = '' THEN routeProfile ELSE :routeProfile END,
     routeDistanceMeters = MAX(routeDistanceMeters, :routeDistanceMeters),
     routeElevationGainMeters = MAX(routeElevationGainMeters, :routeElevationGainMeters)
 WHERE id = :id;

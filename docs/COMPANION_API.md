@@ -1099,7 +1099,10 @@ still running and the next lap may start in seconds. The strip at the top of the
 the ride that was just saved and then keeps a count for the rest of the session.
 
 If you send a `course` after the `finish`, which a free-roaming game often has to, the app
-folds it into the ride it has already written, so the map still lands.
+folds it into the ride it has already written, so the map still lands. **Unless it names a
+different ride**: a `course` between rides whose `name` is not the saved ride's is taken as the
+next ride's, sent before you start it, and the saved ride is left exactly as it was. So a late
+`course` either carries no `name` or repeats the saved one.
 
 ### When the companion goes away
 

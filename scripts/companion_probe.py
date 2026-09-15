@@ -672,8 +672,10 @@ def ride_once(p, args, lap, distance_m=0.0, late_course=False):
     ride as its own, not as everything since the session began.
     """
     name = "Probe lap %d" % lap
-    if not late_course:
-        p.send({"t": "course", "name": name, "world": "Test harness"})
+    # Named before the ride, the way a game with a route menu does. Between two
+    # rides this must be taken as the next ride's course, not folded into the
+    # ride just saved, which it once renamed and stripped of its map.
+    p.send({"t": "course", "name": name, "world": "Test harness"})
     print("  [lap %d] starting the ride" % lap)
     seen = len(p.events)
     p.send({"t": "setState", "state": "active"})
@@ -874,8 +876,10 @@ def run_twice(args, host, port, state):
     So this rides twice down one connection and checks the three things that
     were each broken at some point: that the ride is written without a tap,
     that the socket survives the finish, and that the second lap is recorded as
-    its own distance rather than everything since the session began. The second
-    lap sends its course *after* the finish, which the specification allows and
+    its own distance rather than everything since the session began. Each lap
+    names itself before it starts, and the first carries its map in its
+    finish, so lap 1 must keep both when lap 2's name arrives. The second lap
+    also sends its map *after* its finish, which the specification allows and
     which a free-roaming game has no way to avoid.
     """
     probe, ws = connect(host, port, args, state)
@@ -899,7 +903,7 @@ def run_twice(args, host, port, state):
     print("\n" + "=" * 62)
     if ok:
         print("two rides, one connection, nothing tapped on the phone.")
-        print("check History: two rides, each with its own distance.")
+        print("check History: 'Probe lap 1' and 'Probe lap 2', each with its own distance and a map.")
     else:
         print("FAILED: the session could not run two rides.")
     print("\n%d warning(s), %d error(s)" % (len(probe.warnings), len(probe.errors)))

@@ -86,6 +86,28 @@ data class CompanionCourse(
             ascentMeters == null && shape.isBlank() && profileMeters.isEmpty()
 
     /**
+     * Whether this course, arriving between two rides, is still about the ride
+     * just saved rather than the next one.
+     *
+     * Both are legitimate, and they arrive in the same gap. A free-roaming game
+     * only knows the road it drew once the rider has stopped drawing it, so it
+     * sends the shape after the `finish`. A game with a route menu names the
+     * next ride before starting it. Folding the second kind into the ride
+     * already saved renamed that ride after the next one, and replaced its map
+     * with the nothing a course sent before a ride carries.
+     *
+     * The name tells them apart. A course that names no ride, or names the
+     * ride that was saved, continues it. One that names a different ride is
+     * the next ride's. [savedName] is the name the game gave the saved ride,
+     * or null when it never gave one, in which case the first name to arrive
+     * is the one it was waiting for.
+     */
+    fun continuesSavedRide(savedName: String?): Boolean {
+        val named = name?.takeIf { it.isNotBlank() } ?: return true
+        return savedName == null || named == savedName
+    }
+
+    /**
      * [update] laid over this one, field by field. Anything the update leaves
      * out keeps the value it already had.
      */
