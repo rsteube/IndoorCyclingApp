@@ -29,7 +29,7 @@ your program (the WebSocket *client*).
 | The world and the rider's position in it | The BLE link and FTMS quirks |
 | Virtual speed | Virtual gears and all shifting logic |
 | Gradient under the wheels | The force commanded to the trainer |
-| Rolling resistance, drag, wind, draft, surfaces | The safety envelope |
+| Drag, wind, draft, and what the surface is | The safety envelope, and what a surface costs |
 | When the ride ends | Session state, ride record, FIT/TCX export |
 
 Three consequences that are easy to get wrong:
@@ -200,7 +200,7 @@ want control, send `"controller"` or omit the field.
   "app": "2.1.0",
   "sessionId": "3f9a1c",
   "tickMs": 250,
-  "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
+  "honours": ["gradient", "speedMps", "distanceM", "ascentM", "crr"],
   "capabilities": ["requestShift", "label", "summary", "course", "setState", "controls",
                    "drivetrain"],
   "role": "controller",
@@ -212,7 +212,7 @@ want control, send `"controller"` or omit the field.
   ],
   "gearIndex": 6,
   "trainer": { "name": "KICKR CORE", "connected": true, "control": "sim" },
-  "limits": { "gradient": [-0.3, 0.3], "speedMps": [0.0, 30.0] },
+  "limits": { "gradient": [-0.3, 0.3], "speedMps": [0.0, 30.0], "crr": [0.002, 0.03] },
   "resume": null
 }
 ```
@@ -377,7 +377,8 @@ The road. Send at 4-10 Hz. Faster buys nothing: the app applies the newest frame
 250 ms tick and rate-limits its own BLE writes below that.
 
 ```json
-{ "t": "world", "seq": 412, "gradient": 0.062, "speedMps": 7.42, "distanceM": 8412.5, "ascentM": 214.0 }
+{ "t": "world", "seq": 412, "gradient": 0.062, "speedMps": 7.42, "distanceM": 8412.5, "ascentM": 214.0,
+  "crr": 0.0122 }
 ```
 
 | Field | Type | Required | Range | Notes |
@@ -387,6 +388,7 @@ The road. Send at 4-10 Hz. Faster buys nothing: the app applies the newest frame
 | `speedMps` | number | yes | clamped to [0.0, 30.0] | Along the **road surface**, not horizontal |
 | `distanceM` | number | no | monotonic | Cumulative along-road distance this ride |
 | `ascentM` | number | no | monotonic | Cumulative metres climbed this ride |
+| `crr` | number | no | clamped to [0.002, 0.030] | Rolling resistance under the tyres. Absent means tarmac (0.005) |
 
 Behaviour:
 
@@ -396,6 +398,8 @@ Behaviour:
 - **`distanceM` / `ascentM` never decrease.** If you send a smaller value than before, the
   larger one is kept. Send cumulative totals, not deltas.
 - Omitting `distanceM` / `ascentM` leaves the previously banked totals untouched.
+- **Omitting `crr` means tarmac**, not "as you were": a companion that stops describing the
+  surface has stopped modelling one. Send it on every frame if you send it at all.
 - Sending a field not in `honours` raises `warning` `fieldNotHonoured` **once per field per
   connection**, and the frame is still applied.
 - An observer sending `world` gets `error` `notController` and the socket **stays open**.
@@ -409,12 +413,31 @@ A `world` frame carries an implicit lease of **1500 ms**.
   zero. Formula: `gradient * (1 - (age - 1500) / 2000)`, clamped at 0.
 - **`speedMps` is held, never ramped.** Ramping it too would collapse the drag term and leave
   the rider on a road with no hill and no air in it.
+- **`crr` ramps back to tarmac** over the same 2000 ms, by the same formula. A companion that
+  goes away mid-sector must not leave the rider grinding through virtual gravel, or drop them
+  onto ice.
 - Crossing into stale emits `event` `worldTimeout` with `fallback: "flat"`, once.
 - The next `world` frame emits `event` `worldResumed`, once.
 
-Reserved but **not honoured** in 0.1: `crr`, `cda`, `airDensity`, `headwindMps`. They are
-unnecessary while you own speed - drafting, surfaces and wind are your arithmetic and never
-cross the socket. Sending them earns a `fieldNotHonoured` warning explaining exactly that.
+### 5.2 Surfaces
+
+`crr` is the one road parameter this app acts on, and it is here because it is the one a
+companion cannot deliver on its own. Drafting and wind change how fast the rider goes, and a
+companion that owns speed can put them into the speed it reports. A gravel road changes how
+hard the pedals are, and nothing the companion sends about speed will make a trainer push back
+harder - so the surface has to cross the socket.
+
+Figures for a gravel bike: tarmac 0.005, compacted gravel 0.009, mixed gravel 0.012, loose
+gravel 0.017, grass 0.016; road tyres lose roughly half as much again on all of them. At 85 kg
+and 25 km/h, tarmac to mixed gravel is about fifty watts.
+
+The app applies it as rolling resistance in the same force the gradient goes into, at the
+speed the rider's gear is actually turning out. It does **not** change the gradient shown on
+the phone, which stays the road's own.
+
+Reserved but **not honoured**: `cda`, `airDensity`, `headwindMps`. They are unnecessary while
+you own speed - drafting and wind are your arithmetic and never cross the socket. Sending them
+earns a `fieldNotHonoured` warning explaining exactly that.
 
 ---
 
@@ -821,8 +844,10 @@ speed sits at zero for five to ten seconds - at the start of the course, and aga
 they stop and start.
 
 You still own the world. Take `speedMps` as the drivetrain's output, apply whatever your game
-adds - drafting, surfaces, wind, a descent that carries the rider faster than their gear could
-turn - and send the result back as `world.speedMps`. The two agree wherever the rider is
+adds - drafting, wind, a descent that carries the rider faster than their gear could turn -
+and send the result back as `world.speedMps`. A surface is the exception, and goes in `crr`
+instead (5.2): put it in the speed and the rider watches a number fall while the pedals stay
+light. The two agree wherever the rider is
 settled, because both ends are solving `P = F_road(v) . v`, and they are meant to disagree
 everywhere else.
 
@@ -988,7 +1013,7 @@ Present in the protocol, absent from this build. Do not design around them.
 
 | Gap | Detail |
 |---|---|
-| `crr`, `cda`, `airDensity`, `headwindMps` | Reserved names, not honoured. Warned about |
+| `cda`, `airDensity`, `headwindMps` | Reserved names, not honoured. Warned about. `crr` is honoured; see 5.2 |
 | `resume` | Always `null`. Crash-recovery handoff is not wired |
 | The live road after a crash | A resumed ride sits on flat until you reconnect and send `world` again. The app has no idea what hill it was on. The `course` itself does survive |
 | `riderInput` | Zwift Click presses are consumed as shifts; unconsumed presses are not forwarded |
@@ -1010,12 +1035,12 @@ Present in the protocol, absent from this build. Do not design around them.
 
 // <- handshake accepted, ride prepared, telemetry starts
 {"t":"welcome","proto":"0.2","app":"2.1.0","sessionId":"3f9a1c","tickMs":250,
- "honours":["gradient","speedMps","distanceM","ascentM"],
+ "honours":["gradient","speedMps","distanceM","ascentM","crr"],
  "capabilities":["requestShift","label","summary","course","setState"],"role":"controller",
  "rider":{"massKg":78.0,"ftpWatts":250},"bike":{"massKg":9.5,"drivetrain":"road-double"},
  "gears":[{"i":0,"ratio":1.21,"label":"34 x 28","loadFactor":0.72}],
  "gearIndex":6,"trainer":{"name":"KICKR CORE","connected":true,"control":"sim"},
- "limits":{"gradient":[-0.3,0.3],"speedMps":[0.0,30.0]}}
+ "limits":{"gradient":[-0.3,0.3],"speedMps":[0.0,30.0],"crr":[0.002,0.03]}}
 
 // -> name the ride now, hand over its shape at the end
 {"t":"course","name":"Stelvio, north side","world":"Alpine Tour","distanceM":24800,"ascentM":1533}

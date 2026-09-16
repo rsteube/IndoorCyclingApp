@@ -227,6 +227,9 @@ class CompanionEngine(
     var onGearChanged: ((index: Int, changed: Boolean, source: String) -> Unit)? = null
 
     private var rawGradient = 0.0
+    private var rawCrr = CompanionProtocol.DEFAULT_CRR
+    /** The rolling resistance being ridden, after the deadman ramp. */
+    private var ridingCrr = CompanionProtocol.DEFAULT_CRR
     private var roadAtMs = 0L
     private var everReceived = false
 
@@ -277,6 +280,8 @@ class CompanionEngine(
         _gearIndex.value =
             if (gearIndex == USE_START_GEAR) drivetrain.startIndex else drivetrain.clampIndex(gearIndex)
         rawGradient = 0.0
+        rawCrr = CompanionProtocol.DEFAULT_CRR
+        ridingCrr = CompanionProtocol.DEFAULT_CRR
         roadAtMs = 0
         everReceived = false
         _gradient.value = 0.0
@@ -358,8 +363,15 @@ class CompanionEngine(
      *
      * Resets the deadman: this is the frame whose lease the next tick measures.
      */
-    fun setRoad(gradient: Double, speedMps: Double, nowMs: Long = getCurrentEpochMillis()) {
+    fun setRoad(
+        gradient: Double,
+        speedMps: Double,
+        crr: Double = CompanionProtocol.DEFAULT_CRR,
+        nowMs: Long = getCurrentEpochMillis(),
+    ) {
         rawGradient = gradient
+        rawCrr = crr
+        ridingCrr = crr
         _speedMps.value = speedMps
         roadAtMs = nowMs
         everReceived = true
@@ -509,6 +521,7 @@ class CompanionEngine(
             val age = nowMs - roadAtMs
             val effective = CompanionProtocol.rampedGradient(rawGradient, age)
             _gradient.value = effective
+            ridingCrr = CompanionProtocol.rampedCrr(rawCrr, age)
             val stale = age > CompanionProtocol.WORLD_TIMEOUT_MS
             if (stale != _roadStale.value) {
                 _roadStale.value = stale
@@ -544,6 +557,10 @@ class CompanionEngine(
             gradient = _gradient.value,
             speedMps = roadSpeed,
             totalMassKg = totalMass,
+            // What the surface under the companion's wheels costs. Tarmac
+            // unless it says otherwise, which is what every build before this
+            // one assumed of everything.
+            crr = ridingCrr,
         ) + RideDynamics.inertiaForceNewtons(
             // The companion integrates m_eff . dv/dt = P/v - F_road to get the
             // speed it sends. Commanding only F_road was commanding one half

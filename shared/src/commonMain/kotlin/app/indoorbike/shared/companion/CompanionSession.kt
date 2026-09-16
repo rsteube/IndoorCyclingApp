@@ -31,7 +31,11 @@ sealed interface CompanionEffect {
     data class Close(val code: Int, val reason: String) : CompanionEffect
 
     /** A new road, already clamped. */
-    data class ApplyRoad(val gradient: Double, val speedMps: Double) : CompanionEffect
+    data class ApplyRoad(
+        val gradient: Double,
+        val speedMps: Double,
+        val crr: Double = CompanionProtocol.DEFAULT_CRR,
+    ) : CompanionEffect
 
     /** Signed steps; positive is a harder gear. The drivetrain still clamps. */
     data class Shift(val steps: Int) : CompanionEffect
@@ -561,7 +565,7 @@ class CompanionSession(
             }
         }
 
-        effects += CompanionEffect.ApplyRoad(road.gradient, road.speedMps)
+        effects += CompanionEffect.ApplyRoad(road.gradient, road.speedMps, road.crr)
         if (frame.distanceM != null || frame.ascentM != null) {
             effects += CompanionEffect.ReportProgress(road.distanceM, road.ascentM)
         }

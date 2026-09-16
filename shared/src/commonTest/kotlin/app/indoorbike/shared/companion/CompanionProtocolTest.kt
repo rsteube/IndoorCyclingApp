@@ -156,11 +156,12 @@ class NegotiationTest {
     @Test
     fun `this build advertises what it actually honours`() {
         assertEquals(
-            setOf("gradient", "speedMps", "distanceM", "ascentM"),
+            setOf("gradient", "speedMps", "distanceM", "ascentM", "crr"),
             CompanionProtocol.HONOURED_WORLD_FIELDS,
         )
         // Reserved names must not be honoured by accident: the companion owns
-        // speed, so none of these has any way to be felt.
+        // speed, so drag and wind have no way to be felt. Rolling resistance
+        // does, which is why it is no longer among them.
         CompanionProtocol.RESERVED_WORLD_FIELDS.forEach {
             assertTrue(it !in CompanionProtocol.HONOURED_WORLD_FIELDS, it)
         }

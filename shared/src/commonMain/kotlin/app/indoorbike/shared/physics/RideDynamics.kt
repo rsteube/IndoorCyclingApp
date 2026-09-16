@@ -226,12 +226,16 @@ object RideDynamics {
         gradient: Double,
         speedMps: Double,
         totalMassKg: Double,
+        crr: Double = VirtualSpeed.CRR,
     ): Double {
         if (totalMassKg <= 0.0) return 0.0
         val hyp = sqrt(1.0 + gradient * gradient)
         val weight = totalMassKg * VirtualSpeed.GRAVITY_MS2
         val gravity = weight * (gradient / hyp)
-        val rolling = VirtualSpeed.CRR * weight * (1.0 / hyp)
+        // [crr] is the surface under the tyres: tarmac by default, and higher
+        // on anything a gravel bike is for. A companion that models surfaces
+        // sends it; see CompanionProtocol.DEFAULT_CRR.
+        val rolling = crr * weight * (1.0 / hyp)
         val v = speedMps.coerceAtLeast(0.0)
         val drag = 0.5 * VirtualSpeed.AIR_DENSITY_KG_M3 * VirtualSpeed.CDA_M2 * v * v
         return gravity + rolling + drag

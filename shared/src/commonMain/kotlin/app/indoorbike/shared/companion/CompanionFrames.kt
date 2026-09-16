@@ -108,6 +108,15 @@ data class WorldFrame(
     val speedMps: Double,
     val distanceM: Double? = null,
     val ascentM: Double? = null,
+    /**
+     * Rolling resistance under the tyres, if the companion models surfaces.
+     *
+     * Absent means tarmac ([CompanionProtocol.DEFAULT_CRR]), which is what
+     * every companion written before this field meant by saying nothing. A
+     * gravel road is about 0.012 and a grass track 0.016; the bounds are in
+     * `welcome.limits`.
+     */
+    val crr: Double? = null,
     val t: String = "world",
 ) : ClientFrame
 
@@ -492,6 +501,7 @@ data class TrainerInfo(
 data class Limits(
     val gradient: List<Double> = listOf(CompanionProtocol.MIN_GRADIENT, CompanionProtocol.MAX_GRADIENT),
     val speedMps: List<Double> = listOf(CompanionProtocol.MIN_SPEED_MPS, CompanionProtocol.MAX_SPEED_MPS),
+    val crr: List<Double> = listOf(CompanionProtocol.MIN_CRR, CompanionProtocol.MAX_CRR),
 )
 
 /**

@@ -835,7 +835,7 @@ class CompanionHost(
                 }
 
                 is CompanionEffect.ApplyRoad -> {
-                    engine.setRoad(effect.gradient, effect.speedMps)
+                    engine.setRoad(effect.gradient, effect.speedMps, effect.crr)
                     if (!_status.value.receivingRoad) {
                         _status.value = _status.value.copy(receivingRoad = true)
                     }

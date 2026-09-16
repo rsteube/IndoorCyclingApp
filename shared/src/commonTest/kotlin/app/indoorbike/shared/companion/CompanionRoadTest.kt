@@ -29,7 +29,56 @@ class CompanionRoadTest {
         speed: Double = 8.0,
         distance: Double? = null,
         ascent: Double? = null,
-    ) = WorldFrame(seq = seq, gradient = gradient, speedMps = speed, distanceM = distance, ascentM = ascent)
+        crr: Double? = null,
+    ) = WorldFrame(
+        seq = seq, gradient = gradient, speedMps = speed, distanceM = distance,
+        ascentM = ascent, crr = crr,
+    )
+
+    @Test
+    fun `takes the surface the companion says it is riding`() {
+        val road = CompanionRoad()
+        val update = road.accept(world(1, crr = 0.0122), nowMs = 0)
+        assertEquals(emptyList(), assertIs<RoadUpdate.Applied>(update).clamps)
+        assertEquals(0.0122, road.crr)
+    }
+
+    @Test
+    fun `a frame that says nothing about the surface is tarmac`() {
+        val road = CompanionRoad()
+        road.accept(world(1, crr = 0.016), nowMs = 0)
+        road.accept(world(2), nowMs = 100)
+        assertEquals(CompanionProtocol.DEFAULT_CRR, road.crr)
+    }
+
+    @Test
+    fun `clamps a surface nobody could ride and says so`() {
+        val road = CompanionRoad()
+        val update = road.accept(world(1, crr = 0.5), nowMs = 0)
+        val clamps = assertIs<RoadUpdate.Applied>(update).clamps
+        assertEquals(Clamped("crr", 0.5, CompanionProtocol.MAX_CRR), clamps.single())
+        assertEquals(CompanionProtocol.MAX_CRR, road.crr)
+    }
+
+    @Test
+    fun `the surface ramps back to tarmac when the companion goes away`() {
+        val road = CompanionRoad()
+        road.accept(world(1, gradient = 0.08, crr = 0.02), nowMs = 0)
+        assertEquals(0.02, road.effectiveCrr(CompanionProtocol.WORLD_TIMEOUT_MS))
+        val half = CompanionProtocol.WORLD_TIMEOUT_MS + CompanionProtocol.WORLD_RAMP_MS / 2
+        val part = road.effectiveCrr(half)
+        assertTrue(part < 0.02 && part > CompanionProtocol.DEFAULT_CRR, "ramping, at ${'$'}part")
+        val after = CompanionProtocol.WORLD_TIMEOUT_MS + CompanionProtocol.WORLD_RAMP_MS + 1
+        assertEquals(CompanionProtocol.DEFAULT_CRR, road.effectiveCrr(after))
+    }
+
+    @Test
+    fun `letting go of the road puts the surface back to tarmac`() {
+        val road = CompanionRoad()
+        road.accept(world(1, crr = 0.018), nowMs = 0)
+        road.release()
+        assertEquals(CompanionProtocol.DEFAULT_CRR, road.crr)
+    }
 
     @Test
     fun `takes a road inside the envelope unchanged`() {

@@ -77,7 +77,8 @@ has two untested systems and no way to tell which is wrong.
    should be listening on.
 8. **Read `welcome.honours` and `welcome.capabilities`.** They are what this build *acts on*,
    which is not what the protocol defines. Branch on `capabilities`, never on the negotiated
-   version number. `crr`, `cda`, `airDensity` and `headwindMps` are reserved and **not
+   version number. `crr` is honoured - it is how a surface is felt, because a trainer cannot
+   feel one any other way - while `cda`, `airDensity` and `headwindMps` are reserved and **not
    honoured**.
 9. **Missing telemetry fields mean absent, not zero.** No `hr` means no strap, and no
    `speedMps` means the trainer cannot count cadence. Defaulting to 0 puts a heart rate of zero

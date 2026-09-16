@@ -8,6 +8,19 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ### Added
 
+- **A companion can say what the road is made of, and the trainer pushes back
+  with it.** The `world` frame takes a `crr`, the rolling resistance under the
+  tyres, and the phone puts it into the force it commands: gravel, dirt and
+  grass are now harder work than tarmac instead of only looking different.
+  Absent means tarmac, as it did for every companion written before this; the
+  value is clamped to a rideable range and warned about when it is clamped, and
+  it ramps back to tarmac with the deadman so a companion that vanishes
+  mid-sector leaves nobody grinding through virtual gravel. `crr` moves from
+  the reserved names into `welcome.honours` and its bounds into
+  `welcome.limits`; drag and wind stay the companion's own arithmetic, because
+  a companion that owns speed can already deliver those and cannot deliver
+  this one.
+
 - **Screenshots from the companion, kept with the ride (protocol 0.9).** A
   companion that says it can take them gets a camera button on the ride
   header. A tap asks the game for a picture of its screen, and the picture it

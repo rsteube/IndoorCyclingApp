@@ -67,6 +67,17 @@ class CompanionRoad {
     var speedMps: Double = 0.0
         private set
 
+    /**
+     * Rolling resistance as last accepted, before any deadman ramp.
+     *
+     * A frame that says nothing about it means tarmac, not "as you were": a
+     * companion that stops describing the surface has stopped modelling one,
+     * and the rider should be given the road every build before this one gave
+     * them rather than the last gravel sector for ever.
+     */
+    var crr: Double = CompanionProtocol.DEFAULT_CRR
+        private set
+
     /** Cumulative along-road distance the companion has reported, if any. */
     var distanceM: Double? = null
         private set
@@ -97,11 +108,21 @@ class CompanionRoad {
         )
         if (v != frame.speedMps) clamps += Clamped("speedMps", frame.speedMps, v)
 
+        val sent = frame.crr
+        val c = if (sent == null) {
+            CompanionProtocol.DEFAULT_CRR
+        } else {
+            clamp(sent, CompanionProtocol.MIN_CRR, CompanionProtocol.MAX_CRR).also {
+                if (it != sent) clamps += Clamped("crr", sent, it)
+            }
+        }
+
         lastSeq = frame.seq
         acceptedAtMs = nowMs
         everAccepted = true
         gradient = g
         speedMps = v
+        crr = c
 
         // Both are cumulative and must never go backwards. A companion that
         // resets its own counter mid-ride would otherwise hand the ride record
@@ -134,6 +155,15 @@ class CompanionRoad {
     }
 
     /**
+     * And the rolling resistance to ride, with the deadman applied: back to
+     * tarmac over the same ramp the gradient flattens over.
+     */
+    fun effectiveCrr(nowMs: Long): Double {
+        if (!everAccepted) return CompanionProtocol.DEFAULT_CRR
+        return CompanionProtocol.rampedCrr(crr, nowMs - acceptedAtMs)
+    }
+
+    /**
      * Forget the road without forgetting the ride.
      *
      * Used when the rider takes back control: the recording continues, but
@@ -143,11 +173,12 @@ class CompanionRoad {
         everAccepted = false
         gradient = 0.0
         speedMps = 0.0
+        crr = CompanionProtocol.DEFAULT_CRR
         lastSeq = Long.MIN_VALUE
     }
 
     private fun clamp(value: Double, min: Double, max: Double): Double {
-        if (value.isNaN()) return 0.0
+        if (value.isNaN()) return min.coerceAtLeast(0.0).coerceAtMost(max)
         return value.coerceIn(min, max)
     }
 }

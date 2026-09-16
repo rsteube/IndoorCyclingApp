@@ -15,6 +15,8 @@
  */
 package app.indoorbike.shared.companion
 
+import app.indoorbike.shared.physics.VirtualSpeed
+
 /**
  * A protocol version, `major.minor`.
  *
@@ -279,8 +281,23 @@ object CompanionProtocol {
     const val MIN_SPEED_MPS = 0.0
     const val MAX_SPEED_MPS = 30.0
 
+    /**
+     * Rolling resistance the companion may send, and what is assumed without
+     * one.
+     *
+     * The default is the tarmac the physics has always assumed
+     * ([VirtualSpeed.CRR]); the bounds are a good tyre on a good road at one
+     * end and a wide tyre in deep sand at the other. A companion riding a
+     * gravel road sends about 0.012, which at 85 kg is some fifty watts at
+     * 25 km/h - the difference between a gravel road and a tarmac one, and the
+     * whole reason this field exists.
+     */
+    const val MIN_CRR = 0.002
+    const val MAX_CRR = 0.030
+    const val DEFAULT_CRR = VirtualSpeed.CRR
+
     /** World-frame fields this build acts on. Published in `welcome.honours`. */
-    val HONOURED_WORLD_FIELDS = setOf("gradient", "speedMps", "distanceM", "ascentM")
+    val HONOURED_WORLD_FIELDS = setOf("gradient", "speedMps", "distanceM", "ascentM", "crr")
 
     /** Structural, never warned about. */
     val WORLD_ENVELOPE_FIELDS = setOf("t", "seq")
@@ -288,13 +305,15 @@ object CompanionProtocol {
     /**
      * Names the protocol reserves but this build does not honour.
      *
-     * They are unnecessary while the companion owns speed: drafting, surfaces
-     * and wind are all its own arithmetic, and none of them has to cross the
-     * socket to be felt. They would only become meaningful if a future mode
-     * handed speed back to the phone. Reserved rather than simply unknown so
-     * that nobody uses `cda` to mean something else in the meantime.
+     * Drag and wind stay the companion's own arithmetic: it owns speed, so it
+     * can put them into the speed it reports without anything crossing the
+     * socket. Rolling resistance could not, which is why `crr` left this set -
+     * a surface is felt in the legs rather than seen on a speedometer, and the
+     * only way to feel it is for the trainer to push back harder. Reserved
+     * rather than simply unknown so that nobody uses `cda` to mean something
+     * else in the meantime.
      */
-    val RESERVED_WORLD_FIELDS = setOf("crr", "cda", "airDensity", "headwindMps")
+    val RESERVED_WORLD_FIELDS = setOf("cda", "airDensity", "headwindMps")
 
     /**
      * The gradient to ride given one that is [ageMs] old.
@@ -309,6 +328,22 @@ object CompanionProtocol {
         val into = ageMs - WORLD_TIMEOUT_MS
         if (into >= WORLD_RAMP_MS) return 0.0
         return gradient * (1.0 - into.toDouble() / WORLD_RAMP_MS)
+    }
+
+    /**
+     * And the rolling resistance to ride, given one that is [ageMs] old.
+     *
+     * The same lease and the same ramp as the gradient, to the tarmac default
+     * rather than to nothing: a companion that goes away in the middle of a
+     * gravel sector must not leave the rider grinding through virtual gravel,
+     * and must not drop them onto ice either.
+     */
+    fun rampedCrr(crr: Double, ageMs: Long): Double {
+        if (ageMs <= WORLD_TIMEOUT_MS) return crr
+        val into = ageMs - WORLD_TIMEOUT_MS
+        if (into >= WORLD_RAMP_MS) return DEFAULT_CRR
+        val share = into.toDouble() / WORLD_RAMP_MS
+        return crr + (DEFAULT_CRR - crr) * share
     }
 
     /**

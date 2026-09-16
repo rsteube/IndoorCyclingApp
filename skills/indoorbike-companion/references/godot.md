@@ -260,9 +260,25 @@ they stop and start.
     # In your telemetry handler. Absent means the trainer cannot count cadence,
     # not that the rider has stopped, so only then fall back to your own model.
     if frame.has("speedMps"):
-        speed_mps = float(frame["speedMps"]) * _draft_factor() * _surface_factor()
+        speed_mps = float(frame["speedMps"]) * _draft_factor()
     else:
         speed_mps = _integrate_from_power(frame.get("power", 0), delta)
+```
+
+A surface is the exception to owning speed, and does not belong in that line. Slowing the
+avatar on gravel while the pedals stay light is the thing every virtual ride gets wrong: the
+rider sees a number fall and feels nothing. Send the rolling resistance instead, and the
+trainer pushes back with it -
+
+```gdscript
+    var road := {
+        "t": "world", "seq": seq, "gradient": gradient,
+        "speedMps": speed_mps, "distanceM": distance_m, "ascentM": ascent_m,
+    }
+    # Only when the app says it acts on it; an unhonoured field earns a warning.
+    if "crr" in welcome.get("honours", []):
+        road["crr"] = _rolling_resistance_under_the_tyres()
+    _send(road)
 ```
 
 ## Menus: hand the rider a remote

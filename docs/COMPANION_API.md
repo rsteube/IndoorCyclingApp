@@ -337,7 +337,8 @@ the newest frame on its next 250 ms tick and rate-limits its own BLE writes, so 
   "gradient": 0.062,
   "speedMps": 7.42,
   "distanceM": 8412.5,
-  "ascentM": 214.0 }
+  "ascentM": 214.0,
+  "crr": 0.0122 }
 ```
 
 | Field | Type | Required | Notes |
@@ -347,6 +348,19 @@ the newest frame on its next 250 ms tick and rate-limits its own BLE writes, so 
 | `speedMps` | float | yes | Virtual speed **along the road surface**. Drives the drag term |
 | `distanceM` | float | no | Cumulative along-road distance this ride. For the ride record |
 | `ascentM` | float | no | Cumulative metres climbed this ride. For the ride record |
+| `crr` | float | no | Rolling resistance under the tyres, clamped to [0.002, 0.030]. Absent means tarmac, 0.005 |
+
+**The surface, and why it is the one road parameter the phone takes.** Drafting and wind change
+how fast the rider goes, and a companion that owns speed can put them into the speed it reports.
+A gravel road changes how hard the pedals are, and no speed the companion reports will make a
+trainer push back harder - so the surface has to cross the socket. For a gravel bike: tarmac
+0.005, compacted gravel 0.009, mixed gravel 0.012, loose gravel 0.017, grass 0.016, with road
+tyres losing about half as much again. At 85 kg and 25 km/h, tarmac to mixed gravel is some
+fifty watts. It goes into the same force the gradient does, at the speed the rider's gear is
+turning out, and it does not touch the gradient the phone displays. Omit it and the road is
+tarmac; a frame without it is a frame that has stopped describing a surface, not one asking for
+the last surface to be held. Past the deadman it ramps back to tarmac over the same 2000 ms the
+gradient flattens over.
 
 `distanceM` and `ascentM` are cumulative rather than per-frame deltas so that a dropped frame
 costs nothing and a reconnecting companion resynchronises by stating the total. They must be
@@ -739,7 +753,7 @@ Sent once, in response to `hello`. Everything a companion needs to configure its
 ```jsonc
 { "t": "welcome", "proto": "0.1", "app": "2.1.0", "sessionId": "3f9a1c",
   "tickMs": 250,
-  "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
+  "honours": ["gradient", "speedMps", "distanceM", "ascentM", "crr"],
   "capabilities": ["requestShift", "label", "summary"],
   "role": "controller",
 
@@ -751,7 +765,7 @@ Sent once, in response to `hello`. Everything a companion needs to configure its
 
   "trainer": { "name": "KICKR CORE", "connected": true, "control": "sim" },
 
-  "limits":  { "gradient": [-0.30, 0.30], "speedMps": [0.0, 30.0] },
+  "limits":  { "gradient": [-0.30, 0.30], "speedMps": [0.0, 30.0], "crr": [0.002, 0.030] },
 
   "resume":  { "distanceM": 12840.0, "ascentM": 310.5 }
 }
@@ -1157,7 +1171,7 @@ progression and export all work with no new plumbing.
 
 // <- negotiated, configured
 { "t": "welcome", "proto": "0.2", "tickMs": 250,
-  "honours": ["gradient", "speedMps", "distanceM", "ascentM"],
+  "honours": ["gradient", "speedMps", "distanceM", "ascentM", "crr"],
   "capabilities": ["requestShift", "label", "summary", "course", "setState"],
   "gears": [ … ], "gearIndex": 6, "rider": { "massKg": 78.0, "ftpWatts": 250 }, … }
 
@@ -1329,11 +1343,12 @@ specification.
 
 Deliberately unresolved in 0.1, listed so neither end designs around their absence.
 
-- **Road parameters beyond gradient.** `crr`, `cda`, `airDensity` and `headwindMps` are
-  reserved names and are **not** honoured in 0.1. They are unnecessary while the companion owns
-  speed, since drafting, surfaces and wind are all its own arithmetic. They would only become
-  meaningful if a future mode gave speed back to the phone. A companion sending them gets a
-  `fieldNotHonoured` warning.
+- **Road parameters beyond gradient and surface.** `cda`, `airDensity` and `headwindMps` are
+  reserved names and are **not** honoured. They are unnecessary while the companion owns speed,
+  since drafting and wind are its own arithmetic. They would only become meaningful if a future
+  mode gave speed back to the phone. A companion sending them gets a `fieldNotHonoured`
+  warning. `crr` was one of them until a companion needed a gravel road to be felt rather than
+  watched, and is now honoured; see `world` above.
 - **Steering.** No frame. A companion takes its own input for anything that is not a shift.
 - **Trainer control tiers.** 0.1 assumes an FTMS `sim`-capable trainer.
   [LIVE_API.md](LIVE_API.md#1-the-decision-that-shapes-everything-erg-is-the-wrong-control-channel)

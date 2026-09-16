@@ -101,6 +101,8 @@ class CompanionHandshakeTest {
         assertContains(welcome.honours, "gradient")
         assertContains(welcome.honours, "speedMps")
         assertTrue("cda" !in welcome.honours)
+        // A surface is felt in the legs, so this build acts on it.
+        assertContains(welcome.honours, "crr")
     }
 
     @Test

@@ -152,6 +152,28 @@ class RideDynamicsTest {
     }
 
     @Test
+    fun `a gravel road pushes back harder than a tarmac one`() {
+        // The whole point of the surface reaching the trainer: at 85 kg, going
+        // from tarmac to loose gravel is about fifty watts at 25 km/h, which is
+        // what a rider feels when the road turns to stone.
+        val tarmac = RideDynamics.roadForceNewtons(0.0, 7.0, totalMass)
+        val gravel = RideDynamics.roadForceNewtons(0.0, 7.0, totalMass, crr = 0.0122)
+        assertTrue(gravel > tarmac, "gravel ${'$'}gravel against tarmac ${'$'}tarmac")
+        val watts = (gravel - tarmac) * 7.0
+        assertTrue(watts in 30.0..70.0, "the surface is worth ${'$'}watts W at 25 km/h")
+    }
+
+    @Test
+    fun `an unhelpful surface is still only a surface`() {
+        // It scales with weight and with the cosine of the road, like any
+        // rolling resistance, and it does nothing at all to the air.
+        val flat = RideDynamics.roadForceNewtons(0.0, 0.0, totalMass, crr = 0.02)
+        val climbing = RideDynamics.roadForceNewtons(0.1, 0.0, totalMass, crr = 0.02)
+        val gravity = RideDynamics.roadForceNewtons(0.1, 0.0, totalMass, crr = 0.0)
+        assertEquals(climbing - gravity, flat / kotlin.math.sqrt(1.01), 0.01)
+    }
+
+    @Test
     fun `an unknown rider mass moves nobody`() {
         assertEquals(5.0, RideDynamics.step(5.0, 250.0, 0.0, 0.0, 0.25))
         assertEquals(0.0, RideDynamics.steadyStateSpeedMps(250.0, 0.0, 0.0))
