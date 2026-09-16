@@ -4,7 +4,7 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
-## [Unreleased]
+## [2.3] (19) - 2026-09-16
 
 ### Added
 
@@ -131,9 +131,11 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 - **A course arriving after the `finish` completes the ride already written.** A
   free-roaming game only knows its polyline once the rider has stopped drawing
   it, and the map should not be lost to a frame that was late by design.
-- **The end of a session shows what it produced.** When the companion has been
-  gone long enough not to be a Wi-Fi blip, the rider gets the ride if there was
-  one and a list of them if there were several.
+
+### Notes
+
+- Companion protocol 0.9, accepting everything back to 0.1. The privacy policy
+  now covers screenshots, which stay on the phone.
 
 ## [2.2] (18) - 2026-09-11
 

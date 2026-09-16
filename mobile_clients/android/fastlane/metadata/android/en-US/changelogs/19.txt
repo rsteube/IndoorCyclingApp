@@ -1,0 +1,3 @@
+Companion mode: every ride in a session is saved the moment the game ends it, and the app stays connected for the next. Tap the camera on the ride header to keep a screenshot of the game with your ride. The game can bring its own look, gravel feels harder than tarmac, and the shift paddles are big and edge-mounted. If the game drops mid-ride, the ride pauses and waits.
+
+Fixed: two rides saved as one, a next ride renaming the last, Skip breaking a companion ride.
