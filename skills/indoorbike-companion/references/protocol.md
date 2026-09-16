@@ -1126,6 +1126,7 @@ Present in the protocol, absent from this build. Do not design around them.
 | Mistake | Result |
 |---|---|
 | Omitting `speedMps` | Frame is `malformed`; the socket closes with 4008 |
+| Starting the `world` pump on connect rather than on the `welcome` | On a remembered pairing the phone answers with a `challenge` first, and anything but `pairProof` while it is outstanding is `unauthorized`: 4002, mid-handshake |
 | Sending integers as `921.0` (Godot: anything through `JSON.parse_string` then `JSON.stringify`) | Read by current builds. Builds up to 2.2 close with 4008, and a `finish` written that way never ends the ride |
 | Sending `seq` that does not increase | Frames dropped silently; the road appears frozen |
 | Sending deltas in `distanceM` | Distance stalls, because smaller values are ignored |

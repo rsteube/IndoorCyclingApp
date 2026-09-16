@@ -57,7 +57,10 @@ has two untested systems and no way to tell which is wrong.
 
 ## The fifteen rules that prevent most bugs
 
-1. **Send `hello` first.** Any other first frame is `unauthorized` and a close with 4002.
+1. **Send `hello` first, and nothing else until the `welcome` arrives.** Any other first frame
+   is `unauthorized` and a close with 4002. A phone that remembers you answers `hello` with a
+   `challenge`, and while that proof is outstanding every other frame is refused the same way,
+   so a `world` pump that starts on connect rather than on the welcome loses that race.
 2. **`role` defaults to `controller`**, and any value the phone does not recognise (including
    wrong case) silently grants **observer**, which cannot steer.
 3. **Take the rider's speed from `telemetry.speedMps`, do not integrate one from power.** This

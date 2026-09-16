@@ -318,6 +318,11 @@ First frame. See [Negotiation](#negotiation).
 | `role` | string | no | `controller` (default) or `observer` |
 | `capabilities` | string[] | no | What the companion can do, e.g. `["summary"]`. `screenshot` gets the rider a camera button |
 
+**Send nothing until the `welcome` arrives.** A phone that remembers a companion answers
+`hello` with a `challenge` rather than a `welcome`, and while that proof is outstanding every
+other frame is `unauthorized` and closes with 4002. A road pump started on connect rather than
+on the welcome loses that race whenever the answer takes longer than one tick.
+
 **One controller, many observers.** A second controller is refused with close code `4003`. An
 observer receives telemetry and events but may not send `world`, `requestShift` or `finish`.
 

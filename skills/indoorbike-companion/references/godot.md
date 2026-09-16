@@ -52,7 +52,12 @@ func _process(delta: float) -> void:
             if not _handshaked:
                 _send_hello()
             _drain_incoming()
-            _pump_world(delta)
+            # Nothing but the handshake until the welcome lands. A phone that
+            # remembers you answers `hello` with a `challenge`, and any other
+            # frame while that proof is outstanding is refused with 4002. A
+            # pump at 10 Hz beats a challenge answered in more than 100 ms.
+            if _welcomed:
+                _pump_world(delta)
         WebSocketPeer.STATE_CLOSED:
             var code := _socket.get_close_code()
             var reason := _socket.get_close_reason()
