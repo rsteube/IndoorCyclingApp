@@ -104,7 +104,7 @@
       <li><strong>Workouts:</strong> bundled JSON shipped with the app, plus any workouts you import (file pick, share-sheet, QR, by URL, or picked from a community repo in the in-app browser). Imported workouts live as plain JSON in the app's private storage; ones added from a known community repo also carry a small sidecar file recording the source repo's name for attribution.</li>
       <li><strong>Cached community registry:</strong> a read-only JSON list of community-repo names + URLs (whatever <code>indoorbike.app/registry.json</code> returned the last time you opened More Workouts), kept on-device so the list still shows when you're offline.</li>
       <li><strong>Ride history:</strong> the result of each ride (duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log) in a local SQLite database.</li>
-      <li><strong>Optional integration credentials:</strong> if you set them, your Intervals.icu athlete ID and API key, stored in the same on-device key/value store as your profile values. The API key is excluded from Android's Auto Backup (it never leaves your device via that channel).</li>
+      <li><strong>Optional Intervals.icu connection:</strong> if you connect Intervals.icu, the access token it issues to Indoor Bike, your athlete ID and your name as Intervals.icu gives it, stored in the same on-device key/value store as your profile values. In a build without sign-in, or if you set one up before sign-in existed, your API key instead. Tokens and keys are excluded from Android's Auto Backup and phone-to-phone transfer, and are never written to a Backup &amp; sync slice.</li>
       <li><strong>Optional sync-folder URI:</strong> if you've configured Backup &amp; sync in Settings, the app stores the location of the folder you picked so it can read and write its slice on each sync. The folder itself can be anywhere your file picker reaches - local storage, Drive, Dropbox, Nextcloud, Syncthing, …; the choice is yours and is made explicitly via Android's system folder picker.</li>
       <li><strong>Paired companion apps (only if you pair one):</strong> Companion mode
         can drive your trainer from a program on another device. If you choose to pair one
@@ -207,10 +207,21 @@
     <p>
       <a href="https://intervals.icu" target="_blank" rel="noopener">Intervals.icu</a>
       is a third-party training analytics service. The integration is off by
-      default. If you enable it in <em>Settings → Cloud sync</em>, the app:
+      default. If you connect it in <em>Settings → Connections</em>, the app:
     </p>
     <ul>
-      <li>Stores the athlete ID and API key you provide on your device.</li>
+      <li>
+        Sends you to Intervals.icu in your browser to approve Indoor Bike. You
+        sign in there, never in the app, and approve access to upload
+        activities and nothing else. Intervals.icu sends you back through
+        <code>indoorbike.app/oauth/intervals</code>, a page that only hands the
+        approval to the app on your phone and sends nothing anywhere.
+      </li>
+      <li>
+        Stores the access token Intervals.icu issues, your athlete ID and your
+        name on your device. (In a build without sign-in it stores the athlete
+        ID and API key you enter instead.)
+      </li>
       <li>
         Uploads ride files to <code>intervals.icu</code>'s API when you
         manually tap Upload, or (if you turn on auto-upload) once per ride
@@ -224,9 +235,10 @@
     </ul>
     <p>
       Once a ride is uploaded, the data is governed by Intervals.icu's own
-      privacy policy. Disabling the integration in Settings clears the
-      credentials and stops further uploads; rides already uploaded stay
-      with intervals.icu unless you delete them there.
+      privacy policy. Disconnecting in Settings asks Intervals.icu to revoke
+      the token, deletes it from your phone and stops further uploads; you can
+      also remove Indoor Bike from your Intervals.icu settings. Rides already
+      uploaded stay with intervals.icu unless you delete them there.
     </p>
 
     <h2>The website</h2>

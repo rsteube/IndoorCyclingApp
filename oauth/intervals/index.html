@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connecting Intervals.icu - Indoor Bike</title>
+  <meta name="robots" content="noindex">
+  <meta name="referrer" content="no-referrer">
+  <meta name="theme-color" content="#313e50">
+  <link rel="icon" type="image/svg+xml" href="../../assets/favicon-32.svg">
+  <link rel="stylesheet" href="../../styles.css">
+  <style>
+    .oauth-main { max-width: 560px; margin: 0 auto; padding: var(--s-9) var(--s-5) var(--s-10); }
+    .oauth-main h1 { font-weight: 800; font-size: clamp(30px, 6vw, 44px); line-height: 1.05; color: var(--fg-1); margin: 0 0 var(--s-4); }
+    .oauth-main p { color: var(--fg-2); font-size: 16px; line-height: 1.7; margin: 0 0 var(--s-4); }
+    .oauth-main .small { color: var(--fg-3); font-size: 13px; }
+    .oauth-main .small a { color: var(--fg-2); }
+    .oauth-actions { margin: var(--s-6) 0; }
+  </style>
+</head>
+<body>
+  <!--
+    Where Intervals.icu sends a rider after they approve Indoor Bike. On a phone
+    with the app installed this page is never seen: the link is a verified app
+    link (see /.well-known/assetlinks.json) and Android hands it straight to the
+    app. It shows only when that did not happen, for instance when the approval
+    was opened in a browser the link could not be handed from.
+
+    The query carries a one-time authorization code. Nothing here sends it
+    anywhere: there are no scripts but the one below, which only builds a link
+    back into the app, and the referrer is withheld. The intent: link names the
+    app's package, so no other app can be handed the code.
+  -->
+  <main class="oauth-main">
+    <h1>Finish connecting in Indoor Bike</h1>
+    <p id="lead">Intervals.icu has approved Indoor Bike. Open the app to finish connecting. Do it within two minutes, or start again from the app.</p>
+    <div class="oauth-actions">
+      <a id="open" class="btn btn-primary" href="#">Open Indoor Bike</a>
+    </div>
+    <p class="small" id="debug-note">Using a debug build? <a id="open-debug" href="#">Open the debug build instead</a>.</p>
+    <p class="small">Opened this on a computer? Connecting happens on your phone: in Indoor Bike, go to Settings, then Connections, then Intervals.icu.</p>
+  </main>
+  <script>
+    (function () {
+      var query = window.location.search || "";
+      var failed = /[?&]error=/.test(query);
+      if (failed) {
+        document.getElementById("lead").textContent =
+          "Intervals.icu did not approve the connection. Nothing was shared. You can try again from the app.";
+      }
+      function intentFor(pkg) {
+        return "intent://indoorbike.app/oauth/intervals" + query +
+          "#Intent;scheme=https;package=" + pkg + ";end";
+      }
+      document.getElementById("open").href = intentFor("app.indoorbike");
+      document.getElementById("open-debug").href = intentFor("app.indoorbike.debug");
+    })();
+  </script>
+</body>
+</html>
