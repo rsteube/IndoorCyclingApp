@@ -67,6 +67,22 @@
                 <data android:mimeType="application/json" />
             </intent-filter>
 
+            <!-- OAuth2 redirect from Intervals.icu's consent page. An https link
+                 rather than a custom scheme because the authorization code
+                 travels in it: any app can claim `indoorbike://`, but only an
+                 app signed with a key listed in
+                 https://indoorbike.app/.well-known/assetlinks.json is handed a
+                 verified link. The path matches IntervalsIcuOAuth.REDIRECT_URI
+                 and what is registered with Intervals.icu. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="indoorbike.app" />
+                <data android:path="/oauth/intervals" />
+            </intent-filter>
+
             <!-- OAuth2 redirect from a FitTrackee consent page. The rider
                  registers this exact URI on their own instance, and the
                  browser hands the authorization code back through it, so the

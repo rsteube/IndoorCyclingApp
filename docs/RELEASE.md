@@ -48,6 +48,19 @@ there, and the last thing they can see is 2.0.1.
   `CODEFLOE_TOKEN` in the User scope, then the process environment, and it
   confirms write access before it builds anything, naming the source it used.
   Never print or commit the token.
+- `intervals.properties` exists at the repo root, gitignored beside the other
+  two, holding the Intervals.icu OAuth client registered for Indoor Bike:
+
+  ```properties
+  intervalsClientId=<client id>
+  intervalsClientSecret=<client secret>
+  ```
+
+  Without it the build still succeeds, but riders cannot connect Intervals.icu
+  and are asked for their personal API key instead, which Intervals.icu asks
+  multi-user apps not to do. The build says so: a release whose output contains
+  `intervals.properties not found` must not be published. Both values come from
+  `https://intervals.icu/settings/apps`. Never print or commit the secret.
 - Working tree is clean and all the changes you intend to ship are committed to
   `main`. `git status` snapshots in the harness prompt can be stale, so confirm
   with a fresh `git status --short`.

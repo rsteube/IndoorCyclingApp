@@ -112,8 +112,10 @@ fun WorkoutOverviewScreen(
     val weightKg by container.userSettings.weightKg.collectAsState()
     val intervalsAthlete by container.userSettings.intervalsAthleteId.collectAsState()
     val intervalsKey by container.userSettings.intervalsApiKey.collectAsState()
+    val intervalsToken by container.userSettings.intervalsAccessToken.collectAsState()
     val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
-    val intervalsConfigured = !intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank()
+    val intervalsConfigured = !intervalsToken.isNullOrBlank() ||
+        (!intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank())
     val ftToken by container.userSettings.fitTrackeeAccessToken.collectAsState()
     val ftAutoUpload by container.userSettings.fitTrackeeAutoUpload.collectAsState()
     // A sport is no longer part of being configured: it defaults to Cycling
@@ -230,7 +232,9 @@ fun WorkoutOverviewScreen(
                 }
                 val msg = when (outcome) {
                     is IntervalsIcuUploader.Outcome.Success -> "Uploaded to Intervals.icu"
-                    is IntervalsIcuUploader.Outcome.NotConfigured -> "Add credentials in Settings → Cloud sync first"
+                    is IntervalsIcuUploader.Outcome.NotConfigured -> "Connect Intervals.icu in Settings → Connections first"
+                    is IntervalsIcuUploader.Outcome.Unauthorized ->
+                        "Intervals.icu no longer accepts this connection. Connect again in Settings → Connections."
                     is IntervalsIcuUploader.Outcome.Failure -> outcome.message
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()

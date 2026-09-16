@@ -116,6 +116,12 @@ class AndroidUserSettings(
     private val _intervalsAutoUpload = MutableStateFlow(initialPrefs[KEY_INTERVALS_AUTO] ?: false)
     override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
 
+    private val _intervalsAccessToken = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ACCESS])
+    override val intervalsAccessToken: StateFlow<String?> = _intervalsAccessToken.asStateFlow()
+
+    private val _intervalsAthleteName = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ATHLETE_NAME])
+    override val intervalsAthleteName: StateFlow<String?> = _intervalsAthleteName.asStateFlow()
+
     private val _fitTrackeeUrl = MutableStateFlow<String?>(initialPrefs[KEY_FT_URL])
     override val fitTrackeeUrl: StateFlow<String?> = _fitTrackeeUrl.asStateFlow()
 
@@ -231,6 +237,16 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_INTERVALS_AUTO] ?: false }.collect { value ->
                 if (value != _intervalsAutoUpload.value) _intervalsAutoUpload.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_INTERVALS_ACCESS] }.collect { value ->
+                if (value != _intervalsAccessToken.value) _intervalsAccessToken.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_INTERVALS_ATHLETE_NAME] }.collect { value ->
+                if (value != _intervalsAthleteName.value) _intervalsAthleteName.value = value
             }
         }
         scope.launch {
@@ -391,6 +407,28 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_INTERVALS_AUTO] = value } }
     }
 
+    override fun setIntervalsAccessToken(token: String?) {
+        val cleaned = token?.trim()?.takeIf { it.isNotEmpty() }
+        _intervalsAccessToken.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_INTERVALS_ACCESS)
+                else it[KEY_INTERVALS_ACCESS] = cleaned
+            }
+        }
+    }
+
+    override fun setIntervalsAthleteName(name: String?) {
+        val cleaned = name?.trim()?.takeIf { it.isNotEmpty() }
+        _intervalsAthleteName.value = cleaned
+        scope.launch {
+            store.edit {
+                if (cleaned == null) it.remove(KEY_INTERVALS_ATHLETE_NAME)
+                else it[KEY_INTERVALS_ATHLETE_NAME] = cleaned
+            }
+        }
+    }
+
     override fun setFitTrackeeUrl(url: String?) {
         // Normalise once, here, so every caller can concatenate paths without
         // worrying about a trailing slash the rider may or may not have typed.
@@ -495,6 +533,8 @@ class AndroidUserSettings(
         private val KEY_INTERVALS_ATHLETE = stringPreferencesKey("intervals_athlete_id")
         private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
         private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
+        private val KEY_INTERVALS_ACCESS = stringPreferencesKey("intervals_access_token")
+        private val KEY_INTERVALS_ATHLETE_NAME = stringPreferencesKey("intervals_athlete_name")
         private val KEY_FT_URL = stringPreferencesKey("fittrackee_url")
         private val KEY_FT_CLIENT_ID = stringPreferencesKey("fittrackee_client_id")
         private val KEY_FT_CLIENT_SECRET = stringPreferencesKey("fittrackee_client_secret")

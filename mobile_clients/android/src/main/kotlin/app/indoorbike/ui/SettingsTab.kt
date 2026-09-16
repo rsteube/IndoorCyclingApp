@@ -29,6 +29,8 @@ import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Bluetooth
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.CloudUpload
+import android.widget.Toast
+import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material.icons.outlined.Terrain
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.MonitorHeart
@@ -237,9 +239,12 @@ private fun connectionsSummary(): String {
     val settings = LocalAppContainer.current.userSettings
     val athlete by settings.intervalsAthleteId.collectAsState()
     val key by settings.intervalsApiKey.collectAsState()
+    val intervalsToken by settings.intervalsAccessToken.collectAsState()
     val ftToken by settings.fitTrackeeAccessToken.collectAsState()
     val names = buildList {
-        if (!athlete.isNullOrBlank() && !key.isNullOrBlank()) add("Intervals.icu")
+        if (!intervalsToken.isNullOrBlank() || (!athlete.isNullOrBlank() && !key.isNullOrBlank())) {
+            add("Intervals.icu")
+        }
         if (!ftToken.isNullOrBlank()) add("FitTrackee")
     }
     return if (names.isEmpty()) "Nothing connected" else names.joinToString(" · ")
@@ -1123,75 +1128,154 @@ private fun ReportProblemCard() {
 // ─── Cloud Sync · Intervals.icu ──────────────────────────────────────────────
 
 /**
- * Off-by-default cloud sync card for Intervals.icu. The whole section sits
- * idle (no network, no upload) until the user fills in athlete id + API key.
- * Auto-upload is its own opt-in toggle; manual upload from
- * WorkoutOverviewScreen also picks up these credentials.
+ * Intervals.icu: connect in the browser, or, in a build that cannot, paste an
+ * API key.
  *
- * Nothing here triggers a network call by itself: only the upload path
- * (manual or auto) does, and both require an explicit user action.
+ * Connecting is the normal way in. The rider approves Indoor Bike on
+ * Intervals.icu's own page, the app gets a token that can upload rides and
+ * nothing else, and the rider can take it back from either end. Intervals.icu
+ * asks apps used by more than one person to work this way. The API key is kept
+ * for builds from source, which do not carry the OAuth client (see
+ * [app.indoorbike.shared.sync.IntervalsIcuOAuth]), and for a rider who set one
+ * up before connecting existed: their fields stay visible until they connect,
+ * which replaces the key.
+ *
+ * Nothing here contacts Intervals.icu by existing. Connecting, disconnecting and
+ * uploading do, and each is something the rider did.
  */
 @Composable
 internal fun IntervalsIcuCard() {
     val container = LocalAppContainer.current
     val settings = container.userSettings
+    val uploader = container.intervalsIcuUploader
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     val athleteId by settings.intervalsAthleteId.collectAsState()
     val apiKey by settings.intervalsApiKey.collectAsState()
     val autoUpload by settings.intervalsAutoUpload.collectAsState()
-    val configured = !athleteId.isNullOrBlank() && !apiKey.isNullOrBlank()
+    val token by settings.intervalsAccessToken.collectAsState()
+    val athleteName by settings.intervalsAthleteName.collectAsState()
+    val signedIn = !token.isNullOrBlank()
+    val keyConfigured = !athleteId.isNullOrBlank() && !apiKey.isNullOrBlank()
+    val configured = signedIn || keyConfigured
+    val signInAvailable = uploader.signInAvailable
 
     var showKey by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
+    var keyInstead by rememberSaveable { mutableStateOf(false) }
+    // A key already saved stays in view, or a rider who has one could not see
+    // or clear it. Otherwise it is folded away behind the button that matters.
+    val keyFieldsVisible = !signedIn && (!signInAvailable || keyConfigured || keyInstead)
 
     ExpandableCard(
         icon = Icons.Outlined.CloudUpload,
         iconTint = CadenceColors.Fg1,
         title = "Intervals.icu",
         statusText = when {
-            configured && autoUpload -> "Configured · auto-upload on"
-            configured -> "Configured · manual upload"
-            else -> "Not configured · optional"
+            signedIn && autoUpload -> "Connected · auto-upload on"
+            signedIn -> "Connected · manual upload"
+            keyConfigured && autoUpload -> "API key · auto-upload on"
+            keyConfigured -> "API key · manual upload"
+            else -> "Not connected · optional"
         },
         statusColor = if (configured) CadenceColors.Success else CadenceColors.Fg3,
         expanded = expanded,
         onToggle = { expanded = !expanded }
     ) {
         Text(
-            text = "Sync your finished rides to intervals.icu. Off by default - your athlete id " +
-                "and API key live only on this phone, and the app only contacts intervals.icu " +
-                "when an upload is triggered (manually or via auto-upload below).",
+            text = "Send your finished rides to Intervals.icu. Nothing is contacted until you " +
+                "connect, and after that only when a ride is uploaded.",
             style = CadenceType.small,
             color = CadenceColors.Fg3
         )
 
-        IntervalsTextField(
-            label = "Athlete ID",
-            placeholder = "i12345",
-            value = athleteId.orEmpty(),
-            onValueChange = { settings.setIntervalsAthleteId(it) },
-            keyboardType = KeyboardType.Ascii,
-            visualTransformation = VisualTransformation.None,
-        )
-
-        IntervalsTextField(
-            label = "API KEY",
-            placeholder = "Paste from intervals.icu/settings",
-            value = apiKey.orEmpty(),
-            onValueChange = { settings.setIntervalsApiKey(it) },
-            keyboardType = KeyboardType.Password,
-            visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
-            trailing = {
+        if (signedIn) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                    contentDescription = if (showKey) "Hide key" else "Show key",
-                    tint = CadenceColors.Fg3,
-                    modifier = Modifier
-                        .size(20.dp)
-                        .clickable { showKey = !showKey }
+                    imageVector = Icons.Outlined.CheckCircle,
+                    contentDescription = null,
+                    tint = CadenceColors.Success,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = athleteName?.let { "Connected as $it" } ?: "Connected",
+                    style = CadenceType.tick,
+                    color = CadenceColors.Success
                 )
             }
-        )
+        } else if (signInAvailable) {
+            Text(
+                text = "You approve Indoor Bike on Intervals.icu in your browser, so your password " +
+                    "and API key never reach this app. It can upload rides and nothing else, and " +
+                    "you can disconnect it here or in your Intervals.icu settings.",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg3
+            )
+            PrimaryBtn(
+                text = "Connect Intervals.icu",
+                leadingIcon = null,
+                onClick = {
+                    val authorize = uploader.authorizeUrl() ?: return@PrimaryBtn
+                    try {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(authorize)
+                            )
+                        )
+                    } catch (t: Throwable) {
+                        Toast.makeText(context, "No browser to open", Toast.LENGTH_LONG).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (keyConfigured) {
+                Text(
+                    text = "Connecting replaces the API key saved on this phone.",
+                    style = CadenceType.tick,
+                    color = CadenceColors.Fg3
+                )
+            } else if (!keyInstead) {
+                Text(
+                    text = "Use an API key instead",
+                    style = CadenceType.eyebrow,
+                    color = CadenceColors.Fg3,
+                    modifier = Modifier.clickable { keyInstead = true }
+                )
+            }
+        }
+
+        if (keyFieldsVisible) {
+            IntervalsTextField(
+                label = "Athlete ID",
+                placeholder = "i12345",
+                value = athleteId.orEmpty(),
+                onValueChange = { settings.setIntervalsAthleteId(it) },
+                keyboardType = KeyboardType.Ascii,
+                visualTransformation = VisualTransformation.None,
+            )
+
+            IntervalsTextField(
+                label = "API KEY",
+                placeholder = "Paste from intervals.icu/settings",
+                value = apiKey.orEmpty(),
+                onValueChange = { settings.setIntervalsApiKey(it) },
+                keyboardType = KeyboardType.Password,
+                visualTransformation = if (showKey) VisualTransformation.None else PasswordVisualTransformation(),
+                trailing = {
+                    Icon(
+                        imageVector = if (showKey) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                        contentDescription = if (showKey) "Hide key" else "Show key",
+                        tint = CadenceColors.Fg3,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .clickable { showKey = !showKey }
+                    )
+                }
+            )
+        }
 
         Row(
             modifier = Modifier
@@ -1202,10 +1286,11 @@ internal fun IntervalsIcuCard() {
             Column(modifier = Modifier.weight(1f)) {
                 Text(text = "Auto-upload finished rides", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
                 Text(
-                    text = if (configured)
-                        "Each completed ride is sent immediately."
-                    else
-                        "Add credentials above to enable.",
+                    text = when {
+                        configured -> "Each completed ride is sent immediately."
+                        signInAvailable -> "Connect above to enable."
+                        else -> "Add credentials above to enable."
+                    },
                     style = CadenceType.small,
                     color = CadenceColors.Fg3
                 )
@@ -1225,6 +1310,25 @@ internal fun IntervalsIcuCard() {
                     uncheckedTrackColor = CadenceColors.Bg2,
                     uncheckedBorderColor = CadenceColors.Line2,
                 )
+            )
+        }
+
+        if (signedIn) {
+            SecondaryBtn(
+                text = "Disconnect",
+                onClick = {
+                    scope.launch {
+                        val revoked = uploader.disconnect()
+                        Toast.makeText(
+                            context,
+                            if (revoked) "Disconnected from Intervals.icu"
+                            else "Disconnected on this phone. Intervals.icu couldn't be reached, so " +
+                                "remove Indoor Bike in your Intervals.icu settings as well.",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

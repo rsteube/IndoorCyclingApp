@@ -16,6 +16,25 @@ val keystoreProps = Properties().apply {
     if (keystorePropsFile.exists()) keystorePropsFile.inputStream().use { load(it) }
 }
 
+// Intervals.icu OAuth client: a gitignored intervals.properties at repo root,
+//
+//   intervalsClientId=...
+//   intervalsClientSecret=...
+//
+// Intervals.icu's OAuth has no PKCE, so signing a rider in needs the client
+// secret, and this repository is public. A build without the file compiles
+// both fields as empty strings and offers the rider's personal API key instead,
+// which is what anyone building from source gets. Release builds must have it.
+val intervalsPropsFile = rootProject.file("intervals.properties")
+val intervalsProps = Properties().apply {
+    if (intervalsPropsFile.exists()) intervalsPropsFile.inputStream().use { load(it) }
+}
+fun buildConfigString(value: Any?): String =
+    "\"" + (value as String? ?: "").replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+if (!intervalsPropsFile.exists()) {
+    logger.warn("intervals.properties not found: this build signs in to Intervals.icu with an API key only")
+}
+
 android {
     namespace = "app.indoorbike"
     compileSdk = 36
@@ -31,6 +50,9 @@ android {
         // up automatically once the file is hosted; absence is handled
         // gracefully (Browse just shows an empty state).
         buildConfigField("String", "REGISTRY_URL", "\"https://indoorbike.app/registry.json\"")
+
+        buildConfigField("String", "INTERVALS_CLIENT_ID", buildConfigString(intervalsProps["intervalsClientId"]))
+        buildConfigField("String", "INTERVALS_CLIENT_SECRET", buildConfigString(intervalsProps["intervalsClientSecret"]))
     }
 
     signingConfigs {

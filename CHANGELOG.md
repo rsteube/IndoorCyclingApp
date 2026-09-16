@@ -4,6 +4,22 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [Unreleased]
+
+### Added
+
+- **Connect Intervals.icu instead of pasting an API key.** Settings →
+  Connections now has a Connect button that opens Intervals.icu in the browser,
+  where the rider approves Indoor Bike to upload activities and nothing else.
+  The app keeps the token Intervals.icu issues, uploads with it, and Disconnect
+  revokes it on Intervals.icu as well as forgetting it. Intervals.icu asks apps
+  used by more than one person to work this way. Its OAuth needs a client
+  secret, and the source is public, so the secret is compiled into release
+  builds from a gitignored file rather than kept in the repository; a build
+  without it offers the API key as before. The approval comes back through a
+  verified link to `indoorbike.app`, so no other app on the phone can be handed
+  it. Connecting replaces an API key already saved.
+
 ## [2.3] (19) - 2026-09-16
 
 ### Added

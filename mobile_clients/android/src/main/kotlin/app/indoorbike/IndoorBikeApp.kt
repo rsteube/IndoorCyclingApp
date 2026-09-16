@@ -281,6 +281,7 @@ class AppContainer(
                 userSettings = userSettings,
             )
             val intervalsIcuUploader = IntervalsIcuUploader(
+                context = application,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
             )

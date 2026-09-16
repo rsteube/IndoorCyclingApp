@@ -111,7 +111,9 @@ import app.indoorbike.ui.screens.companion.CompanionScreen
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.simulationWorkoutId
 import app.indoorbike.ui.ControllerPairingScreen
+import app.indoorbike.shared.sync.IntervalsIcuOAuth
 import app.indoorbike.sync.FitTrackeeUploader
+import app.indoorbike.sync.IntervalsIcuUploader
 import app.indoorbike.ui.screens.ConnectionsScreen
 import app.indoorbike.ui.screens.SimulationSettingsScreen
 import app.indoorbike.ui.screens.LibraryScreen
@@ -269,6 +271,24 @@ class MainActivity : ComponentActivity() {
                 val msg = when (outcome) {
                     is FitTrackeeUploader.SignIn.Success -> "Connected to FitTrackee"
                     is FitTrackeeUploader.SignIn.Failure -> outcome.message
+                }
+                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
+        // https://indoorbike.app/oauth/intervals - Intervals.icu handing back an
+        // authorization code, through the verified app link. On the same
+        // cold-start footing as the FitTrackee one above, and with less time:
+        // Intervals.icu wants the code exchanged within two minutes.
+        if (IntervalsIcuOAuth.isRedirect(uri.scheme, uri.host, uri.path)) {
+            intentScope.launch {
+                val outcome = container.intervalsIcuUploader.completeAuthorization(uri)
+                val msg = when (outcome) {
+                    is IntervalsIcuUploader.SignIn.Success ->
+                        outcome.athleteName?.let { "Connected to Intervals.icu as $it" }
+                            ?: "Connected to Intervals.icu"
+                    is IntervalsIcuUploader.SignIn.Failure -> outcome.message
                 }
                 Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
             }

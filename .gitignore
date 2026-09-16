@@ -38,6 +38,11 @@ forge.properties
 # never committed.
 play-service-account.json
 
+# Intervals.icu OAuth client id and secret, compiled into builds that have it
+# (see mobile_clients/android/build.gradle.kts). Same treatment as
+# keystore.properties.
+intervals.properties
+
 # fastlane run artefacts.
 mobile_clients/android/fastlane/report.xml
 mobile_clients/android/fastlane/README.md

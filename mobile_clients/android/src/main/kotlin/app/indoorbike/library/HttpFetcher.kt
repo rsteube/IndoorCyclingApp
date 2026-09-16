@@ -196,6 +196,40 @@ object HttpFetcher {
         }
     }
 
+    /**
+     * DELETE with headers and no body. Used to revoke an Intervals.icu token,
+     * which is the one place a connection is undone on the server rather than
+     * only forgotten here.
+     */
+    suspend fun delete(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+    ): PostResult = withContext(Dispatchers.IO) {
+        val parsed = URL(url)
+        require(parsed.protocol.equals("https", ignoreCase = true)) {
+            "Only https:// URLs are allowed (got ${parsed.protocol})"
+        }
+        val connection = parsed.openConnection() as HttpURLConnection
+        connection.apply {
+            connectTimeout = TIMEOUT_MS
+            readTimeout = TIMEOUT_MS
+            requestMethod = "DELETE"
+            instanceFollowRedirects = false
+            useCaches = false
+            setRequestProperty("Accept", "application/json")
+            setRequestProperty("User-Agent", "IndoorBike/1.0 (Android)")
+            for ((k, v) in headers) setRequestProperty(k, v)
+        }
+        try {
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(4096))
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     suspend fun postMultipartFile(
         url: String,
         fileFieldName: String,

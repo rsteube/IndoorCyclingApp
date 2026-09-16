@@ -107,6 +107,20 @@ interface UserSettings {
     val intervalsAutoUpload: StateFlow<Boolean>
     fun setIntervalsAutoUpload(value: Boolean)
 
+    /**
+     * OAuth access token from signing in to Intervals.icu in the browser. Takes
+     * the place of [intervalsApiKey] when present: it grants only what the app
+     * asked for, and the rider can revoke it without touching their key.
+     * Intervals.icu issues no refresh token; this lasts until they disconnect
+     * or sign in again. Never written to a backup slice.
+     */
+    val intervalsAccessToken: StateFlow<String?>
+    fun setIntervalsAccessToken(token: String?)
+
+    /** Whose Intervals.icu account the token belongs to, for saying so on screen. */
+    val intervalsAthleteName: StateFlow<String?>
+    fun setIntervalsAthleteName(name: String?)
+
     // ── FitTrackee ────────────────────────────────────────────────────────
     // Self-hosted activity tracker. Unlike Intervals.icu there is no single
     // service to talk to: the rider supplies the address of their own server,
