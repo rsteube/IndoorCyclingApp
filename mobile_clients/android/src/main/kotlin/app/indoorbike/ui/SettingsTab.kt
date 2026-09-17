@@ -1163,10 +1163,11 @@ internal fun IntervalsIcuCard() {
 
     var showKey by remember { mutableStateOf(false) }
     var expanded by rememberSaveable { mutableStateOf(false) }
-    var keyInstead by rememberSaveable { mutableStateOf(false) }
     // A key already saved stays in view, or a rider who has one could not see
-    // or clear it. Otherwise it is folded away behind the button that matters.
-    val keyFieldsVisible = !signedIn && (!signInAvailable || keyConfigured || keyInstead)
+    // or clear it. Otherwise a build that can sign in does not offer the key at
+    // all: Intervals.icu asks apps used by more than one person to use OAuth,
+    // and a second way in that nobody needs is a second way to get it wrong.
+    val keyFieldsVisible = !signedIn && (!signInAvailable || keyConfigured)
 
     ExpandableCard(
         icon = Icons.Outlined.CloudUpload,
@@ -1236,13 +1237,6 @@ internal fun IntervalsIcuCard() {
                     text = "Connecting replaces the API key saved on this phone.",
                     style = CadenceType.tick,
                     color = CadenceColors.Fg3
-                )
-            } else if (!keyInstead) {
-                Text(
-                    text = "Use an API key instead",
-                    style = CadenceType.eyebrow,
-                    color = CadenceColors.Fg3,
-                    modifier = Modifier.clickable { keyInstead = true }
                 )
             }
         }

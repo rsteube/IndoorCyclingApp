@@ -73,6 +73,15 @@ object IntervalsIcuOAuth {
      * calendar or sport settings would need `CALENDAR:READ` or `SETTINGS:READ`,
      * and a rider should be asked for those when a feature uses them, not
      * before. Asking again replaces the token.
+     *
+     * **Reading brings an obligation with it.** Intervals.icu's API terms (1.1)
+     * require that an app displaying anything derived from Garmin-sourced data
+     * shows attribution to Garmin, as Garmin's brand guidelines require; the
+     * `device_name` field on an activity is what says where it came from.
+     * Writing has no such condition, which is why today the app owes nothing:
+     * it shows the rider their own account name and nothing else from the API.
+     * Any feature that reads and displays activity data has to carry that
+     * attribution with it.
      */
     const val SCOPES = "ACTIVITY:WRITE"
 
