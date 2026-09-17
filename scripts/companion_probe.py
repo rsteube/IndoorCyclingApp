@@ -413,7 +413,7 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.9",
+            "protoMin": "0.1", "protoMax": "0.10",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
@@ -537,6 +537,62 @@ def scenario_smoke(p, args):
         time.sleep(1.5)
     else:
         print("\n[10] leaving the ride running (--finish to end it)")
+
+
+def scenario_untracked(p, args):
+    """Push the bike up a climb: riding the phone does not write down, held at
+    a wattage the game chooses. Everything here needs the `untracked` and
+    `setPower` capabilities (protocol 0.10)."""
+    caps = (p.welcome or {}).get("capabilities", [])
+    for needed in ("untracked", "setPower"):
+        if needed not in caps:
+            print("this phone does not offer '%s'; nothing to test" % needed)
+            return
+
+    print("\n[1] ride normally for a bit")
+    p.send({"t": "setState", "state": "active"})
+    distance = p.drive(args.ride_seconds / 2, gradient=0.06)
+    elapsed_before = (p.telemetry or {}).get("elapsedS")
+    print("     elapsedS %s, distance %.0f m" % (elapsed_before, distance))
+
+    print("\n[2] the rider stalls. Off the record, and onto a fixed effort.")
+    p.send({"t": "setState", "state": "untracked", "label": "Pushing the bike"})
+    time.sleep(0.5)
+    ftp = ((p.welcome or {}).get("rider") or {}).get("ftpWatts") or 250
+    watts = int(round(ftp / 2.0))
+    p.send({"t": "setPower", "watts": watts})
+    time.sleep(1.0)
+    t = p.telemetry or {}
+    print("     state %s, powerTarget %s, powerCommanded %s, appliedGradient %s" % (
+        t.get("state"), t.get("powerTarget"), t.get("powerCommanded"),
+        t.get("appliedGradient")))
+
+    print("\n[3] walking. The totals stay where the riding left them.")
+    # A walk is not ridden, so the distance we report does not move. The phone
+    # ignores it either way while untracked; sending the frozen total is what
+    # keeps it ignoring it once the rider is back on the bike.
+    end = time.time() + args.ride_seconds
+    while time.time() < end and not p._stop.is_set():
+        p.world(0.0, 1.94, distance_m=distance)
+        time.sleep(0.1)
+    t = p.telemetry or {}
+    print("     elapsedS %s (held: it was %s), powerCommanded %s" % (
+        t.get("elapsedS"), elapsed_before, t.get("powerCommanded")))
+
+    print("\n[4] the summit. Back on the bike, back on the record.")
+    p.send({"t": "setState", "state": "active"})
+    time.sleep(1.0)
+    t = p.telemetry or {}
+    print("     state %s, powerTarget %s (gone with the state)" % (
+        t.get("state"), t.get("powerTarget")))
+    p.drive(args.ride_seconds / 2, gradient=0.02, distance_m=distance)
+
+    if args.finish:
+        print("\n[5] finish. The walk is in none of it.")
+        p.send({"t": "finish"})
+        time.sleep(1.5)
+    else:
+        print("\n[5] leaving the ride running (--finish to end it)")
 
 
 def scenario_world(p, args):
@@ -742,6 +798,7 @@ SCENARIOS = {
     "pair": scenario_pair,
     "screenshot": scenario_screenshot,
     "smoke": scenario_smoke,
+    "untracked": scenario_untracked,
     "world": scenario_world,
     "controls": scenario_controls,
 }

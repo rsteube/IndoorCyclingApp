@@ -146,6 +146,7 @@ object CompanionCodec {
             "pairRequest" -> PairRequestFrame.serializer()
             "pairProof" -> PairProofFrame.serializer()
             "setState" -> SetStateFrame.serializer()
+            "setPower" -> SetPowerFrame.serializer()
             "finish" -> FinishFrame.serializer()
             "screenshot" -> ScreenshotFrame.serializer()
             "ping" -> PingFrame.serializer()

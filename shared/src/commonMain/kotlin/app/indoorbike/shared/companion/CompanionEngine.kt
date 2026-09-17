@@ -100,6 +100,16 @@ class CompanionEngine(
     private val cadenceRpm: () -> Int = { 0 },
     /** Hand a road to the trainer. Wired to `TrainerManager::setSimulationParameters`. */
     private val applyRoad: (SimulationParameters) -> Unit,
+    /**
+     * Hold the trainer at a wattage. Wired to `TrainerManager::setTargetPower`,
+     * the same ERG write a free ride uses.
+     *
+     * Only ever called while a companion holds an untracked ride at a power
+     * target; the rest of the time this engine describes a road and never names
+     * a number of watts. Defaulted so tests and any platform without ERG get
+     * the road-only engine they had before.
+     */
+    private val applyPower: (Int) -> Unit = {},
     private val riderMassKg: () -> Float,
     private val bikeMassKg: () -> Float = { VirtualSpeed.DEFAULT_BIKE_MASS_KG },
     private val drivetrainProvider: () -> Drivetrain = { Drivetrain.DEFAULT },
@@ -203,6 +213,24 @@ class CompanionEngine(
     private val _receivingRoad = MutableStateFlow(false)
     val receivingRoad: StateFlow<Boolean> = _receivingRoad.asStateFlow()
 
+    /**
+     * The wattage an untracked ride is being held at, or null when the rider is
+     * on the road. While it is set the road is still read, still timed and
+     * still published; it is simply not what the trainer is being told.
+     */
+    private val _powerTarget = MutableStateFlow<Int?>(null)
+    val powerTarget: StateFlow<Int?> = _powerTarget.asStateFlow()
+
+    /** What the trainer is actually being told, which the lease and the pedals both shape. */
+    private val _powerCommanded = MutableStateFlow(0)
+    val powerCommanded: StateFlow<Int> = _powerCommanded.asStateFlow()
+
+    /** True while a target is set and the rider has been let go of it ([PowerHold]). */
+    private val _powerReleased = MutableStateFlow(false)
+    val powerReleased: StateFlow<Boolean> = _powerReleased.asStateFlow()
+
+    private val hold = PowerHold()
+
     private val _running = MutableStateFlow(false)
     val running: StateFlow<Boolean> = _running.asStateFlow()
 
@@ -225,6 +253,17 @@ class CompanionEngine(
      * in the companion rather than in the protocol.
      */
     var onGearChanged: ((index: Int, changed: Boolean, source: String) -> Unit)? = null
+
+    /**
+     * Fired whenever the requested power target changes, with the source the
+     * caller named: the companion asked, or the ride's own state cleared it.
+     *
+     * Only the *requested* target. The lease decay and the release of a stopped
+     * rider are not changes to what was asked for, and reporting them here
+     * would tell a companion its target had been taken away when it has not.
+     * Those show in [powerCommanded] and nowhere else.
+     */
+    var onPowerTargetChanged: ((watts: Int?, source: String) -> Unit)? = null
 
     private var rawGradient = 0.0
     private var rawCrr = CompanionProtocol.DEFAULT_CRR
@@ -260,6 +299,7 @@ class CompanionEngine(
     private var loop: Job? = null
 
     private var lastSentForceNewtons: Double? = null
+    private var lastSentWatts: Int? = null
     private var lastSentGearIndex: Int = -1
     private var lastSentEpochMs: Long = 0
     private var sendOwed = false
@@ -303,6 +343,7 @@ class CompanionEngine(
         roadAcceleration.reset()
         advanceSeeded = false
         lastSentForceNewtons = null
+        lastSentWatts = null
         lastSentGearIndex = -1
     }
 
@@ -310,6 +351,7 @@ class CompanionEngine(
     fun start() {
         loop?.cancel()
         lastSentForceNewtons = null
+        lastSentWatts = null
         sendOwed = false
         // A pause leaves stale momentum behind, and resuming must not bill the
         // rider for an acceleration that happened while they were stopped.
@@ -319,7 +361,7 @@ class CompanionEngine(
         // from a standstill either way.
         launchAssist.reset()
         _running.value = true
-        pushRoadToTrainer(force = true)
+        if (hold.target != null) pushPowerToTrainer(force = true) else pushRoadToTrainer(force = true)
         loop = scope.launch {
             while (isActive) {
                 advance(getCurrentEpochMillis())
@@ -350,12 +392,65 @@ class CompanionEngine(
         _driveSpeedMps.value = 0.0
         _driveSpeedKnown.value = false
         lastSentForceNewtons = null
+        lastSentWatts = null
         sendOwed = false
+        // Nothing is driving the trainer any more, so nothing is holding a
+        // target either. Every path that stops this engine either pauses the
+        // ride or ends it, and both leave untracked, which clears the target
+        // anyway; this is the backstop that keeps the two from disagreeing.
+        val wasHolding = _powerTarget.value != null
+        hold.set(null, 0, getCurrentEpochMillis())
+        _powerTarget.value = null
+        _powerCommanded.value = 0
+        _powerReleased.value = false
+        if (wasHolding) onPowerTargetChanged?.invoke(null, SOURCE_STATE)
     }
 
     fun clear() {
         stop()
         load()
+    }
+
+    /**
+     * Hold the rider at [watts], or hand them back to the road with null.
+     *
+     * The loop keeps running either way, because the lease lives in it: a game
+     * that goes quiet has to decay a power target exactly as it decays a hill,
+     * and something has to be timing it. What changes is only what the loop
+     * writes to the trainer.
+     *
+     * Returns the target actually held, after clamping.
+     */
+    fun setPowerTarget(
+        watts: Int?,
+        source: String = SOURCE_STATE,
+        nowMs: Long = getCurrentEpochMillis(),
+    ): Int? {
+        val clamped = watts?.coerceIn(
+            CompanionProtocol.MIN_POWER_WATTS,
+            CompanionProtocol.MAX_POWER_WATTS,
+        )
+        val changed = clamped != _powerTarget.value
+        hold.set(clamped, powerWatts(), nowMs)
+        _powerTarget.value = clamped
+        _powerCommanded.value = hold.commanded
+        _powerReleased.value = false
+        if (changed) onPowerTargetChanged?.invoke(clamped, source)
+        if (clamped == null) {
+            // Back to the road, and stated at once rather than at the next
+            // tick: the rider is waiting to feel something other than ERG.
+            _trainerForceN.value = 0.0
+            _trainerGradePercent.value = 0.0
+            lastSentForceNewtons = null
+            if (_running.value) pushRoadToTrainer(force = true)
+        } else {
+            // No road is being applied any more, and telemetry says so rather
+            // than leaving the last hill it described standing.
+            _trainerForceN.value = 0.0
+            _trainerGradePercent.value = 0.0
+            if (_running.value) pushPowerToTrainer(force = true)
+        }
+        return clamped
     }
 
     /**
@@ -528,6 +623,20 @@ class CompanionEngine(
                 onRoadStaleChanged?.invoke(stale)
             }
         }
+
+        // The road above was read, timed and published either way. Only the
+        // write below is the target's to take over.
+        if (hold.target != null) {
+            hold.update(
+                nowMs = nowMs,
+                cadenceRpm = cadenceRpm(),
+                worldAgeMs = if (everReceived) nowMs - roadAtMs else null,
+            )
+            _powerCommanded.value = hold.commanded
+            _powerReleased.value = hold.released
+            pushPowerToTrainer(force = false)
+            return
+        }
         pushRoadToTrainer(force = false)
     }
 
@@ -587,7 +696,42 @@ class CompanionEngine(
      * unconditional restatement every [SimulationEngine.REFRESH_INTERVAL_MS]
      * because a trainer that dropped and reconnected has forgotten.
      */
+    /**
+     * Write the commanded wattage, paced exactly as the road is.
+     *
+     * The GATT queue does not care which kind of write is queued on it, so the
+     * same floor and the same unconditional refresh apply: a trainer that
+     * dropped and reconnected has forgotten its target as surely as it forgets
+     * a hill.
+     */
+    private fun pushPowerToTrainer(force: Boolean) {
+        val now = getCurrentEpochMillis()
+        val watts = hold.commanded
+
+        val elapsed = now - lastSentEpochMs
+        val mustSend = force || sendOwed
+        val floorMs =
+            if (mustSend) SimulationEngine.MIN_SHIFT_INTERVAL_MS
+            else SimulationEngine.MIN_SEND_INTERVAL_MS
+        if (elapsed < floorMs) {
+            if (mustSend) sendOwed = true
+            return
+        }
+        if (!mustSend && watts == lastSentWatts && elapsed < SimulationEngine.REFRESH_INTERVAL_MS) return
+
+        sendOwed = false
+        lastSentEpochMs = now
+        lastSentWatts = watts
+        // A road written after this would be fighting the target for the
+        // control point, so the next one restates itself in full.
+        lastSentForceNewtons = null
+        applyPower(watts)
+    }
+
     private fun pushRoadToTrainer(force: Boolean) {
+        // P4: while a target is held the road is still read and still timed,
+        // but it is not what the trainer is being told.
+        if (hold.target != null) return
         val now = getCurrentEpochMillis()
         val gearIndex = _gearIndex.value
         val targetForce = trainerForceNewtons(gearIndex)
@@ -642,5 +786,8 @@ class CompanionEngine(
         const val SOURCE_SCREEN = "screen"
         const val SOURCE_CLICK = "zwiftClick"
         const val SOURCE_COMPANION = "companion"
+
+        /** A `powerTargetChanged` the ride's own state caused, rather than a request. */
+        const val SOURCE_STATE = EventFrame.SOURCE_STATE
     }
 }

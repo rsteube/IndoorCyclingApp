@@ -250,6 +250,11 @@ receives `stateChanged: active` after `welcome`; a ride it had paused itself sta
 rider can end a paused ride, which saves it as completed. This is app behaviour, not a protocol
 version.
 
+**0.10** added untracked riding (section 7b.1) and the `setPower` frame (section 7b.2): a ride
+state where the rider works and nothing is written down, and a fixed wattage to work at inside
+it. Additive, and gated on the `untracked` and `setPower` capabilities. A companion from before
+0.10 is told `paused` for the new state and never sees the new frames.
+
 **0.9** added screenshots (section 8a): the app sends `requestScreenshot` when the rider taps
 the camera button, and a companion that listed `screenshot` in `hello` answers with a
 `screenshot` frame carrying a JPEG or PNG, kept with the ride. Additive.
@@ -541,11 +546,14 @@ Requires the `setState` capability. Added in protocol 0.2.
 ```
 
 **Starts** the ride the first time, and resumes it after that. The app prepares the ride on
-connect and streams telemetry and applies the road straight away, but the clock does not run
-and nothing is written down until `"active"` arrives. There is no countdown: your game has its
+connect and streams telemetry straight away, but the clock does not run, nothing is written
+down, and **the trainer is not driven at all** until `"active"` arrives - the engine that
+applies the road starts with the ride. (Before 0.10 this section claimed the road was applied
+from the moment of connection. It was not, and no companion relied on it. If you want the
+rider to feel a road before the ride starts, ask for `"untracked"`.) There is no countdown: your game has its
 own idea of when a ride begins and the app cannot see it.
 
-`state` is `"active"` or `"paused"`; anything
+`state` is `"active"`, `"paused"` or, with the `untracked` capability, `"untracked"`; anything
 else is refused with a `rejected` warning rather than guessed at, because reading a misspelt
 word as "paused" would silently stop recording a ride the rider is still doing.
 
@@ -561,6 +569,94 @@ the phone has a stop-pedalling watchdog, and its foreground service can force on
 Note that `setState` does not stop the deadman. Keep sending `world` frames while you are
 paused (see [5.1](#51-the-deadman)) or the gradient will ramp to flat under a rider who may
 still be turning the pedals.
+
+### 7b.1 `untracked`: riding that is not written down
+
+Requires the `untracked` capability. Added in protocol 0.10.
+
+```json
+{ "t": "setState", "state": "untracked", "label": "Pushing the bike" }
+```
+
+**Active with the record switched off.** The session runs, telemetry streams, the engine
+drives the trainer from your `world` frames exactly as it does while active, and the lease
+runs. What stops is everything that writes the ride down. Use it when the rider is working
+but the effort is not part of the activity: pushing the bike up a climb they stalled on,
+warming up before your start line, spinning in your menus, cooling down after the finish.
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `label` | string | no | What the rider is doing, shown on the phone beside "Not recording". Trimmed to 48 characters. Ignored with any other state |
+
+What it means for the record:
+
+- The clock stops. `telemetry.elapsedS` holds, and going back to `"active"` continues from
+  there exactly as a resume does.
+- No sample is kept: no power, cadence or heart rate reaches the ride or its exports.
+- **`distanceM` and `ascentM` sent while untracked are not banked**, and do not raise the
+  kept maximum either. **Keep untracked travel out of the totals you send afterwards**: send
+  the totals you had when the rider went off the record.
+- Exports show it the way they show a pause: the timer stopped and started again.
+- The stop-pedalling watchdog does not run. Untracked never becomes a standby.
+- A crash restores the ride from its last recorded moment, never untracked.
+- `finish` while untracked saves what was recorded before it. On a ride that never started it
+  saves nothing, like any ride that never started.
+
+**It is allowed before the ride starts**, which is how a warm-up works: the engine starts
+driving the trainer, `elapsedS` stays at 0, and the first `"active"` is still the start of the
+ride. The ride the app prepares after a `finish` is in the same position, which is where a
+cool-down goes.
+
+Things the app does on its own, which you learn about from `stateChanged`:
+
+| What happens | Result |
+|---|---|
+| The rider presses pause on the phone | `paused`, trainer at 0 W |
+| The rider resumes that pause | back to `untracked`, with no power target |
+| The controller disconnects, ride started | Held as `paused` at 0 W. The same companion reconnecting brings it back to `untracked` |
+| The controller disconnects, ride never started | Nothing is held. The trainer is commanded 0 W and the ride goes back to not-started and paused. Ask for `untracked` again when you return |
+| The rider ends the ride on the phone | `finished`, saved |
+
+### 7b.2 `setPower` (companion -> app)
+
+Requires the `setPower` capability. Added in protocol 0.10.
+
+```json
+{ "t": "setPower", "watts": 125 }
+{ "t": "setPower", "watts": null }
+```
+
+Holds the trainer in ERG at a wattage, replacing the road for as long as it lasts. `null`
+hands it back to the road in your latest `world` frame.
+
+| Field | Type | Required | Range | Notes |
+|---|---|---|---|---|
+| `watts` | number or null | **yes** | clamped to `limits.powerWatts`, `[0, 1000]` | Rounded to the nearest watt. A frame with no `watts` at all is **malformed** and closes the socket |
+
+- **Honoured only while the ride is `untracked`.** Anywhere else it is refused with a
+  `rejected` warning naming `state`, and nothing changes. A power target may never shape a
+  ride that is being recorded.
+- Controller only. An observer gets `error notController` and stays connected.
+- Out of range is clamped with a `clamped` warning, as a `world` field is.
+- **The target is cleared whenever the ride leaves untracked**, for any reason, and every
+  entry into untracked starts without one. Send `setPower` again after each
+  `stateChanged: "untracked"`.
+- Rate limit: 10 a second, as for `requestShift`. The surplus is dropped with `rateLimited`.
+- A trainer that cannot take a power target, or no trainer at all, gets a `rejected` warning
+  naming `watts`. Nothing is queued: ask again once one is connected.
+- Virtual gears do not change an ERG load. `requestShift` is still accepted and still
+  answered, so the rider rides on in the gear they left in.
+
+Two rules protect the rider, and neither depends on your game behaving well:
+
+- **The target rides on the `world` lease.** Stop sending frames and the commanded wattage
+  decays to zero over the same ramp a gradient does, with `worldTimeout` as usual; frames
+  returning ramp it back over 2000 ms with `worldResumed`. Keep sending `world` while you
+  hold a target.
+- **A rider who stops pedalling is let go.** ERG raises the brake as the cranks slow, so a
+  stalled rider would be held against the target and unable to restart. Below 20 rpm for two
+  seconds the app commands 0 W; past 30 rpm it ramps back to the target over three seconds.
+  `powerTarget` stays set throughout, and only `powerCommanded` moves.
 
 ---
 
@@ -822,7 +918,12 @@ controllers and observers alike. Starts immediately after `welcome`.
 | `appliedGradient` | number | yes | **After clamping and the deadman ramp** |
 | `trainerForceN` | number | yes | Newtons at the wheel, after gear and the soft ceiling |
 | `trainerGradePercent` | number | yes | The grade actually written over FTMS |
-| `elapsedS` | integer s | yes | Ride elapsed time |
+| `elapsedS` | integer s | yes | Ride elapsed time. Holds while untracked |
+| `powerTarget` | integer W | **no** | The wattage a `setPower` asked for, after clamping. Present only while one is held |
+| `powerCommanded` | integer W | **no** | What the trainer is being told right now. Differs from `powerTarget` while the lease is decaying it or the rider has been let go. Present only while a target is held |
+
+While a power target is held there is no road being applied, so `appliedGradient`,
+`trainerForceN` and `trainerGradePercent` all report `0.0` and `speedMps` may be omitted.
 
 **Absent means absent.** A missing `hr` means no strap, not a heart rate of zero, and a
 missing `speedMps` means the trainer cannot count cadence, not that the rider has stopped. Do
@@ -870,6 +971,7 @@ gradient.
 | `listening` | Idle: no ride prepared |
 | `paused` | Standby (waiting for the rider to pedal), Countdown, or Paused |
 | `active` | Recording and riding |
+| `untracked` | Riding, not recording ([7b.1](#7b1-untracked-riding-that-is-not-written-down)). Only on a connection that negotiated 0.10 or later; older ones are told `paused`, because nothing is being recorded, which is the one fact below they can act on |
 | `finished` | Ride complete |
 
 A newly connected controller will typically see `paused` until the rider starts pedalling,
@@ -903,6 +1005,8 @@ encode as `0.0` rather than emitting invalid JSON.
 { "t": "event", "event": "worldTimeout", "fallback": "flat" }
 { "t": "event", "event": "worldResumed" }
 { "t": "event", "event": "controlRevoked", "by": "rider" }
+{ "t": "event", "event": "powerTargetChanged", "watts": 125, "source": "companion" }
+{ "t": "event", "event": "powerTargetChanged", "source": "state" }
 ```
 
 | `event` | Fields | When |
@@ -911,10 +1015,17 @@ encode as `0.0` rather than emitting invalid JSON.
 | `worldTimeout` | `fallback` | The lease expired; the road is ramping to flat |
 | `worldResumed` | | A `world` frame arrived after a timeout |
 | `stateChanged` | `state` | Ride state transitions the app broadcasts |
+| `powerTargetChanged` | `watts`, `source` | The requested power target changed |
 | `controlRevoked` | `by` | The rider took back control |
 
-`source` values: `screen`, `zwiftClick`, `companion`. Emitted to **all** connections, so an
-observer sees shifts too.
+`source` values: `screen`, `zwiftClick`, `companion`, and `state` for a power target the
+ride's own state cleared. Emitted to **all** connections, so an observer sees shifts too.
+
+On `powerTargetChanged`, **an absent `watts` means the target was released**: the app omits a
+field it has no value for rather than writing `null`, here as everywhere else
+([14](#14-tolerance-rules-both-directions-mandatory)). The decay and the release of a stopped
+rider are not target changes and never appear here; watch `telemetry.powerCommanded` for
+those.
 
 Reserved, defined but not currently emitted: `riderInput`, `trainerLost`.
 
@@ -1019,7 +1130,7 @@ Present in the protocol, absent from this build. Do not design around them.
 | `riderInput` | Zwift Click presses are consumed as shifts; unconsumed presses are not forwarded |
 | `trainerLost`, `noTrainer` | Defined, never emitted |
 | Consent scopes | Pairing is one decision; there is no separate grant for biometrics |
-| Trainer control tiers | `sim` only. No resistance or power-only fallback |
+| Trainer control tiers | `sim`, plus ERG for a `setPower` target while the ride is untracked (7b.2). No resistance tier, and no power target during a recorded ride |
 | Steering | No frame |
 | TLS | Plaintext on the LAN, authenticated by the pairing code |
 
@@ -1129,6 +1240,12 @@ Present in the protocol, absent from this build. Do not design around them.
 - [ ] Send `setState: "active"` when your world says the ride has begun. **Nothing is recorded
       until you do**
 - [ ] Send `setState` on your own pause and resume, and keep sending `world` while paused
+- [ ] If the rider works without it counting - pushing the bike, a warm-up, a cool-down - ask
+      for `setState: "untracked"` with a `label`, and keep untracked travel out of the
+      `distanceM`/`ascentM` totals you send afterwards
+- [ ] Send `setPower` again after **every** `stateChanged: "untracked"`: the target never
+      survives leaving the state
+- [ ] Keep sending `world` while you hold a power target, or it decays to zero on the lease
 - [ ] If you show menus, send `controls` with an accurate `enabled` list, and `visible: false`
       when the menu closes
 - [ ] Follow `stateChanged`; never assume a `setState` took effect

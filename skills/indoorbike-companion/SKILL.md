@@ -1,6 +1,6 @@
 ---
 name: indoorbike-companion
-description: Build a companion app that drives an Indoor Bike trainer ride over the local network - the game owns the world, position and virtual speed; the phone owns the trainer, the gears and the recording. Use when implementing or debugging the client side of the Indoor Bike Companion API (WebSocket, JSON, `_indoorbike._tcp`, `ws://host:port/companion`, `world`/`telemetry`/`requestShift` frames), when a companion cannot pair, connect or find the phone on the network (UDP discovery beacon on port 47601, mDNS), when trainer resistance feels wrong, or when a companion is being written in Godot, Unity, Unreal, C#, Python or TypeScript.
+description: Build a companion app that drives an Indoor Bike trainer ride over the local network - the game owns the world, position and virtual speed; the phone owns the trainer, the gears and the recording. Use when implementing or debugging the client side of the Indoor Bike Companion API (WebSocket, JSON, `_indoorbike._tcp`, `ws://host:port/companion`, `world`/`telemetry`/`requestShift` frames), when a companion cannot pair, connect or find the phone on the network (UDP discovery beacon on port 47601, mDNS), when trainer resistance feels wrong, when a game needs the rider to work without it being recorded (`untracked`, `setPower`, pushing a bike up a climb, a warm-up or a cool-down), or when a companion is being written in Godot, Unity, Unreal, C#, Python or TypeScript.
 ---
 
 # Building an Indoor Bike companion
@@ -49,13 +49,15 @@ fields. Apply them to the speed you compute, then send the result.
 7. **Add `course`, `setState` and `finish`.** These are what make a companion ride land in the
    rider's history looking like a ride rather than like a log file.
 8. **Send `setState: "active"` when your ride begins.** Nothing is recorded until you do.
+   If the rider works before or between rides - a warm-up, pushing the bike, a cool-down - ask
+   for `"untracked"` rather than leaving it out of the record by accident.
 9. **Add `controls`, if you show menus.** Lends the rider's phone to a screen they cannot
    otherwise answer.
 
 Do not start at step 4. A companion that renders a mountain before it has proven a flat road
 has two untested systems and no way to tell which is wrong.
 
-## The fifteen rules that prevent most bugs
+## The sixteen rules that prevent most bugs
 
 1. **Send `hello` first, and nothing else until the `welcome` arrives.** Any other first frame
    is `unauthorized` and a close with 4002. A phone that remembers you answers `hello` with a
@@ -100,6 +102,9 @@ has two untested systems and no way to tell which is wrong.
     `JSON.stringify` writes every number that went through `JSON.parse_string` as `921.0`.
     Current phones read it; builds up to 2.2 refused the frame, and a `finish` refused that way
     never ended the ride. Convert with `int()` or `roundi()` before you send.
+16. **A power target never survives leaving `untracked`.** Send `setPower` again after
+    *every* `stateChanged: "untracked"`, including the ones you did not ask for: a rider's
+    pause and resume, and your own reconnect, both land you back there with no target.
 
 ## Speed: take it, do not compute it
 
@@ -181,6 +186,8 @@ a week later. All three are optional, and all three are worth the hour.
   it, twenty rides all called "Companion ride" with no shape.
 - **`setState`** pauses and resumes the recording. If your game has a pause, a menu or a
   loading screen, use it, or the ride record quietly accumulates minutes of zeroes nobody rode.
+  When the rider is still *working* but it should not count, ask for `"untracked"` instead of
+  `"paused"`: see the next section but one.
 - **`finish`** ends the ride on the phone. Nothing else can know a companion ride is over.
 
 `finish.summary` is the short form of `course` and merges into the same place. You need one of
@@ -230,9 +237,11 @@ the last thing you will hear.
 
 ## Your game owns the start
 
-The app prepares the ride the moment you connect. Telemetry starts flowing, the road is applied,
-the trainer responds. **But the clock does not run and nothing is written down until you send
-`setState: "active"`.**
+The app prepares the ride the moment you connect and telemetry starts flowing. **But the clock
+does not run, nothing is written down, and the trainer is not driven at all until you send
+`setState: "active"`.** (Documentation before 0.10 claimed the road was applied from the moment
+you connected. It was not. If you want the rider to feel a road before the ride starts, ask for
+`"untracked"` first: see the next section.)
 
 ```json
 { "t": "setState", "state": "active" }
@@ -248,6 +257,58 @@ The phone shows "Ready, start the ride in the game" while it waits.
 
 **If you forget this, the rider pedals, the road works, and nothing is ever recorded.** It is
 the single easiest way to ship a companion that looks right and saves nothing.
+
+## When the rider is working and it must not count
+
+Some of what a rider does on the bike is not part of the activity. They stall on a climb your
+game will not let them ride and push the bike to the top. They warm up before your start line,
+spin through your menus, cool down after the finish. `"active"` records all of it. `"paused"`
+stops the ride *and* drops the trainer to 0 W, leaving them grinding against whatever the
+machine's minimum brake happens to be, with the phone claiming they are paused while they work.
+
+`"untracked"` is the state in between, and `setPower` is what makes it useful (protocol 0.10;
+check `welcome.capabilities` for `untracked` and `setPower`).
+
+```json
+{ "t": "setState", "state": "untracked", "label": "Pushing the bike" }
+{ "t": "setPower", "watts": 125 }
+```
+
+**It is active with the record switched off.** Telemetry streams, your `world` frames still
+drive the trainer, the deadman still runs, and the phone says "Not recording" with your `label`
+beside it. What stops is the writing down: the clock holds, no sample is kept, and the ride's
+distance and climb do not move.
+
+Five things to get right:
+
+1. **Keep untracked travel out of your totals.** `distanceM` and `ascentM` sent while untracked
+   are ignored, and they do not raise the kept maximum either, so a total that grew during the
+   walk cannot arrive later. Send the totals you had when the rider went off the record.
+2. **Send `setPower` again after every `stateChanged: "untracked"`** (rule 16). A target is
+   cleared whenever the ride leaves the state, for any reason.
+3. **Keep sending `world` while you hold a target.** It rides on the same 1500 ms lease a road
+   does, so a stalled frame loop decays the wattage to zero. That is the protection against a
+   game that hangs leaving a rider pinned at 300 W, and it fires whether or not you meant it.
+4. **Expect the phone to let a stopped rider go.** ERG raises the brake as the cranks slow, so
+   below 20 rpm for two seconds the phone commands 0 W and takes the target back over three
+   seconds once they are pedalling again. `telemetry.powerTarget` stays put throughout; only
+   `powerCommanded` moves. Draw what the trainer is actually doing from the second one.
+5. **A target is refused outside untracked**, with a `rejected` warning naming `state`. A power
+   target may never shape a ride that is being recorded, which is also why there is no way to
+   ask for one during an ordinary ride.
+
+It works **before the ride starts**, which is how a warm-up gets a road and a wattage:
+`elapsedS` stays at 0 and your first `"active"` is still the beginning of the ride. The ride the
+phone prepares after a `finish` is in the same position, which is where a cool-down goes.
+
+Two app-side behaviours to design around. If the rider pauses on the phone mid-walk, resuming
+puts them back in `untracked`, not into a recorded ride. And if **you** disconnect: a ride that
+had started is held paused and comes back to `untracked` when you reconnect, while one that
+never started is dropped outright, the trainer commanded 0 W, so ask again for `untracked` and
+your target when you return.
+
+An absent `watts` on `powerTargetChanged`, and absent `powerTarget` in telemetry, both mean no
+target is held. The phone omits fields it has no value for rather than writing `null`.
 
 ## Optional: be remembered, and stop typing codes
 
@@ -397,6 +458,7 @@ and normal thereafter, that is this and not a bug in your world.
 | `world` out | 4-10 Hz | Fixed timer, **not** per frame. A 144 Hz game must not send 144 Hz |
 | `telemetry` in | `welcome.tickMs` (250 ms) | Interpolate for rendering; do not ask for faster |
 | `requestShift` | max 10/s | Excess is warned and dropped, never an error |
+| `setPower` | max 10/s | Same limiter, its own budget. Honoured only while `untracked` |
 | `course` out | whenever | Merged field by field. Once at the start and once at the end is the usual shape |
 | `setState` out | on your own transitions | A request, not a command. `stateChanged` is the answer |
 | `controls` out | when a menu opens, changes or closes | The last frame wins. Do not forget `visible: false` |
@@ -431,6 +493,9 @@ all. Treat `worldTimeout` as a bug report about your own frame loop.
 | Resistance feels flat on hills | Check `telemetry.appliedGradient`, not what you sent |
 | Resistance wrong at speed | You are not sending a real `speedMps` |
 | Distance stuck | You are sending deltas instead of cumulative totals |
+| `setPower` refused, `rejected` on `state` | The ride is not `untracked`. Ask for that state and wait for its `stateChanged` before sending a target |
+| Your target quietly became 0 W | The rider stopped pedalling, or your `world` frames stopped and the lease decayed it. Watch `telemetry.powerCommanded` |
+| `setPower` refused, `rejected` on `watts` | No trainer, or one with no FTMS control point. Nothing is queued; ask again once one is connected |
 | 4003 on connect | Another controller holds the ride |
 
 `telemetry.appliedGradient` is what the rider is actually feeling, after clamping and the
@@ -483,6 +548,8 @@ yours: `scripts/companion_probe.py` is a companion in one file, standard library
 hand-rolled WebSocket client. It does the handshake, pumps `world` frames, sends `drivetrain`,
 `controls`, `setState` and `finish`, and prints everything that comes back. It is the shortest
 complete example of the client side of this protocol that exists.
+`--scenario untracked` is a worked push-the-bike: ride, go off the record at half the rider's
+FTP, walk with the totals frozen, and come back on the record at the summit.
 
 For the other direction, write a mock server before you have a trainer to hand. It needs to: accept a WebSocket on
 `/companion`, answer `hello` with a `welcome`, push `telemetry` every 250 ms, and echo

@@ -203,6 +203,19 @@ class TrainerManager {
 
     // Public API ─────────────────────────────────────────────────────────────
 
+    /**
+     * Whether a [setTargetPower] write would actually reach a trainer.
+     *
+     * A machine with no FTMS control point cannot be held at a wattage at all,
+     * and one that is not connected cannot be told anything. Asked before a
+     * companion is promised a power target, so it can be told which of the two
+     * it has run into rather than watching its target quietly do nothing.
+     */
+    val acceptsTargetPower: Boolean
+        get() = _isMockTrainer.value ||
+            (_connectionState.value == TrainerConnectionState.Connected &&
+                ftmsControlPointWriter != null)
+
     fun setTargetPower(watts: Int) {
         val clamped = watts.coerceAtLeast(0)
         _targetPower.value = clamped

@@ -260,8 +260,12 @@ fun RideScreen(
     // A simulated ride is offered the same mid-ride exit as a free ride: a
     // rider who has had enough of a route is done, and making them pause first
     // to be allowed to save it would be busywork.
+    // Untracked riding offers it too: the rider is on the bike with the clock
+    // stopped, and what they rode before they went off the record is a ride
+    // worth keeping. It saves nothing when they never started one.
     val canEndAndSave = (state == WorkoutState.Paused ||
         (state == WorkoutState.Standby && actualRide > 0) ||
+        (state == WorkoutState.Untracked && actualRide > 0) ||
         ((isFreeRide || isSimulation) && state == WorkoutState.Active && actualRide > 0))
     // Idempotency guard for the post-completion save+navigate path. The
     // LaunchedEffect that watches `state` + `continueRequested` would otherwise
@@ -313,6 +317,9 @@ fun RideScreen(
     // A companion can ask to be remembered after the ride is under way, in
     // which case the rider is looking at the HUD rather than the pairing card.
     val pendingPairing by companionHost.pendingPairing.collectAsState()
+    val untrackedLabel by sessionManager.untrackedLabel.collectAsState()
+    val companionPowerTarget by companionEngine.powerTarget.collectAsState()
+    val companionPowerReleased by companionEngine.powerReleased.collectAsState()
     val companionGradient by companionEngine.gradient.collectAsState()
     val companionSpeed by companionEngine.speedMps.collectAsState()
     val companionDistance by companionEngine.distanceMeters.collectAsState()
@@ -636,6 +643,9 @@ fun RideScreen(
             RideHeader(
                 workoutName = workout!!.name,
                 state = state,
+                untrackedLabel = untrackedLabel,
+                powerTarget = companionPowerTarget,
+                powerReleased = companionPowerReleased,
                 elapsed = elapsed,
                 totalDuration = totalDuration,
                 // A companion ride has no total either: the game decides when it
@@ -645,7 +655,11 @@ fun RideScreen(
                 onBack = handleBack,
                 onPauseToggle = {
                     when (state) {
-                        WorkoutState.Active -> sessionManager.pauseWorkout()
+                        // Pausing untracked riding is an ordinary pause, and
+                        // resuming puts the rider back on the walk they were
+                        // on rather than starting to record them.
+                        WorkoutState.Active, WorkoutState.Untracked ->
+                            sessionManager.pauseWorkout()
                         WorkoutState.Paused -> sessionManager.resumeWorkout()
                         else -> {}
                     }
@@ -1217,6 +1231,12 @@ private fun RideHeader(
      * any notice about the companion in place of the ride's status line.
      */
     companion: CompanionHeaderStyle? = null,
+    /** What the companion says an untracked rider is doing, when it said. */
+    untrackedLabel: String? = null,
+    /** The wattage an untracked ride is being held at, if any. */
+    powerTarget: Int? = null,
+    /** True while that target is set but the rider has been let go of it. */
+    powerReleased: Boolean = false,
     /** Hide pause, resume and end, leaving only the debug mock toggle. */
     rideControlsHidden: Boolean = false,
     /** Ask the companion for a picture of its screen. Null when there is nobody to ask. */
@@ -1231,9 +1251,26 @@ private fun RideHeader(
             else -> "Standby · pedal to start"
         }
         WorkoutState.Paused -> "Paused · trainer at 0 W"
+        // Says the thing that matters first: none of this is going into the
+        // ride. What the rider is doing, and what they are being held at, come
+        // after it.
+        WorkoutState.Untracked -> buildString {
+            append("Not recording")
+            untrackedLabel?.let { append(" · ").append(it) }
+            when {
+                // Never a target the trainer is not actually holding.
+                powerReleased -> append(" · target let go, pedal to take it back")
+                powerTarget != null -> append(" · Target ").append(powerTarget).append(" W")
+            }
+        }
         else -> null
     }
-    val rideStateColor = if (state == WorkoutState.Paused || canEndAndSave) CadenceColors.Warning else CadenceColors.Fg3
+    val rideStateColor =
+        if (state == WorkoutState.Paused || state == WorkoutState.Untracked || canEndAndSave) {
+            CadenceColors.Warning
+        } else {
+            CadenceColors.Fg3
+        }
     // A notice about the companion outranks the ride's own state: "no companion,
     // flat road" matters more to a rider than "ready".
     val stateText = companion?.notice?.text ?: rideStateText
@@ -1467,7 +1504,7 @@ private fun RideControls(
         }
         // The pause control is the ride's primary action, so it takes the white
         // fill - the same rule as a bottom-of-screen primary button.
-        if (state == WorkoutState.Active) {
+        if (state == WorkoutState.Active || state == WorkoutState.Untracked) {
             HudPill(
                 text = "Pause",
                 icon = Icons.Filled.Pause,

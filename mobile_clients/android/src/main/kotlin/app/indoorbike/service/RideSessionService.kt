@@ -80,7 +80,10 @@ class RideSessionService : Service() {
                 val container = (applicationContext as IndoorBikeApp).container
                 val state = container.sessionManager.state.value
                 if (state == WorkoutState.Active || state == WorkoutState.Paused ||
-                    state == WorkoutState.Standby || state == WorkoutState.Countdown
+                    state == WorkoutState.Standby || state == WorkoutState.Countdown ||
+                    // Not written down is not the same as not happening: a
+                    // redelivered start during a warm-up keeps the ride alive.
+                    state == WorkoutState.Untracked
                 ) {
                     startRide()
                 } else {

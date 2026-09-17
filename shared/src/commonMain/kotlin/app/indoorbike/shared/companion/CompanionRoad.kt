@@ -93,7 +93,7 @@ class CompanionRoad {
      * that the value the rider sees on the HUD and the value the trainer is
      * given are the same number, and so that a companion is told about it.
      */
-    fun accept(frame: WorldFrame, nowMs: Long): RoadUpdate {
+    fun accept(frame: WorldFrame, nowMs: Long, bankProgress: Boolean = true): RoadUpdate {
         if (everAccepted && frame.seq <= lastSeq) return RoadUpdate.Stale
 
         val clamps = mutableListOf<Clamped>()
@@ -127,6 +127,11 @@ class CompanionRoad {
         // Both are cumulative and must never go backwards. A companion that
         // resets its own counter mid-ride would otherwise hand the ride record
         // a negative distance, so the larger value wins rather than the newer.
+        //
+        // Unless the ride is untracked, in which case the road is still ridden
+        // but the ground is not covered as far as the record is concerned, and
+        // remembering it as a maximum would smuggle it back in later.
+        if (!bankProgress) return RoadUpdate.Applied(clamps)
         frame.distanceM?.let { reported ->
             val current = distanceM
             if (current == null || reported > current) distanceM = reported

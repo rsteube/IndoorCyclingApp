@@ -57,6 +57,21 @@ enum class WorkoutState {
     Countdown,
     Active,
     Paused,
+
+    /**
+     * Riding that is not being written down.
+     *
+     * Active with the record switched off: the engine drives the trainer, the
+     * telemetry streams and the rider is working, but the clock is stopped, no
+     * sample is kept and no snapshot is written. A companion asks for it when
+     * the rider is doing something the ride should not carry - pushing the bike
+     * up a climb they stalled on, warming up before the start line, spinning in
+     * a menu - and the app owes them a state that is honest about both halves
+     * of that. Companion rides only; nothing else has anybody to ask.
+     *
+     * See `setState` in `skills/indoorbike-companion/references/protocol.md`.
+     */
+    Untracked,
     Completed,
 }
 
@@ -155,6 +170,27 @@ class WorkoutSessionManager(
      */
     private val _virtualDistanceMeters = MutableStateFlow(0.0)
     val virtualDistanceMeters: StateFlow<Double> = _virtualDistanceMeters.asStateFlow()
+
+    /**
+     * What the companion says the rider is doing while the ride is
+     * [WorkoutState.Untracked], or null when it did not say.
+     *
+     * Lives here rather than on the socket's status because it is only ever
+     * true of a state this class owns, and because leaving that state is what
+     * clears it. Shown beside "Not recording" on the ride screen.
+     */
+    private val _untrackedLabel = MutableStateFlow<String?>(null)
+    val untrackedLabel: StateFlow<String?> = _untrackedLabel.asStateFlow()
+
+    /**
+     * Set while a pause interrupted an untracked stretch, so resuming returns
+     * the rider to it rather than starting to record them.
+     *
+     * The rider's pause button, the phone's own dialogs and a companion going
+     * away all land in [WorkoutState.Paused], and none of them mean "and when
+     * you come back, start writing this down".
+     */
+    private var pausedFromUntracked = false
 
     private val _countdownSeconds = MutableStateFlow(3)
     val countdownSeconds: StateFlow<Int> = _countdownSeconds.asStateFlow()
@@ -286,6 +322,8 @@ class WorkoutSessionManager(
         _currentSegmentIndex.value = 0
         _elapsedInSegment.value = 0
         _targetBiasPercent.value = 0
+        _untrackedLabel.value = null
+        pausedFromUntracked = false
         // Meaningful only for a free ride; [prepareFreeRide] sets it right
         // after this returns. Cleared here so a structured workout started
         // after one can't inherit a stale target.
@@ -606,7 +644,12 @@ class WorkoutSessionManager(
     }
 
     fun pauseWorkout() {
-        if (_state.value != WorkoutState.Active) return
+        val from = _state.value
+        if (from != WorkoutState.Active && from != WorkoutState.Untracked) return
+        // Remembered before the state moves, so a rider who paused a walk up a
+        // climb is put back on the walk rather than into a recorded ride.
+        pausedFromUntracked = from == WorkoutState.Untracked
+        _untrackedLabel.value = null
         _state.value = WorkoutState.Paused
         simulationEngine?.stop()
         companionEngine?.stop()
@@ -630,7 +673,10 @@ class WorkoutSessionManager(
      */
     fun notifyForegroundServiceFailure(message: String) {
         _foregroundServiceFailure.value = message
-        if (_state.value == WorkoutState.Active || _state.value == WorkoutState.Countdown) {
+        val state = _state.value
+        if (state == WorkoutState.Active || state == WorkoutState.Countdown ||
+            state == WorkoutState.Untracked
+        ) {
             pauseWorkout()
         }
     }
@@ -642,10 +688,68 @@ class WorkoutSessionManager(
 
     fun resumeWorkout() {
         if (_state.value != WorkoutState.Paused) return
+        // A pause that interrupted untracked riding resumes into untracked
+        // riding. The companion is told, and asks for its power target again if
+        // it wants one: a target never survives leaving the state.
+        if (pausedFromUntracked) {
+            startUntracked()
+            return
+        }
         _state.value = WorkoutState.Active
         anchorActivePhase()
         startModeControl()
         startTimerLoop()
+    }
+
+    /**
+     * Ride without being recorded, at the companion's request.
+     *
+     * The clock stops where it is and nothing is written down from here until
+     * the ride goes active again, but the trainer is still driven: this is the
+     * rider working, not the rider resting. Allowed before the ride has ever
+     * started, for a warm-up, in which case [sessionStartTimeEpoch] stays 0 and
+     * the first `active` is still the moment the ride begins.
+     *
+     * Companion rides only, and a no-op once the ride is over. Returns true
+     * when the ride actually moved into the state, which is what the caller
+     * announces; asking again only replaces [label].
+     */
+    fun startUntracked(label: String? = null): Boolean {
+        if (_activeWorkout.value?.isCompanion != true) return false
+        _untrackedLabel.value = label?.takeIf { it.isNotBlank() }
+        if (_state.value == WorkoutState.Untracked) return false
+        val allowed = _state.value == WorkoutState.Active ||
+            _state.value == WorkoutState.Paused ||
+            _state.value == WorkoutState.Standby
+        if (!allowed) return false
+        // The timer stops exactly as a pause stops it, and its exit handler
+        // flushes the last samples of whatever was recorded up to here.
+        timerJob?.cancel()
+        pausedFromUntracked = false
+        _state.value = WorkoutState.Untracked
+        // The engine keeps the trainer: an untracked rider is still on a road,
+        // or on the power target the companion is about to ask for.
+        startModeControl()
+        return true
+    }
+
+    /**
+     * Leave untracked riding for the not-started paused state, with the trainer
+     * let go.
+     *
+     * For the one case where there is nothing to hold: a companion disappears
+     * while a rider is warming up on a ride that never started. There is no
+     * ride to resume, so this is not a pause that remembers anything - it is
+     * the app putting the trainer down, because the thing describing the road
+     * has gone and the lease would only flatten the road, never stop it.
+     */
+    fun standDownUntracked() {
+        if (_state.value != WorkoutState.Untracked) return
+        pausedFromUntracked = false
+        _untrackedLabel.value = null
+        companionEngine?.stop()
+        trainerManager.setTargetPower(0)
+        _state.value = WorkoutState.Standby
     }
 
     /**
@@ -665,6 +769,8 @@ class WorkoutSessionManager(
         companionEngine?.stop()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Idle
+        _untrackedLabel.value = null
+        pausedFromUntracked = false
         _activeWorkout.value = null
     }
 
@@ -698,7 +804,29 @@ class WorkoutSessionManager(
         if (_activeWorkout.value?.isCompanion != true) return
         when (_state.value) {
             WorkoutState.Standby -> startActiveWorkout()
-            WorkoutState.Paused -> resumeWorkout()
+            WorkoutState.Paused -> {
+                // An `active` overrides the pause's memory of where it came
+                // from: the companion is asking to record, not to go back to
+                // the walk it interrupted.
+                pausedFromUntracked = false
+                resumeWorkout()
+            }
+            WorkoutState.Untracked -> {
+                _untrackedLabel.value = null
+                // Whatever was being held goes with the state that allowed it.
+                companionEngine?.setPowerTarget(null)
+                if (sessionStartTimeEpoch == 0L) {
+                    // A warm-up that never counted. The ride begins here.
+                    startActiveWorkout()
+                } else {
+                    _state.value = WorkoutState.Active
+                    // Anchored, so the untracked stretch is not billed to the
+                    // clock the way a pause is not.
+                    anchorActivePhase()
+                    startModeControl()
+                    startTimerLoop()
+                }
+            }
             else -> Unit
         }
     }
@@ -719,9 +847,18 @@ class WorkoutSessionManager(
      */
     fun holdCompanionRide(): Boolean {
         if (_activeWorkout.value?.isCompanion != true) return false
-        if (sessionStartTimeEpoch == 0L) return false
+        if (sessionStartTimeEpoch == 0L) {
+            // Nothing to hold, but a warm-up is still turning the trainer over
+            // for a game that has gone. Put it down rather than leave the rider
+            // working against a road nobody is describing.
+            standDownUntracked()
+            return false
+        }
         return when (_state.value) {
-            WorkoutState.Active -> {
+            WorkoutState.Active, WorkoutState.Untracked -> {
+                // Untracked included: the ride was under way, and the rider
+                // gets it back in the state they left it in when the game
+                // returns. `pauseWorkout` remembers which that was.
                 pauseWorkout()
                 true
             }
@@ -1195,6 +1332,8 @@ class WorkoutSessionManager(
 
     private fun completeWorkout() {
         recordRouteProgress()
+        _untrackedLabel.value = null
+        pausedFromUntracked = false
         // Flip state first so the timer loop's while-condition fails and it
         // unwinds through its exit handler, flushing the ride's last samples.
         _state.value = WorkoutState.Completed

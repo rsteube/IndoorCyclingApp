@@ -163,6 +163,16 @@ class CompanionHost(
     private val heartRateBpm: () -> Int,
     private val trainerName: () -> String?,
     private val trainerConnected: () -> Boolean,
+    /**
+     * Whether a connected trainer will take a Set Target Power write.
+     *
+     * Separate from [trainerConnected] because the two fail differently: a
+     * power target with no trainer is a request too early, and one to a trainer
+     * with no FTMS control point is a request this machine can never honour.
+     * The companion is told which. Defaults to false so a platform that has not
+     * wired it refuses targets rather than swallowing them.
+     */
+    private val trainerAcceptsPower: () -> Boolean = { false },
     /** This phone's stable identity, so a paired companion knows which it reached. */
     private val deviceId: () -> String = { "" },
     /** Companions the rider has trusted. Null disables pairing entirely. */
@@ -396,7 +406,20 @@ class CompanionHost(
          * "send the frame *and* the reason" rule exists to prevent.
          */
         val write: Mutex = Mutex(),
-    )
+    ) {
+        /**
+         * The ride state this connection was last told about, in its own
+         * vocabulary.
+         *
+         * Per connection rather than per host because two companions on one
+         * ride can be owed different words for the same state: one that
+         * negotiated 0.10 hears `untracked`, an older one hears `paused`, and
+         * an untracked stretch that begins and ends between two of its pauses
+         * is a change for the first and no change at all for the second.
+         */
+        @Volatile
+        var announcedState: String? = null
+    }
 
     // Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -479,13 +502,13 @@ class CompanionHost(
 
                 engine.onGearChanged = ::broadcastGearChanged
                 engine.onRoadStaleChanged = ::broadcastRoadStale
+                engine.onPowerTargetChanged = ::broadcastPowerTarget
                 telemetryJob = scope.launch { telemetryLoop() }
                 // A finished ride has to reach the companion when it finishes,
                 // not when the rider gets round to tapping through the summary.
                 // Tying this to the screen meant a game sat waiting on a ride
                 // that had been over for minutes.
                 rideWatchJob = scope.launch {
-                    var announced: String? = null
                     // Not `state == Completed`. The session sits on that from
                     // the moment a ride is saved until the next one is
                     // prepared, which includes every second of the pairing
@@ -519,11 +542,7 @@ class CompanionHost(
                         // force one. A game that only ever heard about the
                         // pauses it requested would carry on rolling its world
                         // while the recording sat still.
-                        val now = rideState.asCompanionState()
-                        if (now != announced) {
-                            announced = now
-                            broadcast(EventFrame(event = EventFrame.STATE_CHANGED, state = now))
-                        }
+                        announceState(rideState.asCompanionState())
                     }
                 }
             } catch (e: Exception) {
@@ -574,6 +593,7 @@ class CompanionHost(
         rideWatchJob = null
         engine.onGearChanged = null
         engine.onRoadStaleChanged = null
+        engine.onPowerTargetChanged = null
         advertiser.stop()
         beacon.stop()
 
@@ -667,6 +687,7 @@ class CompanionHost(
             snapshot = ::snapshot,
             controllerConnected = { controller != null },
             pairedKeyFor = { pairedKeys[it] },
+            rideState = ::rideState,
         )
         val conn = Conn(session, ws)
         connections.add(conn)
@@ -927,18 +948,54 @@ class CompanionHost(
                     )
                 }
 
-                is CompanionEffect.SetRideState -> {
-                    // Requests, not commands. `pauseWorkout` ignores anything
-                    // that is not an active ride and `resumeWorkout` anything
-                    // that is not a paused one, so a companion that pauses
-                    // twice, or resumes a ride the rider already resumed,
-                    // changes nothing. The `stateChanged` broadcast above is
-                    // the answer either way.
-                    if (effect.paused) sessionManager.pauseWorkout()
-                    // Starts the ride the first time, resumes it after that.
-                    // A companion should not have to know which of the two it
-                    // is asking for.
-                    else sessionManager.startOrResumeCompanionRide()
+                is CompanionEffect.SetRideState -> when (effect.state) {
+                    // Requests, not commands. Each of these ignores a ride that
+                    // is not in a state it can act on, so a companion that
+                    // pauses twice, or resumes a ride the rider already
+                    // resumed, changes nothing. The `stateChanged` the ride
+                    // watch sends is the answer either way.
+                    CompanionState.PAUSED -> sessionManager.pauseWorkout()
+
+                    // Riding that is not written down. Asking again with a new
+                    // label only changes the label, which is why the announce
+                    // below is conditional on the state having moved.
+                    CompanionState.UNTRACKED ->
+                        if (sessionManager.startUntracked(effect.label)) {
+                            // Said at once rather than waiting for the ride
+                            // watch: a companion sends `setPower` the moment it
+                            // hears this, and a target that arrives before the
+                            // state does is a target that gets refused.
+                            announceState(CompanionState.UNTRACKED)
+                        }
+
+                    // Starts the ride the first time, resumes it after that,
+                    // and brings it back on the record from untracked. A
+                    // companion should not have to know which it is asking for.
+                    else -> sessionManager.startOrResumeCompanionRide()
+                }
+
+                is CompanionEffect.SetPowerTarget -> {
+                    val watts = effect.watts
+                    if (watts != null && !trainerAcceptsPower()) {
+                        // P8: nothing is queued for a trainer that might turn
+                        // up later. The rider stays on the road, and the game
+                        // can ask again once one is connected.
+                        conn.send(
+                            WarningFrame(
+                                code = CompanionWarning.REJECTED,
+                                field = "watts",
+                                message = if (trainerConnected()) {
+                                    "This trainer will not take a power target " +
+                                        "(no FTMS control point); the ride stays on the road."
+                                } else {
+                                    "No trainer is connected, so there is nothing to " +
+                                        "hold at a wattage; the ride stays on the road."
+                                },
+                            )
+                        )
+                    } else {
+                        engine.setPowerTarget(watts, CompanionEngine.SOURCE_COMPANION)
+                    }
                 }
 
                 is CompanionEffect.Finish -> {
@@ -954,15 +1011,8 @@ class CompanionHost(
                     // same pair of events a real ending produces. Nothing is
                     // written, because nothing happened.
                     if (sessionManager.state.value != WorkoutState.Completed) {
-                        broadcast(
-                            EventFrame(
-                                event = EventFrame.STATE_CHANGED,
-                                state = CompanionState.FINISHED,
-                            )
-                        )
-                        broadcast(
-                            EventFrame(event = EventFrame.STATE_CHANGED, state = rideState())
-                        )
+                        announceState(CompanionState.FINISHED)
+                        announceState(rideState())
                     }
                 }
             }
@@ -1197,6 +1247,24 @@ class CompanionHost(
         )
     }
 
+    /**
+     * The requested power target changed, whoever caused it.
+     *
+     * Broadcast rather than answered to the asker alone, like `gearChanged`: an
+     * observer drawing the rider's screen needs to know they are being held at
+     * a wattage, and the companion that asked needs to hear when the ride's own
+     * state took its target away.
+     */
+    private fun broadcastPowerTarget(watts: Int?, source: String) {
+        broadcast(
+            EventFrame(
+                event = EventFrame.POWER_TARGET_CHANGED,
+                watts = watts,
+                source = source,
+            )
+        )
+    }
+
     private fun broadcastRoadStale(stale: Boolean) {
         broadcast(
             if (stale) {
@@ -1228,12 +1296,22 @@ class CompanionHost(
             val ready = connections.filter { it.session.role != null }
             if (ready.isEmpty()) continue
             val frame = telemetryFrame()
-            ready.forEach { it.send(frame) }
+            // One frame, two vocabularies: the `state` is the only field that
+            // differs, and only for a connection older than 0.10.
+            ready.forEach { conn ->
+                val state = stateFor(conn, frame.state)
+                conn.send(if (state == frame.state) frame else frame.copy(state = state))
+            }
         }
     }
 
     private fun telemetryFrame(): TelemetryFrame {
         val started = sessionManager.sessionStartTimeEpoch.takeIf { it != 0L } ?: hostStartedAtMs
+        // While a target holds there is no road being applied, so the three
+        // road fields report nothing rather than the hill the engine is still
+        // reading and timing underneath. Speed goes with them: the drivetrain
+        // is still turning, but it is not turning a road out.
+        val holding = engine.powerTarget.value != null
         return TelemetryFrame(
             seq = telemetrySeq++,
             tMono = System.currentTimeMillis() - started,
@@ -1248,13 +1326,18 @@ class CompanionHost(
             // there is then no drivetrain speed to report, and echoing the
             // companion's own number back at it would look like agreement and
             // mean nothing.
-            speedMps = engine.driveSpeedMps.value.takeIf { engine.driveSpeedKnown.value },
+            speedMps = engine.driveSpeedMps.value
+                .takeIf { engine.driveSpeedKnown.value && !holding },
             gearIndex = engine.gearIndex.value,
             loadFactor = engine.drivetrain.value.loadFactor(engine.gearIndex.value),
-            appliedGradient = engine.gradient.value,
-            trainerForceN = engine.trainerForceN.value,
-            trainerGradePercent = engine.trainerGradePercent.value,
+            appliedGradient = if (holding) 0.0 else engine.gradient.value,
+            trainerForceN = if (holding) 0.0 else engine.trainerForceN.value,
+            trainerGradePercent = if (holding) 0.0 else engine.trainerGradePercent.value,
             elapsedS = sessionManager.elapsedSeconds.value.toLong(),
+            powerTarget = engine.powerTarget.value,
+            // Present exactly when a target is, so a companion can tell "held
+            // at 125" from "let go of 125" without guessing.
+            powerCommanded = engine.powerCommanded.value.takeIf { holding },
         )
     }
 
@@ -1299,7 +1382,7 @@ class CompanionHost(
         // the connection, just before the 4005. Announcing it here as well sent
         // it twice.
         if (!closing) {
-            broadcast(EventFrame(event = EventFrame.STATE_CHANGED, state = CompanionState.FINISHED))
+            announceState(CompanionState.FINISHED)
         }
 
         rideUnderway = false
@@ -1410,8 +1493,48 @@ class CompanionHost(
     private fun WorkoutState.asCompanionState(): String = when (this) {
         WorkoutState.Active -> CompanionState.ACTIVE
         WorkoutState.Paused, WorkoutState.Standby, WorkoutState.Countdown -> CompanionState.PAUSED
+        // The one app state the protocol does *not* collapse, because it is the
+        // one a game asked for and has to be able to see it got.
+        WorkoutState.Untracked -> CompanionState.UNTRACKED
         WorkoutState.Completed -> CompanionState.FINISHED
         WorkoutState.Idle -> CompanionState.LISTENING
+    }
+
+    /**
+     * [state] in the vocabulary [conn] negotiated.
+     *
+     * Only `untracked` needs translating, and only downwards: a companion from
+     * before 0.10 is told `paused`, which is true in the one way 10.1 says it
+     * may act on a state - nothing is being recorded. Inventing a word it has
+     * never heard would be worse than telling it less.
+     */
+    private fun stateFor(conn: Conn, state: String): String =
+        if (state == CompanionState.UNTRACKED &&
+            (conn.session.version ?: CompanionProtocol.VERSION) < CompanionProtocol.UNTRACKED_VERSION
+        ) {
+            CompanionState.PAUSED
+        } else {
+            state
+        }
+
+    /**
+     * Tell every connection the ride's state, each in its own words, and only
+     * when it is news to that connection.
+     */
+    private fun announceState(state: String) {
+        val ready = connections.filter { it.session.role != null }
+        if (ready.isEmpty()) return
+        val owed = ready.mapNotNull { conn ->
+            val mine = stateFor(conn, state)
+            if (conn.announcedState == mine) {
+                null
+            } else {
+                conn.announcedState = mine
+                conn to EventFrame(event = EventFrame.STATE_CHANGED, state = mine)
+            }
+        }
+        if (owed.isEmpty()) return
+        scope.launch { owed.forEach { (conn, frame) -> conn.send(frame) } }
     }
 
     private fun snapshot(): CompanionSnapshot {

@@ -213,6 +213,10 @@ class AppContainer(
                 powerWatts = { trainerManager.power.value },
                 cadenceRpm = { trainerManager.cadence.value },
                 applyRoad = trainerManager::setSimulationParameters,
+                // The ERG write a free ride already uses, for the one mode
+                // where a companion holds the rider at a wattage instead of on
+                // a road.
+                applyPower = trainerManager::setTargetPower,
                 riderMassKg = { userSettings.weightKg.value },
                 bikeMassKg = { userSettings.bikeWeightKg.value },
                 drivetrainProvider = { Drivetrain.byId(userSettings.drivetrainId.value) },
@@ -263,6 +267,7 @@ class AppContainer(
                     trainerManager.connectionState.value == TrainerConnectionState.Connected ||
                         trainerManager.isMockTrainer.value
                 },
+                trainerAcceptsPower = { trainerManager.acceptsTargetPower },
             )
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)
@@ -444,7 +449,11 @@ class IndoorBikeApp : Application() {
                     WorkoutState.Standby,
                     WorkoutState.Countdown,
                     WorkoutState.Active,
-                    WorkoutState.Paused -> RideSessionService.start(this@IndoorBikeApp)
+                    WorkoutState.Paused,
+                    // Untracked riding is riding: the trainer is being driven
+                    // and the screen must survive being backgrounded, even
+                    // though none of it is being written down.
+                    WorkoutState.Untracked -> RideSessionService.start(this@IndoorBikeApp)
                     WorkoutState.Idle,
                     WorkoutState.Completed -> RideSessionService.stop(this@IndoorBikeApp)
                 }
@@ -455,7 +464,8 @@ class IndoorBikeApp : Application() {
                     WorkoutState.Standby,
                     WorkoutState.Countdown,
                     WorkoutState.Active,
-                    WorkoutState.Paused -> true
+                    WorkoutState.Paused,
+                    WorkoutState.Untracked -> true
                     WorkoutState.Idle,
                     WorkoutState.Completed -> false
                 }

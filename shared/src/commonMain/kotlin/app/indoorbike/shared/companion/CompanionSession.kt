@@ -16,6 +16,7 @@
 package app.indoorbike.shared.companion
 
 import app.indoorbike.shared.simulation.Drivetrain
+import kotlin.math.roundToInt
 
 /**
  * Something the host should do as a result of a frame.
@@ -48,8 +49,23 @@ sealed interface CompanionEffect {
      */
     data class SetCourse(val course: CompanionCourse) : CompanionEffect
 
-    /** Pause or resume the recording. A request: it can legitimately do nothing. */
-    data class SetRideState(val paused: Boolean) : CompanionEffect
+    /**
+     * Record, stop recording, or ride without being recorded. A request: it can
+     * legitimately do nothing.
+     *
+     * [state] is one of [CompanionState.ACTIVE], [CompanionState.PAUSED] or
+     * [CompanionState.UNTRACKED]. [label] says what the rider is doing and is
+     * only ever set with the last of those.
+     */
+    data class SetRideState(val state: String, val label: String? = null) : CompanionEffect {
+        val paused: Boolean get() = state == CompanionState.PAUSED
+    }
+
+    /**
+     * Hold the trainer at a wattage, or hand it back to the road with null.
+     * Already clamped, and only ever emitted while the ride is untracked.
+     */
+    data class SetPowerTarget(val watts: Int?) : CompanionEffect
 
     /**
      * A companion has asked to be remembered. The host asks the rider, then
@@ -155,6 +171,15 @@ class CompanionSession(
      * at a hundred times real speed.
      */
     private val pairedKeyFor: (String) -> String? = { null },
+    /**
+     * What the ride is doing right now, as a [CompanionState] value.
+     *
+     * Read live rather than carried in the snapshot, because two rules turn on
+     * it frame by frame: a power target is honoured only while the ride is
+     * untracked, and distance reported while it is untracked is neither banked
+     * nor allowed to raise this connection's kept maximum.
+     */
+    private val rideState: () -> String = { CompanionState.PAUSED },
     val road: CompanionRoad = CompanionRoad(),
 ) {
 
@@ -207,6 +232,9 @@ class CompanionSession(
 
     /** Timestamps of recent shift requests, for the rate limiter. */
     private val shiftRequests = ArrayDeque<Long>()
+
+    /** The same, for power targets. Kept apart so one cannot starve the other. */
+    private val powerRequests = ArrayDeque<Long>()
 
     /**
      * Handle one text frame.
@@ -277,6 +305,7 @@ class CompanionSession(
             is LabelFrame -> onLabel(frame)
             is CourseFrame -> onCourse(frame)
             is SetStateFrame -> onSetState(frame)
+            is SetPowerFrame -> onSetPower(frame, fields, nowMs)
             is ControlsFrame -> onControls(frame)
             is DrivetrainFrame -> onDrivetrain(frame)
             is BrandFrame -> onBrand(frame, fields)
@@ -549,7 +578,12 @@ class CompanionSession(
         val effects = mutableListOf<CompanionEffect>()
         effects += unhonouredWarnings(fields)
 
-        when (val update = road.accept(frame, nowMs)) {
+        // Ground covered while the ride is untracked is not this ride's, and
+        // must not raise the kept maximum either: a total that grew during a
+        // walk up a climb would otherwise land whole on the first frame after
+        // the rider starts riding again.
+        val untracked = rideState() == CompanionState.UNTRACKED
+        when (val update = road.accept(frame, nowMs, bankProgress = !untracked)) {
             RoadUpdate.Stale -> return effects
             is RoadUpdate.Applied -> {
                 update.clamps.forEach { clamp ->
@@ -566,7 +600,7 @@ class CompanionSession(
         }
 
         effects += CompanionEffect.ApplyRoad(road.gradient, road.speedMps, road.crr)
-        if (frame.distanceM != null || frame.ascentM != null) {
+        if (!untracked && (frame.distanceM != null || frame.ascentM != null)) {
             effects += CompanionEffect.ReportProgress(road.distanceM, road.ascentM)
         }
         return effects
@@ -829,20 +863,121 @@ class CompanionSession(
     private fun onSetState(frame: SetStateFrame): List<CompanionEffect> {
         if (!isController) return listOf(notController("setState"))
         return when (frame.state) {
-            CompanionState.PAUSED -> listOf(CompanionEffect.SetRideState(paused = true))
-            CompanionState.ACTIVE -> listOf(CompanionEffect.SetRideState(paused = false))
+            CompanionState.PAUSED, CompanionState.ACTIVE ->
+                listOf(CompanionEffect.SetRideState(frame.state))
+
+            CompanionState.UNTRACKED -> listOf(
+                CompanionEffect.SetRideState(
+                    state = CompanionState.UNTRACKED,
+                    // A label is read at arm's length over a handlebar, so it
+                    // gets the same ceiling a control pad's does.
+                    label = frame.label
+                        ?.trim()
+                        ?.take(CompanionProtocol.MAX_CONTROL_LABEL_CHARS)
+                        ?.takeIf { it.isNotEmpty() },
+                )
+            )
+
             else -> listOf(
                 CompanionEffect.Send(
                     WarningFrame(
                         code = CompanionWarning.REJECTED,
                         field = "state",
                         message = "Unknown ride state '" + frame.state + "'; ignored. " +
-                            "Expected '" + CompanionState.ACTIVE + "' or '" +
-                            CompanionState.PAUSED + "'.",
+                            "Expected '" + CompanionState.ACTIVE + "', '" +
+                            CompanionState.PAUSED + "' or '" + CompanionState.UNTRACKED + "'.",
                     )
                 )
             )
         }
+    }
+
+    /**
+     * Hold the rider at a wattage, or let the road back.
+     *
+     * Refused outside untracked riding, and that refusal is the whole point of
+     * the frame's shape: a power target that could reach a recorded ride would
+     * make every companion ride's numbers negotiable. The rest is the same
+     * treatment `world` gets - clamped with a warning rather than rejected,
+     * rate-limited rather than fatal.
+     */
+    private fun onSetPower(
+        frame: SetPowerFrame,
+        fields: Set<String>,
+        nowMs: Long,
+    ): List<CompanionEffect> {
+        if (!isController) return listOf(notController("setPower"))
+
+        // The codec reads an absent field as "no value", which for every other
+        // frame is what a sender means. Not here: `null` is a deliberate
+        // release of the trainer, and a frame that says neither is a companion
+        // bug rather than an intention, so it is malformed as the protocol
+        // says rather than silently letting the road back.
+        if ("watts" !in fields) {
+            return fail(
+                CompanionError.MALFORMED,
+                "A 'setPower' must say how many watts; send null to hand the trainer back to the road.",
+                CompanionClose.MALFORMED,
+            )
+        }
+
+        if (rideState() != CompanionState.UNTRACKED) {
+            return listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.REJECTED,
+                        field = "state",
+                        message = "A power target is honoured only while the ride is '" +
+                            CompanionState.UNTRACKED + "'; ignored. Ask for that state first.",
+                    )
+                )
+            )
+        }
+
+        // Shares the shift limiter's shape and its reasoning: a companion
+        // ramping a target in a tight loop is a bug in the game, and dropping
+        // the surplus with a warning is the only answer that is both safe and
+        // survivable.
+        while (powerRequests.isNotEmpty() && nowMs - powerRequests.first() >= 1_000L) {
+            powerRequests.removeFirst()
+        }
+        if (powerRequests.size >= CompanionProtocol.MAX_SHIFT_REQUESTS_PER_SECOND) {
+            return listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.RATE_LIMITED,
+                        frame = "setPower",
+                        message = "More than " + CompanionProtocol.MAX_SHIFT_REQUESTS_PER_SECOND +
+                            " power targets in a second; the surplus was dropped.",
+                    )
+                )
+            )
+        }
+        powerRequests.addLast(nowMs)
+
+        val sent = frame.watts
+            ?: return listOf(CompanionEffect.SetPowerTarget(null))
+
+        val effects = mutableListOf<CompanionEffect>()
+        // A wattage is a whole number of watts; a trainer cannot hold a
+        // fraction of one and no rider could tell.
+        val rounded = sent.roundToInt()
+        val applied = rounded.coerceIn(
+            CompanionProtocol.MIN_POWER_WATTS,
+            CompanionProtocol.MAX_POWER_WATTS,
+        )
+        if (applied != rounded) {
+            effects += CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.CLAMPED,
+                    field = "watts",
+                    sent = sent,
+                    applied = applied.toDouble(),
+                )
+            )
+        }
+        effects += CompanionEffect.SetPowerTarget(applied)
+        return effects
     }
 
     /**

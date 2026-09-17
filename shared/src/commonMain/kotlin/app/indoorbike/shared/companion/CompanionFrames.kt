@@ -202,7 +202,40 @@ data class CourseFrame(
 @Serializable
 data class SetStateFrame(
     val state: String,
+    /**
+     * What the rider is doing while [CompanionState.UNTRACKED], for the phone
+     * to show beside "Not recording": "Pushing the bike", "Warming up".
+     *
+     * Trimmed to [CompanionProtocol.MAX_CONTROL_LABEL_CHARS] and ignored with
+     * any other state. Asking for untracked again with a new label replaces it,
+     * which is the only thing that request does once the ride is already there.
+     */
+    val label: String? = null,
     val t: String = "setState",
+) : ClientFrame
+
+/**
+ * Hold the trainer at a fixed wattage, or hand it back to the road with null.
+ *
+ * Honoured **only while the ride is untracked**, and refused with a `rejected`
+ * warning anywhere else: a power target must never shape a ride that is being
+ * recorded. Within untracked it replaces the road entirely, so the game's
+ * `world` frames still arrive and still hold the lease open, but what reaches
+ * the trainer is this number.
+ *
+ * Two safety rules travel with it and neither depends on the companion
+ * behaving well. The target rides on the same lease a road does, so a game that
+ * hangs cannot leave the rider pinned at a wattage; and a rider who stops
+ * pedalling is let go rather than held against the brake. See [PowerHold].
+ *
+ * [watts] is required. Sending the frame without it is malformed, because a
+ * `setPower` that means nothing in particular is far more likely to be a bug in
+ * the companion than a rider's intention.
+ */
+@Serializable
+data class SetPowerFrame(
+    val watts: Double?,
+    val t: String = "setPower",
 ) : ClientFrame
 
 /**
@@ -502,6 +535,8 @@ data class Limits(
     val gradient: List<Double> = listOf(CompanionProtocol.MIN_GRADIENT, CompanionProtocol.MAX_GRADIENT),
     val speedMps: List<Double> = listOf(CompanionProtocol.MIN_SPEED_MPS, CompanionProtocol.MAX_SPEED_MPS),
     val crr: List<Double> = listOf(CompanionProtocol.MIN_CRR, CompanionProtocol.MAX_CRR),
+    /** What a [SetPowerFrame] is clamped to. Whole watts, so whole numbers. */
+    val powerWatts: List<Int> = listOf(CompanionProtocol.MIN_POWER_WATTS, CompanionProtocol.MAX_POWER_WATTS),
 )
 
 /**
@@ -614,6 +649,17 @@ data class TelemetryFrame(
     val trainerForceN: Double,
     val trainerGradePercent: Double,
     val elapsedS: Long,
+    /**
+     * The wattage a `setPower` asked for, after clamping, or absent when no
+     * target is held - which is every state but untracked, and most of that.
+     */
+    val powerTarget: Int? = null,
+    /**
+     * What the trainer is being told right now, which is the target except
+     * while the lease is decaying it or the rider has been let go. Absent
+     * whenever [powerTarget] is. See [PowerHold].
+     */
+    val powerCommanded: Int? = null,
     val t: String = "telemetry",
 ) : ServerFrame
 
@@ -648,10 +694,27 @@ data class EventFrame(
     val reason: String? = null,
     val fallback: String? = null,
     val by: String? = null,
+    /**
+     * For [POWER_TARGET_CHANGED]: the wattage now being asked for.
+     *
+     * **Absent means released**, back to the road. The codec omits a field with
+     * no value rather than writing `null`, here as everywhere else, so read the
+     * key's absence as the null the protocol describes.
+     */
+    val watts: Int? = null,
     val t: String = "event",
 ) : ServerFrame {
     companion object {
         const val GEAR_CHANGED = "gearChanged"
+
+        /**
+         * The power target changed, carrying [EventFrame.watts] and a
+         * [EventFrame.source] of [SOURCE_COMPANION] for a `setPower` or
+         * [SOURCE_STATE] for a target the app cleared on the way out of
+         * untracked. The decay and release ramps are not target changes and
+         * appear only in `telemetry.powerCommanded`.
+         */
+        const val POWER_TARGET_CHANGED = "powerTargetChanged"
 
         /**
          * The rider pressed one of the controls a `controls` frame offered.
@@ -675,6 +738,9 @@ data class EventFrame(
         const val SOURCE_CLICK = "zwiftClick"
         const val SOURCE_SCREEN = "screen"
         const val SOURCE_COMPANION = "companion"
+
+        /** A power target the ride's own state cleared, rather than anybody asking. */
+        const val SOURCE_STATE = "state"
     }
 }
 
@@ -737,5 +803,13 @@ object CompanionState {
     const val LISTENING = "listening"
     const val ACTIVE = "active"
     const val PAUSED = "paused"
+
+    /**
+     * Riding that is not being written down: the road is applied and telemetry
+     * streams, but the clock is stopped and no sample is kept. Reported as
+     * [PAUSED] to a connection older than
+     * [CompanionProtocol.UNTRACKED_VERSION].
+     */
+    const val UNTRACKED = "untracked"
     const val FINISHED = "finished"
 }

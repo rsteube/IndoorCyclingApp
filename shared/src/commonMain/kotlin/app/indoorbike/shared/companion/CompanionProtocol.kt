@@ -130,8 +130,18 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 9)
+    val VERSION = ProtocolVersion(0, 10)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
+
+    /**
+     * The version that learned to say `untracked`.
+     *
+     * A connection older than this is told `paused` for the same state, which
+     * is true in the one way 10.1 says a companion may act on it: nothing is
+     * being recorded. Telling it a word it has never heard would be worse than
+     * telling it less.
+     */
+    val UNTRACKED_VERSION = ProtocolVersion(0, 10)
 
     /**
      * Frames beyond the base protocol that this build acts on, published in
@@ -145,7 +155,7 @@ object CompanionProtocol {
     val CAPABILITIES =
         listOf(
             "requestShift", "label", "summary", "course", "setState", "controls", "drivetrain",
-            "pair", "brand", SCREENSHOT_CAPABILITY,
+            "pair", "brand", SCREENSHOT_CAPABILITY, UNTRACKED_CAPABILITY, SET_POWER_CAPABILITY,
         )
 
     /**
@@ -154,6 +164,23 @@ object CompanionProtocol {
      * The phone offers the rider a screenshot button only when both are true.
      */
     const val SCREENSHOT_CAPABILITY = "screenshot"
+
+    /** `setState: "untracked"`: riding the app does not write down. */
+    const val UNTRACKED_CAPABILITY = "untracked"
+
+    /** The `setPower` frame: a fixed wattage, honoured only while untracked. */
+    const val SET_POWER_CAPABILITY = "setPower"
+
+    /**
+     * What a `setPower` target is clamped to, in watts.
+     *
+     * Wide on purpose: this is a sanity bound, not a judgement about what the
+     * rider can hold. The trainer's own limits and the rider's legs are the
+     * real ones, and the app lets go of a rider who stops pedalling
+     * ([PowerHold]) rather than trying to guess a safe ceiling for them.
+     */
+    const val MIN_POWER_WATTS = 0
+    const val MAX_POWER_WATTS = 1_000
 
     /**
      * Longest encoded polyline a `course` frame may carry.

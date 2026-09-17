@@ -172,7 +172,13 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.9, and this build accepts everything back to 0.1.**
+**Current version: 0.10, and this build accepts everything back to 0.1.**
+
+0.10 added [untracked riding](#untracked-riding-and-setpower) and the
+[`setPower`](#setpower) frame: a ride state where the rider works and none of it is written
+down, and a fixed wattage to work at inside it. Pushing a bike up a climb the rider stalled on,
+a warm-up, a cool-down. Additive, and gated on the `untracked` and `setPower` capabilities: a
+companion from before 0.10 is told `paused` for the new state and never meets the new frame.
 
 0.9 added screenshots: the phone sends [`requestScreenshot`](#requestscreenshot) when the rider
 taps the camera button, and a companion that listed `screenshot` in its `hello` answers with a
@@ -453,14 +459,17 @@ Pause or resume the recording on the phone. Requires the `setState` capability.
 { "t": "setState", "state": "paused" }
 ```
 
-`state` is `"active"` or `"paused"`. Anything else is refused with a `rejected` warning rather
-than guessed at: reading a misspelt word as "paused" would silently stop recording a ride the
-rider is still doing, and they would find out afterwards.
+`state` is `"active"`, `"paused"` or, with the `untracked` capability,
+[`"untracked"`](#untracked-riding-and-setpower). Anything else is refused with a `rejected`
+warning rather than guessed at: reading a misspelt word as "paused" would silently stop
+recording a ride the rider is still doing, and they would find out afterwards.
 
 **`"active"` is also how a ride starts.** The app prepares the ride the moment you connect and
-begins streaming telemetry and applying the road immediately, but the clock does not run and
-nothing is written down until this frame arrives. Send it when your world says the ride has
-begun: past the menus, off the start line, whenever that is for you.
+begins streaming telemetry immediately, but the clock does not run, nothing is written down,
+and the trainer is not driven at all until this frame arrives: the engine that applies the road
+starts with the ride. Send it when your world says the ride has begun: past the menus, off the
+start line, whenever that is for you. If you want the rider to feel a road before then, ask for
+`"untracked"`.
 
 There is deliberately **no countdown**. Your game has its own idea of when a ride begins and the
 app cannot see it; two countdowns fighting each other is worse than either. The app counts a
@@ -478,6 +487,48 @@ paused, and one already paused cannot be paused again. The `stateChanged` event 
 and it is broadcast for rider-initiated pauses too - the phone has its own pause button, a
 stop-pedalling watchdog, and a foreground service that can force one - so a companion should
 follow `stateChanged` rather than assume its own request took effect.
+
+#### Untracked riding, and `setPower`
+
+Sometimes the rider is working and none of it belongs in the activity. They stall on a climb
+they cannot ride and push the bike to the top; they warm up before your start line; they spin
+through your menus; they cool down after the finish. `"active"` would record all of it, and
+`"paused"` stops the ride and drops the trainer to 0 W, leaving them grinding against whatever
+the machine's minimum brake happens to be.
+
+```jsonc
+{ "t": "setState", "state": "untracked", "label": "Pushing the bike" }
+{ "t": "setPower", "watts": 125 }
+```
+
+**Untracked is active with the record switched off.** Telemetry streams, the engine drives the
+trainer from your `world` frames exactly as it does while active, the lease runs, and the phone
+says "Not recording" with your `label` beside it. What stops is everything that writes the ride
+down: the clock holds, no sample is kept, and `distanceM` / `ascentM` sent while untracked are
+neither banked nor remembered as a maximum. **Keep untracked travel out of the totals you send
+afterwards.** Exports show the stretch the way they show a pause, with the timer stopped.
+
+It is allowed before the ride starts, which is how a warm-up works: `elapsedS` stays at 0 and
+the first `"active"` is still the beginning of the ride. The same goes for the ride the app
+prepares after a `finish`, which is where a cool-down goes. `finish` from an untracked ride
+that never started saves nothing.
+
+`setPower` holds the trainer in ERG at a wattage, and `"watts": null` hands it back to the
+road. It is **honoured only while the ride is untracked** - a power target may never shape a
+ride that is being recorded - and it is cleared whenever the ride leaves that state, for any
+reason, so send it again after every `stateChanged: "untracked"`. Values are clamped to
+`welcome.limits.powerWatts`; a frame with no `watts` at all is malformed.
+
+Two rules protect the rider, and neither depends on your game behaving well. **The target
+rides on the `world` lease**: stop sending frames and the commanded wattage decays to zero over
+the same ramp a gradient does, so a game that hangs cannot leave a rider pinned at 300 W. And
+**a rider who stops pedalling is let go**: ERG raises the brake as the cranks slow, so below
+20 rpm for two seconds the phone commands 0 W, and takes the target back over three seconds
+once they are turning again. `telemetry.powerTarget` stays put through both; only
+`powerCommanded` moves.
+
+The full rules, including what the app does on a disconnect, are in
+`skills/indoorbike-companion/references/protocol.md`, sections 7b.1 and 7b.2.
 
 #### `pairRequest`
 
@@ -827,6 +878,11 @@ inventing data.
 | `appliedGradient` | What the phone is actually using, **after clamping**. May differ from what was sent |
 | `trainerForceN` | Newtons at the wheel, after gear multiplication and the soft ceiling |
 | `trainerGradePercent` | The grade actually written over FTMS. Differs from `appliedGradient` because it encodes a force against an assumed 84 kg |
+| `powerTarget` | The wattage a [`setPower`](#untracked-riding-and-setpower) asked for, after clamping. Present only while one is held |
+| `powerCommanded` | What the trainer is being told right now. Differs from `powerTarget` while the lease decays it or the rider has been let go. Present only while a target is held |
+
+While a power target is held the road is not being applied, so `appliedGradient`,
+`trainerForceN` and `trainerGradePercent` report `0.0` and `speedMps` may be omitted.
 
 `trainerForceN` and `trainerGradePercent` look like internals and are published on purpose.
 They are literally "what the trainer is doing", and without them nobody implementing against
@@ -864,7 +920,14 @@ and mean nothing. Do not read an absent field as a standstill: fall back to your
 { "t": "event", "event": "worldResumed" }
 { "t": "event", "event": "trainerLost" }
 { "t": "event", "event": "controlRevoked", "by": "rider" }
+{ "t": "event", "event": "powerTargetChanged", "watts": 125, "source": "companion" }
 ```
+
+`powerTargetChanged` says what the requested power target is now, with `source` naming who
+changed it: `companion` for your own `setPower`, `state` for one the ride's own state cleared.
+**An absent `watts` means released**, since the app omits a field it has no value for rather
+than writing `null`. The lease decay and the release of a stopped rider are not changes to what
+was asked for and never appear here; watch `telemetry.powerCommanded` for those.
 
 `gearChanged` carries `source`: `zwiftClick`, `screen` or `companion`. It is emitted on every
 shift, including one that changed nothing (`changed: false`), so a companion can distinguish
@@ -1350,7 +1413,9 @@ Deliberately unresolved in 0.1, listed so neither end designs around their absen
   warning. `crr` was one of them until a companion needed a gravel road to be felt rather than
   watched, and is now honoured; see `world` above.
 - **Steering.** No frame. A companion takes its own input for anything that is not a shift.
-- **Trainer control tiers.** 0.1 assumes an FTMS `sim`-capable trainer.
+- **Trainer control tiers.** 0.1 assumes an FTMS `sim`-capable trainer, and 0.10 adds ERG for
+  a `setPower` target while the ride is untracked, which is the one place a wattage is ever
+  commanded on a companion's behalf.
   [LIVE_API.md](LIVE_API.md#1-the-decision-that-shapes-everything-erg-is-the-wrong-control-channel)
   designs `resistance` and `none` fallbacks; they are not in this profile yet, and `welcome`
   reserves `trainer.control` to carry them.
