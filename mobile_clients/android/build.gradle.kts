@@ -31,8 +31,15 @@ val intervalsProps = Properties().apply {
 }
 fun buildConfigString(value: Any?): String =
     "\"" + (value as String? ?: "").replace("\\", "\\\\").replace("\"", "\\\"") + "\""
-if (!intervalsPropsFile.exists()) {
-    logger.warn("intervals.properties not found: this build signs in to Intervals.icu with an API key only")
+// Blank counts as absent: a file created from the template and not yet filled
+// in is the likely way to end up with a release that cannot sign anybody in.
+if ((intervalsProps["intervalsClientId"] as String? ?: "").isBlank() ||
+    (intervalsProps["intervalsClientSecret"] as String? ?: "").isBlank()
+) {
+    logger.warn(
+        "intervals.properties " + (if (intervalsPropsFile.exists()) "is not filled in" else "not found") +
+            ": this build signs in to Intervals.icu with an API key only"
+    )
 }
 
 android {
