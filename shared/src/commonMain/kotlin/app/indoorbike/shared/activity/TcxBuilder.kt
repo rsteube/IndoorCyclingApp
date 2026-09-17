@@ -41,7 +41,15 @@ object TcxBuilder {
     private const val NS_AX = "http://www.garmin.com/xmlschemas/ActivityExtension/v2"
     private const val NS_XSI = "http://www.w3.org/2001/XMLSchema-instance"
 
-    private class Pt(val offsetSec: Int, val power: Int, val hr: Int, val cad: Int) {
+    private class Pt(
+        /** When the sample was taken, from the start, pauses included. */
+        val wallSec: Int,
+        /** How far into the ride it was, pauses left out. Laps are cut on this. */
+        val rideSec: Int,
+        val power: Int,
+        val hr: Int,
+        val cad: Int,
+    ) {
         /** Virtual speed for this sample's watts, and the ride distance at it. */
         var speedMps: Double = 0.0
         var metres: Double = 0.0
@@ -64,28 +72,24 @@ object TcxBuilder {
         val startMs = session.startTimeEpoch
         val totalSeconds = session.durationSeconds.toInt().coerceAtLeast(1)
 
-        // Normalise telemetry to one sample per integer-second offset, clamped
-        // into the ride window - same posture as the FIT writer so both exports
-        // see identical data.
-        val seen = HashSet<Int>()
-        val pts = ArrayList<Pt>(telemetry.size)
-        for (s in telemetry) {
-            val off = ((s.timestampEpoch - startMs) / 1000L).toInt()
-            if (off < 0 || off >= totalSeconds) continue
-            if (!seen.add(off)) continue
-            pts.add(
-                Pt(
-                    offsetSec = off,
-                    power = s.power.toInt().coerceAtLeast(0),
-                    hr = s.heartRate.toInt().coerceIn(0, 254),
-                    cad = s.cadence.toInt().coerceIn(0, 254),
-                )
+        // One sample per integer second, in time order, placed on both clocks
+        // by the same timeline the FIT writer uses so both exports see
+        // identical data. TCX has no pause marker: a pause is the gap between
+        // two trackpoints, and each lap's TotalTimeSeconds leaves it out.
+        val timeline = RideTimeline.of(startMs, totalSeconds, telemetry.map { it.timestampEpoch })
+        val pts = timeline.points.map { point ->
+            val s = telemetry[point.index]
+            Pt(
+                wallSec = point.wallSeconds,
+                rideSec = point.rideSeconds,
+                power = s.power.toInt().coerceAtLeast(0),
+                hr = s.heartRate.toInt().coerceIn(0, 254),
+                cad = s.cadence.toInt().coerceIn(0, 254),
             )
         }
-        pts.sortBy { it.offsetSec }
 
-        // Distance is speed integrated in ride order, so it has to wait for the
-        // sort. Each sample stands for one second of riding.
+        // Distance is speed integrated in ride order. Each sample stands for
+        // one second of riding.
         var metres = 0.0
         for (p in pts) {
             p.speedMps = VirtualSpeed.speedMps(p.power.toDouble(), riderKg)
@@ -103,7 +107,7 @@ object TcxBuilder {
         val laps = Array(segSec.size) { ArrayList<Pt>() }
         for (p in pts) {
             var li = 0
-            while (li < ends.size - 1 && p.offsetSec >= ends[li]) li++
+            while (li < ends.size - 1 && p.rideSec >= ends[li]) li++
             laps[li].add(p)
         }
 
@@ -141,7 +145,8 @@ object TcxBuilder {
             // Sum of per-second watts = joules; /1000 = kJ ≈ kcal for cycling.
             val kj = (sumP / 1000L).toInt()
 
-            sb.append("      <Lap StartTime=\"").append(isoUtc(startMs + lapStartOffset * 1000L)).append("\">\n")
+            sb.append("      <Lap StartTime=\"")
+                .append(isoUtc(startMs + timeline.wallAt(lapStartOffset) * 1000L)).append("\">\n")
             sb.append("        <TotalTimeSeconds>").append(lapDur).append("</TotalTimeSeconds>\n")
             // Schema order is fixed: DistanceMeters, then MaximumSpeed,
             // then Calories. A reader that meets them out of order rejects
@@ -163,7 +168,7 @@ object TcxBuilder {
             sb.append("        <Track>\n")
             for (p in lapPts) {
                 sb.append("          <Trackpoint>\n")
-                sb.append("            <Time>").append(isoUtc(startMs + p.offsetSec * 1000L)).append("</Time>\n")
+                sb.append("            <Time>").append(isoUtc(startMs + p.wallSec * 1000L)).append("</Time>\n")
                 // Trackpoint_t orders DistanceMeters ahead of HeartRateBpm.
                 sb.append("            <DistanceMeters>").append(decimals(p.metres, 2))
                     .append("</DistanceMeters>\n")

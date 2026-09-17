@@ -109,6 +109,36 @@ class TcxBuilderTest {
     }
 
     @Test
+    fun pausedRideKeepsEverySampleAndLeavesThePauseOutOfLapTime() {
+        // 300 s of riding, a two-minute pause, a sample the moment it resumes,
+        // and 300 s more: what the session writes for a paused ride.
+        val start = 1_700_000_000_000L
+        val (session, _, _) = ride(startEpoch = start, durationSeconds = 600)
+        val stamps = (0..300).map { start + it * 1000L } + (420..720).map { start + it * 1000L }
+        val telemetry = stamps.mapIndexed { i, stamp ->
+            WorkoutTelemetry(
+                id = i.toLong(), sessionId = 1, timestampEpoch = stamp,
+                power = 150L, cadence = 90L, heartRate = 140L,
+            )
+        }
+        val workout = Workout(
+            id = "test", name = "Test", description = null,
+            segments = listOf(
+                PowerZone(lengthInSeconds = 300, powerPercentFTP = 60, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 300, powerPercentFTP = 90, intervalType = "CONSTANT"),
+            )
+        )
+
+        val tcx = TcxBuilder.build(session, telemetry, workout, ftp = 200)
+
+        assertEquals(602, countOccurrences(tcx, "<Trackpoint>"))
+        assertTrue(tcx.contains("<Time>${TcxBuilder.isoUtc(start + 720_000L)}</Time>"), "last sample kept")
+        assertTrue(tcx.contains("<Lap StartTime=\"${TcxBuilder.isoUtc(start)}\">"))
+        assertTrue(tcx.contains("<Lap StartTime=\"${TcxBuilder.isoUtc(start + 300_000L)}\">"))
+        assertEquals(2, countOccurrences(tcx, "<TotalTimeSeconds>300</TotalTimeSeconds>"))
+    }
+
+    @Test
     fun isoUtcFormatsKnownInstants() {
         // 2024-01-01T00:00:00Z
         assertEquals("2024-01-01T00:00:00Z", TcxBuilder.isoUtc(1_704_067_200_000L))

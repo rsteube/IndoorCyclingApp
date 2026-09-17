@@ -225,7 +225,182 @@ class FitWriterTest {
         assertEquals(listOf(0xFFFF, 0xFFFF, 0xFF, 0xFF), laps[0])
     }
 
+    @Test
+    fun pausedRideKeepsEverySampleAndMarksThePause() {
+        // What the session writes for 300 s of riding, a two-minute pause and
+        // 300 s more: one sample a second, and one more the moment it resumes.
+        val start = 1_700_000_000_000L
+        val stamps = (0..300).map { start + it * 1000L } + (420..720).map { start + it * 1000L }
+        val workout = Workout(
+            id = "test", name = "Test", description = null,
+            segments = listOf(
+                PowerZone(lengthInSeconds = 300, powerPercentFTP = 60, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 300, powerPercentFTP = 90, intervalType = "CONSTANT"),
+            )
+        )
+
+        val messages = messages(
+            RideFitBuilder.build(session(start, durationSeconds = 600), telemetry(stamps), workout, ftp = 200)
+        )
+        val startFit = unixMillisToFit(start)
+
+        // Nothing after the pause is lost, which is what the old cut at
+        // start + duration did to the last two minutes.
+        val records = messages.filter { it.global == FitMessage.RECORD }
+        assertEquals(602, records.size)
+        assertEquals(startFit + 720, records.last().fields[253])
+
+        val timer = messages
+            .filter { it.global == FitMessage.EVENT && it.fields[0] == 0L }
+            .map { (it.fields.getValue(253) - startFit) to it.fields.getValue(1) }
+        assertEquals(listOf(0L to 0L, 300L to 4L, 420L to 0L, 720L to 4L), timer)
+
+        // Laps are cut on ride time; the second one has the pause in its
+        // elapsed time and not in its timer time.
+        val laps = messages.filter { it.global == FitMessage.LAP }
+            .map { listOf(it.fields.getValue(2) - startFit, it.fields.getValue(253) - startFit, it.fields.getValue(7), it.fields.getValue(8)) }
+        assertEquals(listOf(listOf(0L, 300L, 300_000L, 300_000L), listOf(300L, 720L, 420_000L, 300_000L)), laps)
+
+        val session = messages.single { it.global == FitMessage.SESSION }
+        assertEquals(720_000L, session.fields[7], "total_elapsed_time includes the pause")
+        assertEquals(600_000L, session.fields[8], "total_timer_time does not")
+        assertEquals(2L, session.fields[26])
+
+        assertTimestampsNeverGoBackwards(messages)
+    }
+
+    @Test
+    fun unpausedRideEndsAtStartPlusDuration() {
+        val start = 1_700_000_000_000L
+        val stamps = (0 until 1800).map { start + it * 1000L }
+        val workout = Workout(
+            id = "test", name = "Test", description = null,
+            segments = listOf(
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 50, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 100, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 60, intervalType = "CONSTANT"),
+            )
+        )
+
+        val messages = messages(
+            RideFitBuilder.build(session(start, durationSeconds = 1800), telemetry(stamps), workout, ftp = 200)
+        )
+        val startFit = unixMillisToFit(start)
+
+        assertEquals(1800, messages.count { it.global == FitMessage.RECORD })
+        val timer = messages
+            .filter { it.global == FitMessage.EVENT && it.fields[0] == 0L }
+            .map { (it.fields.getValue(253) - startFit) to it.fields.getValue(1) }
+        assertEquals(listOf(0L to 0L, 1800L to 4L), timer)
+        val session = messages.single { it.global == FitMessage.SESSION }
+        assertEquals(1_800_000L, session.fields[7])
+        assertEquals(1_800_000L, session.fields[8])
+        assertEquals(3L, session.fields[26])
+        assertTimestampsNeverGoBackwards(messages)
+    }
+
+    @Test
+    fun rideEndedBeforeItsLastSegmentCountsOnlyTheLapsWritten() {
+        val start = 1_700_000_000_000L
+        val stamps = (0 until 900).map { start + it * 1000L }
+        val workout = Workout(
+            id = "test", name = "Test", description = null,
+            segments = listOf(
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 50, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 100, intervalType = "CONSTANT"),
+                PowerZone(lengthInSeconds = 600, powerPercentFTP = 60, intervalType = "CONSTANT"),
+            )
+        )
+
+        val messages = messages(
+            RideFitBuilder.build(session(start, durationSeconds = 900), telemetry(stamps), workout, ftp = 200)
+        )
+
+        assertEquals(2, messages.count { it.global == FitMessage.LAP })
+        assertEquals(2L, messages.single { it.global == FitMessage.SESSION }.fields[26])
+    }
+
+    private fun session(start: Long, durationSeconds: Long) = WorkoutSession(
+        id = 3, workoutId = "test", workoutName = "Test",
+        startTimeEpoch = start, durationSeconds = durationSeconds,
+        avgPower = 150L, avgCadence = 90L, avgHeartRate = 140L,
+        externalId = "test:3",
+        intervalsUploadedEpoch = 0L,
+        fitTrackeeUploadedEpoch = 0L,
+        routeDistanceMeters = 0.0,
+        routeElevationGainMeters = 0.0,
+        routeStartMeters = 0.0,
+        routeStartElevationGainMeters = 0.0,
+        routeShape = "",
+        routeProfile = "",
+    )
+
+    private fun telemetry(stamps: List<Long>) = stamps.mapIndexed { i, stamp ->
+        WorkoutTelemetry(
+            id = i.toLong(), sessionId = 3, timestampEpoch = stamp,
+            power = 150L, cadence = 90L, heartRate = 140L,
+        )
+    }
+
+    private fun assertTimestampsNeverGoBackwards(messages: List<Message>) {
+        var previous = 0L
+        for (message in messages) {
+            val stamp = message.fields[253] ?: continue
+            assertTrue(stamp >= previous, "message ${message.global} at $stamp follows one at $previous")
+            previous = stamp
+        }
+    }
+
     // ── Minimal FIT reader, enough to verify our own output ──────────────
+
+    private class Message(val global: Int, val fields: Map<Int, Long>)
+
+    /**
+     * Every data message in file order, with each standard field of up to four
+     * bytes read as an unsigned little-endian number. Wider fields (strings,
+     * the application id) and developer fields are skipped.
+     */
+    private fun messages(bytes: ByteArray): List<Message> {
+        class Def(val global: Int, val fields: List<Pair<Int, Int>>, val developerBytes: Int)
+        val definitions = HashMap<Int, Def>()
+        val out = mutableListOf<Message>()
+        fun u8At(i: Int) = bytes[i].toInt() and 0xFF
+        var pos = 14
+        val end = bytes.size - 2
+        while (pos < end) {
+            val header = u8At(pos); pos += 1
+            val localType = header and 0x0F
+            if (header and 0x40 != 0) {
+                pos += 2
+                val global = u8At(pos) or (u8At(pos + 1) shl 8); pos += 2
+                val count = u8At(pos); pos += 1
+                val fields = (0 until count).map { i -> u8At(pos + i * 3) to u8At(pos + i * 3 + 1) }
+                pos += count * 3
+                var developerBytes = 0
+                if (header and 0x20 != 0) {
+                    val devCount = u8At(pos); pos += 1
+                    developerBytes = (0 until devCount).sumOf { i -> u8At(pos + i * 3 + 1) }
+                    pos += devCount * 3
+                }
+                definitions[localType] = Def(global, fields, developerBytes)
+            } else {
+                val def = definitions[localType] ?: error("data message for undefined local type $localType")
+                val values = HashMap<Int, Long>()
+                for ((num, size) in def.fields) {
+                    if (size <= 4) {
+                        var value = 0L
+                        for (b in 0 until size) value = value or (u8At(pos + b).toLong() shl (8 * b))
+                        values[num] = value
+                    }
+                    pos += size
+                }
+                pos += def.developerBytes
+                out += Message(def.global, values)
+            }
+        }
+        assertEquals(end, pos, "reader must consume the body exactly")
+        return out
+    }
     // Decoding the file is the only way to catch a malformed developer-field
     // section: the CRC assertions above pass on any self-consistent garbage.
 

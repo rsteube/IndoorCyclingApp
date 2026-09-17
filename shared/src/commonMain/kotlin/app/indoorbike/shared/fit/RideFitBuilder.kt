@@ -17,6 +17,7 @@ package app.indoorbike.shared.fit
 
 import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
+import app.indoorbike.shared.activity.RideTimeline
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.physics.VirtualSpeed
@@ -35,12 +36,17 @@ import kotlin.math.min
  *   - field_description × 4  (names/types for those fields)
  *   - event              (timer start)
  *   - record × N         (one per 1Hz telemetry sample)
+ *   - event × 2P         (timer stop and start around each of P pauses)
  *   - lap × M            (one per workout segment, partitioning the records,
  *                         carrying the segment's power and cadence targets as
  *                         developer fields)
  *   - event              (timer stop)
  *   - session            (summary stats + sport = cycling, sub_sport = indoor)
  *   - activity           (single-session wrapper)
+ *
+ * Records sit at the moment they were taken and laps are cut on ride time, so
+ * a paused ride keeps every sample and reports its elapsed time (pauses
+ * included) apart from its timer time (riding only). See [RideTimeline].
  *
  * If [workout] is null we fall back to a single lap covering the whole ride.
  *
@@ -94,7 +100,7 @@ object RideFitBuilder {
     // FIT-spec "development" slot, intended for non-commercial / hobby apps.
     private const val MANUFACTURER_DEVELOPMENT = 255
     private const val PRODUCT_INDOORBIKE = 1
-    private const val SOFTWARE_VERSION = 120   // 1.20 — bumps with shipped FIT changes
+    private const val SOFTWARE_VERSION = 121   // 1.21 - bumps with shipped FIT changes
 
     // sport / sub_sport enum values from the FIT profile.
     private const val SPORT_CYCLING = 2
@@ -120,7 +126,8 @@ object RideFitBuilder {
         val startUnixMs = session.startTimeEpoch
         val startFit = unixMillisToFit(startUnixMs)
         val totalSeconds = session.durationSeconds.toInt().coerceAtLeast(1)
-        val endFit = startFit + totalSeconds
+        val timeline = RideTimeline.of(startUnixMs, totalSeconds, telemetry.map { it.timestampEpoch })
+        val endFit = startFit + timeline.endWallSeconds
 
         // ── file_id ──────────────────────────────────────────────────────
         w.writeDefinition(LOCAL_FILE_ID, FitMessage.FILE_ID, listOf(
@@ -193,7 +200,8 @@ object RideFitBuilder {
         // Captured by the local `emitLap` closure below so we don't need
         // mutable state on the object itself.
         var lapDefWritten = false
-        fun emitLap(elapsedSec: Int, accum: LapAccum, segment: PowerZone?, lapIndex: Int) {
+        var lapsWritten = 0
+        fun emitLap(timerSec: Int, lapEndFit: Long, accum: LapAccum, segment: PowerZone?, lapIndex: Int) {
             if (!lapDefWritten) {
                 w.writeDefinition(
                     localType = LOCAL_LAP,
@@ -225,15 +233,17 @@ object RideFitBuilder {
                 )
                 lapDefWritten = true
             }
-            val safeElapsed = elapsedSec.coerceAtLeast(1)
-            val endFit = lapStartFit + safeElapsed
+            val safeTimer = timerSec.coerceAtLeast(1)
+            // A pause inside the lap is elapsed time but not timer time, so
+            // the wall clock can only ever be the longer of the two.
+            val safeElapsed = (lapEndFit - lapStartFit).toInt().coerceAtLeast(safeTimer)
             w.writeDataHeader(LOCAL_LAP)
-            w.u32(endFit)
+            w.u32(lapStartFit + safeElapsed)
             w.u32(lapStartFit)
             w.u32((safeElapsed * 1000L))
-            w.u32((safeElapsed * 1000L))
+            w.u32((safeTimer * 1000L))
             w.u32(fitDistance(accum.metres.takeIf { hasRiderMass }))
-            w.u16(fitSpeed(accum.avgSpeedMps(safeElapsed).takeIf { hasRiderMass }))
+            w.u16(fitSpeed(accum.avgSpeedMps(safeTimer).takeIf { hasRiderMass }))
             w.u16(fitSpeed(accum.maxSpeedMps.takeIf { hasRiderMass }))
             w.u16(accum.avgPower().coerceIn(0, 65534))
             w.u16(accum.maxPower.coerceIn(0, 65534))
@@ -254,21 +264,22 @@ object RideFitBuilder {
             val cadence = CadenceTarget.of(segment?.cadenceMinRpm, segment?.cadenceMaxRpm)
             w.u8(cadence?.minRpm?.coerceIn(0, 254) ?: FitInvalid.UINT8)
             w.u8(cadence?.maxRpm?.coerceIn(0, 254) ?: FitInvalid.UINT8)
+            lapsWritten += 1
         }
 
-        // We deliberately enforce one record per integer-second sample. The
-        // timestampEpoch on incoming telemetry can drift from a clean 1Hz, so
-        // we round to whole-second offsets and de-dupe.
-        val seenSecondOffsets = HashSet<Int>()
-        for (sample in telemetry) {
-            val offsetSec = ((sample.timestampEpoch - startUnixMs) / 1000L).toInt()
-            if (offsetSec < 0 || offsetSec >= totalSeconds) continue
-            if (!seenSecondOffsets.add(offsetSec)) continue
+        // One record per integer-second sample: the timeline rounds each
+        // sample's timestamp to whole seconds and de-dupes. Segments are ride
+        // time, so laps are cut on the ride clock while records keep the wall
+        // clock they were taken on.
+        var phase = 0
+        for (point in timeline.points) {
+            val sample = telemetry[point.index]
 
             // If this sample crosses into the next segment, close the current lap first.
-            while (offsetSec >= segEndOffset && segIdx < segmentsSec.size - 1) {
+            while (point.rideSeconds >= segEndOffset && segIdx < segmentsSec.size - 1) {
                 emitLap(
-                    elapsedSec = segEndOffset - segStartOffset,
+                    timerSec = segEndOffset - segStartOffset,
+                    lapEndFit = startFit + timeline.wallAt(segEndOffset),
                     accum = lapStatsAccum,
                     segment = segments?.getOrNull(segIdx),
                     lapIndex = segIdx,
@@ -276,8 +287,20 @@ object RideFitBuilder {
                 segIdx += 1
                 segStartOffset = segEndOffset
                 segEndOffset += segmentsSec[segIdx]
-                lapStartFit = startFit + segStartOffset
+                lapStartFit = startFit + timeline.wallAt(segStartOffset)
                 lapStatsAccum = LapAccum()
+            }
+
+            // The ride was paused between the last sample and this one. Said
+            // the way a head unit says it, so a reader can tell a rider who
+            // stopped from a trainer that dropped out. Written after any lap
+            // closed above: a lap ending at the pause ends before it.
+            if (point.phase != phase) {
+                w.writeDataHeader(LOCAL_EVENT)
+                w.u32(startFit + timeline.phases[phase].lastWallSeconds); w.u8(0); w.u8(4)  // timer / stop_all
+                w.writeDataHeader(LOCAL_EVENT)
+                w.u32(startFit + point.wallSeconds); w.u8(0); w.u8(0)                      // timer / start
+                phase = point.phase
             }
 
             // A trainer measures no ground speed, so this is the speed the
@@ -288,7 +311,7 @@ object RideFitBuilder {
             if (speedMps > rideMaxSpeedMps) rideMaxSpeedMps = speedMps
 
             w.writeDataHeader(LOCAL_RECORD)
-            w.u32(startFit + offsetSec)
+            w.u32(startFit + point.wallSeconds)
             w.u32(fitDistance(rideMetres.takeIf { hasRiderMass }))
             w.u16(fitSpeed(speedMps.takeIf { hasRiderMass }))
             w.u16(sample.power.toInt().coerceIn(0, 65534))
@@ -305,7 +328,8 @@ object RideFitBuilder {
 
         // Final lap (close out the last segment / whole ride).
         emitLap(
-            elapsedSec = totalSeconds - segStartOffset,
+            timerSec = totalSeconds - segStartOffset,
+            lapEndFit = endFit,
             accum = lapStatsAccum,
             segment = segments?.getOrNull(segIdx),
             lapIndex = segIdx,
@@ -350,7 +374,7 @@ object RideFitBuilder {
         w.writeDataHeader(LOCAL_SESSION)
         w.u32(endFit)
         w.u32(startFit)
-        w.u32((session.durationSeconds * 1000L).toULong().toLong())
+        w.u32(timeline.endWallSeconds * 1000L)
         w.u32((session.durationSeconds * 1000L).toULong().toLong())
         w.u32(fitDistance(rideMetres.takeIf { hasRiderMass }))
         w.u16(fitSpeed(
@@ -372,7 +396,9 @@ object RideFitBuilder {
         w.u8(SUB_SPORT_INDOOR_CYCLING)
         w.u8(8)                                 // event = session
         w.u8(1)                                 // event_type = stop
-        w.u16(segmentsSec.size)
+        // The laps actually written. A ride ended before its last segments
+        // has fewer laps than the workout has segments.
+        w.u16(lapsWritten)
 
         // ── activity ─────────────────────────────────────────────────────
         w.writeDefinition(LOCAL_ACTIVITY, FitMessage.ACTIVITY, listOf(
