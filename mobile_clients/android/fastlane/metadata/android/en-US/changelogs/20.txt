@@ -1,0 +1,5 @@
+Connect Intervals.icu with one tap: approve Indoor Bike in your browser, and rides upload without pasting an API key. Disconnect takes the permission back.
+
+A companion game can now drive a stretch that is not recorded, such as pushing the bike up a climb, and hold you at a wattage while it does.
+
+Fixed: a paused ride exported short, losing a second of riding for every second paused, and a ride interrupted by a crash lost everything after it. Pauses are now marked in the file.

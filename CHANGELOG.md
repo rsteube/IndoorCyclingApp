@@ -4,7 +4,7 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
-## [Unreleased]
+## [2.4] (20) - 2026-09-17
 
 ### Added
 
@@ -18,7 +18,35 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   builds from a gitignored file rather than kept in the repository; a build
   without it offers the API key as before. The approval comes back through a
   verified link to `indoorbike.app`, so no other app on the phone can be handed
-  it. Connecting replaces an API key already saved.
+  it. Connecting replaces an API key already saved. A build carrying the OAuth
+  client does not offer the API key at all, since Intervals.icu asks multi-user
+  apps to use OAuth; the fields stay for a rider who already saved one.
+
+- **A companion can drive a stretch that is not recorded (protocol 0.10).** A
+  new `untracked` ride state is active with the record switched off: the engine
+  drives the trainer and telemetry streams, while the clock, the samples and the
+  snapshot all stop, so pushing a bike up a climb the game will not let the
+  rider ride is work that stays out of the activity. Distance reported while
+  untracked is not banked, and cannot raise the kept maximum afterwards.
+  `setPower` is honoured only in that state, held inside an envelope that decays
+  to nothing if the game goes quiet and releases the brake below 20 rpm, so a
+  rider who gives up is never met with more resistance. `stateChanged` and
+  `telemetry.state` are now per connection: a 0.10 companion hears `untracked`
+  and an older one hears `paused`.
+
+### Fixed
+
+- **A paused ride exported short, and one interrupted by a crash lost its
+  tail.** Both the FIT and the TCX writer measured every sample against the
+  ride's start plus its duration, so each paused second pushed a second of real
+  riding off the end of the file, and neither file said a pause had happened.
+  Samples now carry the moment they were taken on both clocks: FIT writes a
+  timer stop and start around each pause as a head unit does and reports
+  elapsed and rolling time separately, TCX leaves the pause as the gap between
+  two trackpoints, and laps are cut on ride time.
+- **An exported FIT claimed laps it did not contain.** A ride ended before its
+  last segments wrote a lap count for the whole plan; it is now the laps
+  actually in the file.
 
 ## [2.3] (19) - 2026-09-16
 
