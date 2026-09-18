@@ -39,7 +39,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.layout.AlignmentLine
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.layout
@@ -291,6 +293,8 @@ private fun CompanionPowerOnly(
         animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
         label = "companion-power-only",
     )
+    val density = LocalDensity.current
+    val measurer = rememberTextMeasurer()
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
@@ -298,33 +302,66 @@ private fun CompanionPowerOnly(
             .padding(top = Spacing.s3, bottom = Spacing.s2),
         contentAlignment = Alignment.Center,
     ) {
-        // Measured from the space rather than picked from a table of devices:
-        // one number in an area this size should be as big as the area allows,
-        // and what constrains it is whichever of the two dimensions runs out
-        // first. Three digits wide at roughly half the width, and a line of
-        // type at half the height, leave room for the label above and the
-        // W/kg below without either being crowded.
-        val font: TextUnit = minOf(
-            maxWidth.value * 0.42f,
-            maxHeight.value * 0.50f,
-        ).coerceIn(72f, 340f).sp
+        val reading = if (isPowerStale) "--" else animatedPower.toString()
+        // As big as the space allows, and the space is measured rather than
+        // guessed: the type is asked how wide this many digits come out and how
+        // tall the two small lines are, and what is left over is the number's.
+        // A ratio picked by eye would be wrong on the next font or the next
+        // screen shape, and wrong here means either a number smaller than the
+        // space it sits in or one that runs off the side of it.
+        //
+        // Sized for three digits until a fourth arrives, rather than for the
+        // widest reading a rider could ever produce: holding room for a
+        // four-figure sprint would shrink every ordinary ride for a number most
+        // riders never see. Below a hundred watts it keeps the three-digit
+        // size, so the figure does not breathe in and out around 99 W, which is
+        // exactly where a warm-up sits.
+        val digitSlots = reading.length.coerceIn(3, 4)
+        val font: TextUnit = remember(digitSlots, maxWidth, maxHeight, density) {
+            // Measured in the style it will be drawn in, letter spacing and
+            // all, because a probe in some other style answers a question
+            // nobody asked and the answer is a number off the side of the
+            // screen.
+            val probe = measurer.measure(
+                AnnotatedString("8".repeat(digitSlots)),
+                NUMBER_STYLE.copy(fontSize = PROBE_SIZE),
+                maxLines = 1,
+                softWrap = false,
+                density = density,
+            )
+            val unit = measurer.measure(AnnotatedString(" W"), CadenceType.h2, density = density)
+            val label = measurer.measure(AnnotatedString("Power"), CadenceType.eyebrow, density = density)
+            val perKg = measurer.measure(AnnotatedString("0.0 W/kg"), CadenceType.h3, density = density)
+            with(density) {
+                // A hair under what fits, so that rounding in the measurement
+                // cannot be what decides whether the unit still has a home.
+                val roomAcross = (maxWidth.toPx() - unit.size.width) * 0.98f
+                val roomDown = maxHeight.toPx() - label.size.height - perKg.size.height -
+                    Spacing.s3.toPx() * 2
+                val byWidth = PROBE_SIZE.toPx() * roomAcross / probe.size.width
+                // What the trim leaves: the digits themselves, not the line box
+                // they are drawn in. See [trimmedToGlyphs].
+                val byHeight = roomDown / GLYPH_BAND
+                minOf(byWidth, byHeight).coerceIn(48.dp.toPx(), 420.dp.toPx()).toSp()
+            }
+        }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(text = "Power", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-            Spacer(modifier = Modifier.height(Spacing.s2))
+            Spacer(modifier = Modifier.height(Spacing.s3))
             Row {
                 Text(
-                    text = if (isPowerStale) "--" else animatedPower.toString(),
+                    text = reading,
                     modifier = Modifier
                         .trimmedToGlyphs(font)
                         .alignByBaseline(),
-                    fontSize = font,
-                    lineHeight = font,
-                    fontWeight = FontWeight.Normal,
-                    fontFamily = DisplayFontFamily,
                     color = zoneColor,
-                    style = LocalTextStyle.current.copy(
-                        platformStyle = PlatformTextStyle(includeFontPadding = false),
-                    ),
+                    // One line whatever happens. A width measured a little
+                    // tight would otherwise wrap the reading onto two, and two
+                    // lines of this are not a smaller number, they are an
+                    // unreadable screen.
+                    maxLines = 1,
+                    softWrap = false,
+                    style = NUMBER_STYLE.copy(fontSize = font, lineHeight = font),
                 )
                 // The unit hangs off the number's own baseline rather than the
                 // bottom of its box, which is where it looks written by the
@@ -336,15 +373,41 @@ private fun CompanionPowerOnly(
                     modifier = Modifier.alignByBaseline(),
                 )
             }
-            Spacer(modifier = Modifier.height(Spacing.s2))
+            Spacer(modifier = Modifier.height(Spacing.s3))
+            // Bigger than a sub-line elsewhere in the app. It is read from a
+            // metre away by somebody who is not going to lean in.
             Text(
                 text = if (isPowerStale) "--" else formatOneDecimal(wattsPerKg.toDouble()) + " W/kg",
-                style = CadenceType.small,
-                color = CadenceColors.Fg3,
+                style = CadenceType.h3,
+                color = CadenceColors.Fg2,
             )
         }
     }
 }
+
+/**
+ * How tall a digit is as a share of its font size: a cap height, near enough
+ * across the faces this app ships that a few pixels either way are invisible
+ * under a number this size.
+ */
+private const val GLYPH_BAND = 0.74f
+
+/** Big enough to measure accurately, small enough to cost nothing. */
+private val PROBE_SIZE = 100.sp
+
+/**
+ * The face the power is drawn in, with no size: the size is worked out from the
+ * space, and the same style does the measuring so that the two agree.
+ *
+ * The app's own biggest number, weight, letter spacing and tabular figures
+ * included. Tabular matters more here than anywhere: every digit the same width
+ * means a reading that climbs from 99 to 100 to 260 does not shuffle sideways
+ * under the rider's eye, and it means the width measured for "888" is the width
+ * any three digits will take.
+ */
+private val NUMBER_STYLE = CadenceType.displayXl.copy(
+    platformStyle = PlatformTextStyle(includeFontPadding = false),
+)
 
 /**
  * Report a line of digits as the height of the digits, not of the font.
@@ -369,9 +432,7 @@ private fun Modifier.trimmedToGlyphs(fontSize: TextUnit): Modifier = layout { me
     if (baseline == AlignmentLine.Unspecified) {
         return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
     }
-    // 0.74em is a cap height across the faces this app ships, near enough that
-    // a few pixels either way are invisible under a number this size.
-    val above = (fontSize.toPx() * 0.74f).roundToInt()
+    val above = (fontSize.toPx() * GLYPH_BAND).roundToInt()
     val top = (baseline - above).coerceAtLeast(0)
     layout(placeable.width, (baseline - top).coerceAtLeast(0)) {
         placeable.place(0, -top)

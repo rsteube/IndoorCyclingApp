@@ -4,6 +4,31 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/); versions map to the Android
 `versionName` (with `versionCode` in parentheses).
 
+## [Unreleased]
+
+### Changed
+
+- **A companion ride shows the power, and the shift paddles, and nothing else.**
+  The speed, the distance, the gradient, the gear and the climb were being drawn
+  twice: once by the game on the screen in front of the rider, and again on the
+  phone clamped to their bars. The phone now shows the one reading the game
+  cannot, as large as the screen will hold it, with the W/kg under it and the
+  paddles where they were. Nothing changes on the wire, and nothing changes in
+  what is recorded or exported.
+
+- **Everything is still there for whoever is building the companion.** Companion
+  mode's own screen has **Show every reading while riding**, which puts the full
+  set back on the ride screen. Off by default, remembered between rides.
+
+### Fixed
+
+- **Leaving a companion ride left you in companion mode.** Backing out of the
+  ride, or closing the panel after the session ended, returned to the pairing
+  screen, which starts listening again the moment it appears. A permanently
+  paired game reconnected by itself and drove the rider straight back into a
+  ride, with no way off the screen from the phone's end. Both now return to the
+  ride picker, with the socket closed behind them.
+
 ## [2.4] (20) - 2026-09-17
 
 ### Added

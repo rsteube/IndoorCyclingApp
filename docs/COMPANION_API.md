@@ -1186,6 +1186,22 @@ different ride**: a `course` between rides whose `name` is not the saved ride's 
 next ride's, sent before you start it, and the saved ride is left exactly as it was. So a late
 `course` either carries no `name` or repeats the saved one.
 
+### What is on the ride screen
+
+The power their legs are making, in the largest number the screen will hold, and the two shift
+paddles. That is the whole screen, in your colours and under your name.
+
+Everything else you send is still read, still recorded and still in the ride file. It is simply
+not repeated on the phone: the speed, the distance, the gradient, the gear and the climb are
+already on the big screen a metre in front of the rider, drawn by you, and a second copy on the
+handlebars is one more place to look for something they are looking at already. The phone shows
+the one thing you cannot: what the rider is actually producing.
+
+**While you are building, turn it all back on.** Companion mode's own screen has **Show every
+reading while riding**. With it on, the ride screen is the full set, gradient, gear, cadence,
+heart rate, speed, distance and climb, which is how you see what the app made of the frames you
+sent. It is off by default, it stays where you left it, and it changes nothing on the wire.
+
 ### When the companion goes away
 
 If your socket closes **without a `finish`**, you have stopped driving the ride, not ended it.
