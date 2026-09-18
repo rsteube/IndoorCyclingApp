@@ -1,0 +1,7 @@
+Indoor Bike now asks for your FTP and weight when you first open it. Every target and zone is scaled from them, and until now nothing ever asked.
+
+On a tablet, Workouts and History show the list and the workout or ride beside each other, instead of one narrow column.
+
+A companion ride shows the power and the shift paddles, with everything else a tap away in companion settings. The wattage is brighter and easier to read mid-effort.
+
+Fixed: backing out of a ride now asks before ending it, and a free ride's bottom row is no longer cropped on a tablet.

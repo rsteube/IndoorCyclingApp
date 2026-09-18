@@ -6,6 +6,25 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.5] (21) - 2026-09-18
+
+### Added
+
+- **Onboarding runs.** The welcome card and the two-step sheet that asks for FTP
+  and body weight existed, fully built, and nothing ever called them: a fresh
+  install rode at the default 200 W and 75 kg, and since FTP is the denominator
+  of every zone, target, TSS, IF, W/kg and XP figure, a new rider's numbers were
+  all arithmetic on a value nobody had asked them for. The card now sits on the
+  ride screen until the question is answered, and the sheet explains what
+  Bluetooth and notifications are for. Dismissing counts as answering.
+
+- **Two panes on a tablet.** Workouts and History put the list beside the thing
+  it lists from 840 dp up: the library and the workout, the ride history and the
+  ride's summary. The pane is the same screen a phone pushes, so Start, rename,
+  delete and share are one implementation. The navigation rail also stays put
+  when a detail screen opens on a wide window; the ride screen and the QR
+  scanner still take the whole window.
+
 ### Changed
 
 - **A companion ride shows the power, and the shift paddles, and nothing else.**
@@ -20,7 +39,27 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   mode's own screen has **Show every reading while riding**, which puts the full
   set back on the ride screen. Off by default, remembered between rides.
 
+- **The wattage is the brightest thing on the ride screen.** Four of the seven
+  zone colours the number is drawn in measured between 2.7:1 and 3.0:1 against
+  the canvas, under the 3:1 floor large text gets, and the worst was the zone a
+  rider is in when they are suffering hardest. Each is lifted along its own hue
+  to about 4:1. Cadence and heart rate step down one ink level, so size and
+  colour now say the same thing about what matters.
+
+- **Companion mode leads with the address and the code**, with the explanation
+  of what companion mode is following them rather than pushing them below the
+  fold.
+
 ### Fixed
+
+- **Backing out of a running ride asks first.** Back stopped the workout and
+  left; the ride survived only as a row on the unfinished-ride banner, which a
+  rider who thought they had quit has no reason to look for. Back now shows the
+  same dialog End & save uses. A ride with no time on it still leaves silently.
+
+- **A free ride's bottom row was cropped on a tablet.** The stats strip is the
+  last row in the column with no timeline under it to hold it off the edge, so
+  its tiles were laid out flush and the screen cut their corners.
 
 - **Leaving a companion ride left you in companion mode.** Backing out of the
   ride, or closing the panel after the session ended, returned to the pairing
