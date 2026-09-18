@@ -181,6 +181,30 @@ Each numbered scenario is independent - start each from a clean state by either 
 | 12.2 | `adb shell pm list packages indoorbike` | Lists `app.indoorbike` and `app.indoorbike.debug` |
 | 12.3 | Open both apps | Each has its own DataStore; settings + history are not shared |
 
+### 13. Untracked riding and a power target (companion 0.10)
+
+Needs a **real trainer**, not the mock: the three things this scenario exists for are how ERG
+feels, and no mock can tell you that. Needs a companion that speaks 0.10 (Col de Berg since
+7fbcce2), or `python scripts/companion_probe.py --scenario untracked` for everything except the
+feel. Ride it with a rider on the bike.
+
+| Step | Action | Expected |
+|------|--------|----------|
+| 13.1 | Pair, start a ride, ride a minute | Clock running, ride recording as usual |
+| 13.2 | Trigger the companion's push-the-bike (Col de Berg: stall on a climb and choose it) | Header reads **Not recording · Pushing the bike · Target N W**. The clock stops where it was and does not move again |
+| 13.3 | Keep pedalling against the target | The trainer settles at the wattage within about 2 s of it being set, from whatever the rider was pushing. **It must not slam on**: a target that arrives whole is the soft start not working |
+| 13.4 | Stop pedalling entirely | Within ~2 s the resistance drops away and the rider can turn the cranks freely. The header says the target was let go. **This is the one that matters**: a rider stalled against ERG cannot restart, so anything that still fights back here is a bug |
+| 13.5 | Start pedalling again | The target comes back over ~3 s rather than at once |
+| 13.5b | Stop and restart twice more, in quick succession | Where the two sides' watchdogs meet: Col de Berg pauses the ride after 1.2 s of no movement, which leaves untracked and clears the target, and resuming re-enters untracked and pays a fresh soft start. Expect **about two seconds** of softer resistance on each restart, and judge whether that reads as the trainer catching up or as a stutter. **About four seconds means the companion sent the target twice** and stacked two ramps (Col de Berg had exactly that bug until d483b2d): check its frame log before blaming the phone |
+| 13.6 | Kill the companion's frames (close the game, or unplug its network) | `worldTimeout` fires after 1.5 s, and the commanded wattage decays to nothing over the next 2 s. The rider is left freewheeling, never held |
+| 13.7 | Bring the companion back | The target ramps back over ~2 s |
+| 13.8 | Press pause on the phone, then resume | Pause: trainer at 0 W. Resume: back to **Not recording**, not to a recorded ride, and with no target until the companion sends one |
+| 13.9 | Let the companion end the walk (Col de Berg: reach the summit) | Header returns to the ordinary ride, the clock carries on from the value it stopped at, and the road is back on the trainer |
+| 13.10 | Finish the ride and open it in history | Distance and time cover the riding only. No sample from the walk: the power trace has a gap, not a flat stretch |
+| 13.11 | Export the ride as FIT, open it in a reader | The walk is a stopped timer: a `timer stop` and a `timer start` around it, elapsed time longer than timer time, and every sample after the walk present |
+| 13.12 | With **no trainer connected**, ask for a power target | The companion gets a `rejected` warning naming `watts`, and the ride stays untracked on the road rather than silently doing nothing |
+| 13.13 | Walk the bike, then let the companion disconnect mid-walk | Ride held paused at 0 W. The same companion reconnecting returns it to **Not recording** with no target |
+
 ---
 
 ## Shared-module unit tests

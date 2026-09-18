@@ -647,7 +647,13 @@ hands it back to the road in your latest `world` frame.
 - Virtual gears do not change an ERG load. `requestShift` is still accepted and still
   answered, so the rider rides on in the gear they left in.
 
-Two rules protect the rider, and neither depends on your game behaving well:
+**A new target opens gently.** The commanded wattage starts from what the rider is pushing at
+the moment the target is set and reaches the asked-for number over about 2000 ms, because a
+trainer handed 250 W while its rider is soft-pedalling at 80 does not negotiate. So for the
+first couple of seconds `powerCommanded` reads below `powerTarget`, and that is the ramp rather
+than a clamp or a partial refusal. Setting the same target again restarts it.
+
+Two further rules protect the rider, and neither depends on your game behaving well:
 
 - **The target rides on the `world` lease.** Stop sending frames and the commanded wattage
   decays to zero over the same ramp a gradient does, with `worldTimeout` as usual; frames
