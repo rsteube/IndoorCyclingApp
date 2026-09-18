@@ -30,8 +30,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +51,8 @@ import app.indoorbike.shared.progression.totalKjAcross
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.marginRidges
 import app.indoorbike.ui.components.ContentMaxWidth
+import app.indoorbike.ui.components.TwoPaneMinWidth
+import app.indoorbike.ui.components.ListPaneWidth
 import app.indoorbike.ui.components.tabRootBottomPadding
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.CardDivider
@@ -74,6 +80,12 @@ fun HistoryTab(
     onNavigateToOverview: (Long) -> Unit,
     onNavigateToRides: () -> Unit = {},
     onRideAgain: (workoutId: String) -> Unit = {},
+    /**
+     * The ride summary, shown beside the list when the window is wide enough
+     * for both. Supplied by the navigation layer so the pane is the same screen
+     * a phone pushes. Null keeps every window one-pane.
+     */
+    detailPane: (@Composable (sessionId: Long, onClose: () -> Unit) -> Unit)? = null,
 ) {
     val container = LocalAppContainer.current
     val sessions by container.sessions.collectAsState()
@@ -81,6 +93,17 @@ fun HistoryTab(
     // was deleted can't offer "Ride again".
     val workouts = app.indoorbike.LocalWorkouts.current
     val libraryIds = remember(workouts) { workouts.map { it.id }.toSet() }
+    // A rider comparing last Tuesday with this one should not pay a push and a
+    // pop for each. Wide enough for both, and the ride sits beside the list.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val twoPane = detailPane != null && maxWidth >= TwoPaneMinWidth
+    var openSessionId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // A ride deleted from the pane, or one that was never there, must not leave
+    // the pane describing a row the list no longer has.
+    val openSession = remember(openSessionId, sessions) {
+        sessions.firstOrNull { it.id == openSessionId }
+    }
+
     val header = rememberCollapsingHeaderState()
     Column(
         modifier = Modifier
@@ -141,9 +164,15 @@ fun HistoryTab(
             val totalKj = remember(sessions) { totalKjAcross(sessions) }
             val grouped = remember(sessions) { groupByWeek(sessions) }
 
+            Row(modifier = Modifier.weight(1f)) {
             LazyColumn(
-                // Capped and left aligned, matching the title above it.
-                modifier = Modifier.fillMaxHeight().widthIn(max = ContentMaxWidth),
+                // Capped and left aligned, matching the title above it. Beside
+                // a summary pane it takes a fixed column instead.
+                modifier = if (twoPane) {
+                    Modifier.fillMaxHeight().width(ListPaneWidth)
+                } else {
+                    Modifier.fillMaxHeight().widthIn(max = ContentMaxWidth)
+                },
                 contentPadding = PaddingValues(
                     start = Spacing.s5,
                     end = Spacing.s5,
@@ -174,7 +203,14 @@ fun HistoryTab(
                             list.forEachIndexed { index, session ->
                                 SessionRow(
                                     session = session,
-                                    onClick = { onNavigateToOverview(session.id) },
+                                    selected = twoPane && session.id == openSessionId,
+                                    onClick = {
+                                        if (twoPane) {
+                                            openSessionId = session.id
+                                        } else {
+                                            onNavigateToOverview(session.id)
+                                        }
+                                    },
                                     onRideAgain = if (session.workoutId in libraryIds) {
                                         { onRideAgain(session.workoutId) }
                                     } else null
@@ -186,7 +222,37 @@ fun HistoryTab(
                 }
                 item { Spacer(modifier = Modifier.windowInsetsTopHeight(WindowInsets(0))) }
             }
+
+            if (twoPane) {
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    val open = openSession
+                    if (open != null) {
+                        detailPane!!(open.id) { openSessionId = null }
+                    } else {
+                        PickARideHint()
+                    }
+                }
+            }
+            }
         }
+    }
+    }
+}
+
+/** What the summary pane says before a ride has been chosen. */
+@Composable
+private fun PickARideHint() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Choose a ride to see how it went.",
+            style = CadenceType.body,
+            color = CadenceColors.Fg3,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 320.dp)
+        )
     }
 }
 
@@ -260,6 +326,8 @@ private fun SessionRow(
     session: WorkoutSession,
     onClick: () -> Unit,
     onRideAgain: (() -> Unit)? = null,
+    /** True when the summary pane beside the list is describing this ride. */
+    selected: Boolean = false,
 ) {
     val cal = remember(session.startTimeEpoch) {
         Calendar.getInstance().apply { timeInMillis = session.startTimeEpoch }

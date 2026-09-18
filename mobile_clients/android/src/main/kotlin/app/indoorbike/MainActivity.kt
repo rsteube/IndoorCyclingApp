@@ -544,12 +544,49 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
             )
         }
         entry<RouteWorkoutPicker> { _ ->
+            val scope = rememberCoroutineScope()
             WorkoutPickerScreen(
                 entries = entries,
                 onBack = { navigator.goBack() },
                 onPick = { workout -> navigator.navigate(RouteWorkoutDetail(workout.id)) },
                 onOpenLibrary = { navigator.navigate(RouteLibrary) },
                 onScanQr = { navigator.navigate(RouteQrScanner) },
+                // The same detail screen a phone pushes, handed to the picker
+                // to put beside its list when the window is wide enough. Built
+                // here because Start, rename and delete are navigation's and
+                // the container's business, not the list's.
+                detailPane = { workout, onClose ->
+                    WorkoutDetailScreen(
+                        workout = workout,
+                        onBack = onClose,
+                        onStart = {
+                            container.sessionManager.prepareWorkout(
+                                workout = workout,
+                                ftp = container.userSettings.ftp.value
+                            )
+                            navigator.navigate(RouteRideScreen(workout.id))
+                        },
+                        onNavigateToPairing = { navigator.navigate(RouteTrainerPairing) },
+                        isImported = entries
+                            .firstOrNull { it.workout.id == workout.id }
+                            ?.source is WorkoutSource.Imported,
+                        onRename = { newName ->
+                            scope.launch {
+                                container.workoutImporter.renameUserWorkout(workout.id, newName)
+                                container.workoutLibrary.refreshImportsAwait()
+                            }
+                        },
+                        onDelete = {
+                            scope.launch {
+                                container.workoutImporter.deleteUserWorkout(workout.id)
+                                container.workoutLibrary.refreshImportsAwait()
+                                onClose()
+                            }
+                        },
+                        // The list is right there; there is nowhere to go back to.
+                        showBack = false,
+                    )
+                },
             )
         }
         entry<RouteRepositories> { _ ->
@@ -661,7 +698,18 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 onNavigateToRides = { navigator.navigate(TabRides) },
                 onRideAgain = { workoutId ->
                     navigator.navigate(RouteWorkoutDetail(workoutId))
-                }
+                },
+                // The same summary a phone pushes, beside the list on a window
+                // wide enough for both.
+                detailPane = { sessionId, onClose ->
+                    WorkoutOverviewScreen(
+                        sessionId = sessionId,
+                        workoutList = workouts,
+                        onBack = onClose,
+                        fromRide = false,
+                        showBack = false,
+                    )
+                },
             )
         }
         entry<TabProgress>(metadata = TabTransition) { _ ->
@@ -771,8 +819,21 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
         // navigation chrome. The rail is still Material: a vertical pill would
         // be a different component, not the same one turned sideways.
         val useSlateTabBar = atTabRoot && widthDp < 600
+        // A ride owns the whole screen: bars hidden, orientation locked, the
+        // rider two feet away and moving. Nothing else may sit beside it, and
+        // that is the one destination where losing the navigation is the point
+        // rather than a side effect.
+        val immersive = navigationState.currentRoute is RouteRideScreen ||
+            navigationState.currentRoute is RouteQrScanner
         val navLayoutType = when {
-            !atTabRoot || useSlateTabBar -> NavigationSuiteType.None
+            immersive || useSlateTabBar -> NavigationSuiteType.None
+            // The rail stays put when a detail screen opens on a wide window.
+            // A phone pushes a detail full-screen because it has no room for
+            // both; a tablet has 1280 dp of it, and taking the navigation away
+            // there leaves the rider on a screen with one way out and an empty
+            // column where the rail was.
+            widthDp >= 600 -> NavigationSuiteType.NavigationRail
+            !atTabRoot -> NavigationSuiteType.None
             else -> NavigationSuiteType.NavigationRail
         }
         val activeTabId = TOP_LEVEL_ROUTES[navigationState.topLevelRoute]?.id ?: "rides"

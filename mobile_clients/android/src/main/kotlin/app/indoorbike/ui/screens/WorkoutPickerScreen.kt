@@ -29,6 +29,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -73,6 +75,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.draw.clip
@@ -105,6 +108,8 @@ import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.marginRidges
 import app.indoorbike.ui.components.ContentMaxWidth
+import app.indoorbike.ui.components.ListPaneWidth
+import app.indoorbike.ui.components.TwoPaneMinWidth
 import app.indoorbike.ui.components.rememberCollapsingHeaderState
 import app.indoorbike.ui.components.listBottomPadding
 import app.indoorbike.ui.components.CardDivider
@@ -183,6 +188,16 @@ fun WorkoutPickerScreen(
     onPick: (Workout) -> Unit,
     onOpenLibrary: () -> Unit,
     onScanQr: () -> Unit,
+    /**
+     * The workout detail, rendered beside the list when the window is wide
+     * enough for both.
+     *
+     * Supplied by the navigation layer rather than built here, so the pane is
+     * the same screen, with the same Start, rename and delete behind it, as the
+     * one a phone pushes. Null leaves every window one-pane, which is what a
+     * caller that has no detail to show should pass.
+     */
+    detailPane: (@Composable (Workout, onClose: () -> Unit) -> Unit)? = null,
 ) {
     val container = LocalAppContainer.current
     val ftp by container.userSettings.ftp.collectAsState()
@@ -221,6 +236,19 @@ fun WorkoutPickerScreen(
         }
     }
 
+    // On a window this wide the list and the workout it describes fit side by
+    // side, and a rider comparing three sessions stops paying a push and a pop
+    // for each one. Below it, choosing still means going somewhere.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+    val twoPane = detailPane != null && maxWidth >= TwoPaneMinWidth
+    // Survives a rotation, and is cleared when the workout it names leaves the
+    // filtered list, so the pane never describes something the list no longer
+    // offers.
+    var previewedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val previewed = remember(previewedId, visible) {
+        visible.firstOrNull { it.workout.id == previewedId }?.workout
+    }
+
     val header = rememberCollapsingHeaderState()
     Column(
         Modifier
@@ -248,9 +276,16 @@ fun WorkoutPickerScreen(
             },
         )
 
+        Row(modifier = Modifier.weight(1f)) {
         LazyColumn(
             // Capped and left aligned, matching the screen title above it.
-            modifier = Modifier.weight(1f).widthIn(max = ContentMaxWidth),
+            // Beside a detail pane it takes a fixed column instead, so the
+            // workout on the right gets everything the list does not need.
+            modifier = if (twoPane) {
+                Modifier.fillMaxHeight().width(ListPaneWidth)
+            } else {
+                Modifier.fillMaxHeight().widthIn(max = ContentMaxWidth)
+            },
             contentPadding = PaddingValues(
                 start = Spacing.s5, end = Spacing.s5,
                 top = Spacing.s4, bottom = listBottomPadding()
@@ -302,7 +337,14 @@ fun WorkoutPickerScreen(
                             WorkoutRow(
                                 summary = summary,
                                 starred = starred,
-                                onClick = { onPick(summary.workout) },
+                                selected = twoPane && summary.workout.id == previewedId,
+                                onClick = {
+                                    if (twoPane) {
+                                        previewedId = summary.workout.id
+                                    } else {
+                                        onPick(summary.workout)
+                                    }
+                                },
                                 onToggleStar = {
                                     container.userSettings.setWorkoutFavourite(
                                         summary.workout.id, !starred
@@ -324,6 +366,41 @@ fun WorkoutPickerScreen(
                 }
             }
         }
+
+        if (twoPane) {
+            Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                if (previewed != null) {
+                    detailPane!!(previewed) { previewedId = null }
+                } else {
+                    PickAWorkoutHint()
+                }
+            }
+        }
+        }
+    }
+    }
+}
+
+/**
+ * What the detail pane says before a workout has been chosen.
+ *
+ * A blank half-screen reads as something that failed to load, so the pane says
+ * what it is waiting for. Quiet on purpose: the list is where the rider should
+ * be looking.
+ */
+@Composable
+private fun PickAWorkoutHint() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "Choose a workout to see what it asks of you.",
+            style = CadenceType.body,
+            color = CadenceColors.Fg3,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 320.dp)
+        )
     }
 }
 
@@ -414,10 +491,17 @@ private fun WorkoutRow(
     starred: Boolean,
     onClick: () -> Unit,
     onToggleStar: () -> Unit,
+    /**
+     * True when this row is the one the detail pane is describing. Only ever
+     * set in the two-pane layout: where tapping navigates away, nothing stays
+     * behind to be marked.
+     */
+    selected: Boolean = false,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .background(if (selected) CadenceColors.Bg2 else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(start = Spacing.s5, end = Spacing.s3, top = 14.dp, bottom = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

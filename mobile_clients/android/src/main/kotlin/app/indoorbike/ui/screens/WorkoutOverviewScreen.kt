@@ -94,7 +94,12 @@ fun WorkoutOverviewScreen(
     workoutList: List<Workout>,
     onBack: () -> Unit,
     fromRide: Boolean = false,
-    onDone: () -> Unit = {}
+    onDone: () -> Unit = {},
+    /**
+     * False when this is a pane beside the history list rather than a pushed
+     * screen: the list is still there, so there is nothing to go back to.
+     */
+    showBack: Boolean = true,
 ) {
     val container = LocalAppContainer.current
     val historyRepository = container.historyRepository
@@ -159,8 +164,14 @@ fun WorkoutOverviewScreen(
                 val stamp = formatEpochToDate(it.startTimeEpoch)
                 if (fromRide) "Ride complete · $stamp" else stamp
             } ?: "",
-            leading = {
-                IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
+            leading = if (!showBack) null else {
+                {
+                    IconBtn(
+                        icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = "Back",
+                        onClick = onBack,
+                    )
+                }
             },
             trailing = {
                 Row {

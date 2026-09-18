@@ -63,6 +63,16 @@ class NavigationState(
 
     var topLevelRoute: NavKey by topLevelRoute
 
+    /**
+     * The destination actually on screen: the top of the current tab's stack.
+     *
+     * Null only before the first entry exists. Read by the chrome, which has to
+     * know whether what is showing wants navigation beside it or wants the
+     * whole window.
+     */
+    val currentRoute: NavKey?
+        get() = backStacks[topLevelRoute]?.lastOrNull()
+
     @Composable
     fun toDecoratedEntries(
         entryProvider: (NavKey) -> NavEntry<NavKey>

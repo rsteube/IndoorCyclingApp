@@ -140,6 +140,14 @@ fun WorkoutDetailScreen(
     isImported: Boolean = false,
     onRename: (String) -> Unit = {},
     onDelete: () -> Unit = {},
+    /**
+     * False when this is a pane beside a list rather than a pushed screen.
+     *
+     * The list is still on screen next to it, so there is nothing to go back
+     * to and a second arrow beside the picker's own would be two ways to do
+     * one thing, neither of them obvious.
+     */
+    showBack: Boolean = true,
 ) {
     val container = LocalAppContainer.current
     val ftp by container.userSettings.ftp.collectAsState()
@@ -173,8 +181,14 @@ fun WorkoutDetailScreen(
             header = header,
             title = workout.name,
             eyebrow = "${summary.tag} · ${formatDurationPretty(summary.totalSeconds)}",
-            leading = {
-                IconBtn(icon = Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back", onClick = onBack)
+            leading = if (!showBack) null else {
+                {
+                    IconBtn(
+                        icon = Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = "Back",
+                        onClick = onBack,
+                    )
+                }
             },
             trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {

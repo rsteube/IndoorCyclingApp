@@ -995,6 +995,25 @@ data class TabItem(val id: String, val icon: ImageVector, val label: String)
  */
 val ContentMaxWidth = 760.dp
 
+/**
+ * From this width on, a screen that browses a list of things can show the list
+ * and the thing side by side.
+ *
+ * Capping content is the right answer to a wide window only while there is one
+ * thing to read. Where there are two - a library and the workout it describes -
+ * the honest use of a tablet is to stop making the rider push and pop for every
+ * one they want to look at. Below this the window belongs to whichever of the
+ * two they asked for.
+ */
+val TwoPaneMinWidth = 840.dp
+
+/**
+ * The list half of a two-pane screen. Wide enough for a workout's name, its
+ * zone bar and its duration without wrapping, and no wider: everything past
+ * that belongs to the pane that has something to say.
+ */
+val ListPaneWidth = 400.dp
+
 @Composable
 fun SegmentedSwitch(
     options: List<String>,
