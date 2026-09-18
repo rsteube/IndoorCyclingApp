@@ -39,6 +39,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.layout.AlignmentLine
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.delay
 import androidx.compose.runtime.getValue
@@ -112,6 +118,11 @@ fun CompanionHud(
     onShiftDown: () -> Unit,
     onShiftUp: () -> Unit,
     shiftingEnabled: Boolean,
+    /**
+     * Show every reading rather than the power alone. The developer view: see
+     * [app.indoorbike.shared.settings.UserSettings.companionShowAllData].
+     */
+    showAllData: Boolean = false,
     /** A controllable screen the companion is showing, or null for none. */
     remoteControls: RemoteControls? = null,
     onControlPress: (String) -> Unit = {},
@@ -162,7 +173,21 @@ fun CompanionHud(
 
         val readouts = @Composable { slot: Modifier, horizontalPadding: Dp ->
             Box(modifier = slot) {
-                CompanionReadouts(
+                if (!showAllData) {
+                    // What the rider came for. The game draws the road, the
+                    // speed, the distance and the gear on the big screen a
+                    // metre away; repeating them on the bars is a second place
+                    // to look for something already in front of them. What it
+                    // cannot draw is the power their legs are making, so that
+                    // is what this is: one number, as large as the space allows.
+                    CompanionPowerOnly(
+                        powerWatts = powerWatts,
+                        isPowerStale = isPowerStale,
+                        wattsPerKg = wattsPerKg,
+                        zoneColor = zoneColor,
+                        horizontalPadding = horizontalPadding,
+                    )
+                } else CompanionReadouts(
                     gradient = gradient,
                     speedMps = speedMps,
                     distanceMeters = distanceMeters,
@@ -181,7 +206,7 @@ fun CompanionHud(
                     shiftingEnabled = shiftingEnabled,
                     horizontalPadding = horizontalPadding,
                 )
-                // Over the readouts rather than in them. The pad is a visitor:
+                // Over whichever of the two is showing, rather than in it. The pad is a visitor:
                 // it belongs to a menu on somebody else's screen, comes and goes
                 // on that menu's schedule, and the ride's own numbers must not
                 // reflow every time it does. Bottom centre, between the two
@@ -243,6 +268,113 @@ fun CompanionHud(
                 }
             }
         }
+    }
+}
+
+/**
+ * The power, alone, in whatever the paddles leave.
+ *
+ * Sized to the space rather than to a breakpoint: this is read at arm's length
+ * by somebody breathing hard, so it takes as much of the height as it can get
+ * and still leaves the zone colour and the W/kg legible underneath.
+ */
+@Composable
+private fun CompanionPowerOnly(
+    powerWatts: Int,
+    isPowerStale: Boolean,
+    wattsPerKg: Float,
+    zoneColor: Color,
+    horizontalPadding: Dp,
+) {
+    val animatedPower by animateIntAsState(
+        targetValue = if (isPowerStale) 0 else powerWatts,
+        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
+        label = "companion-power-only",
+    )
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = horizontalPadding)
+            .padding(top = Spacing.s3, bottom = Spacing.s2),
+        contentAlignment = Alignment.Center,
+    ) {
+        // Measured from the space rather than picked from a table of devices:
+        // one number in an area this size should be as big as the area allows,
+        // and what constrains it is whichever of the two dimensions runs out
+        // first. Three digits wide at roughly half the width, and a line of
+        // type at half the height, leave room for the label above and the
+        // W/kg below without either being crowded.
+        val font: TextUnit = minOf(
+            maxWidth.value * 0.42f,
+            maxHeight.value * 0.50f,
+        ).coerceIn(72f, 340f).sp
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(text = "Power", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+            Spacer(modifier = Modifier.height(Spacing.s2))
+            Row {
+                Text(
+                    text = if (isPowerStale) "--" else animatedPower.toString(),
+                    modifier = Modifier
+                        .trimmedToGlyphs(font)
+                        .alignByBaseline(),
+                    fontSize = font,
+                    lineHeight = font,
+                    fontWeight = FontWeight.Normal,
+                    fontFamily = DisplayFontFamily,
+                    color = zoneColor,
+                    style = LocalTextStyle.current.copy(
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    ),
+                )
+                // The unit hangs off the number's own baseline rather than the
+                // bottom of its box, which is where it looks written by the
+                // same hand rather than dropped next to it.
+                Text(
+                    text = " W",
+                    style = CadenceType.h2,
+                    color = CadenceColors.Fg2,
+                    modifier = Modifier.alignByBaseline(),
+                )
+            }
+            Spacer(modifier = Modifier.height(Spacing.s2))
+            Text(
+                text = if (isPowerStale) "--" else formatOneDecimal(wattsPerKg.toDouble()) + " W/kg",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+            )
+        }
+    }
+}
+
+/**
+ * Report a line of digits as the height of the digits, not of the font.
+ *
+ * A line box is built for every letter a font can draw: room above for the
+ * accents and below for the tail of a "y". At caption sizes that slack is a
+ * pixel or two. At 300sp it is a hand's width of nothing, and it is charged
+ * twice, once above the number and once below, which is what pushes the label
+ * and the W/kg away from the figure they belong to and leaves the whole cluster
+ * sitting high in its space. Neither `includeFontPadding` nor a trimmed
+ * [LineHeightStyle] takes it back: those return what the *line height* added on
+ * top of the ascent and the descent, and here it is the ascent and the descent.
+ *
+ * So measure the text, ask it where its baseline is, and report the band from
+ * the top of a capital to that baseline. Digits have no descender and no
+ * accent, so nothing is cut off. The glyphs are placed where they always were:
+ * only what the parent is told about them changes.
+ */
+private fun Modifier.trimmedToGlyphs(fontSize: TextUnit): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val baseline = placeable[FirstBaseline]
+    if (baseline == AlignmentLine.Unspecified) {
+        return@layout layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+    // 0.74em is a cap height across the faces this app ships, near enough that
+    // a few pixels either way are invisible under a number this size.
+    val above = (fontSize.toPx() * 0.74f).roundToInt()
+    val top = (baseline - above).coerceAtLeast(0)
+    layout(placeable.width, (baseline - top).coerceAtLeast(0)) {
+        placeable.place(0, -top)
     }
 }
 

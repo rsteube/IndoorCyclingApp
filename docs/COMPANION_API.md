@@ -141,7 +141,7 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 | TXT key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.9` | Supported protocol range, `min-max` |
+| `proto` | `0.1-0.10` | Supported protocol range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.1.0` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride, for reconnection |

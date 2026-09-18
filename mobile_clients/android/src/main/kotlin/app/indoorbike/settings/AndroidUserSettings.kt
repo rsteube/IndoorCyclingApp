@@ -116,6 +116,9 @@ class AndroidUserSettings(
     private val _intervalsAutoUpload = MutableStateFlow(initialPrefs[KEY_INTERVALS_AUTO] ?: false)
     override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
 
+    private val _companionShowAllData = MutableStateFlow(initialPrefs[KEY_COMPANION_ALL_DATA] ?: false)
+    override val companionShowAllData: StateFlow<Boolean> = _companionShowAllData.asStateFlow()
+
     private val _intervalsAccessToken = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ACCESS])
     override val intervalsAccessToken: StateFlow<String?> = _intervalsAccessToken.asStateFlow()
 
@@ -237,6 +240,11 @@ class AndroidUserSettings(
         scope.launch {
             store.data.map { it[KEY_INTERVALS_AUTO] ?: false }.collect { value ->
                 if (value != _intervalsAutoUpload.value) _intervalsAutoUpload.value = value
+            }
+        }
+        scope.launch {
+            store.data.map { it[KEY_COMPANION_ALL_DATA] ?: false }.collect { value ->
+                if (value != _companionShowAllData.value) _companionShowAllData.value = value
             }
         }
         scope.launch {
@@ -407,6 +415,11 @@ class AndroidUserSettings(
         scope.launch { store.edit { it[KEY_INTERVALS_AUTO] = value } }
     }
 
+    override fun setCompanionShowAllData(value: Boolean) {
+        _companionShowAllData.value = value
+        scope.launch { store.edit { it[KEY_COMPANION_ALL_DATA] = value } }
+    }
+
     override fun setIntervalsAccessToken(token: String?) {
         val cleaned = token?.trim()?.takeIf { it.isNotEmpty() }
         _intervalsAccessToken.value = cleaned
@@ -533,6 +546,7 @@ class AndroidUserSettings(
         private val KEY_INTERVALS_ATHLETE = stringPreferencesKey("intervals_athlete_id")
         private val KEY_INTERVALS_API_KEY = stringPreferencesKey("intervals_api_key")
         private val KEY_INTERVALS_AUTO = booleanPreferencesKey("intervals_auto_upload")
+        private val KEY_COMPANION_ALL_DATA = booleanPreferencesKey("companion_show_all_data")
         private val KEY_INTERVALS_ACCESS = stringPreferencesKey("intervals_access_token")
         private val KEY_INTERVALS_ATHLETE_NAME = stringPreferencesKey("intervals_athlete_name")
         private val KEY_FT_URL = stringPreferencesKey("fittrackee_url")

@@ -707,12 +707,16 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
         entry<RouteRideScreen> { key: RouteRideScreen ->
             val wasCompanion = key.workoutId == COMPANION_WORKOUT_ID
             RideScreen(
-                // Backing out of a companion ride is leaving the ride, not
-                // leaving companion mode. `replace` rather than a push, because
-                // the pairing screen handed this one its place on the stack and
-                // is taking it back; pressing back again still reaches home.
+                // Leaving a companion ride leaves companion mode: home, with the
+                // socket closed behind it by the ride screen's own teardown.
+                //
+                // It used to hand back to the pairing screen, which opens the
+                // socket again the moment it appears. A game that reconnects by
+                // itself, which is what a paired one does, was then driving a
+                // ride again before the rider could reach for anything, and
+                // there was no way off this screen at all.
                 onBack = {
-                    if (wasCompanion) navigator.replace(RouteCompanion) else navigator.goBack()
+                    if (wasCompanion) navigator.popToRoot() else navigator.goBack()
                 },
                 onNavigateToOverview = { sessionId ->
                     navigator.replace(
@@ -723,10 +727,11 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                         )
                     )
                 },
-                // The session's ending was shown on the ride screen itself, and
-                // its rides are already in history. What the rider wants next is
-                // the pairing screen, ready for the game to come back.
-                onCompanionSessionDone = { navigator.replace(RouteCompanion) },
+                // The session's ending was shown on the ride screen itself and
+                // its rides are already in history, so this is the end of
+                // companion mode rather than the end of one ride: home, and the
+                // rider opens Companion again when they want another session.
+                onCompanionSessionDone = { navigator.popToRoot() },
             )
         }
         entry<RouteWorkoutOverview> { key: RouteWorkoutOverview ->

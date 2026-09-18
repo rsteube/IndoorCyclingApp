@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.9** (the app also accepts everything back to 0.1)
+- Protocol version: **0.10** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -83,7 +83,7 @@ should be listening on. Bind to it and read.
 ```json
 {
   "t": "indoorbike.companion",
-  "proto": "0.1-0.1",
+  "proto": "0.1-0.10",
   "path": "/companion",
   "port": 33077,
   "app": "2.0.2",
@@ -124,7 +124,7 @@ TXT records:
 
 | Key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.1` | Supported version range, `min-max` |
+| `proto` | `0.1-0.10` | Supported version range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.0.2` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride |

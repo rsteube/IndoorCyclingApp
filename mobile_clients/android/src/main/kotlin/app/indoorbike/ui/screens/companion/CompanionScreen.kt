@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -100,6 +102,7 @@ fun CompanionScreen(
     val host = container.companionHost
     val status by host.status.collectAsState()
 
+    val showAllData by container.userSettings.companionShowAllData.collectAsState()
     val trainerState by container.trainerManager.connectionState.collectAsState()
     val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
     val trainerLive = trainerState == TrainerConnectionState.Connected || isMockTrainer
@@ -224,6 +227,16 @@ fun CompanionScreen(
                 }
             }
 
+            // Here rather than in Settings: this is the screen a companion's
+            // author is on every time they test, and it is about the ride they
+            // are about to start.
+            item(key = "all-data") {
+                AllDataToggle(
+                    checked = showAllData,
+                    onCheckedChange = container.userSettings::setCompanionShowAllData,
+                )
+            }
+
             // Debug builds only: skip the wait and go straight to the HUD,
             // where the manual-trainer harness lives. Someone whose companion
             // is the thing being debugged should not be stranded here because
@@ -249,6 +262,41 @@ fun CompanionScreen(
                     modifier = Modifier.fillMaxWidth().padding(top = Spacing.s3),
                 )
             }
+        }
+    }
+}
+
+/**
+ * The developer view switch: every reading on the ride screen, or the power alone.
+ */
+@Composable
+private fun AllDataToggle(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    SlateCard(modifier = Modifier.padding(top = Spacing.s3)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Show every reading while riding",
+                    style = CadenceType.bodyStrong,
+                    color = CadenceColors.Fg1,
+                )
+                Text(
+                    text = "For building a companion. Off, the ride screen is the power and the " +
+                        "shift paddles, because your game is already showing the rest.",
+                    style = CadenceType.small,
+                    color = CadenceColors.Fg3,
+                )
+            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = CadenceColors.OnBrand,
+                    checkedTrackColor = CadenceColors.Fg1,
+                    uncheckedThumbColor = CadenceColors.Fg3,
+                    uncheckedTrackColor = CadenceColors.Bg2,
+                    uncheckedBorderColor = CadenceColors.Line2,
+                ),
+            )
         }
     }
 }

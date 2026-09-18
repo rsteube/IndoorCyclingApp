@@ -121,6 +121,19 @@ interface UserSettings {
     val intervalsAthleteName: StateFlow<String?>
     fun setIntervalsAthleteName(name: String?)
 
+    /**
+     * Show every reading on the companion ride screen rather than the power
+     * alone.
+     *
+     * Off is what a rider wants: the game in front of them already draws the
+     * road, the speed, the distance and the gear, and the phone on the bars is
+     * there for the two things the game cannot do, which are the watts and the
+     * shifting. On is for somebody building a companion, who needs to see what
+     * the app made of what they sent.
+     */
+    val companionShowAllData: StateFlow<Boolean>
+    fun setCompanionShowAllData(value: Boolean)
+
     // ── FitTrackee ────────────────────────────────────────────────────────
     // Self-hosted activity tracker. Unlike Intervals.icu there is no single
     // service to talk to: the rider supplies the address of their own server,

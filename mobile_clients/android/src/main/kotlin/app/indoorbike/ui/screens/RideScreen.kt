@@ -333,6 +333,7 @@ fun RideScreen(
     val companionSessionName by companionHost.sessionCompanionName.collectAsState()
     val companionHosting by companionHost.hosting.collectAsState()
     val companionLook by companionHost.look.collectAsState()
+    val companionShowAllData by container.userSettings.companionShowAllData.collectAsState()
     val screenshotsOffered by companionHost.screenshotsOffered.collectAsState()
     val screenshotStatus by companionHost.screenshotStatus.collectAsState()
     // Whose job it is to write this ride. The host's, when it is hosting the
@@ -764,6 +765,7 @@ fun RideScreen(
                         onShiftDown = { companionEngine.shiftDown() },
                         onShiftUp = { companionEngine.shiftUp() },
                         shiftingEnabled = state != WorkoutState.Countdown,
+                        showAllData = companionShowAllData,
                         remoteControls = companionControls,
                         onControlPress = companionHost::pressControl,
                         modifier = Modifier.fillMaxSize(),
