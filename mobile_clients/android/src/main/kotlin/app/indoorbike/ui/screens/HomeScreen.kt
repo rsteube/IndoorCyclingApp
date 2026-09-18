@@ -55,6 +55,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -148,6 +149,12 @@ fun HomeScreen(
 
     val showFirstRide = hasCompletedOnboarding && !dismissedStarter && sessions.isEmpty()
 
+    // Until a rider has been asked for their FTP, every number the app shows
+    // them is arithmetic on a default. Zones, TSS, W/kg, XP and the colour of
+    // the heart-rate chip are all derived from it, so the welcome card stays
+    // on this screen until they have either set it or waved the sheet away.
+    var onboarding by rememberSaveable { mutableStateOf(false) }
+
     val header = rememberCollapsingHeaderState()
     Column(
         modifier = Modifier
@@ -178,6 +185,14 @@ fun HomeScreen(
             if (unfinished != null) {
                 item(key = "unfinished") {
                     UnfinishedRideBanner(dismissable = true)
+                }
+            }
+
+            // Above the modes, because choosing a workout before the targets
+            // mean anything is the wrong first move.
+            if (!hasCompletedOnboarding) {
+                item(key = "welcome") {
+                    WelcomeBanner(onGetStarted = { onboarding = true })
                 }
             }
 
@@ -277,6 +292,23 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (onboarding) {
+        OnboardingSheet(
+            onProfileSaved = { ftp, weightKg ->
+                container.userSettings.setFtp(ftp)
+                container.userSettings.setWeightKg(weightKg)
+            },
+            // Dismissing counts as done, deliberately. A rider who swiped the
+            // sheet away has answered the question, and asking again every
+            // launch would be nagging; Settings is where they change their
+            // mind, and the ride screen still asks for the permissions.
+            onFinish = {
+                container.userSettings.setHasCompletedOnboarding(true)
+                onboarding = false
+            },
+        )
     }
 }
 
