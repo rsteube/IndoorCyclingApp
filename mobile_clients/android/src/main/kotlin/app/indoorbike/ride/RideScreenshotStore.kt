@@ -44,7 +44,9 @@ data class RideScreenshot(
  * Files rather than database rows because a PNG of a game frame can be several
  * megabytes, and a row that size does not fit through an Android cursor.
  *
- * Nothing here leaves the phone. Screenshots are not exported, uploaded or synced.
+ * Nothing here leaves the phone on its own: screenshots are not exported with a
+ * ride, uploaded or synced. The rider can share one deliberately from the
+ * viewer, which is a different thing from the app deciding to.
  */
 class RideScreenshotStore(filesDir: File) {
 

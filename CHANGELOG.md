@@ -6,6 +6,14 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Share a picture from a ride.** The screenshot viewer has a share button, so
+  a frame a companion sent during a ride can go to a chat, a photo roll or
+  anywhere else the system share sheet reaches. One picture at a time, the one
+  on screen, and only when the rider asks: nothing about a screenshot leaves the
+  phone on its own, which is still true of exports, uploads and sync.
+
 ## [2.5] (21) - 2026-09-18
 
 ### Added

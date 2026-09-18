@@ -16,6 +16,7 @@
 package app.indoorbike.ui.components
 
 import android.graphics.BitmapFactory
+import android.content.Context
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,6 +40,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -55,6 +57,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -62,12 +65,16 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.ride.RideScreenshot
+import app.indoorbike.share.ShareImageGenerator
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -192,6 +199,7 @@ private const val STRIP_MOST = 5
 fun ScreenshotViewer(shots: List<RideScreenshot>, startIndex: Int, onDismiss: () -> Unit) {
     val pager = rememberPagerState(initialPage = startIndex.coerceIn(0, (shots.size - 1).coerceAtLeast(0))) { shots.size }
     val screenEdgePx = LocalConfiguration.current.let { maxOf(it.screenWidthDp, it.screenHeightDp) }.dp.px()
+    val context = LocalContext.current
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
@@ -229,13 +237,51 @@ fun ScreenshotViewer(shots: List<RideScreenshot>, startIndex: Int, onDismiss: ()
                         .background(Color.Black.copy(alpha = 0.55f))
                         .padding(horizontal = Spacing.s3, vertical = Spacing.s2),
                 )
-                IconBtn(
-                    icon = Icons.Outlined.Close,
-                    contentDescription = "Close",
-                    onClick = onDismiss,
-                    background = Color.Black.copy(alpha = 0.55f),
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                    // Only the picture the rider is looking at, and only when
+                    // they ask. The pictures sit on the phone until this.
+                    if (shot != null) {
+                        IconBtn(
+                            icon = Icons.Outlined.Share,
+                            contentDescription = "Share this picture",
+                            onClick = { shareScreenshot(context, shot) },
+                            background = Color.Black.copy(alpha = 0.55f),
+                        )
+                    }
+                    IconBtn(
+                        icon = Icons.Outlined.Close,
+                        contentDescription = "Close",
+                        onClick = onDismiss,
+                        background = Color.Black.copy(alpha = 0.55f),
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Hand one screenshot to the system share sheet.
+ *
+ * Named for the moment it was taken rather than for the file it came from, so
+ * what lands in a chat or a photo roll says when it is from rather than a pair
+ * of epoch numbers. Failures are swallowed on purpose: a share sheet that will
+ * not open is not worth a crash in a full-screen viewer, and the rider can see
+ * for themselves that nothing happened.
+ */
+private fun shareScreenshot(context: Context, shot: RideScreenshot) {
+    runCatching {
+        val stamp = SimpleDateFormat("yyyy-MM-dd-HHmm", Locale.US).format(Date(shot.takenAtEpochMs))
+        val uri = ShareImageGenerator.stageFileForShare(
+            context = context,
+            file = shot.file,
+            displayName = "indoorbike-$stamp",
+        )
+        ShareImageGenerator.launchShareChooser(
+            context = context,
+            uri = uri,
+            chooserTitle = "Share this picture",
+            mimeType = ShareImageGenerator.imageMimeType(shot.file),
+        )
     }
 }

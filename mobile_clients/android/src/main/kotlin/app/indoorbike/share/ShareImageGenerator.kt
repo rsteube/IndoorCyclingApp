@@ -118,12 +118,44 @@ object ShareImageGenerator {
     }
 
     /**
-     * Builds and launches the system share-sheet chooser with [uri] attached as
-     * a `image/png` stream. Single-use — the chooser closes itself after pick.
+     * Stage a picture that is already a file, and return a URI for it.
+     *
+     * A companion's screenshot arrives as bytes and is stored as a file, so
+     * decoding it to a Bitmap and re-encoding it just to share it would cost a
+     * few megabytes of allocation and lose a little of a JPEG each time. This
+     * copies the bytes instead, keeping the extension so the receiver is told
+     * the truth about what it is being handed.
      */
-    fun launchShareChooser(context: Context, uri: Uri, chooserTitle: String = "Share ride") {
+    fun stageFileForShare(context: Context, file: File, displayName: String): Uri {
+        val dir = File(context.cacheDir, SHARED_DIR).apply { mkdirs() }
+        val staged = File(dir, "$displayName.${file.extension}")
+        file.copyTo(staged, overwrite = true)
+        val authority = "${context.packageName}.fileprovider"
+        return FileProvider.getUriForFile(context, authority, staged)
+    }
+
+    /** The MIME type for a picture, from its extension. */
+    fun imageMimeType(file: File): String =
+        if (file.extension.equals("jpg", ignoreCase = true) ||
+            file.extension.equals("jpeg", ignoreCase = true)
+        ) {
+            "image/jpeg"
+        } else {
+            "image/png"
+        }
+
+    /**
+     * Builds and launches the system share-sheet chooser with [uri] attached as
+     * an image stream. Single-use - the chooser closes itself after pick.
+     */
+    fun launchShareChooser(
+        context: Context,
+        uri: Uri,
+        chooserTitle: String = "Share ride",
+        mimeType: String = "image/png",
+    ) {
         val send = Intent(Intent.ACTION_SEND).apply {
-            type = "image/png"
+            type = mimeType
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             // Some receivers (Drive, Files, Gmail) check ClipData rather than EXTRA_STREAM.
