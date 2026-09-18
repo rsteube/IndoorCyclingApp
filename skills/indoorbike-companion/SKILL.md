@@ -541,6 +541,13 @@ If your companion connects but stalls before sending a road, the pairing screen 
 button that opens the HUD anyway, so the harness is reachable even when your end is the broken
 one.
 
+**Turn on Show every reading while riding.** It is on the Companion screen, above that debug
+button. The rider's ride screen is now the power and the shift paddles alone, on the grounds
+that your game is already drawing the road, the speed, the distance and the gear a metre in
+front of them. With the switch on you get the full set back, gradient, gear, cadence, heart
+rate, speed, distance and climb, which is how you check what the phone made of the frames you
+sent. It changes nothing on the wire.
+
 ## Testing without a phone
 
 There is a working minimal client in the Indoor Bike repository worth reading before you write
