@@ -466,6 +466,15 @@ fun RideScreen(
                 if (state != WorkoutState.Completed) sessionManager.stopWorkout()
                 onCompanionSessionDone()
             }
+            // A ride that is running and has time on it: ask, rather than
+            // taking it away. Back used to stop the workout and leave, and the
+            // ride survived only as a row on the unfinished-ride banner, which
+            // a rider who thought they had just quit has no reason to look for.
+            // The same dialog End & save uses, from the same ride, saying the
+            // same thing.
+            state == WorkoutState.Active && actualRide > 0 -> {
+                confirmingEnd = true
+            }
             else -> {
                 if (state != WorkoutState.Completed) sessionManager.stopWorkout()
                 onBack()

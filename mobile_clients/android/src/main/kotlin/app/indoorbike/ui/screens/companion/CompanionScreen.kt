@@ -178,10 +178,6 @@ fun CompanionScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            item(key = "what-this-is") {
-                WhatThisIsCard()
-            }
-
             item(key = "status") {
                 ConnectionStatusCard(
                     controllerName = status.controllerName,
@@ -214,6 +210,15 @@ fun CompanionScreen(
                 item(key = "code") {
                     PairingCodeCard(code = status.token)
                 }
+            }
+
+            // After the address and the code, not before them. What this mode
+            // is matters once, on the first visit; the address and the six
+            // characters are what the rider came back for every time after
+            // that, and two paragraphs of explanation used to push them below
+            // the fold on a screen the rider is reading from a bike.
+            item(key = "what-this-is") {
+                WhatThisIsCard()
             }
 
             // Outside the `running` branch: a rider should be able to prune
