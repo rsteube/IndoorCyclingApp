@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6] (22) - 2026-09-18
+
 ### Added
 
 - **Share a picture from a ride.** The screenshot viewer has a share button, so

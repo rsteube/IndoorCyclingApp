@@ -1,0 +1,3 @@
+Pictures a companion app sends during a ride can now be shared. Open a ride's screenshots, swipe to the one you want, and tap share: it goes to a chat, your photo roll, or anywhere else your phone shares to.
+
+One picture at a time, the one on screen, and only when you ask. Screenshots are still kept on the phone with their ride, and are never uploaded or synced on their own.
