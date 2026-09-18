@@ -190,7 +190,12 @@ fun CadenceFlankMetric(
         // the power number. The cue survives as the arrow in the footer and as
         // the marker's distance from the band, which is the more useful half of
         // it anyway.
-        valueColor = CadenceColors.Fg1,
+        //
+        // One ink step down from the brightest, because this is a flanking
+        // metric and the wattage is the one being chased. In pure white it was
+        // the first thing the eye landed on, which is the wrong first thing.
+        // Fg2 is still 8:1 on the canvas, so nothing is lost to legibility.
+        valueColor = CadenceColors.Fg2,
         contentDescription = target?.let { cadenceCueContentDescription(it, cue) },
         cardWidth = cardWidth,
         valueFontSize = valueFontSize,

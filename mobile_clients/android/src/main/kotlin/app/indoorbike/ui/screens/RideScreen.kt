@@ -952,7 +952,10 @@ fun RideScreen(
                                 value = if (showStaleHr) "--" else animatedHr.toString(),
                                 unit = "bpm",
                                 isStale = showStaleHr,
-                                valueColor = CadenceColors.Fg1,
+                                // Flanking metric, one ink step down: the
+                                // wattage is what the rider is chasing. See
+                                // CadenceFlankMetric.
+                                valueColor = CadenceColors.Fg2,
                                 zoneBadge = if (showStaleHr) null else hrZone,
                                 cardWidth = flankWidth,
                                 valueFontSize = flankFont
@@ -982,7 +985,15 @@ fun RideScreen(
                                     "$shown / ${workout!!.segments.size}"
                                 },
                                 thirdUnit = if (isFreeRide) "W" else "",
-                                modifier = Modifier.padding(bottom = Spacing.s3)
+                                // A free ride has no timeline under this, so the
+                                // strip is the last thing in the column and was
+                                // being laid out flush against the bottom edge:
+                                // the tiles' own rounded corners were cropped by
+                                // the screen. Give it the room the timeline would
+                                // otherwise have taken, plus the gesture inset.
+                                modifier = Modifier
+                                    .padding(bottom = if (isFreeRide) Spacing.s5 else Spacing.s3)
+                                    .navigationBarsPadding()
                             )
                         }
 
@@ -1057,7 +1068,7 @@ fun RideScreen(
                                     value = if (showStaleHr) "--" else animatedHr.toString(),
                                     unit = "bpm",
                                     isStale = showStaleHr,
-                                    valueColor = CadenceColors.Fg1,
+                                    valueColor = CadenceColors.Fg2,
                                     zoneBadge = if (showStaleHr) null else hrZone,
                                     cardWidth = flankWidth,
                                     valueFontSize = 34.sp,

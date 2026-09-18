@@ -40,11 +40,13 @@ enum class HeartRateZone(
     /** Inclusive upper bound, as percentage of Max HR. */
     val maxHrHighPct: Int,
 ) {
-    Z1(1, "Warm Up",   Color(0xFF6B8AA8), Color(0x296B8AA8), 60),
-    Z2(2, "Easy",      Color(0xFF2E7BFF), Color(0x2E2E7BFF), 70),
+    // Lifted with the power zones, and to the same numbers, so the two ladders
+    // stay the same colours as each other. See [PowerZone].
+    Z1(1, "Warm Up",   Color(0xFF87A0B9), Color(0x296B8AA8), 60),
+    Z2(2, "Easy",      Color(0xFF639CFF), Color(0x2E2E7BFF), 70),
     Z3(3, "Aerobic",   Color(0xFF1FB373), Color(0x2E1FB373), 80),
     Z4(4, "Threshold", Color(0xFFF0C419), Color(0x33F0C419), 90),
-    Z5(5, "Maximum",   Color(0xFFEB3B3B), Color(0x33EB3B3B), 999);
+    Z5(5, "Maximum",   Color(0xFFF17A7A), Color(0x33EB3B3B), 999);
 
     companion object {
         /**
