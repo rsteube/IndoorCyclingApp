@@ -187,6 +187,10 @@ fun CompanionHud(
                         isPowerStale = isPowerStale,
                         wattsPerKg = wattsPerKg,
                         zoneColor = zoneColor,
+                        drivetrain = drivetrain,
+                        gearIndex = gearIndex,
+                        speedMps = speedMps,
+                        shiftingEnabled = shiftingEnabled,
                         horizontalPadding = horizontalPadding,
                     )
                 } else CompanionReadouts(
@@ -286,6 +290,10 @@ private fun CompanionPowerOnly(
     isPowerStale: Boolean,
     wattsPerKg: Float,
     zoneColor: Color,
+    drivetrain: Drivetrain,
+    gearIndex: Int,
+    speedMps: Double,
+    shiftingEnabled: Boolean,
     horizontalPadding: Dp,
 ) {
     val animatedPower by animateIntAsState(
@@ -295,95 +303,131 @@ private fun CompanionPowerOnly(
     )
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    BoxWithConstraints(
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = horizontalPadding)
             .padding(top = Spacing.s3, bottom = Spacing.s2),
-        contentAlignment = Alignment.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val reading = if (isPowerStale) "--" else animatedPower.toString()
-        // As big as the space allows, and the space is measured rather than
-        // guessed: the type is asked how wide this many digits come out and how
-        // tall the two small lines are, and what is left over is the number's.
-        // A ratio picked by eye would be wrong on the next font or the next
-        // screen shape, and wrong here means either a number smaller than the
-        // space it sits in or one that runs off the side of it.
+        // A gear the rider changes and cannot see is a control with no readout: the
+        // paddles are right there on this screen, and until now the only way to
+        // know what they had done was to look at the game.
         //
-        // Sized for three digits until a fourth arrives, rather than for the
-        // widest reading a rider could ever produce: holding room for a
-        // four-figure sprint would shrink every ordinary ride for a number most
-        // riders never see. Below a hundred watts it keeps the three-digit
-        // size, so the figure does not breathe in and out around 99 W, which is
-        // exactly where a warm-up sits.
-        val digitSlots = reading.length.coerceIn(3, 4)
-        val font: TextUnit = remember(digitSlots, maxWidth, maxHeight, density) {
-            // Measured in the style it will be drawn in, letter spacing and
-            // all, because a probe in some other style answers a question
-            // nobody asked and the answer is a number off the side of the
-            // screen.
-            val probe = measurer.measure(
-                AnnotatedString("8".repeat(digitSlots)),
-                NUMBER_STYLE.copy(fontSize = PROBE_SIZE),
-                maxLines = 1,
-                softWrap = false,
-                density = density,
-            )
-            val unit = measurer.measure(AnnotatedString(" W"), CadenceType.h2, density = density)
-            val label = measurer.measure(AnnotatedString("Power"), CadenceType.eyebrow, density = density)
-            val perKg = measurer.measure(AnnotatedString("0.0 W/kg"), CadenceType.h3, density = density)
-            with(density) {
-                // A hair under what fits, so that rounding in the measurement
-                // cannot be what decides whether the unit still has a home.
-                val roomAcross = (maxWidth.toPx() - unit.size.width) * 0.98f
-                val roomDown = maxHeight.toPx() - label.size.height - perKg.size.height -
-                    Spacing.s3.toPx() * 2
-                val byWidth = PROBE_SIZE.toPx() * roomAcross / probe.size.width
-                // What the trim leaves: the digits themselves, not the line box
-                // they are drawn in. See [trimmedToGlyphs].
-                val byHeight = roomDown / GLYPH_BAND
-                minOf(byWidth, byHeight).coerceIn(48.dp.toPx(), 420.dp.toPx()).toSp()
-            }
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = "Power", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-            Spacer(modifier = Modifier.height(Spacing.s3))
-            Row {
-                Text(
-                    text = reading,
-                    modifier = Modifier
-                        .trimmedToGlyphs(font)
-                        .alignByBaseline(),
-                    color = zoneColor,
-                    // One line whatever happens. A width measured a little
-                    // tight would otherwise wrap the reading onto two, and two
-                    // lines of this are not a smaller number, they are an
-                    // unreadable screen.
+        // The app's own gear card, in the form it takes when there is no room for
+        // its sublines, and without its own little shift buttons: two ways to do
+        // the one thing, one of them a 46 dp circle, only invites the rider to
+        // reach for the worse one. At the top because that is where the full view
+        // keeps it, and because the bottom of this area belongs to a companion's
+        // control pad whenever it sends one.
+        GearShifter(
+            drivetrain = drivetrain,
+            gearIndex = gearIndex,
+            speedMps = speedMps,
+            onShiftDown = {},
+            onShiftUp = {},
+            compact = true,
+            enabled = shiftingEnabled,
+            shiftButtons = false,
+            modifier = Modifier.width(GearCardWidth),
+        )
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentAlignment = Alignment.Center,
+        ) {
+            val reading = if (isPowerStale) "--" else animatedPower.toString()
+            // As big as the space allows, and the space is measured rather than
+            // guessed: the type is asked how wide this many digits come out and how
+            // tall the two small lines are, and what is left over is the number's.
+            // A ratio picked by eye would be wrong on the next font or the next
+            // screen shape, and wrong here means either a number smaller than the
+            // space it sits in or one that runs off the side of it.
+            //
+            // Sized for three digits until a fourth arrives, rather than for the
+            // widest reading a rider could ever produce: holding room for a
+            // four-figure sprint would shrink every ordinary ride for a number most
+            // riders never see. Below a hundred watts it keeps the three-digit
+            // size, so the figure does not breathe in and out around 99 W, which is
+            // exactly where a warm-up sits.
+            val digitSlots = reading.length.coerceIn(3, 4)
+            val font: TextUnit = remember(digitSlots, maxWidth, maxHeight, density) {
+                // Measured in the style it will be drawn in, letter spacing and
+                // all, because a probe in some other style answers a question
+                // nobody asked and the answer is a number off the side of the
+                // screen.
+                val probe = measurer.measure(
+                    AnnotatedString("8".repeat(digitSlots)),
+                    NUMBER_STYLE.copy(fontSize = PROBE_SIZE),
                     maxLines = 1,
                     softWrap = false,
-                    style = NUMBER_STYLE.copy(fontSize = font, lineHeight = font),
+                    density = density,
                 )
-                // The unit hangs off the number's own baseline rather than the
-                // bottom of its box, which is where it looks written by the
-                // same hand rather than dropped next to it.
+                val unit = measurer.measure(AnnotatedString(" W"), CadenceType.h2, density = density)
+                val label = measurer.measure(AnnotatedString("Power"), CadenceType.eyebrow, density = density)
+                val perKg = measurer.measure(AnnotatedString("0.0 W/kg"), CadenceType.h3, density = density)
+                with(density) {
+                    // A hair under what fits, so that rounding in the measurement
+                    // cannot be what decides whether the unit still has a home.
+                    val roomAcross = (maxWidth.toPx() - unit.size.width) * 0.98f
+                    val roomDown = maxHeight.toPx() - label.size.height - perKg.size.height -
+                        Spacing.s3.toPx() * 2
+                    val byWidth = PROBE_SIZE.toPx() * roomAcross / probe.size.width
+                    // What the trim leaves: the digits themselves, not the line box
+                    // they are drawn in. See [trimmedToGlyphs].
+                    val byHeight = roomDown / GLYPH_BAND
+                    minOf(byWidth, byHeight).coerceIn(48.dp.toPx(), 420.dp.toPx()).toSp()
+                }
+            }
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = "Power", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+                Spacer(modifier = Modifier.height(Spacing.s3))
+                Row {
+                    Text(
+                        text = reading,
+                        modifier = Modifier
+                            .trimmedToGlyphs(font)
+                            .alignByBaseline(),
+                        color = zoneColor,
+                        // One line whatever happens. A width measured a little
+                        // tight would otherwise wrap the reading onto two, and two
+                        // lines of this are not a smaller number, they are an
+                        // unreadable screen.
+                        maxLines = 1,
+                        softWrap = false,
+                        style = NUMBER_STYLE.copy(fontSize = font, lineHeight = font),
+                    )
+                    // The unit hangs off the number's own baseline rather than the
+                    // bottom of its box, which is where it looks written by the
+                    // same hand rather than dropped next to it.
+                    Text(
+                        text = " W",
+                        style = CadenceType.h2,
+                        color = CadenceColors.Fg2,
+                        modifier = Modifier.alignByBaseline(),
+                    )
+                }
+                Spacer(modifier = Modifier.height(Spacing.s3))
+                // Bigger than a sub-line elsewhere in the app. It is read from a
+                // metre away by somebody who is not going to lean in.
                 Text(
-                    text = " W",
-                    style = CadenceType.h2,
+                    text = if (isPowerStale) "--" else formatOneDecimal(wattsPerKg.toDouble()) + " W/kg",
+                    style = CadenceType.h3,
                     color = CadenceColors.Fg2,
-                    modifier = Modifier.alignByBaseline(),
                 )
             }
-            Spacer(modifier = Modifier.height(Spacing.s3))
-            // Bigger than a sub-line elsewhere in the app. It is read from a
-            // metre away by somebody who is not going to lean in.
-            Text(
-                text = if (isPowerStale) "--" else formatOneDecimal(wattsPerKg.toDouble()) + " W/kg",
-                style = CadenceType.h3,
-                color = CadenceColors.Fg2,
-            )
         }
     }
 }
+
+/**
+ * How wide the gear card is in the simple view.
+ *
+ * Wide enough for two digits and the cassette ladder under them, narrow enough
+ * that it reads as a label on the screen rather than a second gauge competing
+ * with the number. The power is measured against whatever height is left below
+ * it, so this card's own size is the only thing that has to be stated.
+ */
+private val GearCardWidth = 132.dp
 
 /**
  * How tall a digit is as a share of its font size: a cap height, near enough
