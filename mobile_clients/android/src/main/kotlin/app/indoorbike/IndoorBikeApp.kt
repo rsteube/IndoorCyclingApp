@@ -441,11 +441,25 @@ class IndoorBikeApp : Application() {
         // the FGS mid-ride. Now the service mirrors whether a workout is in
         // flight, regardless of which UI happens to be on screen.
         initScope.launch {
-            // StateFlow is already conflated, so a bare collect is enough —
+            // StateFlow is already conflated, so a bare collect is enough:
             // distinctUntilChanged on StateFlow is a no-op and the compiler
             // flags it.
+            //
+            // Only the edges are acted on. A ride is not one state but a
+            // sequence of them, and auto-pause alone flips it every time the
+            // rider stops turning the pedals at a light. Calling `start` on each
+            // of those is not free: every call is another
+            // `startForegroundService`, another few-second promise Android
+            // holds the app to, and hundreds of them over a long ride are
+            // hundreds of chances for one to land badly and take the process
+            // down. The service wants to know when riding begins and ends, and
+            // nothing in between.
+            var serviceRunning = false
             container.sessionManager.state.collect { state ->
-                when (state) {
+                // A ride in flight keeps device scanning alive even if the app
+                // is backgrounded (screen off mid-workout), so a dropped trainer
+                // is recovered without the rider reopening the app.
+                val riding = when (state) {
                     WorkoutState.Standby,
                     WorkoutState.Countdown,
                     WorkoutState.Active,
@@ -453,22 +467,16 @@ class IndoorBikeApp : Application() {
                     // Untracked riding is riding: the trainer is being driven
                     // and the screen must survive being backgrounded, even
                     // though none of it is being written down.
-                    WorkoutState.Untracked -> RideSessionService.start(this@IndoorBikeApp)
-                    WorkoutState.Idle,
-                    WorkoutState.Completed -> RideSessionService.stop(this@IndoorBikeApp)
-                }
-                // A ride in flight keeps device scanning alive even if the app
-                // is backgrounded (screen off mid-workout), so a dropped trainer
-                // is recovered without the rider reopening the app.
-                rideActive = when (state) {
-                    WorkoutState.Standby,
-                    WorkoutState.Countdown,
-                    WorkoutState.Active,
-                    WorkoutState.Paused,
                     WorkoutState.Untracked -> true
                     WorkoutState.Idle,
                     WorkoutState.Completed -> false
                 }
+                if (riding != serviceRunning) {
+                    serviceRunning = riding
+                    if (riding) RideSessionService.start(this@IndoorBikeApp)
+                    else RideSessionService.stop(this@IndoorBikeApp)
+                }
+                rideActive = riding
                 updateDeviceScanGate()
             }
         }

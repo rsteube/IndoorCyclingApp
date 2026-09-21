@@ -66,16 +66,30 @@ class RideSessionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Before the branch, not inside it. Every one of these commands may have
+        // arrived through `startForegroundService`, and that call is a promise
+        // that this service will show a notification within a few seconds. Break
+        // it, on any path, and Android does not stop the service: it kills the
+        // process, from the main thread, with
+        // ForegroundServiceDidNotStartInTimeException. A rider mid-ride sees the
+        // app vanish.
+        //
+        // Stopping is a path too. `stop` reaches us as a start command, and a
+        // stop that raced ahead of a start (one ride ending as the next begins,
+        // which is every lap of a companion session) would otherwise return
+        // without ever having shown anything.
+        startForegroundCompat(buildNotification("Ride starting…", null))
+
         val action = intent?.action ?: ACTION_START
         when (action) {
             ACTION_START -> startRide()
             ACTION_STOP -> {
-                stopRide()
+                stopRide(startId)
                 return START_NOT_STICKY
             }
             else -> {
                 // System-redelivered start (process kill recovery). Only stay
-                // alive if the session actually has an active workout — otherwise
+                // alive if the session actually has an active workout, otherwise
                 // bail so we don't keep an orphan service running.
                 val container = (applicationContext as IndoorBikeApp).container
                 val state = container.sessionManager.state.value
@@ -87,7 +101,7 @@ class RideSessionService : Service() {
                 ) {
                     startRide()
                 } else {
-                    stopRide()
+                    stopRide(startId)
                     return START_NOT_STICKY
                 }
             }
@@ -96,7 +110,6 @@ class RideSessionService : Service() {
     }
 
     private fun startRide() {
-        startForegroundCompat(buildNotification("Ride starting…", null))
         acquireWake()
 
         val container = (applicationContext as IndoorBikeApp).container
@@ -119,7 +132,18 @@ class RideSessionService : Service() {
             .launchIn(scope)
     }
 
-    private fun stopRide() {
+    /**
+     * @param startId the command that asked for this, or null when the ride
+     *   itself ended and no command is waiting on the answer.
+     *
+     * Stopping by id rather than outright is the difference between ending a
+     * ride and ending the app. A bare `stopSelf` tears the service down even
+     * when Android is holding a newer start command for it, and that command is
+     * then dropped with its foreground promise unkept, which is fatal a few
+     * seconds later. `stopSelf(startId)` declines to stop if anything newer has
+     * arrived, so a ride that ends as the next one begins hands straight over.
+     */
+    private fun stopRide(startId: Int? = null) {
         stateObserver?.cancel()
         stateObserver = null
         releaseWake()
@@ -129,7 +153,7 @@ class RideSessionService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
-        stopSelf()
+        if (startId != null) stopSelf(startId) else stopSelf()
     }
 
     override fun onDestroy() {
@@ -302,6 +326,11 @@ class RideSessionService : Service() {
                 // Refused because we're in the background. Nothing is riding in
                 // that case anyway, and stopService carries no such restriction,
                 // so tear the service down directly instead of dying over it.
+                //
+                // `stopService` is the blunt one: it also drops any start
+                // command Android has not delivered yet. That is safe only
+                // because the service now shows its notification before it
+                // reads the command, so a dropped one leaves no promise unkept.
                 Log.w("RideService", "Background start refused for stop; stopping directly ($e)", e)
                 try {
                     context.stopService(intent)
