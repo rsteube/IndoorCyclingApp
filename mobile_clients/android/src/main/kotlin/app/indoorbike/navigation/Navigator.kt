@@ -27,9 +27,17 @@ class Navigator(val state: NavigationState) {
         }
     }
 
+    /**
+     * Swap the screen on top for another one.
+     *
+     * The tab's own root is never the one swapped out. A stack whose first
+     * entry is not its tab is a stack [goBack] can empty, and an empty one is
+     * not a state the display has: it is a crash, from whichever screen the
+     * rider happened to press back on.
+     */
     fun replace(route: NavKey) {
         val currentStack = state.backStacks[state.topLevelRoute] ?: return
-        if (currentStack.isNotEmpty()) {
+        if (currentStack.size > 1) {
             // Not removeLast(): on a NavBackStack that binds to
             // java.util.List.removeLast(), which Java 21 added and Android only
             // has from API 35. Below that it's a NoSuchMethodError, which took
@@ -39,15 +47,21 @@ class Navigator(val state: NavigationState) {
         currentStack.add(route)
     }
 
+    /**
+     * Back, one step, and never off the end of the stack.
+     *
+     * Tested on the depth rather than on what the top entry is. Those are the
+     * same question only while every stack still begins with its own tab, and
+     * a stack that had lost its root would answer the second one by popping
+     * itself empty.
+     */
     fun goBack() {
-        val currentStack = state.backStacks[state.topLevelRoute] ?: error("Stack for ${state.topLevelRoute} not found")
-        val currentRoute = currentStack.last()
-
-        // If we're at the base of the current route, go back to the start route stack.
-        if (currentRoute == state.topLevelRoute) {
-            state.topLevelRoute = state.startRoute
+        val currentStack = state.backStacks[state.topLevelRoute] ?: return
+        if (currentStack.size > 1) {
+            currentStack.removeAt(currentStack.lastIndex)
         } else {
-            currentStack.removeLastOrNull()
+            // At the base of this tab: the way back is the tab the app opens on.
+            state.topLevelRoute = state.startRoute
         }
     }
 

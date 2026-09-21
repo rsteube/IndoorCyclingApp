@@ -249,7 +249,14 @@ fun HomeScreen(
                     body = if (isTrainerLive)
                         "Hand the trainer to a game or app on another device. Needs one running."
                     else "Pair a trainer, and a companion app on another device.",
-                    onClick = if (isTrainerLive) onChooseCompanion else onOpenTrainerPairing,
+                    // Companion mode, either way. Sending a rider without a
+                    // trainer to the pairing screen instead meant that the
+                    // moment the trainer connected, that screen closed itself
+                    // and left them back here, with nothing to show for the tap
+                    // but a paired trainer and a home screen. The companion
+                    // screen asks for the trainer itself now, and the rider
+                    // comes back to it.
+                    onClick = onChooseCompanion,
                     stage = "Alpha",
                     modifier = Modifier.enterReveal(index = 3),
                 )

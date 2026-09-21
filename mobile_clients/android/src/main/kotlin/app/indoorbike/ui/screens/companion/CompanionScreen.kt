@@ -97,6 +97,7 @@ import app.indoorbike.ui.theme.Spacing
 fun CompanionScreen(
     onBack: () -> Unit,
     onRideReady: () -> Unit,
+    onPairTrainer: () -> Unit,
 ) {
     val container = LocalAppContainer.current
     val host = container.companionHost
@@ -192,6 +193,8 @@ fun CompanionScreen(
                         title = "No trainer paired",
                         body = "A companion can describe the road, but something has to " +
                             "apply it. Pair a trainer before you start.",
+                        action = "Pair a trainer",
+                        onAction = onPairTrainer,
                     )
                 }
             }
@@ -413,7 +416,12 @@ private fun WhatThisIsCard() {
 private const val COMPANION_GUIDE_URL = "https://indoorbike.app/companion/"
 
 @Composable
-private fun NoticeCard(title: String, body: String) {
+private fun NoticeCard(
+    title: String,
+    body: String,
+    action: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
     SlateCard {
         Text(text = title, style = CadenceType.h3, color = CadenceColors.Warning)
         Text(
@@ -422,6 +430,17 @@ private fun NoticeCard(title: String, body: String) {
             color = CadenceColors.Fg2,
             modifier = Modifier.padding(top = Spacing.s2),
         )
+        // The way out of the problem, on the card that names it. Pairing pushes
+        // a screen on top of this one and that screen leaves the moment the
+        // trainer answers, so the rider lands back here, where the address and
+        // the code they came for are waiting.
+        if (action != null && onAction != null) {
+            SecondaryBtn(
+                text = action,
+                onClick = onAction,
+                modifier = Modifier.fillMaxWidth().padding(top = Spacing.s3),
+            )
+        }
     }
 }
 

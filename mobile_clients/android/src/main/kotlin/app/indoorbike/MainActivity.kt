@@ -750,6 +750,10 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 onRideReady = {
                     navigator.replace(RouteRideScreen(COMPANION_WORKOUT_ID))
                 },
+                // Pushed, not replaced: the pairing screen closes itself as
+                // soon as the trainer is connected, and what it uncovers has to
+                // be the screen the rider was already on.
+                onPairTrainer = { navigator.navigate(RouteTrainerPairing) },
             )
         }
         entry<RouteRideScreen> { key: RouteRideScreen ->
