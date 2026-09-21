@@ -78,9 +78,15 @@ class RideSessionService : Service() {
         // stop that raced ahead of a start (one ride ending as the next begins,
         // which is every lap of a companion session) would otherwise return
         // without ever having shown anything.
-        startForegroundCompat(buildNotification("Ride starting…", null))
-
         val action = intent?.action ?: ACTION_START
+        // A stop that cannot show a notification has nothing to tell the rider:
+        // it is on its way out either way, and the banner that offers to fix
+        // the permission would be announcing a ride that is already over.
+        startForegroundCompat(
+            notification = buildNotification("Ride starting…", null),
+            announceFailure = action != ACTION_STOP,
+        )
+
         when (action) {
             ACTION_START -> startRide()
             ACTION_STOP -> {
@@ -207,7 +213,7 @@ class RideSessionService : Service() {
         }
     }
 
-    private fun startForegroundCompat(notification: Notification) {
+    private fun startForegroundCompat(notification: Notification, announceFailure: Boolean = true) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
@@ -232,8 +238,10 @@ class RideSessionService : Service() {
             val msg = "Couldn't start ride session: Bluetooth permission required. " +
                 "Pause and grant the permission, or finish your ride before backgrounding the app."
             Log.w("RideService", "$msg ($e)", e)
-            (applicationContext as? IndoorBikeApp)?.container
-                ?.sessionManager?.notifyForegroundServiceFailure(msg)
+            if (announceFailure) {
+                (applicationContext as? IndoorBikeApp)?.container
+                    ?.sessionManager?.notifyForegroundServiceFailure(msg)
+            }
             stopSelf()
         } catch (e: IllegalStateException) {
             // Android 12+ throws ForegroundServiceStartNotAllowedException
@@ -243,8 +251,10 @@ class RideSessionService : Service() {
                 "the request. Finish your ride before backgrounding the app, or grant the " +
                 "Bluetooth permission and try again."
             Log.w("RideService", "$msg ($e)", e)
-            (applicationContext as? IndoorBikeApp)?.container
-                ?.sessionManager?.notifyForegroundServiceFailure(msg)
+            if (announceFailure) {
+                (applicationContext as? IndoorBikeApp)?.container
+                    ?.sessionManager?.notifyForegroundServiceFailure(msg)
+            }
             stopSelf()
         }
     }
