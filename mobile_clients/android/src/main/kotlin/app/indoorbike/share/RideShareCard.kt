@@ -16,6 +16,7 @@
 package app.indoorbike.share
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -39,6 +40,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -99,6 +102,16 @@ fun RideShareCard(
      * actually was.
      */
     route: RouteTrack? = null,
+    /**
+     * A picture from the ride, which takes the hero panel when there is one.
+     *
+     * A companion's screenshot is the only thing on this card that shows where
+     * the rider actually was, and it is the half of the ride a chart cannot
+     * draw. The numbers around it stay exactly as they are: the picture is the
+     * face of the card, not the whole of it, and what it replaces is the panel
+     * that was standing in for it.
+     */
+    picture: ImageBitmap? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -139,7 +152,14 @@ fun RideShareCard(
             // the simulation it was; everything else shows the planned zone
             // bars against the actual power line, mirroring the on-screen
             // "Power Adherence" view but sized for legibility in a feed.
-            if (route != null) {
+            if (picture != null) {
+                PicturePanel(
+                    picture = picture,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                )
+            } else if (route != null) {
                 RouteSummaryPanel(
                     route = route,
                     riddenMeters = session.routeDistanceMeters,
@@ -169,18 +189,45 @@ fun RideShareCard(
                 )
             }
 
-            Spacer(Modifier.height(if (route != null) 24.dp else 32.dp))
+            Spacer(Modifier.height(if (route != null || picture != null) 24.dp else 32.dp))
 
             // The route panel is the highlight on a route ride, and it needs
             // the room: squeezed in beside a callout, its shape collapses to a
-            // smudge and the elevation profile falls off the bottom.
-            if (route == null) {
+            // smudge and the elevation profile falls off the bottom. A picture
+            // is the highlight for the same reason, and more plainly: a photo
+            // shrunk to make room for a caption about a hard interval is a
+            // worse version of both.
+            if (route == null && picture == null) {
                 HighlightCallout(highlight)
                 Spacer(Modifier.height(32.dp))
             }
 
             FooterBlock()
         }
+    }
+}
+
+/**
+ * The picture, filling the hero panel.
+ *
+ * Cropped rather than fitted. The frames a companion sends are whatever shape
+ * its window is, and letterboxing each one would put a different amount of
+ * empty card around every picture; cropping to the panel gives every ride the
+ * same card with a different picture in it.
+ */
+@Composable
+private fun PicturePanel(picture: ImageBitmap, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(28.dp))
+            .background(CadenceColors.Bg1)
+    ) {
+        Image(
+            bitmap = picture,
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 

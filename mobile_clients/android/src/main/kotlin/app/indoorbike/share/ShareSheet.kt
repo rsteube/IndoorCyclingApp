@@ -21,7 +21,22 @@ import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.window.Dialog
+import app.indoorbike.ride.RideScreenshot
+import app.indoorbike.shared.workout.formatClock
+import app.indoorbike.ui.components.rememberRideScreenshots
+import app.indoorbike.ui.components.rememberScreenshotBitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,6 +51,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -112,6 +128,22 @@ fun ShareSheet(
     var busy by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<PendingAction?>(null) }
 
+    // The pictures a companion sent during this ride, found by the ride's start
+    // the same way the summary above finds them. Almost every ride has none, and
+    // for those this sheet is exactly what it was.
+    val shots = rememberRideScreenshots(session.startTimeEpoch)
+    // The newest picture to hand, rather than the chart, when the ride has
+    // any: a rider who has pictures of the road almost always means one of
+    // those, and the chart is one tap away on the row below the preview.
+    var picked by remember(shots.size) { mutableStateOf(shots.firstOrNull()) }
+    val pickedShot = picked
+    // Decoded at the card's own size, not the screen's: this one goes into a
+    // 1080-pixel bitmap, and a thumbnail stretched to fill it would be the
+    // first thing anyone noticed about the card.
+    val picture = if (pickedShot != null) {
+        rememberScreenshotBitmap(pickedShot.file, SHARE_CARD_SIZE_PX)
+    } else null
+
     // Pre-Q: ask for WRITE_EXTERNAL_STORAGE before saving. Q+ skips this.
     val needsLegacyPerm = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
     val storagePermissionGranted = remember {
@@ -167,7 +199,9 @@ fun ShareSheet(
             )
             Spacer(Modifier.height(Spacing.s2))
             Text(
-                text = "Save the card to Photos or hand it to any sharing app.",
+                text = if (shots.isEmpty())
+                    "Save the card to Photos or hand it to any sharing app."
+                else "Pick what the card shows, then save it or hand it to any sharing app.",
                 style = CadenceType.body,
                 color = CadenceColors.Fg2
             )
@@ -185,7 +219,17 @@ fun ShareSheet(
                     workout = workout,
                     telemetry = telemetry,
                     ftp = ftp,
-                    highlight = highlight
+                    highlight = highlight,
+                    picture = picture
+                )
+            }
+
+            if (shots.isNotEmpty()) {
+                Spacer(Modifier.height(Spacing.s4))
+                PictureChooser(
+                    shots = shots,
+                    selected = pickedShot,
+                    onSelect = { picked = it },
                 )
             }
 
@@ -244,6 +288,187 @@ fun ShareSheet(
 
 private enum class PendingAction { Save, Share }
 
+/**
+ * What goes on the card: its own chart or road, or one of the ride's pictures.
+ *
+ * Every choice is a tile of the same size, the picture ones showing the picture,
+ * because the question is which image to send and a list of timestamps does not
+ * answer it. A handful of pictures all fit on the row. More than that and the
+ * row stops being a row anyone can read, so it keeps the first few and offers
+ * the rest as a grid, which is the shape a phone's own photo picker uses for
+ * the same reason.
+ */
+@Composable
+private fun PictureChooser(
+    shots: List<RideScreenshot>,
+    selected: RideScreenshot?,
+    onSelect: (RideScreenshot?) -> Unit,
+) {
+    var browsing by remember { mutableStateOf(false) }
+    val inline = shots.take(INLINE_MOST)
+    val rest = shots.size - inline.size
+
+    Text(text = "On the card", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+    Spacer(Modifier.height(Spacing.s2))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+        item(key = "card") {
+            ChoiceTile(selected = selected == null, onClick = { onSelect(null) }) {
+                Box(
+                    modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "Ride card",
+                        style = CadenceType.small,
+                        color = CadenceColors.Fg2,
+                    )
+                }
+            }
+        }
+        items(inline, key = { it.file.name }) { shot ->
+            ChoiceTile(selected = selected == shot, onClick = { onSelect(shot) }) {
+                PictureTile(shot)
+            }
+        }
+        if (rest > 0) {
+            item(key = "more") {
+                // The chosen picture is always on the row, even when it came
+                // from the grid: a selection the rider cannot see is one they
+                // cannot undo without opening the grid again to look.
+                val hidden = selected != null && selected !in inline
+                ChoiceTile(selected = hidden, onClick = { browsing = true }) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        if (hidden) PictureTile(selected)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(CadenceColors.Bg0.copy(alpha = if (hidden) 0.6f else 1f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = if (hidden) "Change" else "+" + rest + " more",
+                                style = CadenceType.small,
+                                color = CadenceColors.Fg2,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (browsing) {
+        PictureGrid(
+            shots = shots,
+            selected = selected,
+            onPick = {
+                onSelect(it)
+                browsing = false
+            },
+            onDismiss = { browsing = false },
+        )
+    }
+}
+
+/** How many pictures the row shows before it hands over to the grid. */
+private const val INLINE_MOST = 3
+
+private val TileHeight = 64.dp
+
+@Composable
+private fun ChoiceTile(selected: Boolean, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .height(TileHeight)
+            .aspectRatio(16f / 9f)
+            .clip(RoundedCornerShape(12.dp))
+            .background(CadenceColors.Bg2)
+            .border(
+                width = if (selected) 2.dp else 1.dp,
+                color = if (selected) CadenceColors.Fg1 else CadenceColors.Line2,
+                shape = RoundedCornerShape(12.dp),
+            )
+            .clickable(onClick = onClick),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun PictureTile(shot: RideScreenshot) {
+    val image = rememberScreenshotBitmap(shot.file, THUMB_EDGE_PX)
+    if (image != null) {
+        Image(
+            bitmap = image,
+            contentDescription = "Picture taken " + formatClock(shot.rideSeconds) + " into the ride",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+private const val THUMB_EDGE_PX = 320
+
+/** The rest of the pictures, laid out the way a photo picker lays them out. */
+@Composable
+private fun PictureGrid(
+    shots: List<RideScreenshot>,
+    selected: RideScreenshot?,
+    onPick: (RideScreenshot) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .clip(SheetShape)
+                .background(CadenceColors.Bg1)
+                .padding(Spacing.s4),
+        ) {
+            Text(
+                text = "Pick a picture",
+                style = CadenceType.h3,
+                color = CadenceColors.Fg1,
+            )
+            Text(
+                text = shots.size.toString() + " from this ride",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+            )
+            Spacer(Modifier.height(Spacing.s3))
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 120.dp),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+                modifier = Modifier.heightIn(max = 420.dp),
+            ) {
+                items(shots, key = { it.file.name }) { shot ->
+                    Box(
+                        modifier = Modifier
+                            .aspectRatio(16f / 9f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(CadenceColors.Bg2)
+                            .border(
+                                width = if (shot == selected) 2.dp else 1.dp,
+                                color = if (shot == selected) CadenceColors.Fg1 else CadenceColors.Line2,
+                                shape = RoundedCornerShape(12.dp),
+                            )
+                            .clickable { onPick(shot) },
+                    ) {
+                        PictureTile(shot)
+                    }
+                }
+            }
+            Spacer(Modifier.height(Spacing.s3))
+            SecondaryBtn(
+                text = "Close",
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+
 @Composable
 private fun ThumbnailPreview(card: @Composable () -> Unit) {
     BoxWithConstraints(
@@ -267,6 +492,18 @@ private fun ThumbnailPreview(card: @Composable () -> Unit) {
                     scaleY = scale,
                     transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
                 )
+                // Measured as if the sheet were not there, and pinned to the
+                // corner the scale shrinks towards.
+                //
+                // Without this the preview lied. `requiredSize` lays the card
+                // out at its full 1080 whatever the parent says, but the parent
+                // still reports the width it was allowed, and a child bigger
+                // than its box is centred in it: the card sat at a negative x,
+                // and the scale, computed from the box, put its first 60-odd
+                // pixels off the left edge. What the rider saw was a card with
+                // its margins cropped and its title cut, which is not the card
+                // that gets saved.
+                .wrapContentSize(align = Alignment.TopStart, unbounded = true)
         ) {
             card()
         }
@@ -288,7 +525,8 @@ private fun CaptureTarget(
     workout: Workout?,
     telemetry: List<WorkoutTelemetry>,
     ftp: Int,
-    highlight: app.indoorbike.share.ShareHighlight
+    highlight: app.indoorbike.share.ShareHighlight,
+    picture: androidx.compose.ui.graphics.ImageBitmap?
 ) {
     CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 1f)) {
         Box(
@@ -314,7 +552,8 @@ private fun CaptureTarget(
                 telemetry = telemetry,
                 ftp = ftp,
                 highlight = highlight,
-                route = route
+                route = route,
+                picture = picture
             )
         }
     }

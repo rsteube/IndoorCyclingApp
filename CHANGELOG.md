@@ -6,6 +6,51 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A ride's own pictures can be the share card.** Sharing a ride that a
+  companion took screenshots of now offers them: the row under the preview has
+  the ride card as it was and a tile per picture, and the chosen one fills the
+  panel where the chart or the road would be, with the ride's numbers still
+  around it. More than three and the row keeps the first few and opens the rest
+  as a grid. Rides without pictures, which is most of them, get exactly the
+  sheet they had.
+
+- **The gear is on the companion ride screen.** The paddles change it, so the
+  screen they are on says what they changed it to: the gear number and the
+  cassette ladder, above the power, in both orientations.
+
+### Fixed
+
+- **The app could close while a ride was being set up.** Android takes a
+  foreground service started for a ride as a promise to show its notification
+  within a few seconds, and kills the whole process when that promise is not
+  kept. Two ways it was not: a ride ending as the next one began (every lap of a
+  companion session) could drop the newer start, and the service was being asked
+  to start again on every change of state, auto-pause included, each one a fresh
+  promise and a fresh chance to miss one. The notification is now shown before
+  the service reads what it was asked to do, the ride hands over from one lap to
+  the next without stopping in between, and starting is asked for once, when
+  riding begins.
+
+- **Companion mode sent you home to pair a trainer.** Tapping Companion without
+  a trainer opened the pairing screen, which closes itself the moment the
+  trainer answers, leaving the rider back on the ride picker with nothing to
+  show for the tap. Companion mode now opens whatever is paired: the screen asks
+  for a trainer itself, with a button, and pairing returns to it with the
+  address and the code already waiting.
+
+- **Back could reach past the bottom of a tab.** The navigator decided it was at
+  the root by looking at which screen was showing rather than how deep the stack
+  was, which are the same question only while every stack still starts with its
+  own tab. One that did not could be popped empty, and an empty stack has no
+  screen to draw.
+
+- **The share preview cut the card's edges.** The preview laid the card out at
+  full size inside a sheet-width box, which centres what will not fit, so the
+  card's margins and the first letter of its title sat off the left edge. The
+  preview is the card again.
+
 ## [2.6] (22) - 2026-09-18
 
 ### Added

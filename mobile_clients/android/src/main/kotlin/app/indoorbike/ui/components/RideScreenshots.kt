@@ -94,9 +94,12 @@ fun rememberRideScreenshots(rideStartEpochMs: Long): List<RideScreenshot> {
  *
  * A 1080p frame decoded whole is 8 MB of pixels; a row of them as thumbnails
  * would be most of a phone's image budget for pictures a few dozen dp tall.
+ *
+ * Public because the share sheet decodes the same files at two more sizes: a
+ * tile to choose from and the full width of the card it is chosen for.
  */
 @Composable
-private fun rememberScreenshotBitmap(file: File, longestEdgePx: Int): ImageBitmap? {
+fun rememberScreenshotBitmap(file: File, longestEdgePx: Int): ImageBitmap? {
     val bitmap by produceState<ImageBitmap?>(null, file, longestEdgePx) {
         value = withContext(Dispatchers.IO) {
             runCatching {
