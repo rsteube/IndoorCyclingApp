@@ -1,0 +1,7 @@
+Fixed: the app could close in the middle of a ride. Starting a ride asks Android to keep the app alive with a notification, and Android killed the app when that notification came late. It no longer does.
+
+Fixed: tapping Companion without a trainer paired sent you home after pairing instead of into companion mode.
+
+Added: a ride's own screenshots can now be the card you share, picked from a row under the preview.
+
+Added: the companion ride screen shows the gear the shift paddles are changing.

@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7] (23) - 2026-09-22
+
 ### Added
 
 - **A ride's own pictures can be the share card.** Sharing a ride that a
