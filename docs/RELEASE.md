@@ -383,6 +383,19 @@ bundle exec fastlane promote from:internal to:production rollout:0.1
 `rollout:0.1` is a staged 10% rollout, which the Console can widen to 1.0
 once nothing has caught fire.
 
+Check what Play actually recorded, because the lane's own output does not say:
+
+```powershell
+bundle exec ruby fastlane	rack_state.rb
+```
+
+It prints each track's releases with their version codes, status and user
+fraction. A staged rollout reads `status=inProgress fraction=0.1`; a release
+that went out to everyone reads `status=completed fraction=`, which is what a
+promotion without a `rollout:` produces. `google_play_track_version_codes`,
+which is the obvious thing to reach for, answers only which codes are on a
+track and never mentions the fraction.
+
 ### The lanes
 
 | Lane | What it does |
