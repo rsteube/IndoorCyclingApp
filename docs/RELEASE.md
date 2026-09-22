@@ -419,6 +419,37 @@ track and never mentions the fraction.
 Use `validate` first whenever something about the upload is uncertain. It
 runs every check Play would run and then throws the edit away.
 
+### Play's suggestions, and which of them mean anything
+
+The Console's "improve your app" list is written for apps in general, and most
+of it lands on library code this project does not control. The obfuscated class
+names it quotes are the way in: look them up in the release mapping file,
+`mobile_clients/android/build/outputs/mapping/release/mapping.txt`, where a line
+reads `original.class.Name -> a31:`. That turns a suggestion into a fact in
+about a minute, and it is worth doing before changing anything.
+
+What the list held in September 2026, and what each one was:
+
+- **"Outdated SDK version of androidx.fragment"**. Real, and not a direct
+  dependency: `camera-view` asks for `appcompat:1.1.0`, which asks for
+  `fragment:1.1.0`. Found with `gradlew :mobile_clients:android:dependencies
+  --configuration releaseRuntimeClasspath`. Fixed with constraints in the
+  module's `dependencies` block rather than by adding either library, so they
+  apply only for as long as CameraX keeps asking.
+- **"Deprecated APIs for edge-to-edge"**, naming `setStatusBarColor`,
+  `setNavigationBarColor` and `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES`. The
+  classes mapped to `androidx.activity.EdgeToEdgeApi26`, `EdgeToEdgeApi29` and
+  `EdgeToEdgeApi35`: AndroidX's own per-version branches, which are in the APK
+  because `minSdk` is 26. Nothing to fix. The app already calls
+  `enableEdgeToEdge()`, which is the other half of the same list item.
+- **"Manually downloading and decoding images"**. The class mapped to
+  `org.osmdroid.tileprovider.tilesource.TileSourceFactory`: map tiles, which
+  osmdroid fetches and caches itself. An image-loading library is not the
+  answer to a tile provider.
+- **"Optimized resource shrinking isn't enabled"**. Real, and now on. See
+  `gradle.properties` for why it is safe here and what to re-check if another
+  View-based library arrives.
+
 ### Things that bite
 
 - **A versionCode is consumed forever.** Play will not accept the same

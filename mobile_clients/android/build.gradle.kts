@@ -172,6 +172,20 @@ dependencies {
     implementation(libs.ktor.server.websockets)
 
     debugImplementation(libs.compose.ui.tooling)
+
+    // Floors, not dependencies. Nothing here is imported by this app: they are
+    // what CameraX's view module brings with it, and what it brings is a
+    // 2019 appcompat and the 2019 fragment underneath it. A constraint raises
+    // the version if something asks for the module and adds nothing if nothing
+    // does, so the day CameraX stops asking, this stops applying.
+    constraints {
+        implementation(libs.androidx.appcompat) {
+            because("camera-view asks for 1.1.0; Play reports its fragment as outdated")
+        }
+        implementation(libs.androidx.fragment) {
+            because("appcompat 1.1.0 asks for fragment 1.1.0, which Play reports as outdated")
+        }
+    }
 }
 
 tasks.register("prepareKotlinBuildScriptModel") {}

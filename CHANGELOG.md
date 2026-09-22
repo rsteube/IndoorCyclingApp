@@ -6,6 +6,13 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **The download is about 400 KB smaller.** R8's optimized resource shrinking is
+  on, which removes the parts of AppCompat and Material this app never draws,
+  and the two libraries CameraX brings with it are held to current versions
+  instead of the 2019 ones it asks for. No behaviour changes.
+
 ## [2.7.1] (24) - 2026-09-22
 
 ### Fixed
