@@ -918,7 +918,7 @@ controllers and observers alike. Starts immediately after `welcome`.
 | `power` | integer W | **no** | Omitted when no trainer is connected |
 | `cadence` | integer rpm | **no** | Omitted when no trainer is connected |
 | `hr` | integer bpm | **no** | Omitted when there is no reading |
-| `speedMps` | number m/s | **no** | **The drivetrain's own speed. Use it.** Omitted when the trainer cannot report cadence |
+| `speedMps` | number m/s | **no** | **The bike's speed as the phone models it. Use it.** From the legs while pulling away, carried by the bike's mass after. Omitted until the trainer has reported cadence |
 | `gearIndex` | integer | yes | Index into `welcome.gears` |
 | `loadFactor` | number | yes | Multiplier for the current gear |
 | `appliedGradient` | number | yes | **After clamping and the deadman ramp** |

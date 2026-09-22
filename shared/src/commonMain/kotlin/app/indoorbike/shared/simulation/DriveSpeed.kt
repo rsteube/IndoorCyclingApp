@@ -20,21 +20,29 @@ import kotlin.math.exp
 /**
  * How fast the rider's legs are turning the road out under them.
  *
- * A chain does not slip. On a real bike the gear is not a resistance knob, it
- * is a *kinematic constraint*: pick a gear, pick a cadence, and the speed is
- * decided for you.
+ * A chain does not slip, so a settled rider's speed is decided by their cadence
+ * and their gear:
  *
  *     v = cadence (rev/s) x development (metres per crank revolution)
  *
- * That one line is the whole difference between a virtual drivetrain that
- * feels like gears and one that feels like a volume control, and it is what
- * every shipping virtual-shifting implementation is built on. Without it a
- * shift can only scale the road force by the ratio between two gears, a few
- * per cent, and the rider absorbs it by pushing very slightly harder. With it
- * a shift moves the *speed* the road is evaluated at, so the aerodynamic term
- * moves with the square of the gear and the commanded force with its cube.
- * That is why a downshift at 35 km/h is felt and a downshift on a 10 % wall is
- * felt less, exactly as outdoors.
+ * Published, not resisted against. It is the drivetrain's own account of the
+ * speed, known on the first turn of the crank, and it is what the HUD and a
+ * companion's telemetry show. It tracks the world's speed wherever the rider has
+ * settled, and diverges when they are in the wrong gear, coasting or spun out.
+ *
+ * ## Why the road is not evaluated at it
+ *
+ * It was, once, and it was wrong in the seconds that matter most. Right after
+ * a shift the legs are still turning at the old cadence, so this multiplies
+ * that cadence by the *new* gear and answers with a speed the bike does not
+ * have: the speed it would reach after accelerating into the new gear, which
+ * takes seconds and energy a shift does not supply. Evaluated there, the air
+ * term moved with the square of the ratio and the commanded force with its
+ * cube, so one sprocket on the flat at 30 km/h asked for 45 % more force where a
+ * bicycle asks for 15 %, and then relaxed as the cadence caught up - a wall on
+ * an upshift and a release that crept back on a downshift. The force now comes
+ * from the world's speed, which has the bike's mass behind it. See
+ * [VirtualDrivetrain].
  *
  * ## Why the cadence is smoothed
  *

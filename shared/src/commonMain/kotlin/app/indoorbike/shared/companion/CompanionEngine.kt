@@ -18,6 +18,7 @@ package app.indoorbike.shared.companion
 import app.indoorbike.shared.ble.SimulationParameters
 import app.indoorbike.shared.physics.RideDynamics
 import app.indoorbike.shared.physics.VirtualSpeed
+import app.indoorbike.shared.simulation.BikeSpeed
 import app.indoorbike.shared.simulation.DriveSpeed
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.simulation.SimulationEngine
@@ -44,9 +45,8 @@ import kotlinx.coroutines.launch
  * the gradient and the speed, and the app does everything downstream of them:
  *
  * 1. Take the road the companion last sent.
- * 2. Work out the force that road pushes back with at the speed the rider's
- *    own gear is turning out, multiply it by that gear, and command exactly
- *    that force.
+ * 2. Work out the force that road pushes back with at the companion's speed,
+ *    multiply it by the rider's gear, and command exactly that force.
  * 3. The rider feels the hill, pushes harder or shifts, and the companion sees
  *    it in the power and gear this app reports back.
  *
@@ -56,20 +56,16 @@ import kotlinx.coroutines.launch
  * moving, and every rule about drafting, surfaces and wind that produced it.
  * None of that changes.
  *
- * What the *drivetrain* is evaluated at is a different speed, and it has to
- * be: `v = cadence x development`. A chain does not slip, so the gear decides
- * how fast the road goes past for a given cadence, and a virtual gear that
- * does not decide that is not a gear at all - it is a multiplier on a number
- * somebody else chose, worth a few per cent a shift, which is precisely the
- * "I can't feel my gears" report this model was rebuilt to answer. See
- * [DriveSpeed].
+ * The road is evaluated at that speed too. The companion integrated it out of
+ * power with the bike's mass behind it, so it is the speed a bike actually
+ * has at the instant of a shift, and a shift changes the force at the pedals by
+ * the ratio between the two gears and nothing more. See [VirtualDrivetrain]
+ * for why it is not `cadence x development` any longer.
  *
- * The two speeds are not rivals. A settled rider solves `P = F_road(v) . v`
- * from either end and lands on the same v, so they agree wherever the road is
- * steady and part company only where a bicycle would: mid-acceleration, while
- * coasting, and when a gear cannot turn the road out fast enough. A trainer
- * that cannot report cadence falls back to the companion's speed and behaves
- * exactly as this mode did before.
+ * That second speed is still computed, from the rider's cadence and gear, and
+ * sent back in telemetry, because it is known on the first turn of the crank
+ * and a companion with no physics of its own can use it. On a settled road the
+ * two agree.
  *
  * `RideDynamics.step` is still unused here - the companion integrates, not
  * this - but `roadForceNewtons` and `inertiaForceNewtons` are not.
@@ -154,6 +150,17 @@ class CompanionEngine(
      * which would look like agreement and mean nothing.
      */
     val driveSpeedKnown: StateFlow<Boolean> = gearing.driveSpeedKnown
+
+    /**
+     * The bike's speed as the phone models it, which is what telemetry tells
+     * the companion. See [BikeSpeed] for why that is not [driveSpeedMps]: a
+     * companion rides its world at the number it is sent and sends it back as
+     * the road's speed, and `cadence x development` turned every upshift into
+     * an instant acceleration on the way round.
+     */
+    private val bikeSpeed = BikeSpeed()
+    private val _bikeSpeedMps = MutableStateFlow(0.0)
+    val bikeSpeedMps: StateFlow<Double> = _bikeSpeedMps.asStateFlow()
 
     /**
      * The road the companion says the rider is on, merged from every `course`
@@ -314,6 +321,8 @@ class CompanionEngine(
         _course.value = CompanionCourse()
         advanceSeeded = false
         lastSentWatts = null
+        bikeSpeed.reset()
+        _bikeSpeedMps.value = 0.0
         gearing.setRoad(gradient = 0.0, worldSpeedMps = 0.0, crr = ridingCrr)
     }
 
@@ -346,6 +355,9 @@ class CompanionEngine(
         _running.value = false
         advanceSeeded = false
         gearing.onStop()
+        // A ride resuming from a pause pulls away again, from the legs.
+        bikeSpeed.reset()
+        _bikeSpeedMps.value = 0.0
         lastSentWatts = null
         // Nothing is driving the trainer any more, so nothing is holding a
         // target either. Every path that stops this engine either pauses the
@@ -567,6 +579,18 @@ class CompanionEngine(
         // integrated it, on the gradient and surface after the deadman ramp.
         gearing.setRoad(gradient = _gradient.value, worldSpeedMps = _speedMps.value, crr = ridingCrr)
         gearing.update(dt)
+        val rider = riderMassKg()
+        bikeSpeed.update(
+            powerWatts = powerWatts().toDouble(),
+            driveSpeedMps = gearing.driveSpeedMps.value.takeIf { gearing.driveSpeedKnown.value },
+            gradient = _gradient.value,
+            crr = ridingCrr,
+            // No body weight, no ride: the same contract as the rest of the
+            // physics, rather than a riderless bike at an impossible speed.
+            totalMassKg = if (rider > 0f) (rider + bikeMassKg()).toDouble() else 0.0,
+            dtSeconds = dt,
+        )
+        _bikeSpeedMps.value = bikeSpeed.mps
 
         // The road above was read, timed and published either way. Only the
         // write below is the target's to take over.

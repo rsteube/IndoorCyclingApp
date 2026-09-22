@@ -161,9 +161,8 @@ data class Drivetrain(
          * the top where it is needed.
          *
          * This is the one number to expose if riders ever want to tell the app
-         * which gear their bike is actually in, and with the drivetrain now
-         * kinematically coupled to cadence it is the largest remaining guess
-         * in the model. It can be measured rather than assumed: the rider's
+         * which gear their bike is actually in, and it is the largest
+         * remaining guess in the model. It can be measured rather than assumed: the rider's
          * power, their cadence and the force last commanded give
          * `development = P / (F . cadence)` directly, which folds in whatever
          * mass the trainer applies a grade against as well. Until that lands,
@@ -194,27 +193,24 @@ data class Drivetrain(
          * How hard a shift bites, as an exponent on the gear's ratio against
          * the rider's real one.
          *
-         * At 1.0 the model is exactly faithful to a bike, and 1.0 is now what
-         * it is. It was 1.35 for a reason that no longer holds: the virtual
-         * speed used to come from power alone, so the gear could not reach the
-         * speed the road force was evaluated at, one sprocket moved the
-         * commanded force by 5 %, and a rider absorbed that by pushing 5 %
-         * harder at the same cadence and never noticed they had shifted.
-         * Inflating the exponent was the cheapest way to make the shifter do
-         * something.
+         * At 1.0 the model is exactly faithful to a bike: a gear is leverage,
+         * and at the instant of a shift the pedals feel the road through the
+         * new ratio and nothing else. That is the same on the flat and on a
+         * climb. What differs by terrain is what the rider does next.
          *
-         * [app.indoorbike.shared.simulation.DriveSpeed] removed the reason.
-         * The road force is now evaluated at the speed the *gear* is turning
-         * out, so the aerodynamic term moves with the square of the ratio and
-         * the commanded force with its cube: a 7 % sprocket step is an 18 %
-         * change in what the legs feel at 35 km/h, and a 9 % change on an 8 %
-         * wall where gravity dominates and there is no air term to square.
-         * That difference between terrains is the thing a rider recognises as
-         * gears, and it is exactly what a fixed exponent could not produce.
+         * It has been both 1.35 and, in effect, 3: first inflated because a
+         * shift felt like nothing, then replaced by evaluating the road at the
+         * speed the new gear would turn out at the old cadence, which cubes
+         * the ratio on the flat. Neither was the physics, and the second made
+         * one sprocket at speed ask for three times what a bicycle does. A
+         * shift that reads as too little is a latency problem - the write, or
+         * the trainer's own smoothing of a grade - and
+         * [VirtualDrivetrain.SHIFT_RELEASE_SECONDS] is where a downshift is
+         * helped past that, not here.
          *
          * Left as a constant rather than deleted because it is the one knob
          * worth having if the ladder ever needs widening, but anything other
-         * than 1.0 is now a thumb on the scale rather than a missing term.
+         * than 1.0 is a thumb on the scale.
          */
         const val GEAR_AUTHORITY = 1.0
 
@@ -231,23 +227,29 @@ data class Drivetrain(
             wheelCircumferenceMm = 2105,
         )
 
-        /** A 1x gravel bike: one ring, a wide cassette, fatter and taller tyres. */
+        /**
+         * A 1x gravel bike: one ring, a wide cassette, fatter and taller tyres.
+         * The cassette is SRAM's XPLR 10-44, sprocket for sprocket.
+         */
         val GRAVEL = Drivetrain(
             id = "gravel",
             name = "Gravel 1x",
             summary = "40T single ring with a 10-44 cassette, 700x40",
             chainrings = listOf(40),
-            sprockets = listOf(10, 11, 13, 15, 17, 19, 21, 24, 28, 33, 38, 44),
+            sprockets = listOf(10, 11, 13, 15, 17, 19, 21, 24, 28, 32, 38, 44),
             wheelCircumferenceMm = 2200,
         )
 
-        /** A modern 1x trail bike: small ring, enormous cassette, 29in wheels. */
+        /**
+         * A modern 1x trail bike: small ring, enormous cassette, 29in wheels.
+         * The cassette is SRAM's Eagle 10-52, sprocket for sprocket.
+         */
         val MOUNTAIN = Drivetrain(
             id = "mtb",
             name = "Mountain 1x",
             summary = "32T single ring with a 10-52 cassette, 29in",
             chainrings = listOf(32),
-            sprockets = listOf(10, 12, 14, 16, 18, 21, 24, 28, 33, 39, 45, 52),
+            sprockets = listOf(10, 12, 14, 16, 18, 21, 24, 28, 32, 36, 42, 52),
             wheelCircumferenceMm = 2295,
         )
 

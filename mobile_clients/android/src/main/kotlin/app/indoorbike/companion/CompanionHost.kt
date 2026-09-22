@@ -1353,12 +1353,18 @@ class CompanionHost(
             power = powerWatts().takeIf { trainerConnected() },
             cadence = cadenceRpm().takeIf { trainerConnected() },
             hr = heartRateBpm().takeIf { it > 0 },
-            // The drivetrain's own speed, known on the first turn of the crank.
-            // Omitted rather than zeroed when the trainer cannot count cadence:
-            // there is then no drivetrain speed to report, and echoing the
-            // companion's own number back at it would look like agreement and
-            // mean nothing.
-            speedMps = engine.driveSpeedMps.value
+            // The bike's speed as the phone models it: from the legs while
+            // pulling away, so it is there on the first turn of the crank, and
+            // carried by the bike's mass after, so a shift cannot make it jump.
+            // A companion rides its world at this and sends it back as the
+            // road's speed, which is what the resistance is evaluated at; see
+            // BikeSpeed for what a jumping one did to every upshift.
+            //
+            // Omitted rather than zeroed until a crank has turned: a trainer
+            // that cannot count cadence gives nothing to pull away from, and
+            // echoing the companion's own number back at it would look like
+            // agreement and mean nothing.
+            speedMps = engine.bikeSpeedMps.value
                 .takeIf { engine.driveSpeedKnown.value && !holding },
             gearIndex = engine.gearIndex.value,
             loadFactor = engine.drivetrain.value.loadFactor(engine.gearIndex.value),

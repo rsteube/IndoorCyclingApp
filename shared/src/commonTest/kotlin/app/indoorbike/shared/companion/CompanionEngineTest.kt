@@ -232,13 +232,12 @@ class CompanionEngineTest {
     // The drivetrain ─────────────────────────────────────────────────────────
 
     /**
-     * A chain does not slip, so the gear decides how fast the road goes past
-     * for a given cadence. The companion still owns the world; this is the
-     * drivetrain answering the same question, and it is what the road force is
-     * evaluated at.
+     * The drivetrain's own account of the speed, sent back to the companion in
+     * telemetry: cadence times development. Published, not resisted against:
+     * the road is evaluated at the companion's speed. See [VirtualDrivetrain].
      */
     @Test
-    fun `the road is evaluated at the speed the gear is turning out`() {
+    fun `the drivetrain's own speed is cadence times development`() {
         val r = Recorder(cadence = 90)
         r.engine.setRoad(gradient = 0.0, speedMps = 10.0, nowMs = 0)
         r.engine.advance(0)
@@ -251,9 +250,43 @@ class CompanionEngineTest {
         )
     }
 
+    /**
+     * A companion rides its world at the speed telemetry gives it and sends it
+     * back as the road's speed, which is exactly what the protocol asks and
+     * what Col de Berg does. When telemetry carried `cadence x development`,
+     * an upshift came back round that loop as an instant acceleration, and the
+     * rider met the cube of the gear ratio: a wall. It must come back as the
+     * ratio.
+     */
     @Test
-    fun `a shift bites harder at speed than it does on a climb`() {
+    fun `an upshift does not come back from an echoing companion as an acceleration`() {
+        val r = Recorder(cadence = 85)
+        var t = 0L
+        fun echo() {
+            r.engine.setRoad(gradient = 0.0, speedMps = r.engine.bikeSpeedMps.value, nowMs = t)
+            r.engine.advance(t)
+            t += 250
+        }
+        repeat(400) { echo() } // a hundred seconds at 200 W
+        val speedBefore = r.engine.bikeSpeedMps.value
+        assertTrue(speedBefore > 7.0, "never got going: $speedBefore m/s")
+
+        val gear = r.engine.gearIndex.value
+        val before = r.engine.trainerForceNewtons(gear)
+        r.engine.shiftUp()
+        repeat(2) { echo() } // the telemetry, the game, and the road back again
+        val after = r.engine.trainerForceNewtons(r.engine.gearIndex.value)
+
+        val ratio = Drivetrain.DEFAULT.developmentMeters(gear + 1) / Drivetrain.DEFAULT.developmentMeters(gear)
+        assertEquals(ratio, after / before, absoluteTolerance = 0.01)
+        assertEquals(speedBefore, r.engine.bikeSpeedMps.value, absoluteTolerance = 0.05)
+    }
+
+    /** One shift through companion mode is the ratio between the two gears, on any road. */
+    @Test
+    fun `a shift moves the force by the gear ratio, at speed and on a climb alike`() {
         val gear = Drivetrain.DEFAULT.gearCount - 8
+        val ratio = Drivetrain.DEFAULT.developmentMeters(gear - 1) / Drivetrain.DEFAULT.developmentMeters(gear)
 
         val fast = Recorder(cadence = 90)
         fast.engine.setRoad(gradient = 0.0, speedMps = 11.0, nowMs = 0)
@@ -263,17 +296,10 @@ class CompanionEngineTest {
         climb.engine.setRoad(gradient = 0.06, speedMps = 4.0, nowMs = 0)
         climb.engine.advance(0)
 
-        fun drop(r: Recorder) =
-            1.0 - r.engine.trainerForceNewtons(gear - 1) / r.engine.trainerForceNewtons(gear)
+        fun step(r: Recorder) = r.engine.trainerForceNewtons(gear - 1) / r.engine.trainerForceNewtons(gear)
 
-        val onFlat = drop(fast)
-        val onClimb = drop(climb)
-        assertTrue(onFlat > 0.12, "one downshift at speed moved only ${onFlat * 100} %")
-        assertTrue(
-            onFlat > onClimb * 1.4,
-            "the same shift moved ${onFlat * 100} % on the flat and " +
-                "${onClimb * 100} % on a climb, which is not a gear changing",
-        )
+        assertEquals(ratio, step(fast), absoluteTolerance = 0.005)
+        assertEquals(ratio, step(climb), absoluteTolerance = 0.005)
     }
 
     /**

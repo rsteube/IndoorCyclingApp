@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.updateAndGet
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.tanh
 
 /**
@@ -36,6 +37,45 @@ import kotlin.math.tanh
  * one by a game. Where the road comes from is the only difference between
  * them, so everything that turns a road into resistance lives here, and a
  * change to how shifting feels is made once and ridden in both.
+ *
+ * ## What a shift does
+ *
+ * A gear is leverage. At the instant of a shift the bike is still doing the
+ * speed it was doing - it has 85 kg of momentum and a shift adds no energy -
+ * so the force at the wheel has not moved, and the rider meets it through a
+ * different ratio. The force at the pedals changes by exactly the ratio between
+ * the two gears, on the flat and on a climb alike, and the cadence changes by its
+ * inverse. What happens next is the rider's doing: push harder in the harder
+ * gear and the bike gathers speed over the next seconds, and the air, which
+ * grows with the square of it, grows with it.
+ *
+ * So the road is evaluated at the world's speed, the one with the bike's mass
+ * behind it, and the gear scales it:
+ *
+ *     force at the trainer = (road force at the bike's speed + m . a)
+ *                            x (virtual development / real development)
+ *
+ * It used to be evaluated at `cadence x development` instead, the speed the
+ * *new* gear would turn out at the cadence the legs had not yet had time to
+ * change. That is the speed the bike would be doing after accelerating into the
+ * new gear, reached in no time and for no energy, and on the flat it put the
+ * cube of the ratio on the legs rather than the ratio: one sprocket at 30 km/h
+ * on a 1x gravel cassette asked for 45 % more force where a bicycle asks for
+ * 15 %. The two models agree once the rider has settled into a gear, because a
+ * settled bike does travel at cadence x development; they differ in the
+ * seconds after a shift, which is when a rider judges one.
+ *
+ * ## What a downshift adds
+ *
+ * On a road bike the legs spin up the instant the chain drops to a bigger
+ * sprocket, because the bike's momentum drives them. On a trainer nothing
+ * drives them: the pedals lighten by the ratio and the legs speed up only as
+ * fast as they can accelerate the flywheel, which a rider notices as a
+ * downshift that is late. A trainer's own smoothing of a new grade adds to it.
+ * So a downshift lets go of a little more than its ratio for a moment
+ * ([SHIFT_RELEASE_SECONDS]), and the extra relaxes away as the legs catch up.
+ * An upshift gets no such overshoot: the pedals firming by the ratio is exactly
+ * what a bicycle does, and anything more is a wall.
  *
  * ## The contract
  *
@@ -109,6 +149,12 @@ class VirtualDrivetrain(
     private var lastSentForceNewtons: Double? = null
     private var lastSentGearIndex = -1
 
+    /**
+     * What a downshift is still letting go of: a multiplier under 1 on the
+     * current gear's force, relaxing back to 1. See [SHIFT_RELEASE_SECONDS].
+     */
+    private var shiftRelease = 1.0
+
     /** Put the rider on [drivetrain] in [gearIndex], with nothing measured yet. */
     fun load(drivetrain: Drivetrain, gearIndex: Int) {
         _drivetrain.value = drivetrain
@@ -123,6 +169,7 @@ class VirtualDrivetrain(
         _driveSpeedKnown.value = false
         _commandedForceN.value = 0.0
         _commandedGradePercent.value = 0.0
+        shiftRelease = 1.0
         forgetLastRoad()
         pacer.reset()
     }
@@ -149,6 +196,7 @@ class VirtualDrivetrain(
      */
     fun onStop() {
         roadAcceleration.reset()
+        shiftRelease = 1.0
         driveSpeed.reset()
         _driveSpeedMps.value = 0.0
         _driveSpeedKnown.value = false
@@ -171,6 +219,8 @@ class VirtualDrivetrain(
         _gearIndex.value = drivetrain.gears.indices.minByOrNull {
             abs(drivetrain.gears[it].developmentMeters - wanted)
         } ?: drivetrain.startIndex
+        // A different bike is not a shift, and nothing is owed to the old one.
+        shiftRelease = 1.0
     }
 
     /**
@@ -180,8 +230,26 @@ class VirtualDrivetrain(
      * Atomic on the gear itself, so two shifters reached for at once - the
      * screen and a handlebar remote - cannot lose a shift between them.
      */
-    fun shiftBy(steps: Int): Int =
-        _gearIndex.updateAndGet { _drivetrain.value.clampIndex(it + steps) }
+    fun shiftBy(steps: Int): Int {
+        var from = 0
+        val to = _gearIndex.updateAndGet {
+            from = it
+            _drivetrain.value.clampIndex(it + steps)
+        }
+        when {
+            to < from -> {
+                // Compounded, so dumping three gears lets go of more than one,
+                // and floored, so no number of them lets go of the road.
+                val ratio = _drivetrain.value.developmentMeters(to) /
+                    _drivetrain.value.developmentMeters(from)
+                shiftRelease = (shiftRelease * ratio).coerceAtLeast(MIN_SHIFT_RELEASE)
+            }
+            // A harder gear ends any release still running: an upshift in the
+            // middle of one is a rider who wants the road back, not half of it.
+            to > from -> shiftRelease = 1.0
+        }
+        return to
+    }
 
     /** The road under the rider, as the world now describes it. */
     fun setRoad(gradient: Double, worldSpeedMps: Double, crr: Double = VirtualSpeed.CRR) {
@@ -196,6 +264,10 @@ class VirtualDrivetrain(
      * assist - from the road last described.
      */
     fun update(dtSeconds: Double) {
+        if (shiftRelease < 1.0 && dtSeconds > 0.0) {
+            shiftRelease = 1.0 - (1.0 - shiftRelease) * exp(-dtSeconds / SHIFT_RELEASE_SECONDS)
+            if (shiftRelease > RELEASE_DONE) shiftRelease = 1.0
+        }
         driveSpeed.update(cadenceRpm(), dtSeconds)
         roadAcceleration.update(worldSpeedMps, dtSeconds)
         launchAssist.update(worldSpeedMps, dtSeconds)
@@ -292,7 +364,9 @@ class VirtualDrivetrain(
 
         val road = RideDynamics.roadForceNewtons(
             gradient = gradient,
-            speedMps = roadSpeedFor(gearIndex),
+            // The bike's speed, not the one the gear would turn out at the
+            // legs' current cadence. See "What a shift does" above.
+            speedMps = worldSpeedMps,
             totalMassKg = totalMass,
             crr = crr,
         ) + RideDynamics.inertiaForceNewtons(
@@ -309,21 +383,37 @@ class VirtualDrivetrain(
         // against. Not assisted: it is already a few newtons, and a rider
         // pulling away should still feel a chain.
         val floor = FREEWHEEL_DRAG_NEWTONS * gearFactor
-        val commanded = road * gearFactor * launchAssist.factor
+        // Only the gear the rider is in has a downshift behind it. Asking what
+        // another gear would cost is asking about that gear, settled.
+        val release = if (gearIndex == _gearIndex.value) shiftRelease else 1.0
+        val commanded = road * gearFactor * launchAssist.factor * release
         return softCeiling(commanded.coerceAtLeast(floor))
     }
 
-    /**
-     * The speed the road is evaluated at in gear [gearIndex]: the speed that
-     * gear is turning out at the rider's cadence.
-     */
-    private fun roadSpeedFor(gearIndex: Int): Double =
-        driveSpeed.speedMps(
-            developmentMeters = _drivetrain.value.developmentMeters(gearIndex),
-            fallbackMps = worldSpeedMps,
-        )
-
     companion object {
+        /**
+         * How long a downshift takes to let go of its extra, as the time
+         * constant of its relaxation back to the gear's own force.
+         *
+         * The release starts at the gear's ratio again, so the pedals at first
+         * lighten by about twice the ratio, and it is two-thirds gone after
+         * this long. Chosen for a flywheel, not a feeling: it is about how long
+         * a rider's legs take to spin a direct-drive trainer up to a cadence
+         * one sprocket higher, which is the thing the release is standing in
+         * for. The number to tune if a downshift ever reads as a lurch.
+         */
+        const val SHIFT_RELEASE_SECONDS = 0.5
+
+        /**
+         * The most any run of downshifts lets go of the road at once, as a
+         * multiplier: dumping five gears on a wall still leaves the rider
+         * something to push against while their legs catch up.
+         */
+        const val MIN_SHIFT_RELEASE = 0.55
+
+        /** Close enough to 1 that the release is over. */
+        private const val RELEASE_DONE = 0.995
+
         /**
          * Change in commanded force worth a write, in newtons. Below roughly
          * this the rider cannot tell, and every write costs GATT bandwidth the

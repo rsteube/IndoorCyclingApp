@@ -104,13 +104,15 @@ object RideDynamics {
         gradient: Double,
         totalMassKg: Double,
         dtSeconds: Double,
+        /** The surface under the tyres. Tarmac unless a companion says otherwise. */
+        crr: Double = VirtualSpeed.CRR,
     ): Double {
         if (dtSeconds <= 0.0 || totalMassKg <= 0.0) return speedMps
         var v = speedMps.coerceAtLeast(0.0)
         var remaining = dtSeconds.coerceAtMost(MAX_TOTAL_STEP_SECONDS)
         while (remaining > 0.0) {
             val dt = if (remaining > MAX_SUB_STEP_SECONDS) MAX_SUB_STEP_SECONDS else remaining
-            v = subStep(v, powerWatts, gradient, totalMassKg, dt)
+            v = subStep(v, powerWatts, gradient, totalMassKg, dt, crr)
             remaining -= dt
         }
         return v
@@ -122,6 +124,7 @@ object RideDynamics {
         gradient: Double,
         totalMassKg: Double,
         dt: Double,
+        crr: Double,
     ): Double {
         // sin and cos of the road angle straight from the gradient, no trig:
         // for a slope of rise/run = g, sin = g/sqrt(1+g²) and cos = 1/sqrt(1+g²).
@@ -139,7 +142,7 @@ object RideDynamics {
 
         val weight = totalMassKg * VirtualSpeed.GRAVITY_MS2
         val gravityForce = weight * sinTheta
-        val rollingForce = VirtualSpeed.CRR * weight * cosTheta
+        val rollingForce = crr * weight * cosTheta
         val dragForce = 0.5 * VirtualSpeed.AIR_DENSITY_KG_M3 * VirtualSpeed.CDA_M2 * v * v
 
         // Rolling resistance and drag always oppose motion, so they only apply

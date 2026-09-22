@@ -247,9 +247,15 @@ back `unauthorized`: drop the stored key and offer the pairing code again.
 
 ## Speed comes off the telemetry
 
-`telemetry.speedMps` is how fast the rider's legs and their chosen gear are turning the road
-out, and it is there on the first turn of the crank. Take it, apply your world's own effects,
-and send the result back as `world.speedMps`.
+`telemetry.speedMps` is the phone's model of the bike's speed: the rider's legs while pulling
+away, so it is there on the first turn of the crank, and the bike's mass after, so a shift
+cannot make it jump. Take it, apply your world's own effects, and send the result back as
+`world.speedMps`.
+
+It used to be the legs' speed all the way up, `cadence x development`. Right after an upshift
+that is the old cadence times the new gear, a speed the bike does not have, and echoed back it
+made every upshift a wall. If your world adds speed of its own, integrate it with mass for the
+same reason.
 
 Do not integrate a speed out of power instead. That models a bicycle accelerating from a
 standstill, and what the rider sees is watts and cadence arriving from the trainer while the

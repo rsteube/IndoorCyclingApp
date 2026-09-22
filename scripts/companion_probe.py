@@ -444,8 +444,9 @@ class Probe:
 
     def drive(self, seconds, gradient=0.0, hz=10.0, distance_m=0.0):
         """Pump world frames, taking speed from telemetry the way the docs say
-        to: the drivetrain's own speed is known on the first turn of the crank,
-        and integrating one out of power is what makes speed sit at zero."""
+        to: the phone's model of the bike's speed, there on the first turn of
+        the crank and carried by the bike's mass after, so echoing it back
+        cannot turn a shift into an acceleration."""
         end = time.time() + seconds
         distance = distance_m
         last_print = 0.0

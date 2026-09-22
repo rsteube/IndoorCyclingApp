@@ -6,6 +6,36 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **An upshift at speed was a wall.** One sprocket asked the legs for about
+  three times what a bicycle does: on a 1x gravel bike at 30 km/h, going from
+  the 15 to the 13 wanted 45 % more force where a real bike wants 15 %. The road
+  was being evaluated at the speed the new gear would turn out at the old
+  cadence, which is the speed the bike would reach after accelerating into the
+  gear, handed over instantly and for free; the air term squared it and the
+  gear multiplied it again. The road is now evaluated at the bike's own speed,
+  with its mass behind it, so a shift changes what the legs feel by the ratio
+  between the two gears, on the flat and on a climb alike, exactly as outdoors.
+  Companion mode needed a second half of the same fix: the speed the app sends a
+  game was the same jumping number, and a game riding its world at it sent every
+  upshift straight back. It is now the bike's modelled speed too, taken from the
+  legs while pulling away so it still appears on the first turn of the crank.
+  Games need no change to pick this up.
+
+- **Downshifts arrived late.** Two things held a shift back. A shift that landed
+  just after a routine road update waited for the loop's next tick, up to a
+  quarter of a second, on about one shift in four on a descent; and the
+  trainer's writes could reach it out of order, which occasionally left the
+  pre-shift road in force for seconds. Shifts now go at once and in order. And a
+  downshift now lets go of a little more than its ratio for about half a second
+  while the legs spin up, which is what a real bike's momentum does for them and
+  a trainer cannot.
+
+- **The gravel and mountain bike cassettes were not quite the real ones.** The
+  gravel 1x is now SRAM's XPLR 10-44 and the mountain 1x SRAM's Eagle 10-52,
+  sprocket for sprocket.
+
 ### Added
 
 - **A share card credits the game the ride was ridden with.** A companion that

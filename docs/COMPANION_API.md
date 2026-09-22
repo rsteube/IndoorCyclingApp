@@ -882,7 +882,7 @@ inventing data.
 | `tMono` | Milliseconds since ride start, monotonic, immune to clock adjustment |
 | `power`, `cadence` | From the trainer. Omitted if not reporting |
 | `hr` | From the strap. Omitted if none |
-| `speedMps` | **The drivetrain's own speed. Use this as the bike's speed.** Omitted when the trainer cannot report cadence |
+| `speedMps` | **The bike's speed as the phone models it. Use this as the bike's speed.** From the rider's legs while pulling away, carried by the bike's mass after. Omitted until the trainer has reported cadence |
 | `gearIndex`, `loadFactor` | The current gear |
 | `appliedGradient` | What the phone is actually using, **after clamping**. May differ from what was sent |
 | `trainerForceN` | Newtons at the wheel, after gear multiplication and the soft ceiling |
@@ -898,20 +898,32 @@ They are literally "what the trainer is doing", and without them nobody implemen
 this can tell a protocol bug from a physics disagreement.
 
 **`speedMps` deserves its own paragraph, because getting it wrong is the most common way a
-companion feels broken.** A chain does not slip, so `v = cadence x development` is not an
-estimate of the rider's speed, it *is* their speed, and it is known on the first turn of the
-crank. A companion that integrates speed out of power instead is solving
-`m . dv/dt = P/v - F_road` from a standing start, and that model is not wrong so much as
-answering a different question: it describes a bicycle that is genuinely stationary, rather than
-one whose cranks are already turning at 80 rpm. The visible symptom is watts and cadence
-arriving from the trainer while speed sits at zero for several seconds, at the start of a course
-and again every time the rider stops and starts.
+companion feels broken.** It is the phone's model of the bike's speed, built from two halves
+that are each wrong where the other is right:
 
-You still own the world. Take `speedMps` as the drivetrain's output, apply whatever your game
-adds on top - drafting, surfaces, wind, a downhill that carries the rider past what their gear
-could turn - and send the result back as `world.speedMps`. The two agree wherever the rider is
-settled, because both ends solve `P = F_road(v) . v`, and they are meant to disagree everywhere
-else.
+- **Pulling away, it is the rider's legs.** A chain does not slip, so below walking pace the
+  speed is `cadence x development`, and it is there on the first turn of the crank. A companion
+  that integrates speed out of power from a standing start is modelling a bicycle that is
+  genuinely stationary, and the rider watches watts and cadence arrive while the speed sits at
+  zero for several seconds.
+- **Once moving, it has the bike's mass in it.** It is integrated from the rider's power on the
+  road you described, `m . dv/dt = P/v - F_road`, so it changes as fast as a bicycle can and no
+  faster.
+
+The second half is why it is no longer `cadence x development` all the way up. Right after a
+shift the legs are still turning at the old cadence, so that multiplies them by the *new* gear:
+on an upshift it reported the bike one sprocket faster, instantly, for nothing. A companion that
+rode its world at it sent that speed straight back, the phone evaluated the air at it, and the
+rider met the cube of the gear ratio rather than the ratio: on the flat at 30 km/h, 45 % more
+force for one sprocket where a bicycle asks for 15 %. Riders felt it as a wall on every upshift.
+A speed with mass in it cannot jump, so a companion that echoes it cannot turn a shift into one.
+Nothing about using it changed: a companion written against the old meaning is already using
+the new one.
+
+You still own the world. Take `speedMps`, apply whatever your game adds on top - drafting,
+surfaces, wind, a downhill that carries the rider past what their gear could turn - and send the
+result back as `world.speedMps`. Integrate with mass if you add to it; adding a speed that
+jumps puts the same wall back.
 
 It is **omitted, not zeroed**, when the trainer cannot count cadence. There is then no
 drivetrain speed to be had, and echoing your own number back at you would look like agreement

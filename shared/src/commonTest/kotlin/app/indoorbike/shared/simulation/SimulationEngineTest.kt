@@ -378,19 +378,19 @@ class SimulationEngineTest {
     // The drivetrain ─────────────────────────────────────────────────────────
 
     /**
-     * The behaviour this whole model was rebuilt for.
+     * One shift, end to end through route mode: the force moves by the ratio
+     * between the two gears, at speed and on a climb alike, which is what a
+     * bicycle does at the instant of a shift.
      *
-     * A gear decides how fast the road goes past for a given cadence, so a
-     * shift moves the speed the road force is evaluated at. On the flat, where
-     * air is nearly all of the resistance, that lands as the square of the
-     * ratio on top of the ratio itself. On a climb, where gravity is doing the
-     * work and there is barely any air term to square, it lands as very little
-     * more than the ratio. Riders know that difference by feel, and a model
-     * that scales one number by a fixed exponent cannot produce it.
+     * This test used to assert the opposite - that a shift bites harder at
+     * speed - because the road was evaluated at the speed the new gear would
+     * turn out at the old cadence, which cubes the ratio on the flat. That was
+     * three times what a bicycle asks for, and riders felt it as a wall.
      */
     @Test
-    fun `a shift bites harder at speed than it does on a climb`() {
+    fun `a shift moves the force by the gear ratio, at speed and on a climb alike`() {
         val gear = Drivetrain.ROAD.gearCount - 8
+        val ratio = Drivetrain.ROAD.developmentMeters(gear - 1) / Drivetrain.ROAD.developmentMeters(gear)
 
         val flat = Harness(power = 220, cadence = 90)
         flat.engine.load(flatRoad(20_000.0))
@@ -400,17 +400,10 @@ class SimulationEngineTest {
         climb.engine.load(road(20_000.0) { d -> d * 0.06 })
         climb.ride(seconds = 60)
 
-        fun drop(h: Harness) =
-            1.0 - h.engine.trainerForceNewtons(gear - 1) / h.engine.trainerForceNewtons(gear)
+        fun step(h: Harness) = h.engine.trainerForceNewtons(gear - 1) / h.engine.trainerForceNewtons(gear)
 
-        val onFlat = drop(flat)
-        val onClimb = drop(climb)
-        assertTrue(onFlat > 0.12, "one downshift at speed moved only ${onFlat * 100} %")
-        assertTrue(
-            onFlat > onClimb * 1.4,
-            "the same shift moved ${onFlat * 100} % on the flat and " +
-                "${onClimb * 100} % on a climb, which is not a gear changing",
-        )
+        assertEquals(ratio, step(flat), absoluteTolerance = 0.005)
+        assertEquals(ratio, step(climb), absoluteTolerance = 0.005)
     }
 
     /**
