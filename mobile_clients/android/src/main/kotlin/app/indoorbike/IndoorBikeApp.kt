@@ -59,6 +59,7 @@ import app.indoorbike.companion.AndroidPairedCompanionStore
 import app.indoorbike.companion.CompanionHost
 import app.indoorbike.ride.CompanionRideRecorder
 import app.indoorbike.ride.RideScreenshotStore
+import app.indoorbike.ride.RideBrandStore
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.simulation.Drivetrain
@@ -98,6 +99,8 @@ class AppContainer(
     val historyRepository: HistoryRepository,
     /** Pictures a companion sent, kept on the phone with the ride they were taken on. */
     val rideScreenshots: RideScreenshotStore,
+    /** Which companion drove a ride, kept with the ride for the share card to credit. */
+    val rideBrands: RideBrandStore,
     val userSettings: UserSettings,
     val activeSessionStore: ActiveSessionStore,
     val routeProgressStore: RouteProgressStore,
@@ -135,7 +138,10 @@ class AppContainer(
         val start = sessionManager.persistedSnapshot.value?.sessionStartTimeEpochMs
             ?: sessionManager.sessionStartTimeEpoch
         sessionManager.abandonUnfinishedRide()
-        containerScope.launch { rideScreenshots.deleteRide(start) }
+        containerScope.launch {
+            rideScreenshots.deleteRide(start)
+            rideBrands.deleteRide(start)
+        }
     }
 
     /**
@@ -151,6 +157,7 @@ class AppContainer(
         sessionManager.sessionStartTimeEpoch.takeIf { it != 0L }?.let { keep += it }
         val pruned = rideScreenshots.prune(keep)
         if (pruned > 0) Log.i("IndoorBikeApp", "Deleted the screenshots of $pruned ride(s) no longer in history")
+        rideBrands.prune(keep)
     }
 
     /**
@@ -242,6 +249,7 @@ class AppContainer(
                 companionEngine = companionEngine,
             )
             val rideScreenshots = RideScreenshotStore(application.filesDir)
+            val rideBrands = RideBrandStore(application.filesDir)
             val companionHost = CompanionHost(
                 context = application,
                 engine = companionEngine,
@@ -262,6 +270,7 @@ class AppContainer(
                 deviceId = { userSettings.deviceId },
                 pairedStore = AndroidPairedCompanionStore(application),
                 screenshots = rideScreenshots,
+                brands = rideBrands,
                 trainerName = { trainerManager.connectedTrainerName.value },
                 trainerConnected = {
                     trainerManager.connectionState.value == TrainerConnectionState.Connected ||
@@ -318,6 +327,7 @@ class AppContainer(
                 routeImporter = routeImporter,
                 historyRepository = historyRepository,
                 rideScreenshots = rideScreenshots,
+                rideBrands = rideBrands,
                 userSettings = userSettings,
                 activeSessionStore = activeSessionStore,
                 routeProgressStore = routeProgressStore,

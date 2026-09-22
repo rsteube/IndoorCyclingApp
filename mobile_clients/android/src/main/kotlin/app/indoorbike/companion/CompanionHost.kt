@@ -80,6 +80,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import app.indoorbike.ride.RideScreenshotStore
+import app.indoorbike.ride.RideBrandStore
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicInteger
@@ -179,6 +180,12 @@ class CompanionHost(
     private val pairedStore: PairedCompanionStore? = null,
     /** Where screenshots are kept. Null offers the rider no screenshot button. */
     private val screenshots: RideScreenshotStore? = null,
+    /**
+     * Where a ride's companion is remembered. Null forgets one the moment it
+     * disconnects, which is all this app did before the share card could credit
+     * the game a ride was ridden with.
+     */
+    private val brands: RideBrandStore? = null,
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -534,6 +541,11 @@ class CompanionHost(
                             if (!rideUnderway) {
                                 rideUnderway = true
                                 engine.markRideStart()
+                                // The ride now has a start time to file it
+                                // under, which is what the brand was waiting
+                                // for: it arrives at connect, before there is
+                                // any ride to attach it to.
+                                rememberBrand()
                             }
                         }
                         // Pausing is not only something a companion asks for.
@@ -1057,6 +1069,26 @@ class CompanionHost(
         }
         lookOwner = conn.session.clientName
         _look.value = Look(name = brand.name, icon = icon, palette = brand.palette)
+        // And again here, for a companion that sends its brand after the ride
+        // is already rolling, or changes it mid-ride.
+        rememberBrand()
+    }
+
+    /**
+     * File the connected companion's name and icon under the ride in progress.
+     *
+     * Named by the same rule the HUD header uses, so what the card credits is
+     * what the rider watched all ride: the brand's name if it sent one, and the
+     * name it introduced itself with otherwise.
+     */
+    private fun rememberBrand() {
+        val store = brands ?: return
+        val name = _look.value?.name ?: controller?.session?.clientName ?: return
+        store.save(
+            rideStartEpochMs = sessionManager.sessionStartTimeEpoch,
+            name = name,
+            iconPng = lastIconPng,
+        )
     }
 
     private fun clearLook() {

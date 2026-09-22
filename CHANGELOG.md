@@ -6,6 +6,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A share card credits the game the ride was ridden with.** A companion that
+  sends a name and an icon now has both kept with the ride, and the card's
+  footer carries them beside the app's own wordmark: "with", the game's icon
+  drawn exactly as it sent it, and its name. Rides with no companion, and rides
+  from before this, look exactly as they did. The name and icon are kept on the
+  phone with the ride, are thrown away when the ride is, and go nowhere unless
+  the rider makes a card and shares it.
+
 ### Changed
 
 - **The download is about 400 KB smaller.** R8's optimized resource shrinking is

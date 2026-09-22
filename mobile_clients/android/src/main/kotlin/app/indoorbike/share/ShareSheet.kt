@@ -36,6 +36,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.window.Dialog
 import app.indoorbike.ride.RideScreenshot
+import app.indoorbike.ride.RideBrand
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.ui.components.rememberRideScreenshots
 import app.indoorbike.ui.components.rememberScreenshotBitmap
@@ -147,6 +153,11 @@ fun ShareSheet(
         rememberScreenshotBitmap(pickedShot.file, SHARE_CARD_SIZE_PX)
     } else null
 
+    // Who the rider rode with, for a ride that was driven by a companion. Read
+    // from the ride rather than from the socket, because the socket closed when
+    // the ride ended and this sheet opens days later from history.
+    val credit = rememberRideCredit(session.startTimeEpoch)
+
     // Pre-Q: ask for WRITE_EXTERNAL_STORAGE before saving. Q+ skips this.
     val needsLegacyPerm = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q
     val storagePermissionGranted = remember {
@@ -242,7 +253,8 @@ fun ShareSheet(
                         telemetry = telemetry,
                         ftp = ftp,
                         highlight = highlight,
-                        picture = picture
+                        picture = picture,
+                        companion = credit
                     )
                 }
 
@@ -310,6 +322,26 @@ fun ShareSheet(
 }
 
 private enum class PendingAction { Save, Share }
+
+/**
+ * The companion a ride was ridden with, with its icon decoded, or null.
+ *
+ * Decoded small: it is drawn at 40 of the card's 1080 pixels, and a game's
+ * icon can be 512 square.
+ */
+@Composable
+private fun rememberRideCredit(rideStartEpochMs: Long): RideCredit? {
+    val store = LocalAppContainer.current.rideBrands
+    val revision by store.revision.collectAsState()
+    val brand by produceState<RideBrand?>(null, rideStartEpochMs, revision) {
+        value = withContext(Dispatchers.IO) { store.find(rideStartEpochMs) }
+    }
+    val held = brand ?: return null
+    val icon = held.icon?.let { rememberScreenshotBitmap(it, CREDIT_ICON_PX) }
+    return RideCredit(name = held.name, icon = icon)
+}
+
+private const val CREDIT_ICON_PX = 128
 
 /**
  * What goes on the card: its own chart or road, or one of the ride's pictures.
@@ -557,7 +589,8 @@ private fun CaptureTarget(
     telemetry: List<WorkoutTelemetry>,
     ftp: Int,
     highlight: app.indoorbike.share.ShareHighlight,
-    picture: androidx.compose.ui.graphics.ImageBitmap?
+    picture: androidx.compose.ui.graphics.ImageBitmap?,
+    companion: RideCredit?
 ) {
     CompositionLocalProvider(LocalDensity provides Density(density = 1f, fontScale = 1f)) {
         Box(
@@ -584,7 +617,8 @@ private fun CaptureTarget(
                 ftp = ftp,
                 highlight = highlight,
                 route = route,
-                picture = picture
+                picture = picture,
+                companion = companion
             )
         }
     }

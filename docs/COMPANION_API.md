@@ -677,6 +677,15 @@ like you. A *different* companion taking over does not inherit it.
 | Warnings, errors, the "saved" notice | **Never** | Amber has to keep meaning "look at this" |
 | Back, pause, end, the app's navigation | **Never** | The rider's way out is not the game's to decorate |
 | The pairing dialog | **Never** | It is where the rider decides whether to trust you. The thing asking does not get to dress the question |
+| The ride's share card | `name` and `icon`, as a credit beside the app's own | See below |
+
+**Your name and icon outlive the connection, on one card.** A ride driven by a companion keeps
+that companion's name and icon on the phone, filed under the ride, and the share card a rider
+makes of that ride credits you on it: your icon and name beside the app's own wordmark, with
+"with" in front. Your icon is drawn exactly as you sent it, because a game's mark is its own.
+Your colours are not used there: the card is the app's, and this is a credit rather than a
+takeover. Nothing else is kept, nothing leaves the phone by itself, and a rider who never makes
+a card never sends it anywhere.
 
 **Colours are adjusted, not refused, and you are told.** The phone is a dark screen, glanced at
 from a saddle. The app checks each colour against its own surfaces:

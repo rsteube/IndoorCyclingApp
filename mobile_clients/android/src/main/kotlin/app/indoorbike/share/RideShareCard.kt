@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -112,6 +113,15 @@ fun RideShareCard(
      * that was standing in for it.
      */
     picture: ImageBitmap? = null,
+    /**
+     * The companion that drove the ride, for a ride that had one.
+     *
+     * A companion ride is a ride in somebody else's world, and the card has
+     * carried this app's name on it from the start. Crediting the game beside
+     * it is the same courtesy, and it is what tells anyone looking at the card
+     * where the road came from.
+     */
+    companion: RideCredit? = null,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -202,10 +212,13 @@ fun RideShareCard(
                 Spacer(Modifier.height(32.dp))
             }
 
-            FooterBlock()
+            FooterBlock(companion = companion)
         }
     }
 }
+
+/** A companion's name and icon, decoded and ready to draw. */
+data class RideCredit(val name: String, val icon: ImageBitmap?)
 
 /**
  * The picture, filling the hero panel.
@@ -589,13 +602,23 @@ private fun MiniStat(label: String, value: String) {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun FooterBlock() {
+private fun FooterBlock(companion: RideCredit? = null) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Wordmark()
+        // Between the two, and only when there is one. The row reads as what
+        // the ride was made of: this app, the game, and where to find the app.
+        if (companion != null) {
+            CompanionCredit(
+                credit = companion,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .padding(horizontal = 24.dp)
+            )
+        }
         Text(
             text = "indoorbike.app",
             style = TextStyle(
@@ -605,6 +628,56 @@ private fun FooterBlock() {
                 letterSpacing = 0.10.em
             ),
             color = CadenceColors.Fg3
+        )
+    }
+}
+
+/**
+ * The companion's icon and name, at the weight of a credit rather than a brand.
+ *
+ * Quieter than the wordmark beside it on purpose: this card is the app's, and
+ * the game is being thanked on it. An icon that came through is drawn as it was
+ * sent, because a game's mark is its own and recolouring it would be worse than
+ * leaving it out. One line, cut short if the name is long, so a game with a
+ * sentence for a title cannot push the address off the card.
+ */
+@Composable
+private fun CompanionCredit(credit: RideCredit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Text(
+            text = "with",
+            style = TextStyle(
+                fontFamily = BodyFontFamily,
+                fontWeight = FontWeight.Medium,
+                fontSize = 20.sp
+            ),
+            color = CadenceColors.Fg4,
+            maxLines = 1
+        )
+        if (credit.icon != null) {
+            Image(
+                bitmap = credit.icon,
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp))
+            )
+        }
+        Text(
+            text = credit.name,
+            style = TextStyle(
+                fontFamily = BodyFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 26.sp
+            ),
+            color = CadenceColors.Fg2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
