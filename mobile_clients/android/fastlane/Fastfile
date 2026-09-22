@@ -126,6 +126,25 @@ platform :android do
     )
   end
 
+  desc "Widen a staged rollout. Example: fastlane rollout to:1 version_code:24"
+  lane :rollout do |options|
+    # Not `promote`: that one moves a release from one track to another, and a
+    # rollout already on production is not going anywhere. This changes the one
+    # number that decides how many riders have it, and 1 completes the release,
+    # which is what retires the version it supersedes.
+    upload_to_play_store(
+      track: options[:track] || "production",
+      rollout: (options[:to] || "1").to_s,
+      version_code: options[:version_code],
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true,
+      skip_upload_changelogs: true
+    )
+  end
+
   desc "Pull the live listing out of Play into fastlane/metadata. Overwrites local copy."
   lane :bootstrap do
     download_from_play_store

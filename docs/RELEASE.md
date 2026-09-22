@@ -380,8 +380,15 @@ Then promote it:
 bundle exec fastlane promote from:internal to:production rollout:0.1
 ```
 
-`rollout:0.1` is a staged 10% rollout, which the Console can widen to 1.0
-once nothing has caught fire.
+`rollout:0.1` is a staged 10% rollout. Widen it from here rather than from the
+Console when the crash rate has held:
+
+```powershell
+bundle exec fastlane rollout to:1 version_code:<N>
+```
+
+`to:1` completes the release, which is also what retires the version it
+supersedes: the track then lists the new code alone.
 
 Check what Play actually recorded, because the lane's own output does not say:
 
@@ -406,6 +413,7 @@ track and never mentions the fraction.
 | `internal` | Build and upload to internal testing |
 | `validate` | Full dry run against Play, commits nothing |
 | `promote` | Move an existing build between tracks, `from:` `to:` `rollout:` |
+| `rollout` | Widen a staged rollout in place, `to:` `version_code:` |
 | `bootstrap` | Pull the live listing down from Play, overwriting the local copy |
 
 Use `validate` first whenever something about the upload is uncertain. It
