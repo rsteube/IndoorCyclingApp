@@ -1,0 +1,3 @@
+Fixed: when sharing a ride, Save and Share could be off the bottom of the screen and impossible to tap. The sheet scrolls now, those two buttons stay put, and the card preview is capped so most phones need no scrolling at all.
+
+Everything in 2.7 is unchanged: the mid-ride crash fix, companion mode opening when you tap it, the gear on the companion ride screen, and a ride's own screenshots on the card you share.

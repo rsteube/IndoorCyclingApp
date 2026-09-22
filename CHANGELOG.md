@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.7.1] (24) - 2026-09-22
+
 ### Fixed
 
 - **The share sheet could put its own buttons off the screen.** The card
