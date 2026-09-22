@@ -20,9 +20,8 @@ import app.indoorbike.shared.physics.RideDynamics
 import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.simulation.DriveSpeed
 import app.indoorbike.shared.simulation.Drivetrain
-import app.indoorbike.shared.simulation.LaunchAssist
-import app.indoorbike.shared.simulation.RoadAcceleration
 import app.indoorbike.shared.simulation.SimulationEngine
+import app.indoorbike.shared.simulation.VirtualDrivetrain
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +34,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 
 /**
  * Rides a road somebody else is describing.
@@ -84,10 +82,12 @@ import kotlin.math.abs
  *
  * ## Shared with route mode on purpose
  *
- * The force ceiling ([SimulationEngine.softCeiling]), the assumed trainer mass,
- * the freewheel floor and every BLE pacing constant are the shipped ones rather
- * than copies. Two modes command the same machine through the same envelope,
- * and an envelope with two implementations is an envelope with two behaviours.
+ * Everything that turns a road into resistance - the gears, the shift, the
+ * force model, the ceiling, the freewheel floor and the pacing of every BLE
+ * write - is one [VirtualDrivetrain], the same class route mode uses. Two modes
+ * command the same machine, and a drivetrain with two implementations is a
+ * drivetrain with two behaviours: a fix to how a shift feels would be made in
+ * one and missed in the other.
  */
 class CompanionEngine(
     private val powerWatts: () -> Int,
@@ -125,31 +125,35 @@ class CompanionEngine(
     val speedMps: StateFlow<Double> = _speedMps.asStateFlow()
 
     /**
-     * The speed the rider's legs and their chosen gear are turning out, which
-     * is what the road force is evaluated at.
-     *
-     * The companion still owns the world. This is the drivetrain's own answer
-     * to the same question, and the two are meant to agree: both solve
-     * `P = F_road(v) . v`, so a settled rider lands on the same speed from
-     * either end. Where they part company is where a bicycle parts company
-     * too - mid-acceleration, coasting, spun out on a descent, or riding a
-     * gear that cannot turn the road out fast enough.
+     * The gears, the shifting and the force a gear asks for, shared with route
+     * mode so a change to how shifting feels is made once. See
+     * [VirtualDrivetrain]. This engine's job is the companion's road, and its
+     * lease; that one's is turning a road into resistance.
      */
-    private val _driveSpeedMps = MutableStateFlow(0.0)
-    val driveSpeedMps: StateFlow<Double> = _driveSpeedMps.asStateFlow()
+    private val gearing = VirtualDrivetrain(
+        riderMassKg = riderMassKg,
+        bikeMassKg = bikeMassKg,
+        cadenceRpm = cadenceRpm,
+        applyRoad = applyRoad,
+    )
+
+    /**
+     * The speed the rider's legs and their chosen gear are turning out.
+     *
+     * The companion still owns the world; this is the drivetrain's own answer
+     * to the same question, and on a settled road the two agree. Sent to the
+     * companion in telemetry, because it is known on the first turn of the
+     * crank. See [VirtualDrivetrain.driveSpeedMps].
+     */
+    val driveSpeedMps: StateFlow<Double> = gearing.driveSpeedMps
 
     /**
      * Whether [driveSpeedMps] is the drivetrain's answer or an echo of the
-     * companion's own.
-     *
-     * False until a crank has turned, because a power source that cannot count
-     * cadence has no drivetrain speed to give and [DriveSpeed] falls back to
-     * whatever it was handed. Telemetry omits the field in that case rather
-     * than sending a companion its own number back, which would look like
-     * agreement and mean nothing.
+     * companion's own. False until a crank has turned; telemetry omits the
+     * field in that case rather than sending a companion its own number back,
+     * which would look like agreement and mean nothing.
      */
-    private val _driveSpeedKnown = MutableStateFlow(false)
-    val driveSpeedKnown: StateFlow<Boolean> = _driveSpeedKnown.asStateFlow()
+    val driveSpeedKnown: StateFlow<Boolean> = gearing.driveSpeedKnown
 
     /**
      * The road the companion says the rider is on, merged from every `course`
@@ -194,11 +198,9 @@ class CompanionEngine(
     private val _elevationGainMeters = MutableStateFlow(0.0)
     val elevationGainMeters: StateFlow<Double> = _elevationGainMeters.asStateFlow()
 
-    private val _drivetrain = MutableStateFlow(Drivetrain.DEFAULT)
-    val drivetrain: StateFlow<Drivetrain> = _drivetrain.asStateFlow()
+    val drivetrain: StateFlow<Drivetrain> = gearing.drivetrain
 
-    private val _gearIndex = MutableStateFlow(Drivetrain.DEFAULT.startIndex)
-    val gearIndex: StateFlow<Int> = _gearIndex.asStateFlow()
+    val gearIndex: StateFlow<Int> = gearing.gearIndex
 
     /**
      * True once the companion has gone quiet for longer than its lease.
@@ -235,12 +237,10 @@ class CompanionEngine(
     val running: StateFlow<Boolean> = _running.asStateFlow()
 
     /** Last force commanded, in newtons at the wheel. Published in telemetry. */
-    private val _trainerForceN = MutableStateFlow(0.0)
-    val trainerForceN: StateFlow<Double> = _trainerForceN.asStateFlow()
+    val trainerForceN: StateFlow<Double> = gearing.commandedForceN
 
     /** The grade actually written over FTMS, which is that force against 84 kg. */
-    private val _trainerGradePercent = MutableStateFlow(0.0)
-    val trainerGradePercent: StateFlow<Double> = _trainerGradePercent.asStateFlow()
+    val trainerGradePercent: StateFlow<Double> = gearing.commandedGradePercent
 
     /** Fired when the lease expires and again when a road comes back. */
     var onRoadStaleChanged: ((stale: Boolean) -> Unit)? = null
@@ -272,37 +272,14 @@ class CompanionEngine(
     private var roadAtMs = 0L
     private var everReceived = false
 
-    /** Cadence into road speed, through whatever gear the rider is in. */
-    private val driveSpeed = DriveSpeed()
-
-    /**
-     * The acceleration term of the road load, differentiated off the
-     * companion's own speed rather than off the rider's cadence.
-     *
-     * Deliberately the world's signal and not the legs'. The companion's speed
-     * is already the output of an integration, so it moves smoothly and it
-     * moves for reasons the rider will recognise. Differentiating cadence
-     * instead would close a fast loop from the rider's legs, through a
-     * control-point write that cannot go out more than five times a second,
-     * and back to their legs, which is the shape of an oscillation rather than
-     * of a bicycle.
-     */
-    private val roadAcceleration = RoadAcceleration()
-
-    /** A hand off the line, fading to nothing once the rider is moving. */
-    private val launchAssist = LaunchAssist()
-
-    /** Wall clock of the last [advance], for the filters above. */
+    /** Wall clock of the last [advance], for the gearing's filters. */
     private var lastAdvanceMs = 0L
     private var advanceSeeded = false
 
     private var loop: Job? = null
 
-    private var lastSentForceNewtons: Double? = null
+    /** The target last written, so an unchanged one is not written again. */
     private var lastSentWatts: Int? = null
-    private var lastSentGearIndex: Int = -1
-    private var lastSentEpochMs: Long = 0
-    private var sendOwed = false
 
     /**
      * Put a rider on a bike with no road under it yet.
@@ -316,9 +293,10 @@ class CompanionEngine(
     fun load(gearIndex: Int = USE_START_GEAR) {
         stop()
         val drivetrain = drivetrainProvider()
-        _drivetrain.value = drivetrain
-        _gearIndex.value =
-            if (gearIndex == USE_START_GEAR) drivetrain.startIndex else drivetrain.clampIndex(gearIndex)
+        gearing.load(
+            drivetrain = drivetrain,
+            gearIndex = if (gearIndex == USE_START_GEAR) drivetrain.startIndex else gearIndex,
+        )
         rawGradient = 0.0
         rawCrr = CompanionProtocol.DEFAULT_CRR
         ridingCrr = CompanionProtocol.DEFAULT_CRR
@@ -333,33 +311,18 @@ class CompanionEngine(
         awaitingRideOrigin = false
         _roadStale.value = false
         _receivingRoad.value = false
-        _trainerForceN.value = 0.0
-        _trainerGradePercent.value = 0.0
-        _driveSpeedMps.value = 0.0
-        _driveSpeedKnown.value = false
         _course.value = CompanionCourse()
-        launchAssist.reset()
-        driveSpeed.reset()
-        roadAcceleration.reset()
         advanceSeeded = false
-        lastSentForceNewtons = null
         lastSentWatts = null
-        lastSentGearIndex = -1
+        gearing.setRoad(gradient = 0.0, worldSpeedMps = 0.0, crr = ridingCrr)
     }
 
     /** Start commanding the trainer. Safe with no companion connected: that is a flat road. */
     fun start() {
         loop?.cancel()
-        lastSentForceNewtons = null
         lastSentWatts = null
-        sendOwed = false
-        // A pause leaves stale momentum behind, and resuming must not bill the
-        // rider for an acceleration that happened while they were stopped.
-        roadAcceleration.reset()
         advanceSeeded = false
-        // A ride that is starting, or restarting after a pause, is pulling away
-        // from a standstill either way.
-        launchAssist.reset()
+        gearing.onStart()
         _running.value = true
         if (hold.target != null) pushPowerToTrainer(force = true) else pushRoadToTrainer(force = true)
         loop = scope.launch {
@@ -381,19 +344,9 @@ class CompanionEngine(
         loop?.cancel()
         loop = null
         _running.value = false
-        roadAcceleration.reset()
         advanceSeeded = false
-        // Nothing is measuring the drivetrain while the ride is paused, so
-        // telemetry says so rather than repeating whatever the last tick
-        // happened to see. Resetting the cadence filter as well means the first
-        // crank after a resume is adopted whole, which is the difference
-        // between speed reappearing at once and creeping back over a second.
-        driveSpeed.reset()
-        _driveSpeedMps.value = 0.0
-        _driveSpeedKnown.value = false
-        lastSentForceNewtons = null
+        gearing.onStop()
         lastSentWatts = null
-        sendOwed = false
         // Nothing is driving the trainer any more, so nothing is holding a
         // target either. Every path that stops this engine either pauses the
         // ride or ends it, and both leave untracked, which clears the target
@@ -439,15 +392,13 @@ class CompanionEngine(
         if (clamped == null) {
             // Back to the road, and stated at once rather than at the next
             // tick: the rider is waiting to feel something other than ERG.
-            _trainerForceN.value = 0.0
-            _trainerGradePercent.value = 0.0
-            lastSentForceNewtons = null
+            gearing.clearCommand()
+            gearing.forgetLastRoad()
             if (_running.value) pushRoadToTrainer(force = true)
         } else {
             // No road is being applied any more, and telemetry says so rather
             // than leaving the last hill it described standing.
-            _trainerForceN.value = 0.0
-            _trainerGradePercent.value = 0.0
+            gearing.clearCommand()
             if (_running.value) pushPowerToTrainer(force = true)
         }
         return clamped
@@ -476,8 +427,10 @@ class CompanionEngine(
             onRoadStaleChanged?.invoke(false)
         }
         _gradient.value = gradient
-        // A road change is felt, so it jumps the routine queue the same way a
-        // shift does rather than waiting up to a tick.
+        gearing.setRoad(gradient = gradient, worldSpeedMps = speedMps, crr = crr)
+        // Written now rather than at the next tick, but as a routine write: a
+        // game can send a road at its own frame rate, and only the rider's own
+        // hand gets to jump the pacer's floor.
         if (_running.value) pushRoadToTrainer(force = false)
     }
 
@@ -532,11 +485,7 @@ class CompanionEngine(
      */
     fun setDrivetrain(drivetrain: Drivetrain) {
         if (drivetrain.gears.isEmpty()) return
-        val wanted = _drivetrain.value.developmentMeters(_gearIndex.value)
-        _drivetrain.value = drivetrain
-        _gearIndex.value = drivetrain.gears.indices.minByOrNull {
-            abs(drivetrain.gears[it].developmentMeters - wanted)
-        } ?: drivetrain.startIndex
+        gearing.setDrivetrain(drivetrain)
         // The gear decides the force, so the trainer needs telling at once
         // rather than at the next road update.
         if (_running.value) pushRoadToTrainer(force = true)
@@ -572,13 +521,11 @@ class CompanionEngine(
      * for the handlebar or whether its own request landed.
      */
     fun shiftBy(steps: Int, source: String = SOURCE_SCREEN): Int {
-        val next = _drivetrain.value.clampIndex(_gearIndex.value + steps)
-        val changed = next != _gearIndex.value
-        if (changed) {
-            _gearIndex.value = next
-            // A shift has to be felt immediately, not on the next road update.
-            if (_running.value) pushRoadToTrainer(force = true)
-        }
+        val before = gearing.gearIndex.value
+        val next = gearing.shiftBy(steps)
+        val changed = next != before
+        // A shift has to be felt immediately, not on the next road update.
+        if (changed && _running.value) pushRoadToTrainer(force = true)
         onGearChanged?.invoke(next, changed, source)
         return next
     }
@@ -603,15 +550,6 @@ class CompanionEngine(
         val dt = if (advanceSeeded) (nowMs - lastAdvanceMs) / 1_000.0 else 0.0
         lastAdvanceMs = nowMs
         advanceSeeded = true
-        driveSpeed.update(cadenceRpm(), dt)
-        roadAcceleration.update(_speedMps.value, dt)
-        launchAssist.update(_speedMps.value, dt)
-        _driveSpeedMps.value = driveSpeed.speedMps(
-            developmentMeters = _drivetrain.value.developmentMeters(_gearIndex.value),
-            fallbackMps = _speedMps.value,
-        )
-        _driveSpeedKnown.value = driveSpeed.available
-
         if (everReceived) {
             val age = nowMs - roadAtMs
             val effective = CompanionProtocol.rampedGradient(rawGradient, age)
@@ -623,6 +561,12 @@ class CompanionEngine(
                 onRoadStaleChanged?.invoke(stale)
             }
         }
+
+        // The road the gearing turns into resistance: the companion's speed,
+        // which already has the bike's mass behind it because the companion
+        // integrated it, on the gradient and surface after the deadman ramp.
+        gearing.setRoad(gradient = _gradient.value, worldSpeedMps = _speedMps.value, crr = ridingCrr)
+        gearing.update(dt)
 
         // The road above was read, timed and published either way. Only the
         // write below is the target's to take over.
@@ -640,91 +584,28 @@ class CompanionEngine(
         pushRoadToTrainer(force = false)
     }
 
-    /**
-     * The force the trainer should apply: the road's own resistance at the
-     * companion's speed, scaled by the virtual gear.
-     *
-     * Identical in shape to route mode's, and deliberately so. The only
-     * difference is where `gradient` and `speedMps` came from.
-     */
-    internal fun trainerForceNewtons(gearIndex: Int): Double {
-        val rider = riderMassKg()
-        if (rider <= 0f) return 0.0
-        val drivetrain = _drivetrain.value
-        val gearFactor = drivetrain.loadFactor(gearIndex)
-        val totalMass = (rider + bikeMassKg()).toDouble()
-
-        // Evaluated at the speed this gear is turning out rather than at the
-        // one the companion reported. Route mode does the same thing and for
-        // the same reason: it is the only way a shift reaches the aerodynamic
-        // term, and the aerodynamic term is where a shift is felt.
-        val roadSpeed = driveSpeed.speedMps(
-            developmentMeters = drivetrain.developmentMeters(gearIndex),
-            fallbackMps = _speedMps.value,
-        )
-        val road = RideDynamics.roadForceNewtons(
-            gradient = _gradient.value,
-            speedMps = roadSpeed,
-            totalMassKg = totalMass,
-            // What the surface under the companion's wheels costs. Tarmac
-            // unless it says otherwise, which is what every build before this
-            // one assumed of everything.
-            crr = ridingCrr,
-        ) + RideDynamics.inertiaForceNewtons(
-            // The companion integrates m_eff . dv/dt = P/v - F_road to get the
-            // speed it sends. Commanding only F_road was commanding one half
-            // of an equation somebody else was solving in full.
-            accelerationMps2 = roadAcceleration.mps2,
-            totalMassKg = totalMass,
-        )
-        // The floor is not assisted: it is already a few newtons, and a rider
-        // pulling away should still feel a chain rather than nothing at all.
-        val floor = SimulationEngine.FREEWHEEL_DRAG_NEWTONS * gearFactor
-        val commanded = road * gearFactor * launchAssist.factor
-        return SimulationEngine.softCeiling(commanded.coerceAtLeast(floor))
-    }
+    /** See [VirtualDrivetrain.trainerForceNewtons]. Exposed for tests. */
+    internal fun trainerForceNewtons(gearIndex: Int): Double = gearing.trainerForceNewtons(gearIndex)
 
     /**
-     * Write the road, rate-limited exactly as route mode is.
+     * Write the commanded wattage, through the same pacer as the road.
      *
-     * The GATT queue is the scarce resource in this whole design, not the
-     * network: a control-point write shares it with the telemetry
-     * notifications, and flooding it is what makes cadence drop out. So the
-     * same three rules apply - never more often than
-     * [SimulationEngine.MIN_SEND_INTERVAL_MS], a shorter floor for a shift
-     * because a shifter that lags a fifth of a second feels broken, and an
-     * unconditional restatement every [SimulationEngine.REFRESH_INTERVAL_MS]
-     * because a trainer that dropped and reconnected has forgotten.
-     */
-    /**
-     * Write the commanded wattage, paced exactly as the road is.
-     *
-     * The GATT queue does not care which kind of write is queued on it, so the
-     * same floor and the same unconditional refresh apply: a trainer that
-     * dropped and reconnected has forgotten its target as surely as it forgets
-     * a hill.
+     * The GATT queue does not care which kind of write is queued on it, so a
+     * road and a target share one floor and one refresh: a trainer that
+     * dropped and reconnected has forgotten its target as surely as a hill.
      */
     private fun pushPowerToTrainer(force: Boolean) {
         val now = getCurrentEpochMillis()
         val watts = hold.commanded
+        val pacer = gearing.pacer
+        if (!pacer.mayWrite(now, force)) return
+        if (watts == lastSentWatts && !pacer.mustRestate(now, force)) return
 
-        val elapsed = now - lastSentEpochMs
-        val mustSend = force || sendOwed
-        val floorMs =
-            if (mustSend) SimulationEngine.MIN_SHIFT_INTERVAL_MS
-            else SimulationEngine.MIN_SEND_INTERVAL_MS
-        if (elapsed < floorMs) {
-            if (mustSend) sendOwed = true
-            return
-        }
-        if (!mustSend && watts == lastSentWatts && elapsed < SimulationEngine.REFRESH_INTERVAL_MS) return
-
-        sendOwed = false
-        lastSentEpochMs = now
+        pacer.wrote(now)
         lastSentWatts = watts
         // A road written after this would be fighting the target for the
         // control point, so the next one restates itself in full.
-        lastSentForceNewtons = null
+        gearing.forgetLastRoad()
         applyPower(watts)
     }
 
@@ -732,50 +613,7 @@ class CompanionEngine(
         // P4: while a target is held the road is still read and still timed,
         // but it is not what the trainer is being told.
         if (hold.target != null) return
-        val now = getCurrentEpochMillis()
-        val gearIndex = _gearIndex.value
-        val targetForce = trainerForceNewtons(gearIndex)
-
-        val elapsed = now - lastSentEpochMs
-        val mustSend = force || sendOwed
-        val floorMs =
-            if (mustSend) SimulationEngine.MIN_SHIFT_INTERVAL_MS
-            else SimulationEngine.MIN_SEND_INTERVAL_MS
-        if (elapsed < floorMs) {
-            if (mustSend) sendOwed = true
-            return
-        }
-        if (!mustSend) {
-            val previous = lastSentForceNewtons
-            val unchanged = previous != null &&
-                gearIndex == lastSentGearIndex &&
-                abs(targetForce - previous) < SimulationEngine.FORCE_EPSILON_NEWTONS
-            if (unchanged && elapsed < SimulationEngine.REFRESH_INTERVAL_MS) return
-        }
-
-        sendOwed = false
-        lastSentEpochMs = now
-        lastSentForceNewtons = targetForce
-        lastSentGearIndex = gearIndex
-
-        val gradePercent =
-            targetForce / (SimulationEngine.ASSUMED_TRAINER_MASS_KG * VirtualSpeed.GRAVITY_MS2) * 100.0
-        _trainerForceN.value = targetForce
-        _trainerGradePercent.value = gradePercent
-
-        applyRoad(
-            SimulationParameters(
-                windSpeedMps = 0.0,
-                gradePercent = gradePercent,
-                // Zero for the same reason route mode zeroes them: everything
-                // the rider should feel is already in the grade above, and
-                // anything the trainer added from here would be computed
-                // against its own flywheel speed, which has nothing to do with
-                // how fast the rider is travelling in the companion's world.
-                rollingResistance = 0.0,
-                windResistanceKgPerM = 0.0,
-            )
-        )
+        gearing.writeRoad(forced = force, nowMs = getCurrentEpochMillis())
     }
 
     companion object {

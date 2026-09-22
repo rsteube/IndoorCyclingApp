@@ -259,7 +259,7 @@ class SimulationEngineTest {
 
         val force = h.engine.trainerForceNewtons(h.drivetrain.referenceIndex)
         assertTrue(
-            force < SimulationEngine.SOFT_KNEE_NEWTONS,
+            force < VirtualDrivetrain.SOFT_KNEE_NEWTONS,
             "flat-road riding should be nowhere near the knee: $force N",
         )
     }
@@ -272,7 +272,7 @@ class SimulationEngineTest {
         h.ride(seconds = 30)
         val force = h.engine.trainerForceNewtons(h.drivetrain.gearCount - 1)
         assertTrue(
-            force <= SimulationEngine.MAX_TRAINER_FORCE_NEWTONS,
+            force <= VirtualDrivetrain.MAX_TRAINER_FORCE_NEWTONS,
             "commanded $force N",
         )
     }
