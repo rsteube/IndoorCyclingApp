@@ -32,6 +32,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -178,6 +179,31 @@ class TrainerManager {
     private var activePeripheral: Peripheral? = null
     private var ftmsControlPointWriter: (suspend (ByteArray) -> Unit)? = null
 
+    /** A command for the FTMS control point: whichever of the two the ride last asked for. */
+    private sealed interface ControlWrite {
+        data class Power(val watts: Int) : ControlWrite
+        data class Road(val parameters: SimulationParameters) : ControlWrite
+    }
+
+    /**
+     * The FTMS control point's one queue, holding at most the newest command.
+     *
+     * Every write used to be its own coroutine on a multi-threaded dispatcher,
+     * and two launched close together could reach the GATT queue in either
+     * order. That is not a theoretical order: a routine road update and a shift
+     * a few milliseconds behind it is exactly what a rider shifting on a
+     * descent produces. When the older one landed second, the trainer held the
+     * pre-shift force, and nothing corrected it until the force next moved
+     * enough to be written - seconds, on a steady road. The shift simply had
+     * not happened.
+     *
+     * One consumer writes them in order. Conflated, because only the latest
+     * state of the road or the target means anything: a command superseded
+     * while the previous write was in flight is dropped rather than written
+     * late, so a slow link sheds stale commands instead of queueing them.
+     */
+    private val controlWrites = Channel<ControlWrite>(Channel.CONFLATED)
+
     // FTMS control handshake. The Control Point only honors Set Target Power
     // (0x05) after a successful Request Control (0x00); strict trainers (Zwift
     // Hub) reject with "Control Not Permitted" (0x05) otherwise. We confirm the
@@ -238,39 +264,13 @@ class TrainerManager {
     }
 
     /**
-     * Write Set Target Power (0x05) to the FTMS Control Point, first taking
-     * control (0x00) if the grant hasn't been confirmed yet. Both writes use
-     * WriteType.WithResponse, which serialises them on the GATT queue, so the
-     * trainer processes the control grant before the target that follows — this
-     * is what makes strict trainers (Zwift Hub) actually honor ERG instead of
-     * replying "Control Not Permitted". Also used by the rejection-recovery path.
+     * Queue Set Target Power (0x05) for the control point. Written by
+     * [performControlWrite], in order behind anything already queued. Also used
+     * by the rejection-recovery path.
      */
     private fun writeTargetPower(watts: Int) {
-        val writer = ftmsControlPointWriter ?: return
-        val clamped = watts.coerceAtLeast(0)
-        scope.launch {
-            try {
-                if (!ftmsControlGranted) {
-                    writer(byteArrayOf(0x00)) // Request Control
-                }
-                writer(
-                    byteArrayOf(
-                        0x05,
-                        (clamped and 0xFF).toByte(),
-                        ((clamped shr 8) and 0xFF).toByte()
-                    )
-                )
-                // The BLE write was acknowledged. A trainer that rejects the
-                // command still reports it via the control-point indication
-                // (handleControlPointResponse), which drives recovery / errors;
-                // for now clear any stale transient failure.
-                _ergError.value = null
-            } catch (e: Exception) {
-                Log.w(TAG, "FTMS Set Target Power write failed: $clamped W", e)
-                _ergError.value = "Couldn't send target power to the trainer. " +
-                    "ERG mode may not be working."
-            }
-        }
+        if (ftmsControlPointWriter == null) return
+        controlWrites.trySend(ControlWrite.Power(watts.coerceAtLeast(0)))
     }
 
     /** Dismiss the current ERG error banner. */
@@ -311,27 +311,57 @@ class TrainerManager {
     }
 
     /**
-     * Write Set Indoor Bike Simulation Parameters, pairing a Request Control
-     * with it until the grant is confirmed. Same handshake and same reasoning
-     * as [writeTargetPower]; see there.
+     * Queue Set Indoor Bike Simulation Parameters (0x11) for the control point.
+     * Written by [performControlWrite], in order behind anything already queued.
      */
     private fun writeSimulationParameters(parameters: SimulationParameters) {
+        if (ftmsControlPointWriter == null) return
+        controlWrites.trySend(ControlWrite.Road(parameters))
+    }
+
+    /**
+     * Write one command to the control point, taking control first if the grant
+     * has not been confirmed yet.
+     *
+     * Both writes use WriteType.WithResponse, which serialises them on the GATT
+     * queue, so the trainer processes the control grant before the command that
+     * follows. That is what makes strict trainers (Zwift Hub) honour it instead
+     * of replying "Control Not Permitted". A trainer that rejects the command
+     * still says so through the control-point indication
+     * ([handleControlPointResponse]), which drives recovery.
+     */
+    private suspend fun performControlWrite(write: ControlWrite) {
         val writer = ftmsControlPointWriter ?: return
-        scope.launch {
-            try {
-                if (!ftmsControlGranted) {
-                    writer(byteArrayOf(0x00)) // Request Control
+        try {
+            if (!ftmsControlGranted) writer(byteArrayOf(0x00)) // Request Control
+            when (write) {
+                is ControlWrite.Power -> writer(
+                    byteArrayOf(
+                        0x05,
+                        (write.watts and 0xFF).toByte(),
+                        ((write.watts shr 8) and 0xFF).toByte(),
+                    )
+                )
+                is ControlWrite.Road -> writer(FtmsSimulationCodec.encode(write.parameters))
+            }
+            _ergError.value = null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            when (write) {
+                is ControlWrite.Power -> {
+                    Log.w(TAG, "FTMS Set Target Power write failed: ${write.watts} W", e)
+                    _ergError.value = "Couldn't send target power to the trainer. " +
+                        "ERG mode may not be working."
                 }
-                writer(FtmsSimulationCodec.encode(parameters))
-                _ergError.value = null
-            } catch (e: Exception) {
-                Log.w(TAG, "FTMS Set Simulation Parameters write failed", e)
-                _ergError.value = "Couldn't send the road gradient to the trainer. " +
-                    "Simulation resistance may not be working."
+                is ControlWrite.Road -> {
+                    Log.w(TAG, "FTMS Set Simulation Parameters write failed", e)
+                    _ergError.value = "Couldn't send the road gradient to the trainer. " +
+                        "Simulation resistance may not be working."
+                }
             }
         }
     }
-
 
     /**
      * Hand the mock trainer's readings over to the caller, or give them back.
@@ -627,7 +657,10 @@ class TrainerManager {
 
     // Declared after all state the supervisor touches, so they're initialised
     // before its coroutine body runs.
-    init { scope.launch { reconnectSupervisor() } }
+    init {
+        scope.launch { reconnectSupervisor() }
+        scope.launch { for (write in controlWrites) performControlWrite(write) }
+    }
 
     /**
      * Forget what the previous scan window saw.
@@ -729,6 +762,10 @@ class TrainerManager {
                             telemetryJobs = emptyList()
                             ftmsControlPointWriter = null
                             ftmsControlGranted = false
+                            // Whatever was waiting was for the trainer that
+                            // just left. The ride restates its road or target
+                            // to whichever one connects next.
+                            controlWrites.tryReceive()
                             activePeripheral = null
                             _connectedTrainerName.value = null
                             _ergError.value = null

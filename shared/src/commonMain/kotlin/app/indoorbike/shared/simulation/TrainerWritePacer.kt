@@ -26,17 +26,24 @@ package app.indoorbike.shared.simulation
  * Three rules, and they are the same for every mode:
  *
  *  - Routine writes go no more often than [MIN_SEND_INTERVAL_MS].
- *  - A write the rider caused (a shift, a new target) has its own, much shorter
- *    floor, [MIN_SHIFT_INTERVAL_MS]. A shifter that lags a fifth of a second
- *    feels broken.
+ *  - A write the rider caused (a shift, a new target) is measured only against
+ *    the last one the rider caused, with its own much shorter floor,
+ *    [MIN_SHIFT_INTERVAL_MS]. A shifter that lags a fifth of a second feels
+ *    broken, and a routine write that happened to go out just before the shift
+ *    is no reason to make the rider wait.
  *  - A forced write refused inside its floor is remembered, not dropped. Only
  *    the latest state matters, so holding the shift button coalesces into one
  *    write rather than flooding the control point or losing shifts.
  *
- * Not thread-safe: its owner confines every call to one thread.
+ * Unsynchronised. Its callers are the engine's loop and whichever thread a
+ * shift or a road frame arrives on, and the worst two of them racing can do is
+ * write once too often or leave one write for the next tick to make up. The
+ * order the writes reach the trainer in is kept by the trainer's own single
+ * control-point queue, not here.
  */
 class TrainerWritePacer {
     private var lastWriteMs: Long = 0
+    private var lastForcedWriteMs: Long = 0
     private var owed = false
 
     /** A forced write was refused inside its floor and has not been made up yet. */
@@ -49,25 +56,23 @@ class TrainerWritePacer {
      */
     fun mayWrite(nowMs: Long, forced: Boolean): Boolean {
         val mustSend = forced || owed
-        val floorMs = if (mustSend) MIN_SHIFT_INTERVAL_MS else MIN_SEND_INTERVAL_MS
-        if (nowMs - lastWriteMs < floorMs) {
-            if (mustSend) owed = true
-            return false
+        val allowed = if (mustSend) {
+            nowMs - lastForcedWriteMs >= MIN_SHIFT_INTERVAL_MS
+        } else {
+            nowMs - lastWriteMs >= MIN_SEND_INTERVAL_MS
         }
-        return true
+        if (!allowed && mustSend) owed = true
+        return allowed
     }
 
     /** True when a write at [nowMs] is forced, owed, or due for its restatement. */
     fun mustRestate(nowMs: Long, forced: Boolean): Boolean =
         forced || owed || nowMs - lastWriteMs >= REFRESH_INTERVAL_MS
 
-    /** How long an owed write has to wait for its floor, from [nowMs]. */
-    fun msUntilOwedMayGo(nowMs: Long): Long =
-        (MIN_SHIFT_INTERVAL_MS - (nowMs - lastWriteMs)).coerceAtLeast(0)
-
-    /** A write went out at [nowMs]. */
-    fun wrote(nowMs: Long) {
+    /** A write went out at [nowMs]; [forced] as it was passed to [mayWrite]. */
+    fun wrote(nowMs: Long, forced: Boolean) {
         lastWriteMs = nowMs
+        if (forced || owed) lastForcedWriteMs = nowMs
         owed = false
     }
 
@@ -78,6 +83,7 @@ class TrainerWritePacer {
     fun reset() {
         owed = false
         lastWriteMs = 0
+        lastForcedWriteMs = 0
     }
 
     companion object {
@@ -88,15 +94,14 @@ class TrainerWritePacer {
         const val MIN_SEND_INTERVAL_MS = 200L
 
         /**
-         * Floor on a write the rider caused, which jumps that queue.
+         * Floor between two writes the rider caused.
          *
          * On a descent the force is changing every tick, so routine sends run
-         * at the floor above continuously and a shift arriving between them
-         * used to wait for the next slot: a fifth of a second before the write
-         * even started, on top of the BLE round trip. A shift is a deliberate
-         * act a human performs a few times a second at most, so it gets its own,
-         * far shorter floor: long enough to coalesce a double-tap, short enough
-         * to be indistinguishable from immediate.
+         * at the floor above continuously. Measured from any write, as it once
+         * was, a shift landing just after one of them waited for the next tick:
+         * up to a quarter of a second before the write even started, on top of
+         * the BLE round trip, and on about one shift in four. Measured from the
+         * last shift, it coalesces a double-tap and nothing else.
          */
         const val MIN_SHIFT_INTERVAL_MS = 60L
 

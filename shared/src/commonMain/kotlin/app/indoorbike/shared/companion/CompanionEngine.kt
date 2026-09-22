@@ -601,7 +601,7 @@ class CompanionEngine(
         if (!pacer.mayWrite(now, force)) return
         if (watts == lastSentWatts && !pacer.mustRestate(now, force)) return
 
-        pacer.wrote(now)
+        pacer.wrote(now, force)
         lastSentWatts = watts
         // A road written after this would be fighting the target for the
         // control point, so the next one restates itself in full.

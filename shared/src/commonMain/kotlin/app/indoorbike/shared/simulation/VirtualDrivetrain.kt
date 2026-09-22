@@ -44,9 +44,11 @@ import kotlin.math.tanh
  * The road's speed is the *world's* speed: the bike's own, with its mass
  * behind it, as integrated by the owner or reported by a game.
  *
- * Not thread-safe. The owner confines every call to one thread, which is what
- * keeps a shift, a road frame and the loop's own tick from interleaving their
- * writes.
+ * Called from the owner's loop and from whichever thread a shift or a road
+ * frame arrives on. The gear changes atomically, so two shifters reached for at
+ * once cannot lose a shift; the writes reach the trainer in the order they were
+ * made through its single control-point queue, so a shift cannot be overtaken by
+ * an older road.
  */
 class VirtualDrivetrain(
     private val riderMassKg: () -> Float,
@@ -241,7 +243,7 @@ class VirtualDrivetrain(
             abs(targetForce - previous) < FORCE_EPSILON_NEWTONS
         if (unchanged && !pacer.mustRestate(nowMs, forced)) return false
 
-        pacer.wrote(nowMs)
+        pacer.wrote(nowMs, forced)
         lastSentForceNewtons = targetForce
         lastSentGearIndex = gear
         val gradePercent = targetForce / (ASSUMED_TRAINER_MASS_KG * VirtualSpeed.GRAVITY_MS2) * 100.0
