@@ -6,6 +6,18 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **The share sheet could put its own buttons off the screen.** The card
+  preview is square, so on a phone it is as tall as the sheet is wide, and with
+  the picture chooser under it the sheet wanted more height than the window had.
+  A bottom sheet does not scroll what it is given, it clips it, so Save and
+  Share went off the bottom on the one screen whose whole purpose is those two
+  buttons. Everything above them scrolls now, they stay put, the preview is
+  capped at about half the window, and a sheet tall enough to reach the top of
+  the screen no longer starts behind the clock. The export sheet, which is the
+  same kind of sheet, scrolls for the same reason.
+
 ## [2.7] (23) - 2026-09-22
 
 ### Added

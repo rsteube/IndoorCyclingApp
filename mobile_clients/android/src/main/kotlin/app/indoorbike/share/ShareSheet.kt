@@ -25,6 +25,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -53,7 +55,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Download
@@ -77,6 +79,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -189,51 +192,71 @@ fun ShareSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = Spacing.s5)
-                .windowInsetsPadding(WindowInsets.navigationBars)
+                // Both bars, not just the bottom one. Once the content is tall
+                // enough to want the whole screen, the sheet takes the whole
+                // screen, and the first line of it was landing behind the
+                // clock. `windowInsetsPadding` is position-aware, so on a sheet
+                // that stops short of the top this adds nothing.
+                .windowInsetsPadding(WindowInsets.systemBars)
                 .padding(bottom = Spacing.s5)
         ) {
-            Text(
-                text = "Share ride",
-                style = CadenceType.eyebrow,
-                color = CadenceColors.Fg3
-            )
-            Spacer(Modifier.height(Spacing.s2))
-            Text(
-                text = if (shots.isEmpty())
-                    "Save the card to Photos or hand it to any sharing app."
-                else "Pick what the card shows, then save it or hand it to any sharing app.",
-                style = CadenceType.body,
-                color = CadenceColors.Fg2
-            )
+            // Everything above the buttons scrolls, and the buttons are not in
+            // it.
+            //
+            // A square preview is as tall as the sheet is wide, and with a
+            // picker under it the sheet wanted more height than a phone has,
+            // or than a tablet has in landscape. A bottom sheet does not
+            // scroll what it is given: it clips it. Save and Share were simply
+            // off the bottom of the screen, on the one screen whose whole
+            // purpose is those two buttons.
+            Column(
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "Share ride",
+                    style = CadenceType.eyebrow,
+                    color = CadenceColors.Fg3
+                )
+                Spacer(Modifier.height(Spacing.s2))
+                Text(
+                    text = if (shots.isEmpty())
+                        "Save the card to Photos or hand it to any sharing app."
+                    else "Pick what the card shows, then save it or hand it to any sharing app.",
+                    style = CadenceType.body,
+                    color = CadenceColors.Fg2
+                )
+
+                Spacer(Modifier.height(Spacing.s5))
+
+                // Visible thumbnail preview, drawn from the same Composable as
+                // the capture target, scaled down to fit.
+                ThumbnailPreview {
+                    CaptureTarget(
+                        route = route,
+                        graphicsLayer = graphicsLayer,
+                        session = session,
+                        stats = stats,
+                        workout = workout,
+                        telemetry = telemetry,
+                        ftp = ftp,
+                        highlight = highlight,
+                        picture = picture
+                    )
+                }
+
+                if (shots.isNotEmpty()) {
+                    Spacer(Modifier.height(Spacing.s4))
+                    PictureChooser(
+                        shots = shots,
+                        selected = pickedShot,
+                        onSelect = { picked = it },
+                    )
+                }
+            }
 
             Spacer(Modifier.height(Spacing.s5))
-
-            // Visible thumbnail preview — drawn from the same Composable as the
-            // capture target, scaled down to fit the sheet width.
-            ThumbnailPreview {
-                CaptureTarget(
-                    route = route,
-                    graphicsLayer = graphicsLayer,
-                    session = session,
-                    stats = stats,
-                    workout = workout,
-                    telemetry = telemetry,
-                    ftp = ftp,
-                    highlight = highlight,
-                    picture = picture
-                )
-            }
-
-            if (shots.isNotEmpty()) {
-                Spacer(Modifier.height(Spacing.s4))
-                PictureChooser(
-                    shots = shots,
-                    selected = pickedShot,
-                    onSelect = { picked = it },
-                )
-            }
-
-            Spacer(Modifier.height(Spacing.s6))
 
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s3)) {
                 SecondaryBtn(
@@ -471,41 +494,49 @@ private fun PictureGrid(
 
 @Composable
 private fun ThumbnailPreview(card: @Composable () -> Unit) {
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(20.dp))
-            .background(CadenceColors.Bg0)
-    ) {
-        // The capture target lays out at SHARE_CARD_SIZE_PX dp under a forced
-        // density of 1, so it occupies SHARE_CARD_SIZE_PX device pixels. We then
-        // visually scale that down to fit our box width with a graphicsLayer
-        // transform; the scale is irrelevant to what GraphicsLayer captures —
-        // it always records the unscaled (1080×1080) drawing.
-        val outerWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
-        val scale = (outerWidthPx / SHARE_CARD_SIZE_PX).coerceAtLeast(0.05f)
-        Box(
+    // Never taller than about half the window. The card is square, so on a
+    // phone it would otherwise be as tall as the sheet is wide and leave the
+    // picker and the buttons fighting over what is left; in landscape it would
+    // be taller than the screen. Capped, it is still the biggest thing on the
+    // sheet, and what it gives up is height nothing else had.
+    val maxPreview = (LocalConfiguration.current.screenHeightDp * 0.45f).dp
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        BoxWithConstraints(
             modifier = Modifier
-                .graphicsLayer(
-                    scaleX = scale,
-                    scaleY = scale,
-                    transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-                )
-                // Measured as if the sheet were not there, and pinned to the
-                // corner the scale shrinks towards.
-                //
-                // Without this the preview lied. `requiredSize` lays the card
-                // out at its full 1080 whatever the parent says, but the parent
-                // still reports the width it was allowed, and a child bigger
-                // than its box is centred in it: the card sat at a negative x,
-                // and the scale, computed from the box, put its first 60-odd
-                // pixels off the left edge. What the rider saw was a card with
-                // its margins cropped and its title cut, which is not the card
-                // that gets saved.
-                .wrapContentSize(align = Alignment.TopStart, unbounded = true)
+                .heightIn(max = maxPreview)
+                .aspectRatio(1f)
+                .clip(RoundedCornerShape(20.dp))
+                .background(CadenceColors.Bg0)
         ) {
-            card()
+            // The capture target lays out at SHARE_CARD_SIZE_PX dp under a forced
+            // density of 1, so it occupies SHARE_CARD_SIZE_PX device pixels. We then
+            // visually scale that down to fit our box width with a graphicsLayer
+            // transform; the scale is irrelevant to what GraphicsLayer captures —
+            // it always records the unscaled (1080×1080) drawing.
+            val outerWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
+            val scale = (outerWidthPx / SHARE_CARD_SIZE_PX).coerceAtLeast(0.05f)
+            Box(
+                modifier = Modifier
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+                    )
+                    // Measured as if the sheet were not there, and pinned to the
+                    // corner the scale shrinks towards.
+                    //
+                    // Without this the preview lied. `requiredSize` lays the card
+                    // out at its full 1080 whatever the parent says, but the parent
+                    // still reports the width it was allowed, and a child bigger
+                    // than its box is centred in it: the card sat at a negative x,
+                    // and the scale, computed from the box, put its first 60-odd
+                    // pixels off the left edge. What the rider saw was a card with
+                    // its margins cropped and its title cut, which is not the card
+                    // that gets saved.
+                    .wrapContentSize(align = Alignment.TopStart, unbounded = true)
+            ) {
+                card()
+            }
         }
     }
 }
