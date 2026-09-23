@@ -8,15 +8,5 @@
         "CA:92:AF:A8:96:D1:A6:04:66:E7:95:50:BC:59:C9:0C:1D:36:6C:CD:E5:E3:07:A6:11:58:3A:40:85:09:7C:E9"
       ]
     }
-  },
-  {
-    "relation": ["delegate_permission/common.handle_all_urls"],
-    "target": {
-      "namespace": "android_app",
-      "package_name": "app.indoorbike.debug",
-      "sha256_cert_fingerprints": [
-        "50:20:6E:96:6C:70:D0:FE:90:5E:2E:9C:A4:72:C0:3D:1E:94:62:FB:43:86:14:47:F8:AD:37:2F:F2:B8:A6:FA"
-      ]
-    }
   }
 ]
