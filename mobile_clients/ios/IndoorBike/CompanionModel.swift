@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import SwiftUI
 import UIKit
@@ -43,6 +44,8 @@ final class CompanionModel {
     @ObservationIgnored private let engine: CompanionEngine
     @ObservationIgnored private let settings: IosUserSettings
     @ObservationIgnored private let flows = KotlinFlows()
+    /// Wi-Fi joined, lost or swapped: the addresses shown and put in the QR follow.
+    @ObservationIgnored private let pathMonitor = NWPathMonitor()
 
     init(container: IosAppContainer) {
         host = container.companionHost
@@ -75,6 +78,9 @@ final class CompanionModel {
         flows.watch(engine.drivetrain) { [unowned self] (value: Drivetrain?) in drivetrain = value }
         flows.watch(engine.roadStale) { [unowned self] (value: KotlinBoolean?) in roadStale = value?.boolValue ?? false }
         flows.watch(engine.powerTarget) { [unowned self] (value: KotlinInt?) in powerTarget = value.map { Int(truncating: $0) } }
+        let host = host
+        pathMonitor.pathUpdateHandler = { _ in host.refreshAddresses() }
+        pathMonitor.start(queue: DispatchQueue(label: "app.indoorbike.companion.path"))
     }
 
     /// The name the rider knows the game by: its brand's, else what it said in hello.

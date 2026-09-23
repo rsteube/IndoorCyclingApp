@@ -691,6 +691,17 @@ class CompanionHost(
     }
 
     /**
+     * Read this device's addresses again, after the platform reports a network
+     * change. They are otherwise read only when the host starts, so a phone
+     * that moved to another Wi-Fi kept showing, and putting in its pairing QR,
+     * an address no companion could reach.
+     */
+    fun refreshAddresses() {
+        val addresses = CompanionPairing.localAddresses()
+        _status.update { if (it.addresses == addresses) it else it.copy(addresses = addresses) }
+    }
+
+    /**
      * Close the socket, withdraw the advertisement, forget every connection,
      * and forget the session: the rider has left Companion mode.
      */
