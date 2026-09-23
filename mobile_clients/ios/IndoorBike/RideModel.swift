@@ -68,8 +68,9 @@ final class RideModel {
     func pause() { session.pauseWorkout() }
     func resume() { session.resumeWorkout() }
     func skipSegment() { session.skipSegment() }
-    func easier() { session.adjustDifficulty(deltaPercent: -5) }
-    func harder() { session.adjustDifficulty(deltaPercent: 5) }
+    /// One step, as the ride understands it: see the shared `adjustEffort`.
+    func easier() { container.stepEffort(direction: -1) }
+    func harder() { container.stepEffort(direction: 1) }
 
     /// End the ride: saved if it ever started, simply dropped if the rider never
     /// pedalled off.

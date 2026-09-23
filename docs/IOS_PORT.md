@@ -80,7 +80,21 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
   - **Unfinished-ride banner:** save, continue or abandon, on the Ride, History and Progress tabs.
   - **Moved into `shared` for both apps:** the unfinished-ride rules (`describeUnfinishedRide`), the badge catalogue, level titles and XP formatting (`BADGE_CATALOG`, `riderLevelTitle`, `formatXp`, `sessionKilojoules`), and the export file name (`exportFileName`). Android now calls these.
   - **Not ported yet:** the route panel on a route ride's detail waits for milestone 5, and the upload cards wait for milestone 7.
-- [ ] **4. Settings and onboarding.** FTP, weight, max HR, bike, and drivetrain. Heart rate monitor pairing. Onboarding.
+- [x] **4. Settings and onboarding.**
+  - **Settings tab:**
+    - Profile: FTP, weight and max HR, saved as they're typed and put back if left invalid.
+    - Devices: trainer, heart rate monitor and controller, each with a sheet to pair, disconnect or forget it, and a pairing screen.
+    - Bike & gearing: bike weight with presets, and the drivetrain.
+    - About.
+    - "Report a problem": a Mail draft with the report as the body and as an attachment, or the share sheet on a device without Mail.
+  - **Onboarding:** the welcome card and a two-step sheet (FTP and weight, then Bluetooth), followed by the "first ride" card.
+  - **Ride screen:** the live heart rate is coloured by zone. A paired controller's buttons, and the screen's ± buttons, step the effort the way the ride understands it.
+  - **iOS diagnostics:** a diagnostics log with Android's limits and files (`DiagnosticsLog` in `iosMain`), plus crash logging through Kotlin/Native's unhandled-exception hook.
+  - **Moved into `shared` for both apps:**
+    - The device status wording and tone (`DeviceStatusText.kt`).
+    - The ± step for each ride mode (`adjustEffort`).
+    - The bug report layout, subject and address (`BugReportText.kt`).
+  - Android's settings, ride screen and bug report call these.
 - [ ] **5. Route rides.** Route catalogue with the bundled routes and GPX import. Map (MapKit), elevation profile, virtual gears. The simulation engine is already shared.
 - [ ] **6. Workout library.** Import from Files, a URL or a QR code (VisionKit), the community registry, and favourites. Workout fetching and import move into `shared`.
 - [ ] **7. Sync and uploads.** Intervals.icu (OAuth through `ASWebAuthenticationSession`), FitTrackee, and the backup folder (Files, with a security-scoped bookmark). Secrets in the Keychain. The uploaders move into `shared` behind a small HTTP interface.

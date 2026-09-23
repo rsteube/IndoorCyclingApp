@@ -37,6 +37,8 @@ import kotlinx.coroutines.IO
 import kotlinx.coroutines.withContext
 import platform.Foundation.NSTemporaryDirectory
 import app.indoorbike.shared.WorkoutRepository
+import app.indoorbike.shared.ble.ControllerEvent
+import app.indoorbike.shared.ble.ControllerManager
 import app.indoorbike.shared.ble.HeartRateMonitor
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.ble.TrainerManager
@@ -47,7 +49,11 @@ import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.session.writeRideToHistory
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.simulation.SimulationEngine
+import app.indoorbike.shared.feedback.bugReportText
+import app.indoorbike.shared.session.adjustEffort
+import app.indoorbike.shared.util.DiagnosticsLog
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.util.installCrashLogging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -70,6 +76,7 @@ class IosAppContainer {
     val userSettings = IosUserSettings()
     val trainerManager = TrainerManager()
     val heartRateMonitor = HeartRateMonitor()
+    val controllerManager = ControllerManager()
     val historyRepository = HistoryRepository(DatabaseDriverFactory())
 
     /** Built for route rides (milestone 5); a workout ride doesn't drive it. */
@@ -107,18 +114,41 @@ class IosAppContainer {
 
     /** Call once, at launch. */
     fun start() {
+        // Before the first log line, so the previous run's log is rotated aside
+        // where a bug report can find it.
+        DiagnosticsLog.attachStorage()
+        installCrashLogging()
+        Log.i(TAG, "App start")
         scope.launch { sessionManager.loadPersistedSnapshot() }
         // Keep retrying the devices this rider paired, so they don't have to
-        // pick their trainer every time they open the app. Gated by
-        // [setForeground] and the ride state, as on Android.
+        // pick them every time they open the app. Gated by [setForeground] and
+        // the ride state, as on Android.
         trainerManager.autoConnectIfPaired(userSettings.pairedTrainerId.value)
         heartRateMonitor.autoConnectIfPaired(userSettings.pairedHrmId.value)
-        // Remember a trainer the moment it connects, and never the demo one.
+        controllerManager.autoConnectIfPaired(userSettings.pairedControllerId.value)
+        // Remember each device the moment it connects, and never the demo trainer.
         trainerManager.connectionState
             .filter { it == TrainerConnectionState.Connected }
             .onEach {
                 val id = trainerManager.pairedTrainerId.value
                 if (id != null && id != MOCK_ID) userSettings.setPairedTrainerId(id)
+            }
+            .launchIn(scope)
+        heartRateMonitor.connectionState
+            .filter { it == TrainerConnectionState.Connected }
+            .onEach { heartRateMonitor.pairedDeviceId.value?.let { id -> userSettings.setPairedHrmId(id) } }
+            .launchIn(scope)
+        controllerManager.connectionState
+            .filter { it == TrainerConnectionState.Connected }
+            .onEach { controllerManager.pairedDeviceId.value?.let { id -> userSettings.setPairedControllerId(id) } }
+            .launchIn(scope)
+        // A controller's buttons step the ride in progress, as the ride
+        // screen's ± buttons do. Outside a ride they do nothing.
+        controllerManager.events
+            .onEach { event ->
+                if (!rideActive) return@onEach
+                val direction = if (event == ControllerEvent.Plus) 1 else -1
+                adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, null)
             }
             .launchIn(scope)
         // A ride keeps its devices even with the app in the background.
@@ -140,11 +170,51 @@ class IosAppContainer {
         if (foreground || rideActive) {
             trainerManager.resumeAutoReconnect()
             heartRateMonitor.resumeAutoReconnect()
+            controllerManager.resumeAutoReconnect()
         } else {
             trainerManager.pauseAutoReconnect()
             heartRateMonitor.pauseAutoReconnect()
+            controllerManager.pauseAutoReconnect()
         }
     }
+
+    // ─── Devices ─────────────────────────────────────────────────────────
+
+    /** Stop reconnecting to the trainer, and forget it was ever paired. */
+    fun forgetTrainer() {
+        trainerManager.forgetTrainer()
+        userSettings.setPairedTrainerId(null)
+    }
+
+    fun forgetHeartRateMonitor() {
+        heartRateMonitor.forgetDevice()
+        userSettings.setPairedHrmId(null)
+    }
+
+    fun forgetController() {
+        controllerManager.forgetDevice()
+        userSettings.setPairedControllerId(null)
+    }
+
+    /** One step harder (+1) or easier (-1), as the ride in progress understands it. */
+    fun stepEffort(direction: Int) {
+        adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, null)
+    }
+
+    // ─── Feedback ────────────────────────────────────────────────────────
+
+    /**
+     * The text of a bug report, laid out as the Android app lays it out, with
+     * [deviceInfo] - the app version and the device - supplied by Swift.
+     */
+    fun bugReport(deviceInfo: String, errorContext: String?): String = bugReportText(
+        errorContext = errorContext,
+        deviceInfo = deviceInfo,
+        exitsHeading = null,
+        exits = null,
+        previousRunLog = DiagnosticsLog.previousRunLog(),
+        recentLog = DiagnosticsLog.snapshot(),
+    )
 
     /** The workouts in bundled JSON files, each a list of workouts; duplicates keep the first. */
     fun parseWorkouts(jsonFiles: List<String>): List<Workout> = WorkoutRepository.parseWorkouts(jsonFiles)

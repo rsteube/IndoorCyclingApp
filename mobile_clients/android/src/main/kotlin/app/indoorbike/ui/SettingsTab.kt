@@ -73,6 +73,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.documentfile.provider.DocumentFile
 import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.CONTROLLER_HELPER
+import app.indoorbike.shared.ble.hrmHelper
+import app.indoorbike.shared.ble.trainerTitle
+import app.indoorbike.shared.ble.trainerStatusLine
+import app.indoorbike.shared.ble.trainerHelper
+import app.indoorbike.shared.ble.hrmTitle
+import app.indoorbike.shared.ble.hrmStatusLine
+import app.indoorbike.shared.ble.controllerTitle
+import app.indoorbike.shared.ble.controllerStatusLine
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.shared.ble.ControllerConnectionState
@@ -91,15 +100,8 @@ import app.indoorbike.ui.components.SectionLabel
 import app.indoorbike.ui.components.SlateCard
 import app.indoorbike.ui.components.DeviceStatusCard
 import app.indoorbike.ui.components.controllerStatusColor
-import app.indoorbike.ui.components.controllerStatusLine
-import app.indoorbike.ui.components.controllerTitle
 import app.indoorbike.ui.components.hrmStatusColor
-import app.indoorbike.ui.components.hrmStatusLine
-import app.indoorbike.ui.components.hrmTitle
 import app.indoorbike.ui.components.trainerStatusColor
-import app.indoorbike.ui.components.trainerHelper
-import app.indoorbike.ui.components.trainerStatusLine
-import app.indoorbike.ui.components.trainerTitle
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.SecondaryBtn
 import app.indoorbike.ui.components.UnfinishedRideBanner
@@ -448,15 +450,7 @@ private fun HrmSheetContent(
         iconTint = CadenceColors.Fg1,
         title = hrmTitle(state, name),
         statusLine = hrmStatusLine(state, heartRate, sensorSilent),
-        helper = if (sensorSilent) {
-            "The strap is connected but this phone isn't receiving anything from it, and " +
-                "reconnecting hasn't helped. This is usually the phone's Bluetooth rather than " +
-                "the strap: turn Bluetooth off and on again, or restart the phone. Closing and " +
-                "reopening the app will not clear it."
-        } else {
-            "Bluetooth chest strap (Polar H10, Wahoo TICKR, Garmin HRM-Pro/Dual, etc.). " +
-                "Wake the strap by snapping it on or moistening the contacts before scanning."
-        },
+        helper = hrmHelper(sensorSilent),
     ) {
         when (state) {
             HrmConnectionState.Connected,
@@ -513,10 +507,7 @@ private fun ControllerSheetContent(
         // Plus increases the workout's target power, minus decreases it. Same
         // ±5 % step that the in-app stepper uses, so users feel the same beat
         // whether or not the Click is paired.
-        helper = "Bluetooth ride controller for in-workout ± difficulty. " +
-                "Supported: Zwift Click, including the encrypted firmware, and Zwift Ride. " +
-                "Zwift Play is not supported yet. With no controller paired, the in-app ± " +
-                "buttons still work.",
+        helper = CONTROLLER_HELPER,
     ) {
         when (state) {
             ControllerConnectionState.Connected,

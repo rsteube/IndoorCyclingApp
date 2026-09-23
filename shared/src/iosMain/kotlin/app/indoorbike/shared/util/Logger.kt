@@ -17,13 +17,23 @@ package app.indoorbike.shared.util
 
 import platform.Foundation.NSLog
 
+// Every line also goes into [DiagnosticsLog], which a bug report attaches and
+// which never leaves the device on its own.
 actual object Log {
-    actual fun d(tag: String, message: String) { NSLog("[D] $tag: $message") }
-    actual fun i(tag: String, message: String) { NSLog("[I] $tag: $message") }
+    actual fun d(tag: String, message: String) {
+        DiagnosticsLog.record('D', tag, message, null)
+        NSLog("[D] $tag: $message")
+    }
+    actual fun i(tag: String, message: String) {
+        DiagnosticsLog.record('I', tag, message, null)
+        NSLog("[I] $tag: $message")
+    }
     actual fun w(tag: String, message: String, throwable: Throwable?) {
+        DiagnosticsLog.record('W', tag, message, throwable)
         NSLog("[W] $tag: $message ${throwable?.message ?: ""}")
     }
     actual fun e(tag: String, message: String, throwable: Throwable?) {
+        DiagnosticsLog.record('E', tag, message, throwable)
         NSLog("[E] $tag: $message ${throwable?.message ?: ""}")
     }
 }

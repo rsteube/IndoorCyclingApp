@@ -19,15 +19,24 @@ final class TrainerModel {
     private(set) var cadence = 0
     private(set) var heartRate = 0
     private(set) var targetPower = 0
+    private(set) var pairedId: String?
+    /// How the app can drive this trainer; see `trainerHelper`.
+    private(set) var control: TrainerControl?
+
+    var isPaired: Bool { (pairedId != nil && pairedId != "mock") || isMock }
 
     var isConnected: Bool { state == .connected }
     var isScanning: Bool { state == .scanning }
 
     @ObservationIgnored private let manager: TrainerManager
+    @ObservationIgnored private let onForget: () -> Void
     @ObservationIgnored private let flows = KotlinFlows()
 
-    init(manager: TrainerManager, heartRateMonitor: HeartRateMonitor) {
+    init(manager: TrainerManager, heartRateMonitor: HeartRateMonitor, onForget: @escaping () -> Void) {
         self.manager = manager
+        self.onForget = onForget
+        flows.watch(manager.pairedTrainerId) { [unowned self] (value: NSString?) in pairedId = value as String? }
+        flows.watch(manager.control) { [unowned self] (value: TrainerControl?) in control = value }
         flows.watch(manager.connectionState) { [unowned self] (value: TrainerConnectionState?) in
             state = value ?? .disconnected
         }
@@ -63,4 +72,5 @@ final class TrainerModel {
     func connectMock() { manager.connectMock() }
     func toggleMockPedaling() { manager.toggleMockPedaling() }
     func disconnect() { manager.disconnect() }
+    func forget() { onForget() }
 }

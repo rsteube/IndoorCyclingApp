@@ -10,6 +10,7 @@ struct RideView: View {
     let ride: RideModel
     let trainer: TrainerModel
     let ftp: Int
+    let maxHr: Int
     let onClose: () -> Void
 
     @State private var confirmingEnd = false
@@ -112,7 +113,10 @@ struct RideView: View {
                 .foregroundStyle(.secondary)
             HStack(spacing: 40 * scale) {
                 Metric(value: trainer.cadence, unit: "RPM", scale: scale)
-                Metric(value: trainer.heartRate, unit: "BPM", scale: scale)
+                Metric(
+                    value: trainer.heartRate, unit: "BPM", scale: scale,
+                    color: HeartZone.of(heartRate: trainer.heartRate, maxHr: maxHr)?.color ?? .primary
+                )
             }
             .padding(.top, 16 * scale)
         }
@@ -197,11 +201,13 @@ private struct Metric: View {
     let value: Int
     let unit: String
     var scale: CGFloat = 1
+    var color: Color = .primary
 
     var body: some View {
         VStack(spacing: 2) {
             Text(value > 0 ? "\(value)" : "–")
                 .font(.system(size: 36 * scale, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(value > 0 ? color : .secondary)
                 .contentTransition(.numericText())
                 .animation(.snappy, value: value)
             Text(unit)

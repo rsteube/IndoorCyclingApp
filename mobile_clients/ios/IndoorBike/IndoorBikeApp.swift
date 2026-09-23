@@ -28,6 +28,8 @@ enum AppTab: Hashable {
 final class AppModel {
     let container: IosAppContainer
     let trainer: TrainerModel
+    let heartRateMonitor: SensorModel
+    let controller: SensorModel
     let ride: RideModel
     let settings: SettingsModel
     let history: HistoryModel
@@ -47,7 +49,13 @@ final class AppModel {
         self.container = container
         let workouts = container.parseWorkouts(jsonFiles: Self.bundledWorkoutFiles())
         self.workouts = workouts
-        trainer = TrainerModel(manager: container.trainerManager, heartRateMonitor: container.heartRateMonitor)
+        trainer = TrainerModel(
+            manager: container.trainerManager,
+            heartRateMonitor: container.heartRateMonitor,
+            onForget: container.forgetTrainer
+        )
+        heartRateMonitor = .heartRateMonitor(container.heartRateMonitor, container: container)
+        controller = .controller(container.controllerManager, container: container)
         ride = RideModel(container: container)
         settings = SettingsModel(settings: container.userSettings)
         history = HistoryModel(repository: container.historyRepository)
@@ -136,7 +144,7 @@ struct RootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .fullScreenCover(isPresented: $app.riding) {
-            RideView(ride: app.ride, trainer: app.trainer, ftp: app.settings.ftp) {
+            RideView(ride: app.ride, trainer: app.trainer, ftp: app.settings.ftp, maxHr: app.settings.maxHr) {
                 app.finishRide()
             }
         }

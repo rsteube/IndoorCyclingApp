@@ -59,3 +59,32 @@ func clock(_ seconds: Int) -> String {
     let h = s / 3600, m = (s % 3600) / 60, sec = s % 60
     return h > 0 ? String(format: "%d:%02d:%02d", h, m, sec) : String(format: "%d:%02d", m, sec)
 }
+
+/// Heart-rate zones as the Android app draws them: Garmin's five, as a share
+/// of max HR, in the power zones' colours. Below half of max, no zone at all.
+enum HeartZone: Int {
+    case z1 = 1, z2, z3, z4, z5
+
+    static func of(heartRate: Int, maxHr: Int) -> HeartZone? {
+        guard heartRate > 0, maxHr > 0 else { return nil }
+        let percent = heartRate * 100 / maxHr
+        switch percent {
+        case ..<50: return nil
+        case ...60: return .z1
+        case ...70: return .z2
+        case ...80: return .z3
+        case ...90: return .z4
+        default: return .z5
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .z1: Zone.z1.color
+        case .z2: Zone.z2.color
+        case .z3: Zone.z3.color
+        case .z4: Zone.z4.color
+        case .z5: Zone.z6.color
+        }
+    }
+}

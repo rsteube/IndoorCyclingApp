@@ -105,6 +105,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.animation.core.VectorConverter
+import app.indoorbike.shared.session.adjustEffort
 import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.service.RideSessionService
 import androidx.compose.ui.platform.LocalConfiguration
@@ -405,13 +406,9 @@ fun RideScreen(
         onDispose { if (isCompanion && context.leavingForGood()) companionHost.stop() }
     }
 
+    // What a step means in each mode is shared with the iOS app; see adjustEffort.
     val adjustEffort: (Int) -> Unit = { direction ->
-        when {
-            isSimulation -> simulationEngine.shiftBy(direction)
-            isCompanion -> companionEngine.shiftBy(direction)
-            isFreeRide -> sessionManager.adjustFreeRideTarget(direction * FREE_RIDE_STEP_WATTS)
-            else -> sessionManager.adjustDifficulty(direction * 5)
-        }
+        adjustEffort(direction, workout, sessionManager, simulationEngine, companionEngine)
     }
 
     // Bridge: external controller (Zwift Click v1, ...) to the same steps the

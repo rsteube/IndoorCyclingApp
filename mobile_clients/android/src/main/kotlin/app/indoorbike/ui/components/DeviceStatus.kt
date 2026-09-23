@@ -51,6 +51,16 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.trainerTitle
+import app.indoorbike.shared.ble.trainerStatusLine
+import app.indoorbike.shared.ble.hrmTitle
+import app.indoorbike.shared.ble.hrmStatusLine
+import app.indoorbike.shared.ble.controllerTitle
+import app.indoorbike.shared.ble.controllerStatusLine
+import app.indoorbike.shared.ble.StatusTone
+import app.indoorbike.shared.ble.trainerStatusTone
+import app.indoorbike.shared.ble.hrmStatusTone
+import app.indoorbike.shared.ble.controllerStatusTone
 import app.indoorbike.shared.ble.ControlPath
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
@@ -219,127 +229,21 @@ fun StatusDot(color: Color, modifier: Modifier = Modifier) {
 }
 
 // ─── State → label helpers ────────────────────────────────────────────────────
+//
+// The words are shared with the iOS app (shared/ble/DeviceStatusText.kt), so a
+// device reads the same on either phone. The colours are this app's.
 
-internal fun trainerTitle(
-    state: TrainerConnectionState,
-    name: String?,
-    isMock: Boolean,
-): String = when {
-    state == TrainerConnectionState.Connected && name != null -> name
-    isMock -> "Mock trainer"
-    else -> "Trainer"
+private fun StatusTone.color(): Color = when (this) {
+    StatusTone.Good -> CadenceColors.Success
+    StatusTone.Busy -> CadenceColors.Warning
+    StatusTone.Bad -> CadenceColors.Danger
+    StatusTone.Idle -> CadenceColors.Fg4
 }
 
-internal fun trainerStatusLine(state: TrainerConnectionState, isMock: Boolean): String = when (state) {
-    TrainerConnectionState.Scanning -> "Scanning…"
-    TrainerConnectionState.Connecting -> "Connecting…"
-    TrainerConnectionState.Connected -> if (isMock) "Mock connected" else "Connected"
-    TrainerConnectionState.Disconnecting -> "Disconnecting…"
-    TrainerConnectionState.Disconnected -> "Not paired"
-    TrainerConnectionState.Error -> "Connection error · tap to retry"
-}
+internal fun trainerStatusColor(state: TrainerConnectionState): Color = trainerStatusTone(state).color()
 
-/**
- * The trainer sheet's explanation: what kinds of machine pair, until one has,
- * and then how the app is driving the one that did.
- *
- * Worth saying because the machines differ in ways a rider feels. A bike that
- * only takes a resistance level is steered onto a wattage by measuring it,
- * which takes a few seconds after each change, and a rider who does not know
- * that reads it as the app being slow.
- */
-internal fun trainerHelper(state: TrainerConnectionState, isMock: Boolean, control: TrainerControl): String {
-    if (state != TrainerConnectionState.Connected || isMock) {
-        return "Smart trainers and smart bikes using FTMS or Cycling Power Service. " +
-            "Wahoo Kickr, Tacx Neo, Saris, Elite, etc."
-    }
-    return when {
-        control.power == ControlPath.NATIVE && control.road == ControlPath.NATIVE ->
-            "Workouts hold you at their target wattage, and routes set the resistance of the road."
-        control.power == ControlPath.NATIVE && control.road == ControlPath.VIA_POWER ->
-            "This trainer can't simulate a road, so routes hold you at the wattage the road " +
-                "asks for at your cadence. Workouts use its own ERG."
-        control.power == ControlPath.VIA_RESISTANCE ->
-            "This machine only takes a resistance level, so the app sets it by measuring your " +
-                "power. Allow a few seconds for it to settle after each change."
-        control.power == ControlPath.MANUAL && control.road == ControlPath.NATIVE ->
-            "Routes set the resistance of the road. This trainer can't hold a wattage, so in " +
-                "workouts set the effort yourself."
-        else ->
-            "This machine's resistance can't be set from the app, so set it yourself. Your " +
-                "power, speed and progress are still recorded as you ride."
-    }
-}
+internal fun hrmStatusColor(state: HrmConnectionState, sensorSilent: Boolean): Color =
+    hrmStatusTone(state, sensorSilent).color()
 
-internal fun trainerStatusColor(state: TrainerConnectionState): Color = when (state) {
-    TrainerConnectionState.Connected -> CadenceColors.Success
-    TrainerConnectionState.Scanning,
-    TrainerConnectionState.Connecting,
-    TrainerConnectionState.Disconnecting -> CadenceColors.Warning
-    TrainerConnectionState.Error -> CadenceColors.Danger
-    TrainerConnectionState.Disconnected -> CadenceColors.Fg4
-}
-
-internal fun hrmTitle(state: HrmConnectionState, name: String?): String =
-    if (state == HrmConnectionState.Connected && name != null) name else "Heart rate monitor"
-
-internal fun hrmStatusLine(
-    state: HrmConnectionState,
-    heartRate: Int,
-    sensorSilent: Boolean,
-): String = when (state) {
-    HrmConnectionState.Scanning -> "Scanning…"
-    HrmConnectionState.Connecting -> "Connecting…"
-    HrmConnectionState.Connected -> when {
-        heartRate > 0 -> "$heartRate bpm"
-        // "Waiting" implies patience will fix it. Once the monitor has given up
-        // retrying, it won't, and the rider needs to act. See
-        // HeartRateMonitor.sensorSilent.
-        sensorSilent -> "Connected but sending nothing · restart Bluetooth"
-        else -> "Connected · waiting for first sample"
-    }
-    HrmConnectionState.Disconnecting -> "Disconnecting…"
-    HrmConnectionState.Disconnected -> "Not paired"
-    HrmConnectionState.Error -> "Connection error · tap to retry"
-}
-
-internal fun hrmStatusColor(state: HrmConnectionState, sensorSilent: Boolean): Color = when (state) {
-    HrmConnectionState.Connected -> if (sensorSilent) CadenceColors.Danger else CadenceColors.Success
-    HrmConnectionState.Scanning,
-    HrmConnectionState.Connecting,
-    HrmConnectionState.Disconnecting -> CadenceColors.Warning
-    HrmConnectionState.Error -> CadenceColors.Danger
-    HrmConnectionState.Disconnected -> CadenceColors.Fg4
-}
-
-internal fun controllerTitle(state: ControllerConnectionState, name: String?): String =
-    if (state == ControllerConnectionState.Connected && name != null) name else "Controller"
-
-internal fun controllerStatusLine(
-    state: ControllerConnectionState,
-    keypadSilent: Boolean,
-): String = when (state) {
-    ControllerConnectionState.Scanning -> "Scanning…"
-    ControllerConnectionState.Connecting -> "Connecting…"
-    // Connected is not the same as usable: a controller whose protocol the app
-    // cannot speak pairs and reports itself connected like any other.
-    ControllerConnectionState.Connected ->
-        if (keypadSilent) "Connected but not answering · use in-app ± buttons"
-        else "Connected · in-ride ± control"
-    ControllerConnectionState.Disconnecting -> "Disconnecting…"
-    ControllerConnectionState.Disconnected -> "Not paired · use in-app ± buttons"
-    ControllerConnectionState.Error -> "Connection error · tap to retry"
-}
-
-internal fun controllerStatusColor(
-    state: ControllerConnectionState,
-    keypadSilent: Boolean,
-): Color = when (state) {
-    ControllerConnectionState.Connected ->
-        if (keypadSilent) CadenceColors.Danger else CadenceColors.Success
-    ControllerConnectionState.Scanning,
-    ControllerConnectionState.Connecting,
-    ControllerConnectionState.Disconnecting -> CadenceColors.Warning
-    ControllerConnectionState.Error -> CadenceColors.Danger
-    ControllerConnectionState.Disconnected -> CadenceColors.Fg4
-}
+internal fun controllerStatusColor(state: ControllerConnectionState, keypadSilent: Boolean): Color =
+    controllerStatusTone(state, keypadSilent).color()

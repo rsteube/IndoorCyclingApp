@@ -6,10 +6,24 @@ import shared
 struct HomeView: View {
     @Bindable var app: AppModel
     @State private var showingTrainer = false
+    @State private var onboarding = false
 
     var body: some View {
         NavigationSplitView {
             List(selection: $app.workoutSelection) {
+                if !app.settings.hasCompletedOnboarding {
+                    WelcomeCard { onboarding = true }
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                } else if !app.settings.hasDismissedStarterCard && app.history.sessions.isEmpty,
+                          let first = app.workouts.first(where: { $0.id == "starter-15min" }) {
+                    FirstRideCard(
+                        onStart: { app.workoutSelection = first.id },
+                        onDismiss: app.settings.dismissStarterCard
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
                 UnfinishedRideBanner(app: app)
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
@@ -42,7 +56,10 @@ struct HomeView: View {
             }
         }
         .sheet(isPresented: $showingTrainer) {
-            TrainerScreen(trainer: app.trainer)
+            DeviceSheet(kind: .trainer, app: app)
+        }
+        .sheet(isPresented: $onboarding) {
+            OnboardingSheet(app: app)
         }
     }
 }

@@ -24,6 +24,8 @@ import android.os.Build
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import app.indoorbike.BuildConfig
+import app.indoorbike.shared.feedback.bugReportSubject
+import app.indoorbike.shared.feedback.bugReportText
 import app.indoorbike.shared.util.DiagnosticsLog
 import app.indoorbike.shared.util.ProcessExitReasons
 import java.io.File
@@ -42,7 +44,7 @@ import java.io.File
  */
 object BugReport {
 
-    const val SUPPORT_EMAIL = "juhani@snapp.technology"
+    const val SUPPORT_EMAIL = app.indoorbike.shared.feedback.SUPPORT_EMAIL
 
     private const val SHARED_DIR = "shared_files"
 
@@ -55,7 +57,7 @@ object BugReport {
      */
     fun launchEmailDraft(context: Context, errorContext: String? = null): Boolean {
         val report = buildReport(context, errorContext)
-        val subject = "Cycling app bug report - v${BuildConfig.VERSION_NAME}"
+        val subject = bugReportSubject(BuildConfig.VERSION_NAME)
 
         val intent = Intent(Intent.ACTION_SEND).apply {
             // message/rfc822 biases the chooser toward email apps; EXTRA_EMAIL
@@ -90,37 +92,22 @@ object BugReport {
         }
     }
 
-    /** The full report text: a place for the user to write, then collected data. */
-    fun buildReport(context: Context, errorContext: String?): String = buildString {
-        appendLine("Describe what happened (optional):")
-        appendLine()
-        appendLine()
-        appendLine("--------------------------------")
-        appendLine("Diagnostics (no personal data):")
-        appendLine()
-        if (!errorContext.isNullOrBlank()) {
-            appendLine("Reported error: $errorContext")
-            appendLine()
-        }
-        appendLine(deviceInfo())
-        appendLine()
-        // Android's own record of how previous processes ended. This is the
-        // only section that can describe a crash from the outside, so it leads:
-        // it distinguishes an exception from an out-of-memory kill from the
-        // user swiping the app away, none of which our own logs can tell apart.
-        appendLine("Previous process exits (reported by Android):")
-        appendLine(ProcessExitReasons.describeRecentExits(context) ?: "(none recorded)")
-        appendLine()
-        // The run that died. After a crash this is the section that matters;
-        // "Recent logs" below can only cover the launch that followed it.
-        appendLine("Logs from the previous run:")
-        val previous = DiagnosticsLog.previousRunLog()
-        appendLine(if (previous.isBlank()) "(none captured)" else previous)
-        appendLine()
-        appendLine("Recent logs:")
-        val logs = DiagnosticsLog.snapshot()
-        appendLine(if (logs.isBlank()) "(none captured)" else logs)
-    }
+    /**
+     * The full report text: a place for the user to write, then collected data.
+     * The layout is shared with the iOS app; what is Android's own is below.
+     */
+    fun buildReport(context: Context, errorContext: String?): String = bugReportText(
+        errorContext = errorContext,
+        deviceInfo = deviceInfo(),
+        // Android's own record of how previous processes ended. The only section
+        // that can describe a crash from the outside: it tells an exception from
+        // an out-of-memory kill from the user swiping the app away, none of which
+        // our own logs can tell apart.
+        exitsHeading = "Previous process exits (reported by Android):",
+        exits = ProcessExitReasons.describeRecentExits(context),
+        previousRunLog = DiagnosticsLog.previousRunLog(),
+        recentLog = DiagnosticsLog.snapshot(),
+    )
 
     /** Device/app facts useful for debugging. Nothing here identifies a person. */
     private fun deviceInfo(): String = buildString {
