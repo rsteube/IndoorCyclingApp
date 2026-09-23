@@ -75,7 +75,7 @@
   </header>
 
   <main class="privacy-main">
-    <p class="privacy-meta">Last updated: 9 May 2026</p>
+    <p class="privacy-meta">Last updated: 23 September 2026</p>
     <h1>Privacy policy</h1>
 
     <div class="tldr">
@@ -104,7 +104,8 @@
       <li><strong>Workouts:</strong> bundled JSON shipped with the app, plus any workouts you import (file pick, share-sheet, QR, by URL, or picked from a community repo in the in-app browser). Imported workouts live as plain JSON in the app's private storage; ones added from a known community repo also carry a small sidecar file recording the source repo's name for attribution.</li>
       <li><strong>Cached community registry:</strong> a read-only JSON list of community-repo names + URLs (whatever <code>indoorbike.app/registry.json</code> returned the last time you opened More Workouts), kept on-device so the list still shows when you're offline.</li>
       <li><strong>Ride history:</strong> the result of each ride (duration, average power / cadence / heart rate, plus a 1-second-resolution telemetry log) in a local SQLite database.</li>
-      <li><strong>Optional Intervals.icu connection:</strong> if you connect Intervals.icu, the access token it issues to Indoor Bike, your athlete ID and your name as Intervals.icu gives it, stored in the same on-device key/value store as your profile values. In a build without sign-in, or if you set one up before sign-in existed, your API key instead. Tokens and keys are excluded from Android's Auto Backup and phone-to-phone transfer, and are never written to a Backup &amp; sync slice.</li>
+      <li><strong>Optional Intervals.icu connection:</strong> if you connect Intervals.icu, the access token it issues to Indoor Bike, your athlete ID and your name as Intervals.icu gives it, stored in the same on-device key/value store as your profile values. In a build without sign-in, or if you set one up before sign-in existed, your API key instead. Since version 2.8 the token and key are encrypted on the phone with a key held in Android's keystore, which never leaves it. Tokens and keys are excluded from Android's Auto Backup and phone-to-phone transfer, and are never written to a Backup &amp; sync slice.</li>
+      <li><strong>Optional FitTrackee connection:</strong> if you connect a FitTrackee server, its address, the client id and secret of the app you registered on it, and the access and refresh tokens it issues, plus the sport and auto-upload choices. The secret and tokens are encrypted on the phone the same way (since 2.8). All of it is excluded from Android's Auto Backup and phone-to-phone transfer, and none of it is written to a Backup &amp; sync slice.</li>
       <li><strong>Optional sync-folder URI:</strong> if you've configured Backup &amp; sync in Settings, the app stores the location of the folder you picked so it can read and write its slice on each sync. The folder itself can be anywhere your file picker reaches - local storage, Drive, Dropbox, Nextcloud, Syncthing, …; the choice is yours and is made explicitly via Android's system folder picker.</li>
       <li><strong>Paired companion apps (only if you pair one):</strong> Companion mode
         can drive your trainer from a program on another device. If you choose to pair one
@@ -117,6 +118,10 @@
         agreed to put it on. Companion mode lists every companion you have paired, and
         forgetting one there deletes its key immediately; that companion needs a pairing
         code again.</li>
+      <li><strong>Companion name and icon (only in Companion mode):</strong> a program that
+        drives a ride can send its name and icon. They are kept with that ride so a share
+        card you make of it can credit the program, and removed with the ride. They are not
+        uploaded or synced, and nothing about them leaves your phone unless you share a card.</li>
       <li><strong>Companion screenshots (only if you take one):</strong> in Companion mode you
         can ask the connected program for a picture of its screen. The picture it sends is
         stored in the app's private storage with the ride you were on, and shown with that
@@ -165,6 +170,15 @@
       drive your trainer</em>; it does not hide the traffic from anything else
       already on the network. Use Companion mode on a network you trust, and not
       on public or guest Wi-Fi.
+    </p>
+    <p>
+      Guessing is made slow: a device that gets the code wrong has to wait
+      longer each time before it may try again, and after ten wrong attempts the
+      code is replaced with a new one on your screen. The number of connections
+      is capped, and one that does not finish connecting within ten seconds is
+      closed. You can take control back from a connected program at any time
+      with the button on the ride screen, which also shows where it connected
+      from.
     </p>
     <p>
       The app is never told where you are. A companion sends a gradient, a speed
@@ -239,6 +253,36 @@
       the token, deletes it from your phone and stops further uploads; you can
       also remove Indoor Bike from your Intervals.icu settings. Rides already
       uploaded stay with intervals.icu unless you delete them there.
+    </p>
+
+    <h3>Optional FitTrackee sync</h3>
+    <p>
+      <a href="https://github.com/SamR1/FitTrackee" target="_blank" rel="noopener">FitTrackee</a>
+      is a self-hosted workout tracker. If you set it up in Settings, Indoor Bike:
+    </p>
+    <ul>
+      <li>
+        Signs you in through your own server's page in your browser, so your
+        FitTrackee password never reaches the app. The server hands back a
+        token that can read your profile and workouts and add workouts, which
+        you can revoke from FitTrackee at any time.
+      </li>
+      <li>
+        Uploads a ride when you tap Upload on its summary, or automatically
+        when a ride is saved if you turned that on. It first sends the ride
+        file; FitTrackee does not accept indoor files without GPS, so the app
+        then sends a summary instead: the date, duration, estimated distance,
+        the workout's name, and a note with your average and normalised power,
+        cadence, heart rate, TSS and kilojoules.
+      </li>
+      <li>
+        Talks only to the server address you entered, over HTTPS.
+      </li>
+    </ul>
+    <p>
+      Once a ride is uploaded it is on your FitTrackee server, under whoever
+      runs it. Disconnecting in Settings deletes the tokens from your phone and
+      stops further uploads.
     </p>
 
     <h2>The website</h2>

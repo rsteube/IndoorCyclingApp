@@ -495,6 +495,24 @@
       teeth on it, so you can draw "34 x 17" rather than "gear 11 of 20".
     </p>
 
+    <h3 id="limits">Limits a companion has to live within</h3>
+
+    <p>
+      None of these get in the way of a companion that behaves. They exist
+      because the phone is driving a trainer somebody is riding, and a socket on
+      the local network is open to more than the game it was opened for.
+    </p>
+
+    <ul>
+      <li><strong>Finish the handshake within 10 seconds.</strong> Your <code>hello</code>, and for a paired companion its <code>pairProof</code>, or the connection is closed with <code>4002</code>.</li>
+      <li><strong>Keep it small until then.</strong> Before the handshake only text frames of at most 16 KB are read. After it a frame may be up to 8 MB, which is what a <code>screenshot</code> needs.</li>
+      <li><strong>Keep reading your socket.</strong> The phone pings every 5 s and closes a connection that has not answered for 10 s. Any WebSocket library answers pings by itself as long as something reads the socket. Each companion has its own outgoing queue: telemetry is skipped while four frames are already waiting, so a slow reader gets fewer, fresher frames, and a frame that cannot be written within 5 s closes the connection.</li>
+      <li><strong>Wrong codes cost time.</strong> From the third failed handshake an address waits 1 s before it may try again, doubling each time to at most 60 s. After ten failures in all, the pairing code is replaced and the phone shows the new one. A paired companion never uses a code.</li>
+      <li><strong>At most eight connections,</strong> four of them still in their handshake. One more is closed with <code>1013</code>.</li>
+      <li><strong>Nest no deeper than 32 levels.</strong> A deeper frame is <code>malformed</code>.</li>
+      <li><strong>Names are cleaned.</strong> Control characters and bidirectional-text overrides are removed from your name before the rider sees it.</li>
+    </ul>
+
     <h3 id="pairing">Pairing permanently, so nobody types a code again</h3>
 
     <p>
@@ -715,12 +733,19 @@ proof = hex(HMAC_SHA256(keyBytes,
 
     <p>
       <strong>This is also how a ride starts.</strong> The app prepares the ride
-      the moment you connect and begins streaming telemetry and applying the
-      road immediately, but the clock does not run and nothing is written down
-      until <code>"active"</code> arrives. Send it when your world says the ride
-      has begun: past the menus, off the start line, whenever that is for you.
-      Until then a rider can spin up freely and none of it lands in their ride
-      record.
+      the moment you connect and begins streaming telemetry immediately, but the
+      clock does not run, nothing is written down, and the trainer is not driven
+      at all until <code>"active"</code> arrives: the road starts with the ride.
+      Send it when your world says the ride has begun: past the menus, off the
+      start line, whenever that is for you. If you want the rider to feel a road
+      before then, ask for <code>"untracked"</code>.
+    </p>
+
+    <p>
+      At most two <code>setState</code> frames a second are acted on. Each one
+      writes to the trainer, so a third within the same second is dropped with a
+      <code>rateLimited</code> warning. Follow <code>stateChanged</code> for what
+      actually happened.
     </p>
 
     <p>
@@ -930,7 +955,17 @@ proof = hex(HMAC_SHA256(keyBytes,
     <p>
       A bad field costs only that field: an icon that is not a square PNG is
       refused with a <code>rejected</code> warning saying why, and your name and
-      colours still land. Nothing is stored; it lasts for the session.
+      colours still land. Your colours last for the session.
+    </p>
+
+    <p>
+      <strong>Your name and icon also go on the ride's share card.</strong> A
+      ride you drove keeps your name and icon on the phone, filed under the
+      ride, and the card a rider makes of it credits you: your icon and name
+      beside the app's own wordmark, with "with" in front. The icon is drawn
+      exactly as you sent it; your colours are not used there, because the card
+      is the app's and this is a credit rather than a takeover. Nothing leaves
+      the phone unless the rider shares the card.
     </p>
 
     <h3><code>screenshot</code> - a picture the rider keeps</h3>
@@ -1180,7 +1215,7 @@ setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
       <tbody>
         <tr><td><code>fieldNotHonoured</code></td><td>You sent something this build does not act on. Check <code>welcome.honours</code>. Sent once per field, not once per frame.</td></tr>
         <tr><td><code>clamped</code></td><td>A value was outside the envelope and was held at the edge. Carries what you sent and what was applied.</td></tr>
-        <tr><td><code>rateLimited</code></td><td>Too many shift requests. The surplus was dropped.</td></tr>
+        <tr><td><code>rateLimited</code></td><td>A frame came faster than the phone acts on it: shifts and <code>setPower</code> past ten a second, <code>setState</code> past two. The surplus was dropped.</td></tr>
         <tr><td><code>rejected</code></td><td>A value was dropped rather than trimmed, because trimming it would have been worse than dropping it, or a field of <code>course</code> or <code>finish</code> could not be read. <code>field</code> names it, dotted when nested (<code>summary.profile</code>).</td></tr>
       </tbody>
     </table>
@@ -1233,11 +1268,12 @@ setState active  -&gt;  ... riding ...  -&gt;  finish</code></pre>
       <thead><tr><th>Close</th><th>Why</th></tr></thead>
       <tbody>
         <tr><td><code>4001</code></td><td>No protocol version both ends speak. The message names both ranges and which end to update.</td></tr>
-        <tr><td><code>4002</code></td><td>Wrong or missing pairing code, or a first frame that was not <code>hello</code>.</td></tr>
+        <tr><td><code>4002</code></td><td>Wrong or missing pairing code, a first frame that was not <code>hello</code>, no finished handshake within 10 s, or a frame before it that was binary or over 16 KB. An address still waiting after wrong codes is closed with 4002 too, and the reason says how long to wait.</td></tr>
         <tr><td><code>4003</code></td><td>Another companion is already driving. Connect as an observer, or disconnect the other one.</td></tr>
         <tr><td><code>4004</code></td><td>The rider took control back.</td></tr>
         <tr><td><code>4005</code></td><td>The app left Companion mode. Since 0.7 a <code>finish</code> does <em>not</em> close the socket; this is the rider backing out of the screen.</td></tr>
-        <tr><td><code>4008</code></td><td>A frame could not be read. The <code>error</code> before it names the frame. Mid-ride, the ride pauses until you reconnect.</td></tr>
+        <tr><td><code>4008</code></td><td>A frame could not be read, or nests deeper than 32 levels. The <code>error</code> before it names the frame. Mid-ride, the ride pauses until you reconnect.</td></tr>
+        <tr><td><code>1013</code></td><td>Too many connections at once: eight in all, or four still in their handshake. Try again later.</td></tr>
       </tbody>
     </table>
     </div>
