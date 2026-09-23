@@ -2,7 +2,7 @@
 
 The iOS app is SwiftUI on top of the shared Kotlin module. The rides, the trainer control, the physics, the workouts, the history database and FIT export are already Kotlin in `shared/`, and the iOS app runs that same code. Only the UI and the platform glue are written again. It runs on **iPhone and iPad**, and every screen is built for both.
 
-Status as of 2026-09-23: the app connects to a real smart trainer on an iPhone and shows live power, cadence and heart rate. You can't ride a workout on iOS yet.
+Status as of 2026-09-23: you can ride a structured ERG workout from the bundled library on iPhone and iPad, and the ride is saved to history. Trainer connection is verified on a real trainer. The full workout ride is verified on the demo trainer in the Simulator, on iPhone and on a 13-inch iPad, but hasn't yet been ridden on a real trainer.
 
 ## Building and running
 
@@ -27,7 +27,14 @@ xcodebuild -project mobile_clients/ios/IndoorBike.xcodeproj -scheme IndoorBike \
   -allowProvisioningUpdates DEVELOPMENT_TEAM=<team id> build
 ```
 
-The Simulator has no Bluetooth. **Use the demo trainer** connects the shared mock trainer instead. In Debug builds, launching with the `-demo-trainer` argument connects it and starts it pedalling.
+The Simulator has no Bluetooth. **Use the demo trainer** connects the shared mock trainer instead. Debug builds also accept two launch arguments:
+
+- `-demo-trainer` connects the demo trainer and starts it pedalling.
+- `-demo-ride [workout id]` does the same and opens the ride on that workout, or on the first workout if no id follows. `-demo-ride sample-test` runs a 30-second ride, which is the quickest way to reach the completion and save path.
+
+```sh
+xcrun simctl launch booted app.indoorbike.debug -demo-ride sample-test
+```
 
 The Debug bundle id is `app.indoorbike.debug` and Release is `app.indoorbike`, so a development build installs alongside a release one, as on Android.
 
@@ -54,8 +61,18 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
 
 - [x] **0. Shared builds for iOS.** Common code fixed for Kotlin/Native: Kable's device `Identifier` is a `Uuid` on Apple, so `Advertisement.deviceId` returns it as a String, and a JVM-only `putIfAbsent` is replaced with `getOrPut`. The shared tests compile on iOS (Kotlin/Native doesn't allow commas in test names). `secureRandomBytes` uses `arc4random_buf` and `hmacSha256` uses CommonCrypto.
 - [x] **1. Trainer.** Scan, connect, disconnect, demo trainer, and live power, cadence and heart rate. Verified against a real trainer on an iPhone 13 mini.
-- [ ] **2. Ride a workout.** iOS stores for the active session, telemetry log and route progress. Settings in `NSUserDefaults`. An iOS app container matching Android's `AppContainer`. The bundled workout library. A ride screen with countdown, power against target, the interval and what comes next, pause and resume, difficulty and ending the ride. Saving to history, with `saveRideToHistory` moved into `shared`. Bluetooth background mode so a locked screen doesn't end the ride, and the screen kept awake while riding.
-- [ ] **3. History and progression.** Ride list, ride detail, streaks, levels and badges (already computed in `shared/progression`), and FIT export through the share sheet.
+- [x] **2. Ride a workout.**
+  - **Storage:** `IosActiveSessionStore`, `IosActiveTelemetryStore` and `IosRouteProgressStore`, using the Android file names and behaviour, in Application Support.
+  - **Settings:** `IosUserSettings` in `NSUserDefaults`, with the Android key names and limits. Secrets stay in memory until the Keychain arrives in milestone 7.
+  - **Container:** `IosAppContainer` wires the managers as Android's `AppContainer` does. It reconnects the paired trainer and heart rate monitor at launch and scans only while the app is in front or a ride is running.
+  - **Saving:** the ride write moved into `shared` as `writeRideToHistory`, and Android's `saveRideToHistory` now calls it.
+  - **Screens:**
+    - The bundled library, from the same `workouts_sample.json` Android ships, in a split view.
+    - A workout detail with TSS, IF, kJ and intervals.
+    - A rider sheet for FTP and weight.
+    - The ride: pedal to start, a countdown, power in its zone colour against the target, cadence, heart rate, time left in the interval, what comes next, the workout profile with progress, difficulty ±5 %, pause and resume, skipping an interval, ending the ride, and a completion card once the ride is saved. The ride screen keeps the display awake and scales its numbers up on an iPad.
+  - **Background:** `bluetooth-central` is declared in `Info.plist`.
+- [ ] **3. History and progression.** Ride list, ride detail, streaks, levels and badges (already computed in `shared/progression`), and FIT export through the share sheet. Also the unfinished-ride banner. The container already loads the persisted snapshot at launch, but nothing on iOS yet offers to save or discard it. Until then, starting a new workout discards it, as it does on Android.
 - [ ] **4. Settings and onboarding.** FTP, weight, max HR, bike, and drivetrain. Heart rate monitor pairing. Onboarding.
 - [ ] **5. Route rides.** Route catalogue with the bundled routes and GPX import. Map (MapKit), elevation profile, virtual gears. The simulation engine is already shared.
 - [ ] **6. Workout library.** Import from Files, a URL or a QR code (VisionKit), the community registry, and favourites. Workout fetching and import move into `shared`.

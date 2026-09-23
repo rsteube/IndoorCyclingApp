@@ -18,29 +18,43 @@ final class TrainerModel {
     private(set) var power = 0
     private(set) var cadence = 0
     private(set) var heartRate = 0
+    private(set) var targetPower = 0
 
     var isConnected: Bool { state == .connected }
     var isScanning: Bool { state == .scanning }
 
-    @ObservationIgnored private let manager = TrainerManager()
-    @ObservationIgnored private var watching: [Watching] = []
+    @ObservationIgnored private let manager: TrainerManager
+    @ObservationIgnored private let flows = KotlinFlows()
 
-    init() {
-        watch(manager.connectionState) { [unowned self] (value: TrainerConnectionState?) in
+    init(manager: TrainerManager, heartRateMonitor: HeartRateMonitor) {
+        self.manager = manager
+        flows.watch(manager.connectionState) { [unowned self] (value: TrainerConnectionState?) in
             state = value ?? .disconnected
         }
-        watch(manager.discoveredDevices) { [unowned self] (value: NSArray?) in
+        flows.watch(manager.discoveredDevices) { [unowned self] (value: NSArray?) in
             candidates = (value as? [TrainerCandidate]) ?? []
         }
-        watch(manager.connectedTrainerName) { [unowned self] (value: NSString?) in
+        flows.watch(manager.connectedTrainerName) { [unowned self] (value: NSString?) in
             trainerName = value as String?
         }
-        watch(manager.isMockTrainer) { [unowned self] (value: KotlinBoolean?) in
+        flows.watch(manager.isMockTrainer) { [unowned self] (value: KotlinBoolean?) in
             isMock = value?.boolValue ?? false
         }
-        watch(manager.power) { [unowned self] (value: KotlinInt?) in power = value?.intValue ?? 0 }
-        watch(manager.cadence) { [unowned self] (value: KotlinInt?) in cadence = value?.intValue ?? 0 }
-        watch(manager.heartRate) { [unowned self] (value: KotlinInt?) in heartRate = value?.intValue ?? 0 }
+        flows.watchInt(manager.power) { [unowned self] in power = $0 }
+        flows.watchInt(manager.cadence) { [unowned self] in cadence = $0 }
+        flows.watchInt(manager.targetPower) { [unowned self] in targetPower = $0 }
+        // A chest strap wins over the trainer's own reading, as in the ride
+        // record; see IosAppContainer.
+        var trainerHeartRate = 0
+        var strapHeartRate = 0
+        flows.watchInt(manager.heartRate) { [unowned self] in
+            trainerHeartRate = $0
+            heartRate = strapHeartRate > 0 ? strapHeartRate : trainerHeartRate
+        }
+        flows.watchInt(heartRateMonitor.heartRate) { [unowned self] in
+            strapHeartRate = $0
+            heartRate = strapHeartRate > 0 ? strapHeartRate : trainerHeartRate
+        }
     }
 
     func startScan() { manager.startScan() }
@@ -49,16 +63,4 @@ final class TrainerModel {
     func connectMock() { manager.connectMock() }
     func toggleMockPedaling() { manager.toggleMockPedaling() }
     func disconnect() { manager.disconnect() }
-
-    /// FlowWatcher calls back on the main thread (Dispatchers.Main), which is
-    /// what makes `assumeIsolated` true rather than hopeful.
-    private func watch<T: AnyObject>(
-        _ flow: any Kotlinx_coroutines_coreFlow,
-        _ onEach: @escaping @MainActor (T?) -> Void
-    ) {
-        let handle = FlowWatcher<T>(flow: flow).watch { value in
-            MainActor.assumeIsolated { onEach(value) }
-        }
-        watching.append(handle)
-    }
 }

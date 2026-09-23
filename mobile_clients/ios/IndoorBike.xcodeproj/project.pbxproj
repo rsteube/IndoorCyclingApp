@@ -6,8 +6,14 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A10000000000000000000012 /* workouts_sample.json in Resources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000011 /* workouts_sample.json */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		A10000000000000000000001 /* IndoorBike.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = IndoorBike.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A10000000000000000000011 /* workouts_sample.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = workouts_sample.json; path = ../android/src/main/assets/workouts_sample.json; sourceTree = SOURCE_ROOT; };
+		A10000000000000000000013 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -33,6 +39,8 @@
 			isa = PBXGroup;
 			children = (
 				A10000000000000000000002 /* IndoorBike */,
+				A10000000000000000000014 /* Shared with Android */,
+				A10000000000000000000013 /* Info.plist */,
 				A10000000000000000000005 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -43,6 +51,14 @@
 				A10000000000000000000001 /* IndoorBike.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		A10000000000000000000014 /* Shared with Android */ = {
+			isa = PBXGroup;
+			children = (
+				A10000000000000000000011 /* workouts_sample.json */,
+			);
+			name = "Shared with Android";
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -108,6 +124,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A10000000000000000000012 /* workouts_sample.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -197,6 +214,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Indoor Bike";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Indoor Bike connects to your smart trainer and heart rate monitor over Bluetooth.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -229,6 +247,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/../../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)";
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Indoor Bike";
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Indoor Bike connects to your smart trainer and heart rate monitor over Bluetooth.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

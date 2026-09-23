@@ -5,6 +5,7 @@ import shared
 /// the iOS app can do, and the proof that the shared BLE stack runs here.
 struct TrainerScreen: View {
     let trainer: TrainerModel
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
@@ -16,6 +17,11 @@ struct TrainerScreen: View {
                 }
             }
             .navigationTitle("Trainer")
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
     }
 
