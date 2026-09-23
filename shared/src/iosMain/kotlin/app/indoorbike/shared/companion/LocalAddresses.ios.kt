@@ -24,6 +24,7 @@ import kotlinx.cinterop.ptr
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.toKString
 import kotlinx.cinterop.value
+import app.indoorbike.shared.util.Log
 import kotlinx.cinterop.ByteVar
 import kotlinx.cinterop.CPointerVar
 import platform.darwin.freeifaddrs
@@ -42,6 +43,7 @@ actual fun localIPv4Addresses(): List<String> = memScoped {
     val head = alloc<CPointerVar<ifaddrs>>()
     if (getifaddrs(head.ptr) != 0) return@memScoped emptyList()
     val out = LinkedHashSet<String>()
+    val seen = ArrayList<String>()
     try {
         var node = head.value
         while (node != null) {
@@ -55,6 +57,7 @@ actual fun localIPv4Addresses(): List<String> = memScoped {
                 val inet = address.reinterpret<sockaddr_in>().pointed
                 inet_ntop(AF_INET, inet.sin_addr.ptr, buffer, INET_ADDRSTRLEN.toUInt())
                 val text = buffer.toKString()
+                seen += (entry.ifa_name?.toKString() ?: "?") + "=" + text
                 if (!text.startsWith("169.254.") && !text.startsWith("127.")) out += text
             }
             node = entry.ifa_next
@@ -62,5 +65,8 @@ actual fun localIPv4Addresses(): List<String> = memScoped {
     } finally {
         freeifaddrs(head.value)
     }
+    // Which interfaces were up, so a "No network" on a device can be told
+    // apart from Wi-Fi being off.
+    Log.i("LocalAddresses", "IPv4 interfaces up: ${seen.ifEmpty { listOf("none") }.joinToString()}")
     out.toList()
 }
