@@ -162,7 +162,7 @@ struct DeviceSheet: View {
                     Text(status.helper)
                 }
 
-                if kind == .trainer, app.trainer.isConnected {
+                if kind == .trainer, app.trainer.isLive {
                     Section("Live") {
                         LabeledContent("Power", value: "\(app.trainer.power) W")
                         LabeledContent("Cadence", value: "\(app.trainer.cadence) rpm")

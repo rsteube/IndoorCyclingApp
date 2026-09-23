@@ -26,6 +26,10 @@ final class TrainerModel {
     var isPaired: Bool { (pairedId != nil && pairedId != "mock") || isMock }
 
     var isConnected: Bool { state == .connected }
+    /// Something to ride on: a connected trainer or the demo one. Riding is
+    /// gated on this, as Android gates it; the demo trainer never reports
+    /// itself connected.
+    var isLive: Bool { isConnected || isMock }
     var isScanning: Bool { state == .scanning }
 
     @ObservationIgnored private let manager: TrainerManager

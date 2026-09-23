@@ -47,14 +47,14 @@ struct UnfinishedRideBanner: View {
                     } else {
                         Button("Continue") { app.continueUnfinishedRide() }
                             .buttonStyle(.borderedProminent)
-                            .disabled(!app.trainer.isConnected)
+                            .disabled(!app.trainer.isLive)
                     }
                     Button(ride.isFinished ? "Discard" : "Abandon", role: .destructive) {
                         confirmingAbandon = true
                     }
                     .buttonStyle(.bordered)
                 }
-                if !ride.isFinished && !app.trainer.isConnected {
+                if !ride.isFinished && !app.trainer.isLive {
                     Text("Connect your trainer to carry on.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

@@ -100,7 +100,7 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
     - The bug report layout, subject and address (`BugReportText.kt`).
   - Android's settings, ride screen and bug report call these.
 - [x] **5. Route rides, and Just ride.**
-  - **Ride tab:** Android's "What are you riding?" with Workout, Route and Just ride, as a three-column split view on iPad.
+  - **Ride tab:** Android's "What are you riding?" with Workout, Route, Just ride and Companion. Each opens its own page, as on Android: Workout and Route show their list beside the one picked on an iPad, and one after the other on an iPhone. Just ride starts at once, and Companion is one page of numbered steps. (A three-column split view came first; with nothing to show in its third column for Just ride or Companion, riders couldn't tell how to go on.)
   - **Route library:** the bundled route (Android's `assets/routes`, referenced in place); routes added from community repositories via the registry; and GPX files imported from Files. Routes can be removed, and the rider's saved progress offers "Continue" or "From the start".
   - **Route ride HUD:**
     - MapKit, following the rider or showing the whole route.

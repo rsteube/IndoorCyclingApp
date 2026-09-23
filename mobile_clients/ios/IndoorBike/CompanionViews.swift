@@ -11,38 +11,47 @@ struct CompanionScreen: View {
         let companion = app.companion
         let status = companion.status
         List {
-            Section {
-                if let error = status.error {
+            // Only when something is wrong or not ready yet: the steps say the rest.
+            if let error = status.error {
+                Section {
                     Label("Could not start", systemImage: "exclamationmark.triangle").foregroundStyle(.red)
                     Text(error).font(.subheadline)
-                } else if !status.running {
-                    ProgressView("Opening the socket")
-                } else if let name = status.controllerName {
-                    Label("\(name) connected", systemImage: "link").foregroundStyle(.green)
-                    Text("Waiting for it to start describing the road…").font(.subheadline).foregroundStyle(.secondary)
-                } else {
-                    Label("Waiting for a companion", systemImage: "antenna.radiowaves.left.and.right")
                 }
+            } else if !status.running {
+                Section { ProgressView("Opening the socket") }
             }
-            if !app.trainer.isConnected {
-                Section {
-                    Text("No trainer paired. The companion can connect, but nothing will move the trainer.")
-                    Button("Pair a trainer") { showingTrainer = true }
+            // The way through, in order, each step ticking off as it happens:
+            // on its own page there is otherwise nothing saying what comes next.
+            Section("How to start") {
+                let device = UIDevice.current.localizedModel
+                StepRow(number: 1, title: "Get the trainer ready", done: app.trainer.isLive,
+                        detail: app.trainer.isLive ? "Ready." : "The companion can connect without one, but nothing would move the trainer.") {
+                    if !app.trainer.isLive { Button("Pair a trainer") { showingTrainer = true } }
+                }
+                StepRow(number: 2, title: "Connect the companion", done: status.controllerName != nil,
+                        detail: status.controllerName.map { "\($0) is connected." }
+                            ?? "Open it on a computer or console on the same Wi-Fi. It finds this \(device) by itself; if it doesn't, type in the details below, then the pairing code.") {
+                    EmptyView()
+                }
+                StepRow(number: 3, title: "Start the ride in the companion", done: false,
+                        detail: "This screen turns into the ride as soon as it starts describing the road.") {
+                    EmptyView()
                 }
             }
             if status.running {
-                Section("Connect from the companion") {
+                Section {
+                    LabeledContent("Pairing code") {
+                        Text(status.token).font(.title2.monospaced().weight(.semibold)).foregroundStyle(.primary)
+                    }
+                    .textSelection(.enabled)
                     LabeledContent("Address", value: status.addresses.isEmpty ? "No network" : status.addresses.joined(separator: ", "))
                         .textSelection(.enabled)
                     LabeledContent("Port", value: "\(status.port)").textSelection(.enabled)
-                    LabeledContent("Pairing code", value: status.token)
-                        .font(.title3.monospaced())
-                        .textSelection(.enabled)
-                    Text(status.advertising ? "Discoverable on this network, so a companion can find this phone by itself."
-                                            : "Not discoverable. Type the address and port into the companion.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(AppInfo.isDebug ? "Debug build: the code is always the same." : "New for every ride.")
-                        .font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Text("Connection details")
+                } footer: {
+                    Text(status.addresses.isEmpty ? "Join a Wi-Fi network: a companion connects over it."
+                         : AppInfo.isDebug ? "Debug build: the code is always the same." : "The code is new for every ride.")
                 }
             }
             Section("What this is") {
@@ -71,6 +80,7 @@ struct CompanionScreen: View {
                 #endif
             }
         }
+        .readableWidth()
         .navigationTitle("Companion")
         .onAppear {
             app.keepCompanionOpen = true
@@ -85,6 +95,34 @@ struct CompanionScreen: View {
         .onChange(of: status.receivingRoad) { _, receiving in if receiving && !app.riding { app.riding = true } }
         .sheet(isPresented: $showingTrainer) { DeviceSheet(kind: .trainer, app: app) }
         .companionPairingPrompt(companion)
+    }
+}
+
+/// One step of the way into a companion ride: a number that becomes a tick.
+private struct StepRow<Action: View>: View {
+    let number: Int
+    let title: String
+    let done: Bool
+    let detail: String
+    @ViewBuilder let action: () -> Action
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: done ? "checkmark.circle.fill" : "\(number).circle")
+                .font(.title2)
+                .foregroundStyle(done ? AnyShapeStyle(.green) : AnyShapeStyle(.tint))
+                .contentTransition(.symbolEffect(.replace))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.headline).foregroundStyle(done ? .secondary : .primary)
+                Text(detail).font(.subheadline).foregroundStyle(.secondary)
+                action()
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Step \(number), \(title)\(done ? ", done" : "")")
+        .animation(.default, value: done)
     }
 }
 

@@ -22,7 +22,7 @@ struct RouteListView: View {
                 }
             }
             ForEach(library.routes, id: \.id) { route in
-                RouteRow(route: route, library: library, trainerLive: app.trainer.isConnected)
+                RouteRow(route: route, library: library, trainerLive: app.trainer.isLive)
                     .tag(route.id)
                     .swipeActions {
                         if library.source(route) is RouteSource.Imported {
@@ -156,7 +156,7 @@ struct RouteDetailView: View {
         .navigationTitle(route.name)
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
-                if !app.trainer.isConnected {
+                if !app.trainer.isLive {
                     Button { showingTrainer = true } label: { Text("Connect a trainer to ride").frame(maxWidth: .infinity) }
                         .buttonStyle(.bordered)
                 } else if let saved {

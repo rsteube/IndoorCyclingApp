@@ -47,8 +47,13 @@ final class AppModel {
     var notice: String?
 
     var tab: AppTab = .ride
+    /// Where the Ride tab has got to: empty on its home, else the kind of ride open.
+    var ridePath: [RideSection] = []
     /// Which kind of ride is open in the Ride tab.
-    var rideSection: RideSection?
+    var rideSection: RideSection? {
+        get { ridePath.last }
+        set { ridePath = newValue.map { [$0] } ?? [] }
+    }
     /// The workout open in the Ride tab.
     var workoutSelection: String?
     /// The route open in the Ride tab.
@@ -211,7 +216,7 @@ final class AppModel {
         if let i = arguments.firstIndex(of: "-demo-section"), let name = arguments[safe: i + 1] {
             rideSection = ["routes": .routes, "companion": .companion][name] ?? .workouts
         }
-        guard wantsRide || arguments.contains("-demo-trainer"), !trainer.isConnected else { return }
+        guard wantsRide || arguments.contains("-demo-trainer"), !trainer.isLive else { return }
         trainer.connectMock()
         trainer.toggleMockPedaling()
         let requestedId = arguments.firstIndex(of: "-demo-ride").flatMap { arguments[safe: $0 + 1] }
