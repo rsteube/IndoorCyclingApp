@@ -24,12 +24,12 @@ final class UnfinishedRideModel {
     private(set) var ride: UnfinishedRide?
 
     @ObservationIgnored private let container: IosAppContainer
-    @ObservationIgnored private let library: [Workout]
+    @ObservationIgnored private let library: () -> [Workout]
     @ObservationIgnored private let flows = KotlinFlows()
     @ObservationIgnored private var snapshot: ActiveSessionSnapshot?
     @ObservationIgnored private var state: WorkoutState = .idle
 
-    init(container: IosAppContainer, library: [Workout]) {
+    init(container: IosAppContainer, library: @escaping () -> [Workout]) {
         self.container = container
         self.library = library
         flows.watch(container.sessionManager.persistedSnapshot) { [unowned self] (value: ActiveSessionSnapshot?) in
@@ -40,13 +40,16 @@ final class UnfinishedRideModel {
             state = value ?? .idle
             update()
         }
+        // An unfinished ride of an imported workout can only be named once the
+        // rider's own workouts have loaded.
+        flows.watch(container.workoutLibrary.entries) { [unowned self] (_: NSArray?) in update() }
     }
 
     /// Only with nothing on the go: while this run has a ride of its own, from
     /// being prepared to being saved, the snapshot is that ride's and not one
     /// left behind.
     private func update() {
-        ride = state == .idle ? container.unfinishedRide(snapshot: snapshot, library: library) : nil
+        ride = state == .idle ? container.unfinishedRide(snapshot: snapshot, library: library()) : nil
     }
 
     func continueRide() {

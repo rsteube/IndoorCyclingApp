@@ -20,7 +20,8 @@ import android.app.Application
 import android.os.Bundle
 import androidx.compose.runtime.staticCompositionLocalOf
 import app.indoorbike.library.RepositoryManager
-import app.indoorbike.library.FollowedRepositories
+import app.indoorbike.library.AndroidTextStore
+import app.indoorbike.shared.repo.FollowedRepositories
 import app.indoorbike.route.RouteCatalog
 import app.indoorbike.route.RouteImporter
 import app.indoorbike.library.WorkoutImporter
@@ -304,7 +305,10 @@ class AppContainer(
                 context = application,
                 registryUrl = BuildConfig.REGISTRY_URL,
             )
-            val followedRepositories = FollowedRepositories(application, repositoryManager)
+            val followedRepositories = FollowedRepositories(
+                store = AndroidTextStore(File(application.filesDir, "followed")),
+                fetcher = repositoryManager.fetcher,
+            )
             val workoutLibrary = WorkoutLibrary(
                 context = application,
                 importer = workoutImporter,

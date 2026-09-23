@@ -30,7 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import app.indoorbike.library.ImportQuestions
+import app.indoorbike.shared.library.ImportQuestions
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii

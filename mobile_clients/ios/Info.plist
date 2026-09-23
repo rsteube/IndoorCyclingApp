@@ -9,5 +9,35 @@
 	<array>
 		<string>bluetooth-central</string>
 	</array>
+	<!-- indoorbike://import links, which the web editor and share page produce. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.indoorbike.import</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>indoorbike</string>
+			</array>
+		</dict>
+	</array>
+	<!-- A workout .json file opened from Files, Mail or the share page. -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Workout</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.json</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<false/>
 </dict>
 </plist>

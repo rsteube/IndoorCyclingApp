@@ -15,6 +15,7 @@
  */
 package app.indoorbike
 
+import app.indoorbike.shared.repo.WorkoutLinkParser
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -99,8 +100,8 @@ import app.indoorbike.navigation.TabRides
 import app.indoorbike.navigation.TabSettings
 import app.indoorbike.navigation.Navigator
 import app.indoorbike.navigation.rememberNavigationState
-import app.indoorbike.library.WorkoutEntry
-import app.indoorbike.library.WorkoutSource
+import app.indoorbike.shared.library.WorkoutEntry
+import app.indoorbike.shared.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.navigation.RouteCompanion
@@ -312,7 +313,7 @@ class MainActivity : ComponentActivity() {
                     // tucked inside the URI). Decoded here, off the main
                     // thread: a compressed payload is inflated to find out
                     // what it is.
-                    val text = app.indoorbike.library.WorkoutLinkParser.extractEmbeddedJson(link)
+                    val text = WorkoutLinkParser.extractEmbeddedJson(link)
                         ?: when {
                             remoteUrl.isNullOrBlank() -> {
                                 toast(appContext, "Missing ?url= or ?data= in indoorbike://import link", Toast.LENGTH_SHORT)
@@ -324,7 +325,7 @@ class MainActivity : ComponentActivity() {
                             // makes the editor's QR and "Show link" outputs work
                             // even if a user pastes the whole share URL into
                             // ?url=...
-                            else -> app.indoorbike.library.WorkoutLinkParser.extractEmbeddedJson(remoteUrl)
+                            else -> WorkoutLinkParser.extractEmbeddedJson(remoteUrl)
                                 ?: app.indoorbike.library.HttpFetcher.getString(remoteUrl)
                         }
                     onImportResolved(appContext, container.workoutImporter.importJsonText(text))
@@ -347,10 +348,10 @@ class MainActivity : ComponentActivity() {
         Toast.makeText(context, text, length).show()
     }
 
-    private suspend fun onImportResolved(context: Context, result: app.indoorbike.library.ImportResult) {
+    private suspend fun onImportResolved(context: Context, result: app.indoorbike.shared.library.ImportResult) {
         val container = (context.applicationContext as IndoorBikeApp).container
         when (result) {
-            is app.indoorbike.library.ImportResult.Workouts -> {
+            is app.indoorbike.shared.library.ImportResult.Workouts -> {
                 container.workoutLibrary.refreshImports()
                 val n = result.workouts.size
                 toast(
@@ -359,7 +360,7 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_SHORT,
                 )
             }
-            is app.indoorbike.library.ImportResult.Manifest -> {
+            is app.indoorbike.shared.library.ImportResult.Manifest -> {
                 // Repos aren't auto-added under the explicit-add model. Point
                 // the user at More workouts, Browse so they can pick what
                 // they want from the repo's content.
@@ -370,9 +371,9 @@ class MainActivity : ComponentActivity() {
                     Toast.LENGTH_LONG,
                 )
             }
-            is app.indoorbike.library.ImportResult.Failure -> toast(context, result.message, Toast.LENGTH_LONG)
+            is app.indoorbike.shared.library.ImportResult.Failure -> toast(context, result.message, Toast.LENGTH_LONG)
             // The rider chose it in the dialog; nothing to add.
-            app.indoorbike.library.ImportResult.Cancelled -> Unit
+            app.indoorbike.shared.library.ImportResult.Cancelled -> Unit
         }
     }
 }

@@ -50,6 +50,33 @@ struct RideHome: View {
                     .buttonStyle(.plain)
                 }
 
+                Section {
+                    ForEach(app.library.followed, id: \.id) { repo in
+                        NavigationLink {
+                            RepoWorkoutsView(app: app, manifestUrl: repo.manifestUrl, fallbackName: repo.name)
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(repo.name)
+                                    Text(statusLine(app.library.status[repo.id])).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                let total = Int(app.library.status[repo.id]?.total ?? 0)
+                                if total > 0 {
+                                    Text("\(total) new").font(.caption.weight(.semibold))
+                                        .padding(.horizontal, 6).padding(.vertical, 2)
+                                        .background(.orange.opacity(0.2), in: Capsule())
+                                }
+                            }
+                        }
+                    }
+                    NavigationLink(app.library.followed.isEmpty ? "Find repositories" : "Manage repositories") {
+                        RepositoriesView(app: app)
+                    }
+                } header: {
+                    Text(app.library.refreshing ? "Repositories · checking…" : "Repositories")
+                }
+
                 Section("Devices") {
                     ForEach([DeviceKind.trainer, .heartRateMonitor, .controller]) { kind in
                         Button { device = kind } label: { DeviceRow(kind: kind, app: app) }
@@ -78,6 +105,7 @@ struct RideHome: View {
                     onConnect: { showingTrainer = true },
                     onStart: { app.startRide(workout) }
                 )
+                .toolbar { WorkoutActions(app: app, workout: workout) }
             } else {
                 ContentUnavailableView("Nothing picked yet", systemImage: "bicycle", description: Text("Choose from the list to see it here."))
             }
@@ -85,6 +113,7 @@ struct RideHome: View {
         .sheet(isPresented: $showingTrainer) { DeviceSheet(kind: .trainer, app: app) }
         .sheet(item: $device) { kind in DeviceSheet(kind: kind, app: app) }
         .sheet(isPresented: $onboarding) { OnboardingSheet(app: app) }
+        .task { app.container.refreshFollowed(force: false) }
     }
 }
 
@@ -118,41 +147,45 @@ private struct ModeRow: View {
     }
 }
 
-/// The workout library.
-struct WorkoutListView: View {
-    @Bindable var app: AppModel
 
-    var body: some View {
-        List(app.workouts, id: \.id, selection: $app.workoutSelection) { workout in
-            WorkoutRow(workout: workout, ftp: app.settings.ftp)
-                .tag(workout.id)
-        }
-        .navigationTitle("Workouts")
-    }
-}
-
-private struct WorkoutRow: View {
+/// A workout's own actions: favourite it, and rename or delete one the rider imported.
+private struct WorkoutActions: ToolbarContent {
+    let app: AppModel
     let workout: Workout
-    let ftp: Int
+    @State private var renaming = false
+    @State private var newName = ""
+    @State private var deleting = false
 
-    var body: some View {
-        let summary = workout.toSummary(ftpWatts: Int32(ftp))
-        VStack(alignment: .leading, spacing: 6) {
-            Text(workout.name)
-                .font(.headline)
-            HStack(spacing: 8) {
-                Text(WorkoutSummaryKt.formatDurationPretty(totalSeconds: summary.totalSeconds))
-                Text("·")
-                Text(summary.tag)
-                Text("·")
-                Text("TSS \(summary.tss)")
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            let favourite = app.library.favourites.contains(workout.id)
+            Button { app.library.toggleFavourite(workout.id) } label: {
+                Label(favourite ? "Remove from favourites" : "Add to favourites", systemImage: favourite ? "star.fill" : "star")
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            WorkoutProfile(segments: workout.segments)
-                .frame(height: 28)
+            .sensoryFeedback(.selection, trigger: favourite)
+            if app.library.isImported(workout.id) {
+                Menu {
+                    Button("Rename", systemImage: "pencil") { newName = workout.name; renaming = true }
+                    Button("Delete", systemImage: "trash", role: .destructive) { deleting = true }
+                } label: {
+                    Label("Workout actions", systemImage: "ellipsis.circle")
+                }
+                .alert("Rename workout", isPresented: $renaming) {
+                    TextField("Name", text: $newName)
+                    Button("Save") { app.container.renameWorkout(workoutId: workout.id, name: newName) { _ in } }
+                        .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty || newName == workout.name)
+                    Button("Cancel", role: .cancel) {}
+                }
+                .confirmationDialog("Delete \"\(workout.name)\"?", isPresented: $deleting, titleVisibility: .visible) {
+                    Button("Delete", role: .destructive) {
+                        app.container.deleteWorkout(workoutId: workout.id) { _ in
+                            MainActor.assumeIsolated { app.workoutSelection = nil }
+                        }
+                    }
+                } message: {
+                    Text("The workout file will be removed from your device. Past rides of this workout stay in your history.")
+                }
+            }
         }
-        .padding(.vertical, 4)
     }
 }
-

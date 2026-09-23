@@ -13,7 +13,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.library
+package app.indoorbike.shared.library
 
 import app.indoorbike.shared.Workout
 
@@ -22,8 +22,8 @@ import app.indoorbike.shared.Workout
  * attribution shown on the workout card and to know how a workout was added.
  *
  * Two kinds:
- *  - [Bundled]: ships with the APK in `assets/workouts*.json`.
- *  - [Imported]: a local copy under `filesDir/user_workouts/`. Imports come
+ *  - [Bundled]: ships with the app (`workouts*.json`).
+ *  - [Imported]: a local copy in `user_workouts/`. Imports come
  *    from file pick, share-sheet, QR, or the community-repo browser. When the
  *    rider added a workout from a known community repo, [sourceRepoId] and
  *    [sourceRepoName] carry that provenance for attribution display. The local

@@ -15,6 +15,9 @@
  */
 package app.indoorbike.library
 
+import app.indoorbike.shared.library.ImportResult
+import app.indoorbike.shared.library.WorkoutEntry
+import app.indoorbike.shared.library.mergeWorkoutLibrary
 import android.content.Context
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
@@ -108,31 +111,11 @@ class WorkoutLibrary(
     }
 
     private suspend fun rebuild() = rebuildMutex.withLock {
-        val imports = withIO { importer.loadUserWorkouts() }
-        // Hydrate per-import provenance from the sidecar meta files. Absent
-        // sidecar = plain file-import; the resulting Imported() with null repo
-        // fields renders as an "Imported" attribution.
-        val importedEntries = withIO {
-            imports.map { workout ->
-                val meta = importer.loadImportMeta(workout.id)
-                WorkoutEntry(
-                    workout = workout,
-                    source = WorkoutSource.Imported(
-                        sourceRepoId = meta?.sourceRepoId,
-                        sourceRepoName = meta?.sourceRepoName,
-                    ),
-                )
-            }
+        // Imported > Bundled, first wins on duplicate ids: see
+        // mergeWorkoutLibrary, which the iOS app shares.
+        _entries.value = withIO {
+            mergeWorkoutLibrary(importer.loadUserWorkouts(), bundled, importer::loadImportMeta)
         }
-        val bundledEntries = bundled.map { WorkoutEntry(it, WorkoutSource.Bundled) }
-
-        // Imported > Bundled. First wins on duplicate ids.
-        val seen = mutableSetOf<String>()
-        val out = mutableListOf<WorkoutEntry>()
-        for (entry in importedEntries + bundledEntries) {
-            if (seen.add(entry.workout.id)) out.add(entry)
-        }
-        _entries.value = out
     }
 
     private suspend fun <T> withIO(block: () -> T): T =

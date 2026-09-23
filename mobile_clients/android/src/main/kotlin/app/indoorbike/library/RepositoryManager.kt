@@ -61,7 +61,7 @@ class RepositoryManager(
 ) {
 
     /** The shared repository reader fetches through Android's own HTTPS rules. */
-    private val fetcher = TextFetcher { url -> HttpFetcher.getString(url) }
+    val fetcher = TextFetcher { url -> HttpFetcher.getString(url) }
 
     private val baseDir: File get() = context.filesDir
     private val registryDir: File get() = File(baseDir, "registry").apply { mkdirs() }

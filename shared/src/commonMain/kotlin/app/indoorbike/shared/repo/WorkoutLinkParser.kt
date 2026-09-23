@@ -13,17 +13,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.library
+package app.indoorbike.shared.repo
 
-import android.util.Base64
-import java.io.ByteArrayInputStream
-import java.nio.charset.StandardCharsets
-import java.util.zip.GZIPInputStream
+import app.indoorbike.shared.util.gunzip
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Decodes a workout (or repository manifest) embedded directly inside a URL
  * — the path the website's editor uses to hand workouts off without needing
- * a backend to host the JSON.
+ * a backend to host the JSON. Shared by both apps.
  *
  * Four URL shapes are recognised:
  *
@@ -41,13 +40,14 @@ import java.util.zip.GZIPInputStream
  * payload (in which case the caller should fall back to its normal HTTP
  * fetch path).
  *
- * No Android-framework `Uri` parsing on the hash-fragment branch — `Uri`
- * exposes `getFragment()` only after stripping query strings cleanly, but
- * our share-page URL has the fragment dangling off a path with no `?`. A
- * direct `indexOf('#')` is faster and survives whatever quirks the QR
- * scanner hands us (extra whitespace, trailing `/`, etc.).
+ * The fragment is found with a plain `indexOf('#')` rather than URL parsing:
+ * the share page's fragment dangles off a path with no `?`, and this survives
+ * whatever a QR scanner hands over (extra whitespace, a trailing `/`).
  */
 object WorkoutLinkParser {
+
+    /** Cap on a decompressed payload: the same as a fetched workout's body. */
+    const val MAX_PAYLOAD_BYTES = 2L * 1024 * 1024
 
     fun extractEmbeddedJson(rawUrl: String): String? {
         val url = rawUrl.trim().ifEmpty { return null }
@@ -56,8 +56,8 @@ object WorkoutLinkParser {
         val hashIdx = url.indexOf('#')
         if (hashIdx >= 0) {
             val fragment = url.substring(hashIdx + 1)
-            paramFromFragment(fragment, "wz")?.let { decodeBase64GzipUtf8(it) }?.let { return it }
-            paramFromFragment(fragment, "w")?.let { decodeBase64Utf8(it) }?.let { return it }
+            param(fragment, "wz")?.let { decodeBase64GzipUtf8(it) }?.let { return it }
+            param(fragment, "w")?.let { decodeBase64Utf8(it) }?.let { return it }
         }
 
         // Deep-link forms (indoorbike://import?dataz=… or data=…).
@@ -65,48 +65,36 @@ object WorkoutLinkParser {
             val q = url.indexOf('?')
             if (q >= 0) {
                 val query = url.substring(q + 1)
-                paramFromFragment(query, "dataz")?.let { decodeBase64GzipUtf8(it) }?.let { return it }
-                paramFromFragment(query, "data")?.let { decodeBase64Utf8(it) }?.let { return it }
+                param(query, "dataz")?.let { decodeBase64GzipUtf8(it) }?.let { return it }
+                param(query, "data")?.let { decodeBase64Utf8(it) }?.let { return it }
             }
         }
         return null
     }
 
-    private fun paramFromFragment(fragment: String, key: String): String? {
-        // Fragments and queries follow the same `k=v&k=v` shape.
-        for (pair in fragment.split('&')) {
+    /** A `k=v&k=v` value by key, ignoring case; fragments and queries share the shape. */
+    private fun param(pairs: String, key: String): String? {
+        for (pair in pairs.split('&')) {
             val eq = pair.indexOf('=')
             if (eq <= 0) continue
-            val k = pair.substring(0, eq)
-            if (k.equals(key, ignoreCase = true)) {
+            if (pair.substring(0, eq).equals(key, ignoreCase = true)) {
                 return pair.substring(eq + 1).ifEmpty { null }
             }
         }
         return null
     }
 
+    /** URL-safe alphabet, padding optional: what the website's encoder writes. */
+    @OptIn(ExperimentalEncodingApi::class)
     private fun decodeBase64Bytes(encoded: String): ByteArray? = try {
-        // URL_SAFE matches the JS encoder (`+`/`/` -> `-`/`_`, padding stripped).
-        // NO_PADDING + NO_WRAP make the decoder lenient.
-        Base64.decode(encoded, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
+        Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).decode(encoded.trim())
     } catch (t: Throwable) {
         null
     }
 
     private fun decodeBase64Utf8(encoded: String): String? =
-        decodeBase64Bytes(encoded)?.let { String(it, StandardCharsets.UTF_8) }
+        decodeBase64Bytes(encoded)?.decodeToString()
 
-    private fun decodeBase64GzipUtf8(encoded: String): String? {
-        val bytes = decodeBase64Bytes(encoded) ?: return null
-        return try {
-            // Capped: a link of a megabyte or two can inflate to hundreds, and
-            // was read whole before anything looked at its size.
-            GZIPInputStream(ByteArrayInputStream(bytes)).use { gz ->
-                gz.readAtMost(HttpFetcher.MAX_BODY_BYTES.toLong(), "Workout link too large")
-                    .toString(StandardCharsets.UTF_8)
-            }
-        } catch (t: Throwable) {
-            null
-        }
-    }
+    private fun decodeBase64GzipUtf8(encoded: String): String? =
+        decodeBase64Bytes(encoded)?.let { gunzip(it, MAX_PAYLOAD_BYTES) }?.decodeToString()
 }

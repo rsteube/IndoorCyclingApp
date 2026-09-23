@@ -66,7 +66,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.library.RepoStatus
+import app.indoorbike.shared.repo.RepoStatus
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.marginRidges

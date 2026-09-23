@@ -59,8 +59,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.HttpFetcher
-import app.indoorbike.library.ImportResult
-import app.indoorbike.library.WorkoutLinkParser
+import app.indoorbike.shared.library.ImportResult
+import app.indoorbike.shared.repo.WorkoutLinkParser
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn
 import app.indoorbike.ui.components.PrimaryBtn

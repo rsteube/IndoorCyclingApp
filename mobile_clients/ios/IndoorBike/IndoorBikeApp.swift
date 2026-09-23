@@ -36,7 +36,11 @@ final class AppModel {
     let unfinished: UnfinishedRideModel
     let routes: RouteLibraryModel
     let simulation: SimulationModel
-    let workouts: [Workout]
+    let library: LibraryModel
+
+    var workouts: [Workout] { library.workouts }
+    /// A short line about something that just happened, shown for a moment.
+    var notice: String?
 
     var tab: AppTab = .ride
     /// Which kind of ride is open in the Ride tab.
@@ -51,10 +55,10 @@ final class AppModel {
     var riding = false
 
     init() {
-        let container = IosAppContainer()
+        let container = IosAppContainer(bundledWorkoutJson: Self.bundledWorkoutFiles())
         self.container = container
-        let workouts = container.parseWorkouts(jsonFiles: Self.bundledWorkoutFiles())
-        self.workouts = workouts
+        let library = LibraryModel(container: container)
+        self.library = library
         trainer = TrainerModel(
             manager: container.trainerManager,
             heartRateMonitor: container.heartRateMonitor,
@@ -65,7 +69,7 @@ final class AppModel {
         ride = RideModel(container: container)
         settings = SettingsModel(settings: container.userSettings)
         history = HistoryModel(repository: container.historyRepository)
-        unfinished = UnfinishedRideModel(container: container, library: workouts)
+        unfinished = UnfinishedRideModel(container: container, library: { library.workouts })
         routes = RouteLibraryModel(container: container)
         simulation = SimulationModel(engine: container.simulationEngine)
         container.start()
@@ -114,6 +118,38 @@ final class AppModel {
         riding = true
     }
 
+    /// Say [text] for a few seconds.
+    func show(_ text: String?) {
+        guard let text else { return }
+        notice = text
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if notice == text { notice = nil }
+        }
+    }
+
+    /// Import from a link or a file the system handed the app, and say how it went.
+    func open(_ url: URL) {
+        let done: (ImportResult) -> Void = { [weak self] result in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.show(result.notice)
+                if let workout = result.singleWorkout { self.showWorkout(workout.id) }
+            }
+        }
+        if url.isFileURL {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+            if let data = try? Data(contentsOf: url) {
+                container.importWorkoutFile(data: data, onDone: done)
+            } else {
+                show("Couldn't open that file.")
+            }
+        } else {
+            container.importWorkoutLink(link: url.absoluteString, onDone: done)
+        }
+    }
+
     /// The starter library, shipped as the same JSON the Android app bundles.
     private static func bundledWorkoutFiles() -> [String] {
         (Bundle.main.urls(forResourcesWithExtension: "json", subdirectory: nil) ?? [])
@@ -132,6 +168,10 @@ final class AppModel {
         let wantsRide = arguments.contains("-demo-ride")
         if let i = arguments.firstIndex(of: "-demo-tab"), let name = arguments[safe: i + 1] {
             tab = ["history": .history, "progress": .progress, "settings": .settings][name] ?? .ride
+        }
+        if let i = arguments.firstIndex(of: "-demo-open"), let link = arguments[safe: i + 1], let url = URL(string: link) {
+            // As if the system had opened the link, without its confirmation.
+            open(url)
         }
         if let i = arguments.firstIndex(of: "-demo-section"), let name = arguments[safe: i + 1] {
             rideSection = name == "routes" ? .routes : .workouts
@@ -160,6 +200,21 @@ final class AppModel {
 struct RootView: View {
     @Bindable var app: AppModel
 
+    private var importQuestionTitle: String {
+        let names = app.library.question?.names ?? []
+        return names.count == 1 ? "Replace \"\(names[0])\"?" : "Replace \(names.count) workouts?"
+    }
+
+    private var importQuestionMessage: String {
+        let names = app.library.question?.names ?? []
+        if names.count == 1 {
+            return "You already have a workout with this one's id, and they differ. Replacing it changes it on your other devices too when they next sync."
+        }
+        let shown = names.prefix(3).joined(separator: ", ")
+        let more = names.count > 3 ? " and \(names.count - 3) more" : ""
+        return "You already have workouts with these ids, and they differ: \(shown)\(more). Replacing them changes them on your other devices too when they next sync."
+    }
+
     var body: some View {
         TabView(selection: $app.tab) {
             Tab("Ride", systemImage: "bicycle", value: AppTab.ride) {
@@ -176,6 +231,27 @@ struct RootView: View {
             }
         }
         .tabViewStyle(.sidebarAdaptable)
+        .overlay(alignment: .top) {
+            if let notice = app.notice {
+                Text(notice)
+                    .font(.subheadline)
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 8)
+                    .padding(.horizontal)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onTapGesture { app.notice = nil }
+            }
+        }
+        .animation(.snappy, value: app.notice)
+        .alert(importQuestionTitle, isPresented: Binding(get: { app.library.question != nil }, set: { if !$0 { app.library.answer(.cancel) } })) {
+            Button("Keep both") { app.library.answer(.keepBoth) }
+            Button((app.library.question?.names.count ?? 0) == 1 ? "Replace it" : "Replace them", role: .destructive) { app.library.answer(.replace) }
+            Button("Cancel", role: .cancel) { app.library.answer(.cancel) }
+        } message: {
+            Text(importQuestionMessage)
+        }
+        .onOpenURL { app.open($0) }
         .fullScreenCover(isPresented: $app.riding) {
             RideView(ride: app.ride, trainer: app.trainer, simulation: app.simulation, ftp: app.settings.ftp, maxHr: app.settings.maxHr) {
                 app.finishRide()

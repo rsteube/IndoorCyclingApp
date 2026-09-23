@@ -27,6 +27,13 @@ import app.indoorbike.shared.route.rideRoute
 import app.indoorbike.shared.simulation.RouteProgress
 import app.indoorbike.shared.workout.simulationRouteId
 import platform.Foundation.NSData
+import app.indoorbike.shared.library.ImportResult
+import app.indoorbike.shared.repo.FollowedRepo
+import app.indoorbike.shared.repo.FollowedRepositories
+import app.indoorbike.shared.repo.RegistryEntry
+import app.indoorbike.shared.repo.RepoFetchResult
+import app.indoorbike.shared.repo.WorkoutLinkParser
+import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.activity.exportFileName
@@ -84,7 +91,10 @@ import kotlinx.coroutines.sync.withLock
  * it. What the Android app does in `Application.onCreate` - reconnecting the
  * paired devices, surfacing an unfinished ride - is [start].
  */
-class IosAppContainer {
+class IosAppContainer(
+    /** The workout files shipped in the app: the same JSON the Android app bundles. */
+    bundledWorkoutJson: List<String>,
+) {
     val userSettings = IosUserSettings()
     val trainerManager = TrainerManager()
     val heartRateMonitor = HeartRateMonitor()
@@ -122,6 +132,12 @@ class IosAppContainer {
     /** Every route the rider can ride here: bundled and added. */
     val routeLibrary = IosRouteLibrary(scope)
 
+    /** Every workout the rider can ride here: their own, then the bundled ones. */
+    val workoutLibrary = IosWorkoutLibrary(scope, WorkoutRepository.parseWorkouts(bundledWorkoutJson))
+
+    /** The community repositories the rider follows, and what each has that they haven't seen. */
+    val followedRepositories = FollowedRepositories(IosFolder("followed").asTextStore(), IosHttp.textFetcher)
+
 
     /** One save at a time: two at once could each look for the ride, find nothing, and each insert it. */
     private val saveLock = Mutex()
@@ -137,6 +153,7 @@ class IosAppContainer {
         installCrashLogging()
         Log.i(TAG, "App start")
         routeLibrary.start()
+        workoutLibrary.start()
         scope.launch { sessionManager.loadPersistedSnapshot() }
         // Keep retrying the devices this rider paired, so they don't have to
         // pick them every time they open the app. Gated by [setForeground] and
@@ -294,6 +311,124 @@ class IosAppContainer {
         scope.launch { onDone(routeLibrary.addFromRepo(entry, repoId, repoName)) }
     }
 
+    // ─── Workout library ─────────────────────────────────────────────────
+
+    /**
+     * Import a workout (or a list, or a repository manifest) from JSON text.
+     * An import that would replace one of the rider's workouts first asks
+     * through [IosWorkoutLibrary.questions].
+     */
+    fun importWorkoutJson(text: String, onDone: (ImportResult) -> Unit) {
+        scope.launch { onDone(workoutLibrary.importJsonText(text)) }
+    }
+
+    /** Import a file the rider picked or shared; no bigger than a workout could be. */
+    fun importWorkoutFile(data: NSData, onDone: (ImportResult) -> Unit) {
+        if (data.length.toLong() > IosHttp.MAX_BODY_BYTES) {
+            onDone(ImportResult.Failure("That file is too large to be a workout."))
+            return
+        }
+        importWorkoutJson(data.toByteArray().decodeToString(), onDone)
+    }
+
+    /**
+     * Import from a link: a share link or `indoorbike://import` carrying the
+     * workout itself, or one pointing at an HTTPS file to fetch. What a QR
+     * code holds, what a tapped link opens, and what the rider pastes.
+     */
+    fun importWorkoutLink(link: String, onDone: (ImportResult) -> Unit) {
+        scope.launch {
+            val result = try {
+                val embedded = WorkoutLinkParser.extractEmbeddedJson(link)
+                if (embedded != null) {
+                    workoutLibrary.importJsonText(embedded)
+                } else {
+                    val url = if (link.trim().startsWith("indoorbike://", ignoreCase = true)) {
+                        link.substringAfter("url=", "").substringBefore('&').trim()
+                    } else {
+                        link.trim()
+                    }
+                    when {
+                        url.isEmpty() -> ImportResult.Failure("Missing ?url= or ?data= in indoorbike://import link")
+                        !url.startsWith("https://", ignoreCase = true) ->
+                            ImportResult.Failure("That link didn't contain a workout or an HTTPS URL")
+                        else -> workoutLibrary.importJsonText(IosHttp.getText(url))
+                    }
+                }
+            } catch (t: Throwable) {
+                ImportResult.Failure("Couldn't fetch: ${t.message}")
+            }
+            onDone(result)
+        }
+    }
+
+    fun fetchRepoWorkouts(manifestUrl: String, onLoaded: (RepoFetchResult) -> Unit) {
+        scope.launch { onLoaded(RepoClient.fetchRepoWorkouts(manifestUrl, IosHttp.textFetcher)) }
+    }
+
+    fun addWorkoutFromRepo(workout: Workout, repoId: String, repoName: String, onDone: () -> Unit) {
+        scope.launch {
+            workoutLibrary.addFromRepo(workout, repoId, repoName)
+            onDone()
+        }
+    }
+
+    fun deleteWorkout(workoutId: String, onDone: (Boolean) -> Unit) {
+        scope.launch { onDone(workoutLibrary.delete(workoutId)) }
+    }
+
+    fun renameWorkout(workoutId: String, name: String, onDone: (Workout?) -> Unit) {
+        scope.launch { onDone(workoutLibrary.rename(workoutId, name)) }
+    }
+
+    // ─── Followed repositories ───────────────────────────────────────────
+
+    /** Check the followed repositories, unless they were checked lately and [force] is false. */
+    fun refreshFollowed(force: Boolean) {
+        scope.launch { followedRepositories.refresh(force) }
+    }
+
+    fun follow(entry: RegistryEntry) {
+        followedRepositories.follow(entry)
+        refreshFollowed(force = true)
+    }
+
+    /**
+     * Follow a repository by its manifest's address. [onDone] gets null on
+     * success, or what went wrong in words for the rider.
+     */
+    fun followByUrl(url: String, onDone: (String?) -> Unit) {
+        val trimmed = url.trim()
+        if (!trimmed.startsWith("https://", ignoreCase = true)) {
+            onDone("Repository URLs have to be https://")
+            return
+        }
+        scope.launch {
+            val error = try {
+                val manifest = RepoClient.fetchManifest(trimmed, IosHttp.textFetcher)
+                if (followedRepositories.isFollowed(manifest.id)) {
+                    "You already follow \"${manifest.name}\"."
+                } else {
+                    followedRepositories.follow(
+                        FollowedRepo(
+                            id = manifest.id,
+                            name = manifest.name,
+                            manifestUrl = trimmed,
+                            author = manifest.author,
+                            homepage = manifest.homepage,
+                            addedEpoch = getCurrentEpochMillis(),
+                        )
+                    )
+                    followedRepositories.refresh(force = true)
+                    null
+                }
+            } catch (t: Throwable) {
+                t.message ?: "Could not read that repository"
+            }
+            onDone(error)
+        }
+    }
+
     // ─── Feedback ────────────────────────────────────────────────────────
 
     /**
@@ -308,9 +443,6 @@ class IosAppContainer {
         previousRunLog = DiagnosticsLog.previousRunLog(),
         recentLog = DiagnosticsLog.snapshot(),
     )
-
-    /** The workouts in bundled JSON files, each a list of workouts; duplicates keep the first. */
-    fun parseWorkouts(jsonFiles: List<String>): List<Workout> = WorkoutRepository.parseWorkouts(jsonFiles)
 
     /** Get [workout] ready at the rider's FTP; it starts when they pedal. */
     fun prepareWorkout(workout: Workout) {
