@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.8] (25) - 2026-09-23
+
 ### Fixed
 
 - **An upshift at speed was a wall.** One sprocket asked the legs for about

@@ -1,0 +1,5 @@
+Added: every ride mode works on trainers and smart bikes that only speak FTMS, including ones that take just a resistance level.
+
+Changed: shifting feels like a real bike, workout links ask before replacing a workout, and saved connections are encrypted.
+
+Fixed: smart bikes froze on one wattage, continuing a ride lost its start, rides ran long, sync undid local changes, and companion rides now upload automatically.
