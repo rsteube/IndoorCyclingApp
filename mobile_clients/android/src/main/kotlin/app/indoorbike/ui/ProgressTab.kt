@@ -50,6 +50,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.progression.BADGE_CATALOG
+import app.indoorbike.shared.progression.BadgeSpec
+import app.indoorbike.shared.progression.formatXp
+import app.indoorbike.shared.progression.riderLevelTitle
 import app.indoorbike.shared.progression.Badge
 import app.indoorbike.shared.progression.WeekActivity
 import app.indoorbike.shared.progression.computeBadges
@@ -215,7 +219,7 @@ private fun LevelCard(
                 Text(text = "Rider level", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = levelTitle(level),
+                    text = riderLevelTitle(level),
                     style = CadenceType.h2.copy(fontSize = 20.sp),
                     color = CadenceColors.Fg1
                 )
@@ -303,20 +307,6 @@ private fun LevelMedallion(level: Int, entry: Float) {
     }
 }
 
-/** Playful rank names so a level number carries a little identity. */
-private fun levelTitle(level: Int): String = when (level) {
-    0 -> "Rolling Out"
-    1 -> "Commuter"
-    2 -> "Weekend Warrior"
-    3 -> "Puncheur"
-    4 -> "Rouleur"
-    5 -> "Domestique"
-    6 -> "Breakaway Artist"
-    7 -> "Climber"
-    8 -> "Time Trialist"
-    9 -> "Hour Record Chaser"
-    else -> "Legend of the Pain Cave"
-}
 
 // ─── Streak ───────────────────────────────────────────────────────────────────
 
@@ -410,26 +400,18 @@ private fun WeekBox(daysActive: Int, growth: Float = 1f, modifier: Modifier = Mo
 // ─── Badges ───────────────────────────────────────────────────────────────────
 
 /**
- * Full badge catalog, mirrored from shared/progression's computeBadges ids.
- * The shared function only returns *earned* badges; showing the locked ones
- * greyed-out with their requirement is what makes the grid a goal list
- * instead of a trophy shelf.
+ * The icon for each of [BADGE_CATALOG]'s semantic names. The catalogue itself
+ * - which badges exist, and what each asks of a rider - is shared.
  */
-private data class BadgeDef(
-    val id: String,
-    val title: String,
-    val lockedHint: String,
-    val icon: ImageVector,
-)
-
-private val BADGE_CATALOG = listOf(
-    BadgeDef("first-ride", "First Ride", "Complete a ride", Icons.Outlined.Flag),
-    BadgeDef("five-rides", "Five Strong", "Log 5 rides", Icons.Outlined.EmojiEvents),
-    BadgeDef("first-hour", "First Hour", "1 h total saddle time", Icons.Outlined.Schedule),
-    BadgeDef("kilojoule-club", "Kilojoule Club", "Burn 1,000 kJ", Icons.Outlined.Bolt),
-    BadgeDef("consistency-3", "Three in a Row", "Ride 3 weeks in a row", Icons.Outlined.LocalFireDepartment),
-    BadgeDef("consistency-7", "On Fire", "Ride 7 weeks in a row", Icons.Outlined.Whatshot),
-)
+private fun badgeIcon(hint: String): ImageVector = when (hint) {
+    "flag" -> Icons.Outlined.Flag
+    "trophy" -> Icons.Outlined.EmojiEvents
+    "clock" -> Icons.Outlined.Schedule
+    "bolt" -> Icons.Outlined.Bolt
+    "fire" -> Icons.Outlined.LocalFireDepartment
+    "flame" -> Icons.Outlined.Whatshot
+    else -> Icons.Outlined.EmojiEvents
+}
 
 @Composable
 private fun BadgesSection(unlocked: List<Badge>) {
@@ -489,7 +471,7 @@ private fun BadgesSection(unlocked: List<Badge>) {
  */
 @Composable
 private fun BadgeTile(
-    def: BadgeDef,
+    def: BadgeSpec,
     earned: Badge?,
     appear: Float,
     modifier: Modifier = Modifier,
@@ -530,7 +512,7 @@ private fun BadgeTile(
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (unlocked) def.icon else Icons.Outlined.Lock,
+                imageVector = if (unlocked) badgeIcon(def.iconHint) else Icons.Outlined.Lock,
                 contentDescription = null,
                 tint = if (unlocked) CadenceColors.OnBrand else CadenceColors.Fg3,
                 modifier = Modifier.size(24.dp)
@@ -554,18 +536,3 @@ private fun BadgeTile(
     }
 }
 
-private fun formatXp(xp: Double): String {
-    // Below 1000 show whole numbers (avoid noisy decimals on small values);
-    // above 1000 use a "1.2k" form so the headline doesn't blow out width.
-    return when {
-        xp < 1_000.0 -> xp.roundToInt().toString()
-        xp < 100_000.0 -> {
-            val k = xp / 1_000.0
-            // one decimal, e.g. 12.4k
-            val whole = k.toInt()
-            val frac = ((k - whole) * 10).toInt()
-            if (frac == 0) "${whole}k" else "$whole.${frac}k"
-        }
-        else -> "${(xp / 1_000.0).roundToInt()}k"
-    }
-}

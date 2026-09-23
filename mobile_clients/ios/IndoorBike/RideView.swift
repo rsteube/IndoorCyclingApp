@@ -272,7 +272,7 @@ private struct CompletedCard: View {
                 }
             }
             .font(.subheadline)
-            Button("Done", action: onDone)
+            Button(ride.savedSessionId != nil ? "See the ride" : "Done", action: onDone)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
                 .disabled(ride.savedSessionId == nil && !ride.saveFailed)

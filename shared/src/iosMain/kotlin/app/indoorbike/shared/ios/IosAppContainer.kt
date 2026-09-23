@@ -16,6 +16,26 @@
 package app.indoorbike.shared.ios
 
 import app.indoorbike.shared.Workout
+import app.indoorbike.shared.activity.TcxBuilder
+import app.indoorbike.shared.activity.exportFileName
+import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.db.WorkoutSession
+import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.progression.RideStats
+import app.indoorbike.shared.progression.computeRideStats
+import app.indoorbike.shared.progression.timeInZoneSeconds
+import app.indoorbike.shared.session.ActiveSessionSnapshot
+import app.indoorbike.shared.session.RideRecord
+import app.indoorbike.shared.session.RideRoad
+import app.indoorbike.shared.session.UnfinishedRide
+import app.indoorbike.shared.session.describeUnfinishedRide
+import app.indoorbike.shared.workout.isCompanion
+import app.indoorbike.shared.workout.isFreeRide
+import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.shared.workout.resolveRideWorkout
+import kotlinx.coroutines.IO
+import kotlinx.coroutines.withContext
+import platform.Foundation.NSTemporaryDirectory
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.shared.ble.HeartRateMonitor
 import app.indoorbike.shared.ble.TrainerConnectionState
@@ -137,8 +157,8 @@ class IosAppContainer {
     /**
      * Save the ride that just completed to history, then call [onSaved] with
      * its row id on the main thread, or with null when there was nothing to
-     * save. Runs on the container's scope, so leaving the screen can't cancel
-     * a save half-way.
+     * save or the save failed. Runs on the container's scope, so leaving the
+     * screen can't cancel a save half-way.
      */
     fun saveCompletedRide(onSaved: (Long?) -> Unit) {
         val workout = sessionManager.activeWorkout.value
@@ -147,11 +167,26 @@ class IosAppContainer {
             return
         }
         // Read everything now, before anything else can start a new ride.
-        val startTimeEpoch = sessionManager.sessionStartTimeEpoch
-        val durationSeconds = sessionManager.actualRideSeconds.value
-        val telemetry = sessionManager.telemetrySnapshot()
-        val road = sessionManager.pendingRideRoad()
-        val record = sessionManager.pendingRideRecord()
+        save(
+            workout = workout,
+            startTimeEpoch = sessionManager.sessionStartTimeEpoch,
+            durationSeconds = sessionManager.actualRideSeconds.value,
+            telemetry = sessionManager.telemetrySnapshot(),
+            road = sessionManager.pendingRideRoad(),
+            record = sessionManager.pendingRideRecord(),
+            onSaved = onSaved,
+        )
+    }
+
+    private fun save(
+        workout: Workout,
+        startTimeEpoch: Long,
+        durationSeconds: Int,
+        telemetry: List<TelemetryPoint>,
+        road: RideRoad,
+        record: RideRecord,
+        onSaved: (Long?) -> Unit,
+    ) {
         scope.launch {
             val id = try {
                 saveLock.withLock {
@@ -172,6 +207,137 @@ class IosAppContainer {
                 null
             }
             onSaved(id)
+        }
+    }
+
+    // ─── A ride the app was stopped in the middle of ───────────────────────
+
+    /**
+     * The ride left behind by a previous run, if there is one worth showing,
+     * or null. A finished ride with no samples to keep is discarded here
+     * rather than offered: saving it would only add an empty row to history.
+     */
+    fun unfinishedRide(snapshot: ActiveSessionSnapshot?, library: List<Workout>): UnfinishedRide? {
+        if (snapshot == null) return null
+        val workout = resolveRideWorkout(snapshot.workoutId, library) ?: return null
+        val ride = describeUnfinishedRide(snapshot, workout)
+        if (ride.isFinished && sessionManager.pendingRideTelemetry(snapshot).isEmpty()) {
+            sessionManager.abandonUnfinishedRide()
+            return null
+        }
+        return ride
+    }
+
+    /** Pick the ride up where it stopped; the ride screen takes it from there. */
+    fun continueUnfinishedRide(ride: UnfinishedRide) {
+        sessionManager.restoreFromSnapshot(ride.snapshot, ride.workout, null)
+    }
+
+    /** Keep a finished ride that never reached history. */
+    fun saveUnfinishedRide(ride: UnfinishedRide, onSaved: (Long?) -> Unit) {
+        val snapshot = ride.snapshot
+        save(
+            workout = ride.workout,
+            startTimeEpoch = snapshot.sessionStartTimeEpochMs,
+            durationSeconds = ride.rideSeconds,
+            telemetry = sessionManager.pendingRideTelemetry(snapshot),
+            road = sessionManager.pendingRideRoad(snapshot),
+            record = sessionManager.pendingRideRecord(snapshot),
+            onSaved = onSaved,
+        )
+    }
+
+    fun abandonUnfinishedRide() {
+        sessionManager.abandonUnfinishedRide()
+    }
+
+    // ─── History ─────────────────────────────────────────────────────────
+
+    /** A saved ride and everything its detail screen shows. */
+    class RideDetail(
+        val session: WorkoutSession,
+        /** The planned workout, when the ride had one and it is still in the library. */
+        val workout: Workout?,
+        /** One power reading per sample, for the chart. */
+        val powerWatts: List<Int>,
+        val stats: RideStats,
+        /** Seconds in each of the seven power zones, Z1 first. */
+        val timeInZoneSeconds: List<Int>,
+        /** Whether there is telemetry to export. */
+        val canExport: Boolean,
+    )
+
+    /**
+     * Load one ride for its detail screen, and call [onLoaded] on the main
+     * thread with it, or with null when it no longer exists. The stats are
+     * worked out against the rider's current FTP and weight, as on Android.
+     */
+    fun loadRide(sessionId: Long, library: List<Workout>, onLoaded: (RideDetail?) -> Unit) {
+        scope.launch {
+            val detail = try {
+                val session = historyRepository.getSessionById(sessionId)
+                if (session == null) null else {
+                    val telemetry = historyRepository.getTelemetryForSession(sessionId)
+                    val watts = telemetry.map { it.power }
+                    val ftp = userSettings.ftp.value
+                    val workout = library.firstOrNull { it.id == session.workoutId }
+                        ?.takeIf { !it.isFreeRide && !it.isSimulation && !it.isCompanion }
+                    RideDetail(
+                        session = session,
+                        workout = workout,
+                        powerWatts = watts.map { it.toInt() },
+                        stats = computeRideStats(watts, session.durationSeconds, ftp, userSettings.weightKg.value),
+                        timeInZoneSeconds = timeInZoneSeconds(watts, ftp).toList(),
+                        canExport = telemetry.isNotEmpty(),
+                    )
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't load ride $sessionId", e)
+                null
+            }
+            onLoaded(detail)
+        }
+    }
+
+    fun deleteRide(sessionId: Long, onDone: () -> Unit) {
+        scope.launch {
+            try {
+                historyRepository.deleteSession(sessionId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't delete ride $sessionId", e)
+            }
+            onDone()
+        }
+    }
+
+    /**
+     * Write a ride as a FIT (or, when [fit] is false, TCX) file to the temporary
+     * directory for the share sheet, and call [onWritten] with its path, or
+     * null if it couldn't be built.
+     */
+    fun exportRide(sessionId: Long, fit: Boolean, library: List<Workout>, onWritten: (String?) -> Unit) {
+        scope.launch {
+            val path = try {
+                withContext(Dispatchers.IO) {
+                    val session = historyRepository.getSessionById(sessionId) ?: return@withContext null
+                    val telemetry = historyRepository.getTelemetryForSession(sessionId)
+                    if (telemetry.isEmpty()) return@withContext null
+                    val workout = library.firstOrNull { it.id == session.workoutId }
+                    val ftp = userSettings.ftp.value
+                    val kg = userSettings.weightKg.value
+                    val path = "${NSTemporaryDirectory().trimEnd('/')}/${exportFileName(session, if (fit) "fit" else "tcx")}"
+                    if (fit) {
+                        IosFiles.writeBytes(path, RideFitBuilder.build(session, telemetry, workout, ftp, kg))
+                    } else {
+                        IosFiles.writeText(path, TcxBuilder.build(session, telemetry, workout, ftp, kg))
+                    }
+                    path
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Couldn't export ride $sessionId", e)
+                null
+            }
+            onWritten(path)
         }
     }
 

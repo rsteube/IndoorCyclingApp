@@ -4,40 +4,34 @@ import shared
 /// The workout library and the trainer, side by side on an iPad and one after
 /// the other on an iPhone.
 struct HomeView: View {
-    let app: AppModel
-    @State private var selection: String?
+    @Bindable var app: AppModel
     @State private var showingTrainer = false
-    @State private var showingRider = false
-    @State private var riding = false
 
     var body: some View {
         NavigationSplitView {
-            List(app.workouts, id: \.id, selection: $selection) { workout in
-                WorkoutRow(workout: workout, ftp: app.settings.ftp)
-                    .tag(workout.id)
+            List(selection: $app.workoutSelection) {
+                UnfinishedRideBanner(app: app)
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                ForEach(app.workouts, id: \.id) { workout in
+                    WorkoutRow(workout: workout, ftp: app.settings.ftp)
+                        .tag(workout.id)
+                }
             }
             .navigationTitle("Workouts")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { showingRider = true } label: {
-                        Label("Rider", systemImage: "person.crop.circle")
-                    }
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     TrainerButton(trainer: app.trainer) { showingTrainer = true }
                 }
             }
         } detail: {
-            if let workout = app.workouts.first(where: { $0.id == selection }) {
+            if let workout = app.workouts.first(where: { $0.id == app.workoutSelection }) {
                 WorkoutDetail(
                     workout: workout,
                     ftp: app.settings.ftp,
                     trainerConnected: app.trainer.isConnected,
                     onConnect: { showingTrainer = true },
-                    onStart: {
-                        app.ride.begin(workout)
-                        riding = true
-                    }
+                    onStart: { app.startRide(workout) }
                 )
             } else {
                 ContentUnavailableView(
@@ -49,18 +43,6 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showingTrainer) {
             TrainerScreen(trainer: app.trainer)
-        }
-        .sheet(isPresented: $showingRider) {
-            RiderSettings(settings: app.settings)
-        }
-        .onChange(of: app.demoRideRequested) { _, requested in
-            if requested { riding = true }
-        }
-        .fullScreenCover(isPresented: $riding) {
-            RideView(ride: app.ride, trainer: app.trainer, ftp: app.settings.ftp) {
-                app.ride.close()
-                riding = false
-            }
         }
     }
 }

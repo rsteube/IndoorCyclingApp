@@ -44,6 +44,7 @@ import androidx.compose.ui.window.DialogProperties
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.LocalRideResumer
 import app.indoorbike.LocalWorkouts
+import app.indoorbike.shared.session.describeUnfinishedRide
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.isCompanion
@@ -104,21 +105,11 @@ fun UnfinishedRideBanner(
         library = workouts,
         routeNames = container.routeCatalog.routeNames(),
     ) ?: return
-    // Both plan-less modes have a six-hour backstop segment rather than a
-    // planned length, so neither can report progress as a fraction of it.
-    val openEnded = workout.isFreeRide || workout.isSimulation || workout.isCompanion
-
-    // A finished ride that never reached history: either the app died between
-    // the trophy screen and the summary, or the rider backed out of it. The
-    // samples are the whole value here, so offer to save rather than resume.
-    //
-    // A companion ride is always offered as one to save. Resuming it would put
-    // the rider back on a HUD whose game is gone, with nothing to drive the
-    // road, so the only useful thing left to do with the effort is keep it.
-    val isFinished = workout.isCompanion ||
-        current.state == WorkoutState.Completed ||
-        current.currentSegmentIndex >= workout.segments.size ||
-        current.elapsedSeconds >= workout.segments.sumOf { it.lengthInSeconds }
+    // Whether there is anything left to ride, and how far it got: shared with
+    // the iOS banner, so the two make the same offer for the same ride.
+    val described = describeUnfinishedRide(current, workout)
+    val openEnded = described.openEnded
+    val isFinished = described.isFinished
     val recovered = remember(current) { container.sessionManager.pendingRideTelemetry(current) }
 
     if (isFinished && recovered.isEmpty()) {
@@ -135,11 +126,9 @@ fun UnfinishedRideBanner(
     var confirmingAbandon by remember { mutableStateOf(false) }
 
     val total = workout.segments.sumOf { it.lengthInSeconds }.coerceAtLeast(1)
-    val progress = (current.elapsedSeconds.toFloat() / total).coerceIn(0f, 1f)
+    val progress = described.progress
     val pct = (progress * 100).toInt()
-    // Time actually pedalled, which is what a saved ride reports. Older
-    // snapshots default it to 0, so fall back to the planned elapsed.
-    val rideSeconds = current.actualRideSeconds.takeIf { it > 0 } ?: current.elapsedSeconds
+    val rideSeconds = described.rideSeconds
 
     Column(
         modifier = modifier

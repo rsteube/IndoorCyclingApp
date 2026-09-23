@@ -31,6 +31,7 @@ The Simulator has no Bluetooth. **Use the demo trainer** connects the shared moc
 
 - `-demo-trainer` connects the demo trainer and starts it pedalling.
 - `-demo-ride [workout id]` does the same and opens the ride on that workout, or on the first workout if no id follows. `-demo-ride sample-test` runs a 30-second ride, which is the quickest way to reach the completion and save path.
+- `-demo-tab history|progress|settings` opens on that tab, and `-demo-latest-ride` opens the newest saved ride in History.
 
 ```sh
 xcrun simctl launch booted app.indoorbike.debug -demo-ride sample-test
@@ -72,7 +73,13 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
     - A rider sheet for FTP and weight.
     - The ride: pedal to start, a countdown, power in its zone colour against the target, cadence, heart rate, time left in the interval, what comes next, the workout profile with progress, difficulty ±5 %, pause and resume, skipping an interval, ending the ride, and a completion card once the ride is saved. The ride screen keeps the display awake and scales its numbers up on an iPad.
   - **Background:** `bluetooth-central` is declared in `Info.plist`.
-- [ ] **3. History and progression.** Ride list, ride detail, streaks, levels and badges (already computed in `shared/progression`), and FIT export through the share sheet. Also the unfinished-ride banner. The container already loads the persisted snapshot at launch, but nothing on iOS yet offers to save or discard it. Until then, starting a new workout discards it, as it does on Android.
+- [x] **3. History and progression.** The app has four tabs as on Android: Ride, History, Progress and Settings. They show as a tab bar on iPhone and a sidebar on iPad, so the minimum iOS is now 18.
+  - **History:** totals, rides grouped by week in the rider's own calendar, and "Ride again" from a ride's context menu.
+  - **Ride detail:** duration and average power, NP, IF, TSS, kJ, the estimated distance and speed, power against the plan, and time in zone. It exports FIT or TCX through the share sheet, shares a 1080 × 1080 picture, and deletes the ride.
+  - **Progress:** rider level and title, the 14-week streak, and the badge grid with locked badges.
+  - **Unfinished-ride banner:** save, continue or abandon, on the Ride, History and Progress tabs.
+  - **Moved into `shared` for both apps:** the unfinished-ride rules (`describeUnfinishedRide`), the badge catalogue, level titles and XP formatting (`BADGE_CATALOG`, `riderLevelTitle`, `formatXp`, `sessionKilojoules`), and the export file name (`exportFileName`). Android now calls these.
+  - **Not ported yet:** the route panel on a route ride's detail waits for milestone 5, and the upload cards wait for milestone 7.
 - [ ] **4. Settings and onboarding.** FTP, weight, max HR, bike, and drivetrain. Heart rate monitor pairing. Onboarding.
 - [ ] **5. Route rides.** Route catalogue with the bundled routes and GPX import. Map (MapKit), elevation profile, virtual gears. The simulation engine is already shared.
 - [ ] **6. Workout library.** Import from Files, a URL or a QR code (VisionKit), the community registry, and favourites. Workout fetching and import move into `shared`.

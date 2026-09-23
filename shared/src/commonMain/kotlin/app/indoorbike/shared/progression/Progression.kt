@@ -82,9 +82,6 @@ fun computeRiderLevel(sessions: List<WorkoutSession>, weightKg: Float): RiderLev
     return RiderLevel(level = level, totalXp = xp, levelFloorXp = floor, levelCeilingXp = ceiling)
 }
 
-private fun kjFromSession(s: WorkoutSession): Long =
-    (s.avgPower * s.durationSeconds) / 1000L
-
 /** Week activity row for the streak chart: which week, and how many distinct days had a ride (0..7). */
 data class WeekActivity(
     val weekBucket: Long,
@@ -177,7 +174,7 @@ fun computeBadges(
 
     val sortedAsc = sessions.sortedBy { it.startTimeEpoch }
     val streak = computeStreak(sessions, nowEpochMs, timeZoneOffsetMs = timeZoneOffsetMs)
-    val totalKj = sessions.sumOf { kjFromSession(it) }
+    val totalKj = sessions.sumOf { sessionKilojoules(it) }
     val totalSeconds = sessions.sumOf { it.durationSeconds }
     val out = mutableListOf<Badge>()
 
@@ -246,7 +243,7 @@ fun computeBadges(
 }
 
 fun totalKjAcross(sessions: List<WorkoutSession>): Long =
-    sessions.sumOf { kjFromSession(it) }
+    sessions.sumOf { sessionKilojoules(it) }
 
 fun totalDurationSeconds(sessions: List<WorkoutSession>): Long =
     sessions.sumOf { it.durationSeconds }
@@ -372,3 +369,63 @@ fun durationLabelLong(totalSeconds: Long): String {
         else -> "${mins / 60} h ${mins % 60} min"
     }
 }
+
+// ─── For the progress screen ──────────────────────────────────────────────────
+
+/** Playful rank names so a level number carries a little identity. */
+fun riderLevelTitle(level: Int): String = when (level) {
+    0 -> "Rolling Out"
+    1 -> "Commuter"
+    2 -> "Weekend Warrior"
+    3 -> "Puncheur"
+    4 -> "Rouleur"
+    5 -> "Domestique"
+    6 -> "Breakaway Artist"
+    7 -> "Climber"
+    8 -> "Time Trialist"
+    9 -> "Hour Record Chaser"
+    else -> "Legend of the Pain Cave"
+}
+
+/** A badge as the progress screen lists it, earned or not. */
+data class BadgeSpec(
+    val id: String,
+    val title: String,
+    /** What it takes, shown while the badge is still locked. */
+    val lockedHint: String,
+    /** The same semantic icon name [Badge.iconHint] carries; each UI maps it. */
+    val iconHint: String,
+)
+
+/**
+ * Every badge [computeBadges] can award, in display order. That function only
+ * returns *earned* badges; showing the locked ones greyed-out with their
+ * requirement is what makes the grid a goal list instead of a trophy shelf.
+ */
+val BADGE_CATALOG: List<BadgeSpec> = listOf(
+    BadgeSpec("first-ride", "First Ride", "Complete a ride", "flag"),
+    BadgeSpec("five-rides", "Five Strong", "Log 5 rides", "trophy"),
+    BadgeSpec("first-hour", "First Hour", "1 h total saddle time", "clock"),
+    BadgeSpec("kilojoule-club", "Kilojoule Club", "Burn 1,000 kJ", "bolt"),
+    BadgeSpec("consistency-3", "Three in a Row", "Ride 3 weeks in a row", "fire"),
+    BadgeSpec("consistency-7", "On Fire", "Ride 7 weeks in a row", "flame"),
+)
+
+/**
+ * XP for a headline: whole numbers below 1000 (no noisy decimals on small
+ * values), "12.4k" below 100k, "123k" above, so the figure never blows out
+ * its width.
+ */
+fun formatXp(xp: Double): String = when {
+    xp < 1_000.0 -> kotlin.math.round(xp).toLong().toString()
+    xp < 100_000.0 -> {
+        val k = xp / 1_000.0
+        val whole = k.toInt()
+        val frac = ((k - whole) * 10).toInt()
+        if (frac == 0) "${whole}k" else "$whole.${frac}k"
+    }
+    else -> "${kotlin.math.round(xp / 1_000.0).toLong()}k"
+}
+
+/** The energy a ride took, in kJ, from its average power and duration. */
+fun sessionKilojoules(session: WorkoutSession): Long = session.avgPower * session.durationSeconds / 1000

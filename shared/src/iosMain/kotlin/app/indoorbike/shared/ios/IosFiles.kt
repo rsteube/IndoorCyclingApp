@@ -17,6 +17,8 @@ package app.indoorbike.shared.ios
 
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.usePinned
 import platform.Foundation.NSApplicationSupportDirectory
 import platform.Foundation.NSData
 import platform.Foundation.NSDataWritingAtomic
@@ -71,6 +73,14 @@ internal object IosFiles {
     fun writeText(path: String, text: String) {
         val ok = utf8(text).writeToURL(NSURL.fileURLWithPath(path), NSDataWritingAtomic, null)
         check(ok) { "Couldn't write $path" }
+    }
+
+    /** Replace the file's contents with [bytes], atomically. Throws if the write fails. */
+    fun writeBytes(path: String, bytes: ByteArray) {
+        val data = if (bytes.isEmpty()) NSData() else bytes.usePinned {
+            NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong())
+        }
+        check(data.writeToURL(NSURL.fileURLWithPath(path), NSDataWritingAtomic, null)) { "Couldn't write $path" }
     }
 
     /** Add [text] to the end of the file, creating it if needed, and sync it to disk. */
