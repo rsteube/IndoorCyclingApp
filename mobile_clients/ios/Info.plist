@@ -44,6 +44,15 @@
 	<array>
 		<string>_indoorbike._tcp</string>
 	</array>
+	<!-- The launch screen: the icon's slate with the rider on it, so opening
+	     the app reads as the icon growing to fill the screen. -->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+		<key>UIImageName</key>
+		<string>LaunchMark</string>
+	</dict>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
 </dict>

@@ -173,10 +173,22 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
   - **Verified in the Simulator:** a test game, a plain WebSocket client, connected with the pairing code and negotiated 0.10, then started the ride with `setState`. It streamed telemetry, shifted a gear and finished, and the host saved the ride.
   - **Not on iOS: the UDP beacon.** It needs Apple's multicast entitlement (`com.apple.developer.networking.multicast`), which Apple grants on request. Until then, companions find an iPhone through Bonjour or its address and port.
   - **Background:** iOS closes listening sockets in the background, so a companion ride keeps the app in front with the screen awake.
-- [ ] **9. Zwift controllers.** The ECDH (P-256) key exchange and AES block encryption on iOS (Security and CommonCrypto). Until then those calls throw on iOS, and their 5 tests fail there.
-- [ ] **10. Release.** App icon, launch screen, App Store metadata, TestFlight through the Snapp Mobile team.
+- [x] **9. Zwift controllers.** `ZwiftCrypto` on iOS:
+  - The P-256 key pair and ECDH come from the Security framework (`SecKeyCreateRandomKey`, `SecKeyCopyKeyExchangeResult`).
+  - The public key goes over the air as the bare 64-byte point, the same as on Android.
+  - AES comes from CommonCrypto (`CCCrypt` in ECB mode, one block at a time, under the shared CCM code), and HMAC-SHA256 also comes from CommonCrypto.
+  - The 5 AES tests that failed on iOS now pass.
+  - New tests: both sides agree on the same 32-byte secret, a new key pair gives a new secret, and a key of the wrong length is refused.
+  - Not yet tried with a real Zwift Click or Ride.
+- [ ] **10. Release.**
+  - [x] **App icon:** the Slate icon, drawn at 1024 px by `mobile_clients/ios/scripts/render_icon.swift` from the shapes in `slate-design-system/logo`.
+  - [x] **Launch screen:** the icon's slate colour with the rider mark in the middle (`UILaunchScreen` in Info.plist).
+  - [ ] App Store metadata.
+  - [ ] TestFlight through the Snapp Mobile team.
 
 ## Things to know
+
+- **Session tests can time out on iOS under load.** `SessionLifecycleTest` and `FreeRideSessionTest` wait in real time for the mock trainer. When the machine is busy (for example with both platforms' tests running at once), one of them now and then hangs until the 60-second `runTest` limit. They pass when run alone. The ride engine is unchanged on this branch, so this isn't from the port. Still worth finding out why the wait doesn't hit its own shorter timeout first.
 
 - **Device ids differ by platform.** A paired trainer's id is its MAC address on Android and a CoreBluetooth UUID on iOS, so a backup restored across platforms won't reconnect the paired trainer automatically.
 - **Background.** iOS suspends an app in the background unless a background mode applies. The `bluetooth-central` mode, added in milestone 2, keeps a ride going while the trainer keeps sending data.
