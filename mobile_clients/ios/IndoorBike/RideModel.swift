@@ -18,6 +18,7 @@ final class RideModel {
     private(set) var segmentIndex = 0
     private(set) var elapsedInSegment = 0
     private(set) var biasPercent = 0
+    private(set) var freeRideTargetWatts = 0
 
     /// The ride's row in history once it has been saved.
     private(set) var savedSessionId: Int64?
@@ -43,6 +44,7 @@ final class RideModel {
         flows.watchInt(session.currentSegmentIndex) { [unowned self] in segmentIndex = $0 }
         flows.watchInt(session.elapsedInSegment) { [unowned self] in elapsedInSegment = $0 }
         flows.watchInt(session.targetBiasPercent) { [unowned self] in biasPercent = $0 }
+        flows.watchInt(session.freeRideTargetWatts) { [unowned self] in freeRideTargetWatts = $0 }
     }
 
     // MARK: Derived
@@ -60,10 +62,20 @@ final class RideModel {
     // MARK: Controls
 
     func begin(_ workout: Workout) {
+        prepare { container.prepareWorkout(workout: workout) }
+    }
+
+    /// Get a ride of any kind ready: [how] is the container call that does it.
+    func prepare(_ how: () -> Void) {
         savedSessionId = nil
         saveFailed = false
-        container.prepareWorkout(workout: workout)
+        how()
     }
+
+    var isSimulation: Bool { workout?.isSimulation ?? false }
+    var isFreeRide: Bool { workout?.isFreeRide ?? false }
+    /// No plan to count down: a free ride or a route.
+    var isOpenEnded: Bool { isSimulation || isFreeRide }
 
     func pause() { session.pauseWorkout() }
     func resume() { session.resumeWorkout() }

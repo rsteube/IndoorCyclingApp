@@ -15,6 +15,7 @@
  */
 package app.indoorbike.ride
 
+import app.indoorbike.shared.route.rideRoute
 import app.indoorbike.AppContainer
 import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.db.WorkoutSession
@@ -41,18 +42,5 @@ import app.indoorbike.shared.workout.simulationRouteId
  * Not cheap. It decodes a polyline and rebuilds a track, so callers should
  * `remember` it against the session rather than recomputing it per frame.
  */
-fun rideRoute(container: AppContainer, session: WorkoutSession): RouteTrack? {
-    simulationRouteId(session.workoutId)?.let { routeId ->
-        return container.routeCatalog.find(routeId)
-    }
-    if (session.routeShape.isBlank()) return null
-    return courseTrackOf(
-        // Namespaced by row so it cannot collide with a catalogue route id.
-        // Nothing looks this up; it exists because a track has to be called
-        // something.
-        id = "session:" + session.id,
-        name = session.workoutName,
-        shape = session.routeShape,
-        profileMeters = CompanionCourse.decodeProfile(session.routeProfile),
-    )
-}
+fun rideRoute(container: AppContainer, session: WorkoutSession): RouteTrack? =
+    rideRoute(session, container.routeCatalog::find)

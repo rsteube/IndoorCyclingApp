@@ -15,6 +15,18 @@
  */
 package app.indoorbike.shared.ios
 
+import app.indoorbike.shared.repo.ManifestParser
+import app.indoorbike.shared.repo.RegistryIndex
+import app.indoorbike.shared.repo.RepoClient
+import app.indoorbike.shared.repo.RouteEntry
+import app.indoorbike.shared.repo.RouteFetchResult
+import app.indoorbike.shared.route.RouteEstimate
+import app.indoorbike.shared.route.RouteStats
+import app.indoorbike.shared.route.RouteTrack
+import app.indoorbike.shared.route.rideRoute
+import app.indoorbike.shared.simulation.RouteProgress
+import app.indoorbike.shared.workout.simulationRouteId
+import platform.Foundation.NSData
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.activity.exportFileName
@@ -78,6 +90,7 @@ class IosAppContainer {
     val heartRateMonitor = HeartRateMonitor()
     val controllerManager = ControllerManager()
     val historyRepository = HistoryRepository(DatabaseDriverFactory())
+    private val routeProgressStore = IosRouteProgressStore()
 
     /** Built for route rides (milestone 5); a workout ride doesn't drive it. */
     val simulationEngine = SimulationEngine(
@@ -93,7 +106,7 @@ class IosAppContainer {
         trainerManager = trainerManager,
         activeSessionStore = IosActiveSessionStore(),
         activeTelemetryStore = IosActiveTelemetryStore(),
-        routeProgressStore = IosRouteProgressStore(),
+        routeProgressStore = routeProgressStore,
         // Prefer the dedicated HRM when one is connected and sending; fall
         // back to whatever the trainer reports (often 0 for trainer-only).
         effectiveHeartRate = {
@@ -105,6 +118,10 @@ class IosAppContainer {
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /** Every route the rider can ride here: bundled and added. */
+    val routeLibrary = IosRouteLibrary(scope)
+
 
     /** One save at a time: two at once could each look for the ride, find nothing, and each insert it. */
     private val saveLock = Mutex()
@@ -119,6 +136,7 @@ class IosAppContainer {
         DiagnosticsLog.attachStorage()
         installCrashLogging()
         Log.i(TAG, "App start")
+        routeLibrary.start()
         scope.launch { sessionManager.loadPersistedSnapshot() }
         // Keep retrying the devices this rider paired, so they don't have to
         // pick them every time they open the app. Gated by [setForeground] and
@@ -199,6 +217,81 @@ class IosAppContainer {
     /** One step harder (+1) or easier (-1), as the ride in progress understands it. */
     fun stepEffort(direction: Int) {
         adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, null)
+    }
+
+    // ─── Other ways to ride ──────────────────────────────────────────────
+
+    /** No plan: the trainer opens at a share of FTP and the rider moves it. */
+    fun prepareFreeRide() {
+        sessionManager.prepareFreeRide(userSettings.ftp.value)
+    }
+
+    /** Get [route] ready to ride, from the start or from [resumeFrom]; it starts when they pedal. */
+    fun prepareRoute(route: RouteTrack, resumeFrom: RouteProgress?) {
+        sessionManager.prepareSimulation(
+            route = route,
+            ftp = userSettings.ftp.value,
+            startDistanceMeters = resumeFrom?.distanceMeters ?: 0.0,
+            startElevationGainMeters = resumeFrom?.elevationGainMeters ?: 0.0,
+        )
+    }
+
+    /** Where the rider got to on each route they left part-way, by route id. */
+    fun loadRouteProgress(onLoaded: (Map<String, RouteProgress>) -> Unit) {
+        scope.launch { onLoaded(runCatching { routeProgressStore.read() }.getOrDefault(emptyMap())) }
+    }
+
+    /** A route's card numbers - shape, profile, distance, climbing - as a repository lists them. */
+    fun routeEntry(route: RouteTrack): RouteEntry = RouteStats.entryFor(route, gpxUrl = "local")
+
+    /** How long a route should take this rider, or null without an FTP and weight. */
+    fun routeEstimateSeconds(entry: RouteEntry): Long? = RouteEstimate.secondsFor(
+        entry, userSettings.ftp.value, userSettings.weightKg.value, userSettings.bikeWeightKg.value,
+    )
+
+    /** Remove an added route, and where the rider got to on it. */
+    fun deleteRoute(routeId: String, onDone: (Boolean) -> Unit) {
+        scope.launch {
+            val removed = routeLibrary.delete(routeId)
+            if (removed) runCatching { routeProgressStore.clear(routeId) }
+            onDone(removed)
+        }
+    }
+
+    /** Add a GPX the rider picked in Files. */
+    fun importRouteFile(fileName: String, data: NSData, onDone: (RouteImportResult) -> Unit) {
+        scope.launch { onDone(routeLibrary.importFile(fileName, data.toByteArray())) }
+    }
+
+    // ─── Community repositories ──────────────────────────────────────────
+
+    /**
+     * The registry of community repositories, fetched fresh, or the copy kept
+     * from last time when that fails. [onLoaded] gets the index (null if there
+     * has never been one) and the error, if the fetch failed.
+     */
+    fun loadRegistry(onLoaded: (RegistryIndex?, String?) -> Unit) {
+        scope.launch {
+            val cache = IosFiles.path(REGISTRY_CACHE)
+            try {
+                val text = IosHttp.getText(REGISTRY_URL)
+                val index = ManifestParser.parseRegistryIndex(text)
+                runCatching { IosFiles.writeText(cache, text) }
+                onLoaded(index, null)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Registry refresh failed: ${t.message}")
+                val cached = runCatching { IosFiles.readText(cache)?.let(ManifestParser::parseRegistryIndex) }.getOrNull()
+                onLoaded(cached, t.message ?: "Couldn't reach registry")
+            }
+        }
+    }
+
+    fun fetchRepoRoutes(manifestUrl: String, onLoaded: (RouteFetchResult) -> Unit) {
+        scope.launch { onLoaded(RepoClient.fetchRepoRoutes(manifestUrl, IosHttp.textFetcher)) }
+    }
+
+    fun addRouteFromRepo(entry: RouteEntry, repoId: String?, repoName: String?, onDone: (RouteImportResult) -> Unit) {
+        scope.launch { onDone(routeLibrary.addFromRepo(entry, repoId, repoName)) }
     }
 
     // ─── Feedback ────────────────────────────────────────────────────────
@@ -289,7 +382,7 @@ class IosAppContainer {
      */
     fun unfinishedRide(snapshot: ActiveSessionSnapshot?, library: List<Workout>): UnfinishedRide? {
         if (snapshot == null) return null
-        val workout = resolveRideWorkout(snapshot.workoutId, library) ?: return null
+        val workout = resolveRideWorkout(snapshot.workoutId, library, routeLibrary.routeNames()) ?: return null
         val ride = describeUnfinishedRide(snapshot, workout)
         if (ride.isFinished && sessionManager.pendingRideTelemetry(snapshot).isEmpty()) {
             sessionManager.abandonUnfinishedRide()
@@ -300,7 +393,8 @@ class IosAppContainer {
 
     /** Pick the ride up where it stopped; the ride screen takes it from there. */
     fun continueUnfinishedRide(ride: UnfinishedRide) {
-        sessionManager.restoreFromSnapshot(ride.snapshot, ride.workout, null)
+        val route = simulationRouteId(ride.workout.id)?.let { routeLibrary.find(it) }
+        sessionManager.restoreFromSnapshot(ride.snapshot, ride.workout, route)
     }
 
     /** Keep a finished ride that never reached history. */
@@ -335,6 +429,8 @@ class IosAppContainer {
         val timeInZoneSeconds: List<Int>,
         /** Whether there is telemetry to export. */
         val canExport: Boolean,
+        /** The road it was on, for a route or companion ride; see [rideRoute]. */
+        val route: RouteTrack?,
     )
 
     /**
@@ -359,6 +455,7 @@ class IosAppContainer {
                         stats = computeRideStats(watts, session.durationSeconds, ftp, userSettings.weightKg.value),
                         timeInZoneSeconds = timeInZoneSeconds(watts, ftp).toList(),
                         canExport = telemetry.isNotEmpty(),
+                        route = rideRoute(session, routeLibrary::find),
                     )
                 }
             } catch (e: Exception) {
@@ -415,5 +512,9 @@ class IosAppContainer {
         const val TAG = "IosAppContainer"
         /** [TrainerManager.connectMock]'s pseudo-id. */
         const val MOCK_ID = "mock"
+
+        /** The community registry, as the Android build points at it. */
+        const val REGISTRY_URL = "https://indoorbike.app/registry.json"
+        const val REGISTRY_CACHE = "registry.json"
     }
 }

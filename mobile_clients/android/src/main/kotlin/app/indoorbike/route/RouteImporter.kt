@@ -15,6 +15,10 @@
  */
 package app.indoorbike.route
 
+import app.indoorbike.shared.route.sanitiseRouteId
+import app.indoorbike.shared.route.routeMetaJson
+import app.indoorbike.shared.route.localRouteIdFor
+import app.indoorbike.shared.route.RouteImportMeta
 import android.content.Context
 import android.net.Uri
 import app.indoorbike.library.HttpFetcher
@@ -58,11 +62,7 @@ import kotlinx.serialization.json.Json
  */
 class RouteImporter(private val context: Context) {
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-        encodeDefaults = true
-    }
+    private val json = routeMetaJson
 
     private val userRoutesDir: File
         get() = File(context.filesDir, "user_routes").apply { mkdirs() }
@@ -91,15 +91,13 @@ class RouteImporter(private val context: Context) {
      * overwrite each other's route (and licence credit) when they shared one;
      * the second is now kept under the repository's name as well.
      */
-    private fun localIdFor(entryId: String, repoId: String?): String {
-        val plain = sanitise(entryId)
-        val existing = gpxFile(plain).exists()
-        if (existing && repoId != null && loadMeta(plain)?.let { it.sourceRepoId == repoId && (it.sourceEntryId ?: plain) == entryId } == true) {
-            return plain
-        }
-        if (!existing && plain !in bundledIds) return plain
-        return sanitise("${repoId ?: "local"}.$entryId")
-    }
+    private fun localIdFor(entryId: String, repoId: String?): String = localRouteIdFor(
+        entryId = entryId,
+        repoId = repoId,
+        exists = { gpxFile(it).exists() },
+        metaFor = ::loadMeta,
+        bundledIds = bundledIds,
+    )
 
     /**
      * Download the GPX behind [entry] and add it to the rider's routes.
@@ -300,8 +298,7 @@ class RouteImporter(private val context: Context) {
         uri.lastPathSegment
     }
 
-    private fun sanitise(id: String): String =
-        id.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifEmpty { "route" }
+    private fun sanitise(id: String): String = sanitiseRouteId(id)
 
     companion object {
         private const val TAG = "RouteImporter"
@@ -309,32 +306,6 @@ class RouteImporter(private val context: Context) {
     }
 }
 
-/**
- * Provenance for a locally added route.
- *
- * Deliberately not a cached copy of the [RouteEntry] it came from. The listing
- * numbers are a preview and the app recomputes them from the GPX, so keeping
- * them here would create a second, staler answer to questions the track can
- * already answer. What survives is only what the GPX cannot say for itself.
- */
-@Serializable
-data class RouteImportMeta(
-    val name: String? = null,
-    val description: String? = null,
-    val place: String? = null,
-    val tags: List<String> = emptyList(),
-    /** Kept and displayed for as long as the route is installed, because the licence says so. */
-    val attribution: RouteAttribution? = null,
-    val sourceRepoId: String? = null,
-    val sourceRepoName: String? = null,
-    /**
-     * The id the repository gave the route, when it is kept under another:
-     * see RouteImporter.localIdFor. Null for routes added before that, whose
-     * local id is the repository's.
-     */
-    val sourceEntryId: String? = null,
-    val addedEpoch: Long? = null,
-)
 
 sealed class RouteImportResult {
     data class Added(val track: RouteTrack) : RouteImportResult()

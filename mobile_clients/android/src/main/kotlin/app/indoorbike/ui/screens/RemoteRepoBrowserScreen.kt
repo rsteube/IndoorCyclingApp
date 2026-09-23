@@ -61,7 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.library.RepoFetchResult
+import app.indoorbike.shared.repo.RepoFetchResult
 import app.indoorbike.library.WorkoutSource
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.repo.RepositoryManifest

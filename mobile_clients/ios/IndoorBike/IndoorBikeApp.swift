@@ -34,11 +34,17 @@ final class AppModel {
     let settings: SettingsModel
     let history: HistoryModel
     let unfinished: UnfinishedRideModel
+    let routes: RouteLibraryModel
+    let simulation: SimulationModel
     let workouts: [Workout]
 
     var tab: AppTab = .ride
+    /// Which kind of ride is open in the Ride tab.
+    var rideSection: RideSection?
     /// The workout open in the Ride tab.
     var workoutSelection: String?
+    /// The route open in the Ride tab.
+    var routeSelection: String?
     /// The ride open in the History tab.
     var historySelection: Int64?
     /// The ride screen is showing.
@@ -60,6 +66,8 @@ final class AppModel {
         settings = SettingsModel(settings: container.userSettings)
         history = HistoryModel(repository: container.historyRepository)
         unfinished = UnfinishedRideModel(container: container, library: workouts)
+        routes = RouteLibraryModel(container: container)
+        simulation = SimulationModel(engine: container.simulationEngine)
         container.start()
     }
 
@@ -68,16 +76,30 @@ final class AppModel {
         riding = true
     }
 
+    /// Ride [route], from the start or from where the rider got to.
+    func startRoute(_ route: RouteTrack, from progress: RouteProgress?) {
+        ride.prepare { container.prepareRoute(route: route, resumeFrom: progress) }
+        riding = true
+    }
+
+    /// No plan: the rider sets the wattage.
+    func startFreeRide() {
+        ride.prepare { container.prepareFreeRide() }
+        riding = true
+    }
+
     /// Leave the ride screen; a saved ride opens in History.
     func finishRide() {
         let saved = ride.savedSessionId
         ride.close()
         riding = false
+        routes.reloadProgress()
         if let saved { showRide(saved) }
     }
 
     /// Back to a workout from a past ride, to ride it again.
     func showWorkout(_ workoutId: String) {
+        rideSection = .workouts
         workoutSelection = workoutId
         tab = .ride
     }
@@ -111,11 +133,22 @@ final class AppModel {
         if let i = arguments.firstIndex(of: "-demo-tab"), let name = arguments[safe: i + 1] {
             tab = ["history": .history, "progress": .progress, "settings": .settings][name] ?? .ride
         }
+        if let i = arguments.firstIndex(of: "-demo-section"), let name = arguments[safe: i + 1] {
+            rideSection = name == "routes" ? .routes : .workouts
+        }
         guard wantsRide || arguments.contains("-demo-trainer"), !trainer.isConnected else { return }
         trainer.connectMock()
         trainer.toggleMockPedaling()
         let requestedId = arguments.firstIndex(of: "-demo-ride").flatMap { arguments[safe: $0 + 1] }
-        if wantsRide, let workout = workouts.first(where: { $0.id == requestedId }) ?? workouts.first {
+        if wantsRide, requestedId == "route" {
+            // -demo-ride route: the first route in the library, once it has loaded.
+            Task { @MainActor in
+                while routes.routes.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+                startRoute(routes.routes[0], from: nil)
+            }
+        } else if wantsRide, requestedId == "free" {
+            startFreeRide()
+        } else if wantsRide, let workout = workouts.first(where: { $0.id == requestedId }) ?? workouts.first {
             startRide(workout)
         }
         #endif
@@ -130,7 +163,7 @@ struct RootView: View {
     var body: some View {
         TabView(selection: $app.tab) {
             Tab("Ride", systemImage: "bicycle", value: AppTab.ride) {
-                HomeView(app: app)
+                RideHome(app: app)
             }
             Tab("History", systemImage: "clock.arrow.circlepath", value: AppTab.history) {
                 HistoryScreen(app: app)
@@ -144,7 +177,7 @@ struct RootView: View {
         }
         .tabViewStyle(.sidebarAdaptable)
         .fullScreenCover(isPresented: $app.riding) {
-            RideView(ride: app.ride, trainer: app.trainer, ftp: app.settings.ftp, maxHr: app.settings.maxHr) {
+            RideView(ride: app.ride, trainer: app.trainer, simulation: app.simulation, ftp: app.settings.ftp, maxHr: app.settings.maxHr) {
                 app.finishRide()
             }
         }

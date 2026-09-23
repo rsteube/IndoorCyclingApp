@@ -58,9 +58,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.library.RouteFetchResult
+import app.indoorbike.shared.repo.RouteFetchResult
 import app.indoorbike.route.RouteImportResult
-import app.indoorbike.route.RouteSource
+import app.indoorbike.shared.route.RouteSource
 import app.indoorbike.shared.repo.RepositoryManifest
 import app.indoorbike.shared.repo.RouteEntry
 import app.indoorbike.shared.route.RouteEstimate
@@ -386,10 +386,7 @@ private fun creditLine(entry: RouteEntry): String? {
     }
 }
 
-internal fun formatKm(meters: Double): String {
-    val km = meters / 1000.0
-    return if (km >= 100) "${km.roundToInt()} km" else "${(km * 10).roundToInt() / 10.0} km"
-}
+internal fun formatKm(meters: Double): String = app.indoorbike.shared.route.formatKm(meters)
 
 private const val ALL_TAGS = "All"
 

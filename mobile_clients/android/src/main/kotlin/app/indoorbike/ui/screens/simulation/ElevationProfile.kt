@@ -15,6 +15,8 @@
  */
 package app.indoorbike.ui.screens.simulation
 
+import app.indoorbike.shared.route.gradientBand
+import app.indoorbike.shared.route.GradientBand
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -187,48 +189,22 @@ private fun DrawScope.drawProfile(
  * say less. Descents get their own cool colour so the profile distinguishes
  * "free" from "flat" without a legend.
  */
-fun gradientColor(gradient: Double): Color {
-    val percent = gradient * 100.0
-    return when {
-        percent <= -6.0 -> DescentSteep
-        percent <= -1.5 -> Descent
-        percent < 1.5 -> CadenceColors.Fg3
-        percent < 4.0 -> CadenceColors.Success
-        percent < 7.0 -> CadenceColors.Warning
-        percent < 10.0 -> CadenceColors.Fg1
-        percent < 14.0 -> CadenceColors.Fg2
-        else -> CadenceColors.Danger
-    }
+fun gradientColor(gradient: Double): Color = when (gradientBand(gradient)) {
+    GradientBand.SteepDescent -> DescentSteep
+    GradientBand.Descent -> Descent
+    GradientBand.Flat -> CadenceColors.Fg3
+    GradientBand.Gentle -> CadenceColors.Success
+    GradientBand.Moderate -> CadenceColors.Warning
+    GradientBand.Hard -> CadenceColors.Fg1
+    GradientBand.VeryHard -> CadenceColors.Fg2
+    GradientBand.Wall -> CadenceColors.Danger
 }
 
-/** How the gradient reads on the HUD, e.g. "6.4" for a 6.4 % climb. */
-fun formatGradientPercent(gradient: Double): String {
-    val percent = gradient * 100.0
-    val rounded = (abs(percent) * 10).roundToInt() / 10.0
-    val sign = if (percent < -0.05) "-" else ""
-    val whole = rounded.toInt()
-    val tenth = ((rounded - whole) * 10).roundToInt()
-    return "$sign$whole.$tenth"
-}
+/** How the gradient reads on the HUD, e.g. "6.4" for a 6.4 % climb. Shared with iOS. */
+fun formatGradientPercent(gradient: Double): String = app.indoorbike.shared.route.formatGradientPercent(gradient)
 
-/** Distance in the unit the HUD shows: metres under a kilometre, else km. */
-fun formatDistance(meters: Double): String {
-    if (meters < 1_000.0) return "${meters.roundToInt()} m"
-    val km = meters / 1_000.0
-    var whole = km.toInt()
-    var decimals = ((km - whole) * 100).roundToInt()
-    // Rounding the fraction can carry, and the carry has to reach the
-    // kilometres. Without this, 7999.5 m renders as "7.100 km": the fraction
-    // rounds to 100, and padding a three-digit number to two digits leaves it
-    // alone. Any distance within half a metre of a whole kilometre hits it,
-    // which on a route HUD counting down to the finish is exactly the moment
-    // the rider is looking.
-    if (decimals >= 100) {
-        whole += 1
-        decimals -= 100
-    }
-    return "$whole.${decimals.toString().padStart(2, '0')} km"
-}
+/** Distance in the unit the HUD shows: metres under a kilometre, else km. Shared with iOS. */
+fun formatDistance(meters: Double): String = app.indoorbike.shared.route.formatDistance(meters)
 
 private val Descent = Color(0xFF4FA3D1)
 private val DescentSteep = Color(0xFF6FD1E8)

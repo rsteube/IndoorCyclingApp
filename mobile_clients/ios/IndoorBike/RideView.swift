@@ -9,6 +9,7 @@ import shared
 struct RideView: View {
     let ride: RideModel
     let trainer: TrainerModel
+    let simulation: SimulationModel
     let ftp: Int
     let maxHr: Int
     let onClose: () -> Void
@@ -25,22 +26,50 @@ struct RideView: View {
             let _ = updateScale(geometry.size)
             VStack(spacing: 0) {
                 header
-                if wide {
-                    HStack(alignment: .center, spacing: 32) {
-                        powerPanel.frame(maxWidth: .infinity)
-                        intervalPanel.frame(maxWidth: .infinity)
+                if ride.isSimulation {
+                    RouteHUD(
+                        simulation: simulation,
+                        trainer: trainer,
+                        zoneColor: liveZone.color,
+                        heartColor: heartColor,
+                        scale: scale,
+                        wide: wide,
+                        shiftingEnabled: ride.state != .countdown
+                    )
+                    .frame(maxHeight: .infinity)
+                } else if ride.isFreeRide {
+                    Group {
+                        if wide {
+                            HStack(spacing: 32) {
+                                powerPanel.frame(maxWidth: .infinity)
+                                freeRidePanel.frame(maxWidth: .infinity)
+                            }
+                        } else {
+                            VStack(spacing: 24) {
+                                powerPanel
+                                freeRidePanel
+                            }
+                        }
                     }
                     .frame(maxHeight: .infinity)
                 } else {
-                    VStack(spacing: 24) {
-                        powerPanel
-                        intervalPanel
+                    if wide {
+                        HStack(alignment: .center, spacing: 32) {
+                            powerPanel.frame(maxWidth: .infinity)
+                            intervalPanel.frame(maxWidth: .infinity)
+                        }
+                        .frame(maxHeight: .infinity)
+                    } else {
+                        VStack(spacing: 24) {
+                            powerPanel
+                            intervalPanel
+                        }
+                        .frame(maxHeight: .infinity)
                     }
-                    .frame(maxHeight: .infinity)
+                    WorkoutProfile(segments: ride.segments, progress: ride.progress)
+                        .frame(height: (wide ? 90 : 72) * scale)
+                        .padding(.horizontal)
                 }
-                WorkoutProfile(segments: ride.segments, progress: ride.progress)
-                    .frame(height: (wide ? 90 : 72) * scale)
-                    .padding(.horizontal)
                 controls
             }
             .overlay { stateOverlay }
@@ -82,7 +111,7 @@ struct RideView: View {
                 Text(ride.workout?.name ?? "")
                     .font(.headline)
                     .lineLimit(1)
-                Text("\(clock(ride.elapsedSeconds)) / \(clock(ride.totalSeconds))")
+                Text(ride.isOpenEnded ? clock(ride.elapsedSeconds) : "\(clock(ride.elapsedSeconds)) / \(clock(ride.totalSeconds))")
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -97,7 +126,25 @@ struct RideView: View {
         return base * (100 + ride.biasPercent) / 100
     }
 
-    private var zone: Zone { Zone.forPercent(targetPercent) }
+    /// A workout is coloured by the zone it asks for; a free ride and a route,
+    /// which have no plan, by the zone the rider is actually in.
+    private var zone: Zone { ride.isOpenEnded ? liveZone : Zone.forPercent(targetPercent) }
+    private var liveZone: Zone { Zone.forPercent(ftp > 0 ? trainer.power * 100 / ftp : 0) }
+    private var heartColor: Color { HeartZone.of(heartRate: trainer.heartRate, maxHr: maxHr)?.color ?? .primary }
+
+    /// A free ride's target, and the buttons that move it ten watts at a time.
+    private var freeRidePanel: some View {
+        VStack(spacing: 8) {
+            Text("TARGET").font(.system(size: 15 * scale, weight: .semibold)).foregroundStyle(.secondary)
+            Text("\(ride.freeRideTargetWatts) W")
+                .font(.system(size: 64 * scale, weight: .semibold, design: .rounded).monospacedDigit())
+                .contentTransition(.numericText())
+                .animation(.snappy, value: ride.freeRideTargetWatts)
+            Text("± sets the wattage the trainer holds")
+                .font(.system(size: 15 * scale))
+                .foregroundStyle(.secondary)
+        }
+    }
 
     private var powerPanel: some View {
         VStack(spacing: 4) {
@@ -108,14 +155,14 @@ struct RideView: View {
                 .foregroundStyle(zone.color)
                 .contentTransition(.numericText())
                 .animation(.snappy, value: trainer.power)
-            Text("TARGET \(trainer.targetPower) W")
+            Text(ride.isFreeRide ? "WATTS" : "TARGET \(trainer.targetPower) W")
                 .font(.system(size: 20 * scale, weight: .semibold).monospacedDigit())
                 .foregroundStyle(.secondary)
             HStack(spacing: 40 * scale) {
                 Metric(value: trainer.cadence, unit: "RPM", scale: scale)
                 Metric(
                     value: trainer.heartRate, unit: "BPM", scale: scale,
-                    color: HeartZone.of(heartRate: trainer.heartRate, maxHr: maxHr)?.color ?? .primary
+                    color: heartColor
                 )
             }
             .padding(.top, 16 * scale)
@@ -151,12 +198,17 @@ struct RideView: View {
 
     private var controls: some View {
         HStack(spacing: 12) {
-            ControlButton(systemImage: "minus", label: "Easier", action: ride.easier)
-            Text(ride.biasPercent == 0 ? "±0%" : String(format: "%+d%%", ride.biasPercent))
-                .font(.subheadline.monospacedDigit())
-                .frame(minWidth: 48)
-                .accessibilityLabel("Difficulty \(ride.biasPercent) percent")
-            ControlButton(systemImage: "plus", label: "Harder", action: ride.harder)
+            if !ride.isSimulation {
+                // A route's ± is the gear shifter in its HUD.
+                ControlButton(systemImage: "minus", label: "Easier", action: ride.easier)
+                if !ride.isFreeRide {
+                    Text(ride.biasPercent == 0 ? "±0%" : String(format: "%+d%%", ride.biasPercent))
+                        .font(.subheadline.monospacedDigit())
+                        .frame(minWidth: 48)
+                        .accessibilityLabel("Difficulty \(ride.biasPercent) percent")
+                }
+                ControlButton(systemImage: "plus", label: "Harder", action: ride.harder)
+            }
             Spacer()
             if ride.state == .paused {
                 ControlButton(systemImage: "play.fill", label: "Resume", action: ride.resume)
@@ -164,8 +216,10 @@ struct RideView: View {
                 ControlButton(systemImage: "pause.fill", label: "Pause", action: ride.pause)
                     .disabled(!ride.isRiding)
             }
-            ControlButton(systemImage: "forward.end.fill", label: "Skip interval", action: ride.skipSegment)
-                .disabled(!ride.isRiding)
+            if !ride.isOpenEnded {
+                ControlButton(systemImage: "forward.end.fill", label: "Skip interval", action: ride.skipSegment)
+                    .disabled(!ride.isRiding)
+            }
         }
         .padding()
     }

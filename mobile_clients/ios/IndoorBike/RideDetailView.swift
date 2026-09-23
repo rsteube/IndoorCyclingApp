@@ -112,7 +112,11 @@ struct RideDetailView: View {
                     }
                 }
 
-                if stats.distanceMeters > 0 {
+                if let route = detail.route {
+                    RouteSummaryPanel(route: route, session: session)
+                }
+
+                if stats.distanceMeters > 0 && detail.route == nil {
                     Card {
                         HStack {
                             hero(String(format: "%.2f km", Double(stats.distanceMeters) / 1000), "Distance")
@@ -287,6 +291,57 @@ struct TimeInZoneChart: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+    }
+}
+
+/// The road a route ride was on: its shape with what was ridden, the distance
+/// and climbing done, and the profile.
+struct RouteSummaryPanel: View {
+    let route: RouteTrack
+    let session: WorkoutSession
+
+    var body: some View {
+        let total = max(route.totalDistanceMeters, 1)
+        let ridden = session.routeDistanceMeters
+        let startedAt = session.routeStartMeters
+        let continued = startedAt > 1
+        let completed = ridden >= total - 5
+        Card {
+            HStack {
+                Text("VIRTUAL ROUTE").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                if completed {
+                    Text("Completed").font(.caption.weight(.semibold))
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(.green.opacity(0.2), in: Capsule())
+                }
+            }
+            Text(route.name).font(.headline)
+            HStack(spacing: 16) {
+                RouteShapeView(latLons: route.latLons(), riddenFraction: ridden / total, startedFraction: startedAt / total, accent: .orange)
+                    .frame(width: 150, height: 150)
+                VStack(alignment: .leading, spacing: 12) {
+                    stat(continued ? "Ridden today" : "Ridden",
+                         RouteFormatKt.formatDistance(meters: ridden - startedAt),
+                         continued ? "\(RouteFormatKt.formatDistance(meters: ridden)) of \(RouteFormatKt.formatDistance(meters: total))" : "of \(RouteFormatKt.formatDistance(meters: total))")
+                    stat(continued ? "Climbed today" : "Climbed",
+                         "\(Int((session.routeElevationGainMeters - session.routeStartElevationGainMeters).rounded())) m",
+                         continued ? "\(Int(session.routeElevationGainMeters.rounded())) of \(Int(route.totalAscentMeters.rounded())) m" : "of \(Int(route.totalAscentMeters.rounded())) m")
+                }
+            }
+            ElevationProfileView(route: route, distanceMeters: ridden, startedAtMeters: startedAt)
+                .frame(height: 72)
+            Text("Simulated indoors. Gradient and distance from the route, speed from the rider's own power." + (continued ? " Picked up from an earlier ride; the faint part of the road was ridden then." : ""))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func stat(_ label: String, _ value: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label.uppercased()).font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
+            Text(value).font(.title3.weight(.semibold).monospacedDigit())
+            Text(detail).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

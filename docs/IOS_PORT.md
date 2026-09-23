@@ -31,7 +31,8 @@ The Simulator has no Bluetooth. **Use the demo trainer** connects the shared moc
 
 - `-demo-trainer` connects the demo trainer and starts it pedalling.
 - `-demo-ride [workout id]` does the same and opens the ride on that workout, or on the first workout if no id follows. `-demo-ride sample-test` runs a 30-second ride, which is the quickest way to reach the completion and save path.
-- `-demo-tab history|progress|settings` opens on that tab, and `-demo-latest-ride` opens the newest saved ride in History.
+- `-demo-ride route` rides the first route in the library, and `-demo-ride free` starts a free ride.
+- `-demo-tab history|progress|settings` opens on that tab, `-demo-section workouts|routes` opens that part of the Ride tab, and `-demo-latest-ride` opens the newest saved ride in History.
 
 ```sh
 xcrun simctl launch booted app.indoorbike.debug -demo-ride sample-test
@@ -95,7 +96,25 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
     - The ± step for each ride mode (`adjustEffort`).
     - The bug report layout, subject and address (`BugReportText.kt`).
   - Android's settings, ride screen and bug report call these.
-- [ ] **5. Route rides.** Route catalogue with the bundled routes and GPX import. Map (MapKit), elevation profile, virtual gears. The simulation engine is already shared.
+- [x] **5. Route rides, and Just ride.**
+  - **Ride tab:** Android's "What are you riding?" with Workout, Route and Just ride, as a three-column split view on iPad.
+  - **Route library:** the bundled route (Android's `assets/routes`, referenced in place); routes added from community repositories via the registry; and GPX files imported from Files. Routes can be removed, and the rider's saved progress offers "Continue" or "From the start".
+  - **Route ride HUD:**
+    - MapKit, following the rider or showing the whole route.
+    - The gradient, over the next 500 m of road.
+    - The virtual gear with its shifter and the cadence it asks for.
+    - Power, cadence, heart rate, the elevation profile with position, and speed, distance to go and climbing.
+  - **Just ride:** power against a target that moves ±10 W.
+  - **Ride detail:** a route ride shows its road, what was ridden, and the climbing.
+  - **iOS additions in `iosMain`:**
+    - `IosHttp`: HTTPS only, no redirects, Android's timeouts and size caps, and SHA-256 for GPX checks.
+    - `IosRouteLibrary`: Android's `user_routes/` layout and rules.
+    - The registry, cached on disk.
+  - **Moved into `shared` for both apps:**
+    - `RepoClient`: repository manifests, and workout and route bundles, over each platform's HTTP.
+    - `RouteLibrary.kt`: `RouteSource`, `RouteImportMeta`, id sanitising and collision rules, the catalogue merge, and `rideRoute`.
+    - `RouteFormat.kt`: gradient, distance and km formatting, and the gradient colour bands.
+  - Android's repository manager, route catalogue and importer, ride route and HUD formatting call these.
 - [ ] **6. Workout library.** Import from Files, a URL or a QR code (VisionKit), the community registry, and favourites. Workout fetching and import move into `shared`.
 - [ ] **7. Sync and uploads.** Intervals.icu (OAuth through `ASWebAuthenticationSession`), FitTrackee, and the backup folder (Files, with a security-scoped bookmark). Secrets in the Keychain. The uploaders move into `shared` behind a small HTTP interface.
 - [ ] **8. Companion mode.** Companion server on the local network, Bonjour advertising, and the Local Network permission. The UDP beacon needs Apple's multicast entitlement, which Apple has to approve. Without it, companions find the phone through Bonjour only.
