@@ -131,7 +131,7 @@ class CourseTrackTest {
      * index instead would drape the climbs over the wrong corners.
      */
     @Test
-    fun `elevation is placed by distance along the road, not by point number`() {
+    fun `elevation is placed by distance along the road not by point number`() {
         val track = assertNotNull(
             courseTrackOf("t", "t", shape, listOf(0, 100))
         )

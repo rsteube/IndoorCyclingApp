@@ -58,7 +58,7 @@ class CompanionBrandTest {
     }
 
     @Test
-    fun `an accent too dark for a dark screen is lightened, and the change is reported`() {
+    fun `an accent too dark for a dark screen is lightened and the change is reported`() {
         val (palette, adjustments) = BrandColors.resolve("#1B2A5A", null, null)
         assertNotNull(palette)
         assertTrue(
@@ -71,7 +71,7 @@ class CompanionBrandTest {
     }
 
     @Test
-    fun `text on the accent is always readable, chosen when not sent`() {
+    fun `text on the accent is always readable chosen when not sent`() {
         for (accent in listOf("#E4572E", "#F2F4F7", "#FFD400", "#00A36C", "#7B2CBF")) {
             val (palette, _) = BrandColors.resolve(accent, null, null)
             assertNotNull(palette)
@@ -156,7 +156,7 @@ class CompanionBrandTest {
     }
 
     @Test
-    fun `size is judged from the header, before anything is decoded`() {
+    fun `size is judged from the header before anything is decoded`() {
         // Forty thousand pixels declared in thirty-three bytes. Decoding it to
         // find out would be the expensive mistake this check exists to avoid.
         val checked = BrandIcon.check(b64(pngHeader(40_000, 40_000)))
@@ -165,7 +165,7 @@ class CompanionBrandTest {
     }
 
     @Test
-    fun `icons that are not square, too small, not PNG or not base64 are refused by name`() {
+    fun `icons that are not square too small not PNG or not base64 are refused by name`() {
         assertTrue("square" in (BrandIcon.check(b64(pngHeader(256, 128))) as BrandIcon.Checked.Rejected).reason)
         assertTrue("48" in (BrandIcon.check(b64(pngHeader(16, 16))) as BrandIcon.Checked.Rejected).reason)
         assertTrue(

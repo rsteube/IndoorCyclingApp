@@ -15,22 +15,21 @@
  */
 package app.indoorbike.shared.util
 
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.usePinned
+import platform.posix.arc4random_buf
+
 /**
- * Not implemented, and deliberately not guessed at.
- *
- * There is no iOS client in this repository, and the iOS targets cannot be
- * built on the machine this was written on, so an implementation here would be
- * interop nobody had compiled. For a random number generator that is a bad
- * trade: the failure mode of "almost right" is a key that looks fine and is
- * predictable, which nothing downstream can detect.
- *
- * Whoever adds the iOS client should reach for `arc4random_buf` from
- * `platform.posix`, which is Darwin's recommended source, never blocks and has
- * no error path to forget. `SecRandomCopyBytes` is the other correct answer and
- * returns a status worth checking. Do not fall back to `kotlin.random.Random`:
- * see the expect declaration for why.
+ * `arc4random_buf` is Darwin's recommended source: it draws from the kernel
+ * CSPRNG, never blocks and has no error path to forget. Do not fall back to
+ * `kotlin.random.Random`: see the expect declaration for why.
  */
-actual fun secureRandomBytes(n: Int): ByteArray =
-    throw NotImplementedError(
-        "secureRandomBytes is not implemented on iOS; see the KDoc before writing one"
-    )
+@OptIn(ExperimentalForeignApi::class)
+actual fun secureRandomBytes(n: Int): ByteArray {
+    require(n >= 0) { "cannot ask for $n bytes" }
+    val bytes = ByteArray(n)
+    if (n > 0) bytes.usePinned { arc4random_buf(it.addressOf(0), n.convert()) }
+    return bytes
+}

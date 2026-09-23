@@ -119,7 +119,7 @@ class RideDynamicsTest {
     }
 
     @Test
-    fun `a rider who stops on a climb stops, and does not roll backwards`() {
+    fun `a rider who stops on a climb stops and does not roll backwards`() {
         var v = 4.0
         repeat(4 * 60) { v = RideDynamics.step(v, 0.0, 0.10, totalMass, 0.25) }
         assertEquals(0.0, v)

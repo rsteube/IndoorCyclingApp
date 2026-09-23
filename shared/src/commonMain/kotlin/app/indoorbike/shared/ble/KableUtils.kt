@@ -16,6 +16,7 @@
 package app.indoorbike.shared.ble
 
 import com.benasher44.uuid.uuidFrom
+import com.juul.kable.Advertisement
 import com.juul.kable.Characteristic
 import com.juul.kable.Peripheral
 
@@ -34,3 +35,11 @@ internal suspend fun Peripheral.findCharacteristic(
     val service = services?.firstOrNull { it.serviceUuid == sUuid } ?: return null
     return service.characteristics.firstOrNull { it.characteristicUuid == cUuid }
 }
+
+/**
+ * The advertisement's platform identifier as the String the app stores and
+ * compares. Kable's `Identifier` is the MAC address String on Android but a
+ * CoreBluetooth `Uuid` on Apple platforms, so common code must not use it raw.
+ */
+internal val Advertisement.deviceId: String
+    get() = identifier.toString()

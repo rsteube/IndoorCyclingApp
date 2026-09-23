@@ -706,7 +706,7 @@ class TrainerManager {
                         logging(scannerLogging())
                     }.advertisements
                         .onEach { addDiscovered(it) }
-                        .firstOrNull { it.identifier == id }
+                        .firstOrNull { it.deviceId == id }
                 } catch (e: CancellationException) {
                     // Routine: either the scan window timed out or the lifecycle
                     // gate closed under us. Reporting those as "scan failed" put
@@ -895,11 +895,11 @@ class TrainerManager {
     }
 
     private fun addDiscovered(ad: Advertisement) {
-        lastAdvertisements[ad.identifier] = ad
+        lastAdvertisements[ad.deviceId] = ad
         val current = _discoveredDevices.value
-        if (current.none { it.id == ad.identifier }) {
+        if (current.none { it.id == ad.deviceId }) {
             _discoveredDevices.value = current + TrainerCandidate(
-                id = ad.identifier,
+                id = ad.deviceId,
                 name = ad.name,
                 rssi = ad.rssi
             )
@@ -913,12 +913,12 @@ class TrainerManager {
         link?.let { endLink(it, settle = false) }
 
         _connectionState.value = TrainerConnectionState.Connecting
-        _pairedTrainerId.value = advertisement.identifier
+        _pairedTrainerId.value = advertisement.deviceId
         _connectedTrainerName.value = advertisement.name ?: "Unknown Trainer"
 
         // Connecting to a trainer (manual or auto) means we want to stay on it:
         // arm persistent reconnect so a later drop is chased automatically.
-        targetPairedId = advertisement.identifier
+        targetPairedId = advertisement.deviceId
         wantReconnect.value = true
         reconnectBeforeScan = false
 
@@ -944,14 +944,14 @@ class TrainerManager {
         toldManualRoad = false
 
         val newLink = BleLink.open(scope, advertisement) {
-            logging(peripheralLogging(advertisement.identifier))
+            logging(peripheralLogging(advertisement.deviceId))
             // With a handler registered, Kable sends observation failures here
             // rather than through the observe flow. Log with device context,
             // then rethrow to keep the existing behaviour of terminating the flow.
             observationExceptionHandler { cause ->
                 Log.w(
                     TAG,
-                    "Trainer observation failed on ${redactDeviceId(advertisement.identifier)}",
+                    "Trainer observation failed on ${redactDeviceId(advertisement.deviceId)}",
                     cause,
                 )
                 throw cause

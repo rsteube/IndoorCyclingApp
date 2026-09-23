@@ -118,7 +118,7 @@ class RouteTrackTest {
     }
 
     @Test
-    fun `climbing is counted once, descending separately`() {
+    fun `climbing is counted once descending separately`() {
         // Up 100 m over the first half, back down over the second.
         val route = straightRoad(lengthMeters = 2_000.0) { d ->
             if (d <= 1_000.0) d * 0.1 else 100.0 - (d - 1_000.0) * 0.1

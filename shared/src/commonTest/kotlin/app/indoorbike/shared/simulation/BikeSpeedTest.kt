@@ -39,7 +39,7 @@ class BikeSpeedTest {
     }
 
     @Test
-    fun `pulling away, the legs' speed is there on the first turn of the crank`() {
+    fun `pulling away the legs' speed is there on the first turn of the crank`() {
         val b = BikeSpeed()
         b.update(powerWatts = 150.0, driveSpeedMps = 3.0, gradient = 0.0, crr = VirtualSpeed.CRR, totalMassKg = mass, dtSeconds = 0.25)
         assertEquals(3.0, b.mps, absoluteTolerance = 1e-9)
@@ -51,7 +51,7 @@ class BikeSpeedTest {
      * does not: it has 84 kg of momentum and a shift adds no energy.
      */
     @Test
-    fun `once moving, a shift cannot make the bike's speed jump`() {
+    fun `once moving a shift cannot make the bike's speed jump`() {
         val b = BikeSpeed()
         b.ride(seconds = 90.0, power = 200.0, drive = 8.0)
         val settled = b.mps

@@ -173,7 +173,7 @@ class CompanionRoadTest {
      * what they land on is an ordinary flat road at the pace they were going.
      */
     @Test
-    fun `speed is held through a timeout, never ramped`() {
+    fun `speed is held through a timeout never ramped`() {
         val road = CompanionRoad()
         road.accept(world(1, gradient = 0.12, speed = 9.0), nowMs = 1_000)
         assertEquals(0.0, road.effectiveGradient(10_000))
@@ -181,7 +181,7 @@ class CompanionRoadTest {
     }
 
     @Test
-    fun `a descent ramps back up to flat, not down`() {
+    fun `a descent ramps back up to flat not down`() {
         val road = CompanionRoad()
         road.accept(world(1, gradient = -0.10), nowMs = 0)
         assertEquals(-0.05, road.effectiveGradient(2_500), absoluteTolerance = 1e-9)
@@ -199,7 +199,7 @@ class CompanionRoadTest {
     }
 
     @Test
-    fun `a road with nothing on it yet is flat, not stale-ramping from a guess`() {
+    fun `a road with nothing on it yet is flat not stale-ramping from a guess`() {
         val road = CompanionRoad()
         assertTrue(road.isStale(0))
         assertEquals(0.0, road.effectiveGradient(0))

@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
 class DriveSpeedTest {
 
     @Test
-    fun `until a crank turns, the road speed comes from the caller`() {
+    fun `until a crank turns the road speed comes from the caller`() {
         val d = DriveSpeed()
         assertFalse(d.available)
         assertEquals(8.5, d.speedMps(developmentMeters = 6.0, fallbackMps = 8.5))
@@ -107,7 +107,7 @@ class DriveSpeedTest {
      * filter eases up from a standstill they are no longer at.
      */
     @Test
-    fun `pulling away again is instant, not filtered up from zero`() {
+    fun `pulling away again is instant not filtered up from zero`() {
         val d = DriveSpeed()
         repeat(40) { d.update(cadenceRpm = 90, dtSeconds = 0.25) }
         repeat(20) { d.update(cadenceRpm = 0, dtSeconds = 0.25) }

@@ -47,7 +47,7 @@ class LocalChangesTest {
     }
 
     @Test
-    fun `an unchanged setting keeps its date, so a newer change elsewhere wins it`() {
+    fun `an unchanged setting keeps its date so a newer change elsewhere wins it`() {
         val published = settings(epoch = 1_000, ftp = 200)
         val mine = LocalChanges.settings(settings(epoch = 0, ftp = 200), published, nowMs = 5_000)
         assertEquals(1_000, mine.epochOf(LocalChanges.FTP))

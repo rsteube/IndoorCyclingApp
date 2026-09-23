@@ -55,7 +55,7 @@ class CompanionCodecTest {
      * care.
      */
     @Test
-    fun `an unknown frame type is reported as unknown, not as an error`() {
+    fun `an unknown frame type is reported as unknown not as an error`() {
         val decoded = CompanionCodec.decodeClientFrame("""{"t":"steering","angle":0.4}""")
         assertEquals(Decoded.Unknown("steering"), decoded)
     }

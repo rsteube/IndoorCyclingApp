@@ -96,7 +96,7 @@ class ResistanceHoldTest {
     }
 
     @Test
-    fun `follows a step, up and back down`() {
+    fun `follows a step up and back down`() {
         val range = ResistanceRange(0.0, 100.0, 1.0)
         val bike = Bike(range)
         val hold = ResistanceHold(range)

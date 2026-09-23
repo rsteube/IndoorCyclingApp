@@ -62,7 +62,7 @@ class SimulationRideTest {
     }
 
     @Test
-    fun `the ride is bounded by the route, not by the clock`() {
+    fun `the ride is bounded by the route not by the clock`() {
         // The single segment is only the wake-lock backstop, so it must be long
         // enough that no real route ride reaches it.
         val workout = simulationWorkout("demo-loop", "Demo Loop")

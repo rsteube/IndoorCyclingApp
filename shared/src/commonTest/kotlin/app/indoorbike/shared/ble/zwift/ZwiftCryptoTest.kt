@@ -122,7 +122,7 @@ class ZwiftHandshakeTest {
     }
 
     @Test
-    fun `a bare RideOn is a plaintext ack, not a key exchange`() {
+    fun `a bare RideOn is a plaintext ack not a key exchange`() {
         assertNull(ZwiftHandshake.devicePublicKey(ZwiftHandshake.RIDE_ON))
         assertTrue(ZwiftHandshake.isPlaintextAck(ZwiftHandshake.RIDE_ON))
     }

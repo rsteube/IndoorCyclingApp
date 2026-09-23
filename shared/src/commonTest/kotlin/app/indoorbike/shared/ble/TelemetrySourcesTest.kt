@@ -24,7 +24,7 @@ class TelemetrySourcesTest {
     private val stale = TelemetrySources.STALE_AFTER_MS
 
     @Test
-    fun `with no dedicated service, Indoor Bike Data is always believed`() {
+    fun `with no dedicated service Indoor Bike Data is always believed`() {
         val s = TelemetrySources()
         assertTrue(s.bikeDataPowerCounts(0))
         assertTrue(s.bikeDataCadenceCounts(0))
@@ -32,7 +32,7 @@ class TelemetrySourcesTest {
     }
 
     @Test
-    fun `a speaking power service outranks it, and a silent one does not`() {
+    fun `a speaking power service outranks it and a silent one does not`() {
         val s = TelemetrySources()
         s.heardPowerService(10_000, carriesCrank = true)
         assertFalse(s.bikeDataPowerCounts(10_000 + stale))

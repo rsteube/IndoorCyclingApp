@@ -72,7 +72,7 @@ class CompanionUntrackedTest {
     }
 
     @Test
-    fun `untracked is asked for like any other state, and carries a label`() {
+    fun `untracked is asked for like any other state and carries a label`() {
         val s = ready(state = { CompanionState.ACTIVE })
         val effect = s.onFrame(
             """{"t":"setState","state":"untracked","label":"Pushing the bike"}""",
@@ -127,7 +127,7 @@ class CompanionUntrackedTest {
     }
 
     @Test
-    fun `a target out of range is clamped and said so, like a road`() {
+    fun `a target out of range is clamped and said so like a road`() {
         val effects = ready().onFrame("""{"t":"setPower","watts":1500}""", nowMs = 1_000)
 
         val warning = effects.sent<WarningFrame>()

@@ -24,7 +24,7 @@ class IndoorBikeDataTest {
     private fun bytes(vararg ints: Int) = ByteArray(ints.size) { ints[it].toByte() }
 
     @Test
-    fun `speed, cadence and power, as a smart bike sends them`() {
+    fun `speed cadence and power as a smart bike sends them`() {
         // Flags 0x0044: speed present (bit 0 clear), cadence, power.
         // 30.00 km/h, 85 rpm (170 half-rpm), 200 W.
         val data = IndoorBikeData.parse(bytes(0x44, 0x00, 0xB8, 0x0B, 0xAA, 0x00, 0xC8, 0x00))

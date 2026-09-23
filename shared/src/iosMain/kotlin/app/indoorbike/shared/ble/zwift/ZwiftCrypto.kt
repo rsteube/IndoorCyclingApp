@@ -15,9 +15,18 @@
  */
 package app.indoorbike.shared.ble.zwift
 
-// There is no iOS client in this repository yet. The declarations exist so the
-// iOS targets still compile; implement them alongside an iOS BLE stack, not
-// before, so they can be tested against a real controller rather than guessed.
+import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.addressOf
+import kotlinx.cinterop.convert
+import kotlinx.cinterop.usePinned
+import platform.CoreCrypto.CCHmac
+import platform.CoreCrypto.CC_SHA256_DIGEST_LENGTH
+import platform.CoreCrypto.kCCHmacAlgSHA256
+
+// The key exchange and AES are not implemented on iOS yet: do them alongside
+// the iOS BLE stack, so they can be tested against a real controller rather
+// than guessed. HMAC is here already because companion pairing signs with it
+// too (CompanionSecurity), and it is covered by the common reference vectors.
 private const val UNSUPPORTED = "Zwift controller crypto is not implemented on iOS"
 
 actual class ZwiftKeyPair {
@@ -30,8 +39,26 @@ actual class ZwiftKeyPair {
 
 actual fun generateZwiftKeyPair(): ZwiftKeyPair = throw NotImplementedError(UNSUPPORTED)
 
-actual fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray =
-    throw NotImplementedError(UNSUPPORTED)
+@OptIn(ExperimentalForeignApi::class)
+actual fun hmacSha256(key: ByteArray, data: ByteArray): ByteArray {
+    val out = ByteArray(CC_SHA256_DIGEST_LENGTH)
+    // addressOf(0) is out of bounds on an empty array; CCHmac takes null there.
+    key.usePinned { k ->
+        data.usePinned { d ->
+            out.usePinned { o ->
+                CCHmac(
+                    kCCHmacAlgSHA256,
+                    if (key.isEmpty()) null else k.addressOf(0),
+                    key.size.convert(),
+                    if (data.isEmpty()) null else d.addressOf(0),
+                    data.size.convert(),
+                    o.addressOf(0),
+                )
+            }
+        }
+    }
+    return out
+}
 
 actual fun aesEncryptBlock(key: ByteArray, block: ByteArray): ByteArray =
     throw NotImplementedError(UNSUPPORTED)

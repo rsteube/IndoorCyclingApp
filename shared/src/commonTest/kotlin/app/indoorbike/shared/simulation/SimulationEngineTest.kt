@@ -87,7 +87,7 @@ class SimulationEngineTest {
     }
 
     @Test
-    fun `no effort, no progress`() {
+    fun `no effort no progress`() {
         val h = Harness(power = 0)
         h.engine.load(flatRoad(5_000.0))
         h.ride(seconds = 30)
@@ -225,7 +225,7 @@ class SimulationEngineTest {
     }
 
     @Test
-    fun `every downshift is felt, even arriving at a climb off a fast descent`() {
+    fun `every downshift is felt even arriving at a climb off a fast descent`() {
         // The case that exposed the hard ceiling: 50 km/h onto a climb in a big
         // gear stacks gravity, a large aerodynamic term and the gear multiplier
         // into a force far past anything a trainer applies. Clipped flat, the
@@ -388,7 +388,7 @@ class SimulationEngineTest {
      * three times what a bicycle asks for, and riders felt it as a wall.
      */
     @Test
-    fun `a shift moves the force by the gear ratio, at speed and on a climb alike`() {
+    fun `a shift moves the force by the gear ratio at speed and on a climb alike`() {
         val gear = Drivetrain.ROAD.gearCount - 8
         val ratio = Drivetrain.ROAD.developmentMeters(gear - 1) / Drivetrain.ROAD.developmentMeters(gear)
 
