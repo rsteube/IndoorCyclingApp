@@ -13,23 +13,14 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.sync
+package app.indoorbike.shared.sync
 
-import app.indoorbike.library.WorkoutImporter
-import app.indoorbike.library.WorkoutLibrary
+import app.indoorbike.shared.Workout
+import app.indoorbike.shared.library.ImportMeta
+import kotlinx.coroutines.IO
+import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.settings.UserSettings
-import app.indoorbike.shared.sync.BackupDocument
-import app.indoorbike.shared.sync.BackupImportedWorkout
-import app.indoorbike.shared.sync.BackupMerger
-import app.indoorbike.shared.sync.BackupSafety
-import app.indoorbike.shared.sync.BackupParseException
-import app.indoorbike.shared.sync.BackupSerializer
-import app.indoorbike.shared.sync.BackupSession
-import app.indoorbike.shared.sync.BackupSettings
-import app.indoorbike.shared.sync.BackupSliceBuilder
-import app.indoorbike.shared.sync.LocalChanges
-import app.indoorbike.shared.sync.MergedState
 import app.indoorbike.shared.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +33,21 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
 /**
- * Orchestrates one sync round-trip against the rider's chosen folder:
+ * The rider's own workouts as sync sees them: each app's importer and library
+ * behind the few calls a round makes.
+ */
+interface SyncWorkoutLibrary {
+    fun loadUserWorkouts(): List<Workout>
+    fun loadImportMeta(workoutId: String): ImportMeta?
+    suspend fun saveWorkout(workout: Workout, sourceRepoId: String?, sourceRepoName: String?, addedEpoch: Long): Workout
+    suspend fun deleteUserWorkout(workoutId: String): Boolean
+    /** Re-read the library once a round has changed it, before anything reads it again. */
+    suspend fun refresh()
+}
+
+/**
+ * Orchestrates one sync round-trip against the rider's chosen folder, shared
+ * by both apps:
  *
  *   1. **Pull** every device-slice in the folder.
  *   2. **Diff** local state vs. our previous own-slice (if any) to derive
@@ -71,8 +76,8 @@ import kotlinx.coroutines.sync.withLock
 class SyncEngine(
     private val userSettings: UserSettings,
     private val historyRepository: HistoryRepository,
-    private val workoutImporter: WorkoutImporter,
-    private val workoutLibrary: WorkoutLibrary,
+    /** The rider's own workouts, which sync carries between devices. */
+    private val workoutLibrary: SyncWorkoutLibrary,
     /**
      * Builds a [SyncStorage] from current settings or returns null when
      * the rider hasn't picked a sync folder. Re-evaluated on every
@@ -80,7 +85,7 @@ class SyncEngine(
      * rebuild.
      */
     private val storageProvider: () -> SyncStorage?,
-    private val now: () -> Long = { System.currentTimeMillis() },
+    private val now: () -> Long = ::getCurrentEpochMillis,
 ) {
 
     private val mutex = Mutex()
@@ -204,7 +209,7 @@ class SyncEngine(
             }
         val localSessions = historyRepository.getAllSessions().first()
             .count { it.externalId.isNotEmpty() }
-        val localImports = workoutImporter.loadUserWorkouts().size
+        val localImports = workoutLibrary.loadUserWorkouts().size
         needsReview(previousOwn, others, localSessions, localImports)
     }
 
@@ -375,7 +380,7 @@ class SyncEngine(
         applyMergedImports(merged, localImportsBefore, applyDeletes)
         // Single rebuild after all import writes - saves N redundant rebuilds
         // when many workouts arrive from a peer.
-        workoutLibrary.refreshImportsAwait()
+        workoutLibrary.refresh()
 
         // 5. Build final self-slice from POST-apply local state, each value
         //    carrying the date it won the merge with.
@@ -423,8 +428,8 @@ class SyncEngine(
 
     /** This device's imported workouts, with where they came from, as the backup describes them. */
     private suspend fun localImports(): List<BackupImportedWorkout> = withContext(Dispatchers.IO) {
-        workoutImporter.loadUserWorkouts().map { workout ->
-            val meta = workoutImporter.loadImportMeta(workout.id)
+        workoutLibrary.loadUserWorkouts().map { workout ->
+            val meta = workoutLibrary.loadImportMeta(workout.id)
             BackupImportedWorkout(
                 workout = workout,
                 sourceRepoId = meta?.sourceRepoId,
@@ -516,7 +521,7 @@ class SyncEngine(
             val same = local != null && local.workout == w.workout &&
                 local.sourceRepoId == w.sourceRepoId && local.sourceRepoName == w.sourceRepoName
             if (same) continue
-            workoutImporter.saveWorkout(
+            workoutLibrary.saveWorkout(
                 workout = w.workout,
                 sourceRepoId = w.sourceRepoId,
                 sourceRepoName = w.sourceRepoName,
@@ -527,7 +532,7 @@ class SyncEngine(
         // Tombstones: delete local copies of anything tombstoned.
         val localIds = mine.keys
         for (t in state.importedTombstones) {
-            if (t.id in localIds) workoutImporter.deleteUserWorkout(t.id)
+            if (t.id in localIds) workoutLibrary.deleteUserWorkout(t.id)
         }
     }
 

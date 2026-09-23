@@ -145,17 +145,8 @@ object IosHttp {
     }
 
     /** Lower-case hex SHA-256, for checking a download against its listing. */
-    fun sha256Hex(bytes: ByteArray): String {
-        val digest = UByteArray(CC_SHA256_DIGEST_LENGTH)
-        digest.usePinned { out ->
-            if (bytes.isEmpty()) {
-                CC_SHA256(null, 0u, out.addressOf(0))
-            } else {
-                bytes.usePinned { input -> CC_SHA256(input.addressOf(0), bytes.size.convert(), out.addressOf(0)) }
-            }
-        }
-        return digest.joinToString("") { it.toString(16).padStart(2, '0') }
-    }
+    fun sha256Hex(bytes: ByteArray): String =
+        app.indoorbike.shared.util.sha256(bytes).joinToString("") { (it.toInt() and 0xFF).toString(16).padStart(2, '0') }
 }
 
 @OptIn(ExperimentalForeignApi::class, BetaInteropApi::class)

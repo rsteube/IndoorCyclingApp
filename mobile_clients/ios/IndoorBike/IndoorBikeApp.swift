@@ -37,6 +37,7 @@ final class AppModel {
     let routes: RouteLibraryModel
     let simulation: SimulationModel
     let library: LibraryModel
+    let sync: SyncModel
 
     var workouts: [Workout] { library.workouts }
     /// A short line about something that just happened, shown for a moment.
@@ -55,7 +56,7 @@ final class AppModel {
     var riding = false
 
     init() {
-        let container = IosAppContainer(bundledWorkoutJson: Self.bundledWorkoutFiles())
+        let container = IosAppContainer(bundledWorkoutJson: Self.bundledWorkoutFiles(), secrets: KeychainStore())
         self.container = container
         let library = LibraryModel(container: container)
         self.library = library
@@ -72,6 +73,7 @@ final class AppModel {
         unfinished = UnfinishedRideModel(container: container, library: { library.workouts })
         routes = RouteLibraryModel(container: container)
         simulation = SimulationModel(engine: container.simulationEngine)
+        sync = SyncModel(container: container)
         container.start()
     }
 
@@ -137,6 +139,13 @@ final class AppModel {
                 if let workout = result.singleWorkout { self.showWorkout(workout.id) }
             }
         }
+        if url.scheme == "indoorbike" && url.host == "oauth" {
+            // FitTrackee's sign-in coming back from the browser.
+            container.completeFitTrackeeSignIn(redirect: url.absoluteString) { [weak self] error in
+                MainActor.assumeIsolated { self?.show(error ?? "Connected to FitTrackee") }
+            }
+            return
+        }
         if url.isFileURL {
             let accessed = url.startAccessingSecurityScopedResource()
             defer { if accessed { url.stopAccessingSecurityScopedResource() } }
@@ -172,6 +181,15 @@ final class AppModel {
         if let i = arguments.firstIndex(of: "-demo-open"), let link = arguments[safe: i + 1], let url = URL(string: link) {
             // As if the system had opened the link, without its confirmation.
             open(url)
+        }
+        if arguments.contains("-demo-sync-folder") {
+            // A sync folder inside the app's own Documents, as if picked in Files.
+            let folder = URL.documentsDirectory.appendingPathComponent("sync-test", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            if let bookmark = try? folder.bookmarkData() {
+                container.userSettings.setSyncFolderUri(uri: bookmark.base64EncodedString())
+                container.syncNow()
+            }
         }
         if let i = arguments.firstIndex(of: "-demo-section"), let name = arguments[safe: i + 1] {
             rideSection = name == "routes" ? .routes : .workouts

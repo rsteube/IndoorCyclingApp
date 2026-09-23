@@ -37,6 +37,13 @@ import platform.UIKit.UIDevice
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
+/** Where the app keeps secrets: the Keychain, implemented in Swift. */
+interface SecretStore {
+    fun get(key: String): String?
+    /** Null removes it. */
+    fun set(key: String, value: String?)
+}
+
 /**
  * [UserSettings] in [NSUserDefaults], under the key names the Android app uses
  * in DataStore, and with the same limits: a value outside a setting's range is
@@ -45,13 +52,14 @@ import kotlin.uuid.Uuid
  * NSUserDefaults is synchronous and cached in memory, so each setter writes
  * straight through; there is no background scope to dispose of.
  *
- * **Secrets are not persisted yet.** The Intervals.icu and FitTrackee
- * credentials belong in the Keychain, which arrives with sync (milestone 7 of
- * docs/IOS_PORT.md). Until then they live only in memory, so they are never
- * written to the plain-text defaults, and nothing on iOS can set them anyway.
+ * **Secrets go to [secrets]**, which the app backs with the Keychain: the
+ * Intervals.icu API key and token, and the FitTrackee client secret and
+ * tokens, the same five the Android app seals with its keystore. They are
+ * never written to the plain-text defaults.
  */
 @OptIn(ExperimentalUuidApi::class)
 class IosUserSettings(
+    private val secrets: SecretStore,
     private val defaults: NSUserDefaults = NSUserDefaults.standardUserDefaults,
 ) : UserSettings {
 
@@ -88,9 +96,13 @@ class IosUserSettings(
         if (cleaned == null) defaults.removeObjectForKey(key) else defaults.setObject(cleaned, key)
     }
 
-    /** In memory only; see the class comment. */
-    private fun putSecret(flow: MutableStateFlow<String?>, raw: String?) {
-        flow.value = raw?.trim()?.takeIf { it.isNotEmpty() }
+    private fun secret(key: String): MutableStateFlow<String?> = MutableStateFlow(secrets.get(key))
+
+    /** Trimmed and removed when blank, into the Keychain; see the class comment. */
+    private fun putSecret(key: String, flow: MutableStateFlow<String?>, raw: String?) {
+        val cleaned = raw?.trim()?.takeIf { it.isNotEmpty() }
+        flow.value = cleaned
+        secrets.set(key, cleaned)
     }
 
     private val _ftp = int(KEY_FTP, DEFAULT_FTP)
@@ -150,17 +162,17 @@ class IosUserSettings(
     override val intervalsAthleteId: StateFlow<String?> = _intervalsAthleteId.asStateFlow()
     override fun setIntervalsAthleteId(id: String?) = putString(KEY_INTERVALS_ATHLETE, _intervalsAthleteId, id)
 
-    private val _intervalsApiKey = MutableStateFlow<String?>(null)
+    private val _intervalsApiKey = secret(KEY_INTERVALS_API_KEY)
     override val intervalsApiKey: StateFlow<String?> = _intervalsApiKey.asStateFlow()
-    override fun setIntervalsApiKey(key: String?) = putSecret(_intervalsApiKey, key)
+    override fun setIntervalsApiKey(key: String?) = putSecret(KEY_INTERVALS_API_KEY, _intervalsApiKey, key)
 
     private val _intervalsAutoUpload = bool(KEY_INTERVALS_AUTO)
     override val intervalsAutoUpload: StateFlow<Boolean> = _intervalsAutoUpload.asStateFlow()
     override fun setIntervalsAutoUpload(value: Boolean) = putBool(KEY_INTERVALS_AUTO, _intervalsAutoUpload, value)
 
-    private val _intervalsAccessToken = MutableStateFlow<String?>(null)
+    private val _intervalsAccessToken = secret(KEY_INTERVALS_ACCESS)
     override val intervalsAccessToken: StateFlow<String?> = _intervalsAccessToken.asStateFlow()
-    override fun setIntervalsAccessToken(token: String?) = putSecret(_intervalsAccessToken, token)
+    override fun setIntervalsAccessToken(token: String?) = putSecret(KEY_INTERVALS_ACCESS, _intervalsAccessToken, token)
 
     private val _intervalsAthleteName = string(KEY_INTERVALS_ATHLETE_NAME)
     override val intervalsAthleteName: StateFlow<String?> = _intervalsAthleteName.asStateFlow()
@@ -180,17 +192,17 @@ class IosUserSettings(
     override val fitTrackeeClientId: StateFlow<String?> = _fitTrackeeClientId.asStateFlow()
     override fun setFitTrackeeClientId(id: String?) = putString(KEY_FT_CLIENT_ID, _fitTrackeeClientId, id)
 
-    private val _fitTrackeeClientSecret = MutableStateFlow<String?>(null)
+    private val _fitTrackeeClientSecret = secret(KEY_FT_CLIENT_SECRET)
     override val fitTrackeeClientSecret: StateFlow<String?> = _fitTrackeeClientSecret.asStateFlow()
-    override fun setFitTrackeeClientSecret(secret: String?) = putSecret(_fitTrackeeClientSecret, secret)
+    override fun setFitTrackeeClientSecret(secret: String?) = putSecret(KEY_FT_CLIENT_SECRET, _fitTrackeeClientSecret, secret)
 
-    private val _fitTrackeeAccessToken = MutableStateFlow<String?>(null)
+    private val _fitTrackeeAccessToken = secret(KEY_FT_ACCESS)
     override val fitTrackeeAccessToken: StateFlow<String?> = _fitTrackeeAccessToken.asStateFlow()
-    override fun setFitTrackeeAccessToken(token: String?) = putSecret(_fitTrackeeAccessToken, token)
+    override fun setFitTrackeeAccessToken(token: String?) = putSecret(KEY_FT_ACCESS, _fitTrackeeAccessToken, token)
 
-    private val _fitTrackeeRefreshToken = MutableStateFlow<String?>(null)
+    private val _fitTrackeeRefreshToken = secret(KEY_FT_REFRESH)
     override val fitTrackeeRefreshToken: StateFlow<String?> = _fitTrackeeRefreshToken.asStateFlow()
-    override fun setFitTrackeeRefreshToken(token: String?) = putSecret(_fitTrackeeRefreshToken, token)
+    override fun setFitTrackeeRefreshToken(token: String?) = putSecret(KEY_FT_REFRESH, _fitTrackeeRefreshToken, token)
 
     private val _fitTrackeeSportId = int(KEY_FT_SPORT, DEFAULT_FITTRACKEE_SPORT_ID)
     override val fitTrackeeSportId: StateFlow<Int> = _fitTrackeeSportId.asStateFlow()
@@ -256,6 +268,13 @@ class IosUserSettings(
         const val KEY_FT_URL = "fittrackee_url"
         const val KEY_FT_CLIENT_ID = "fittrackee_client_id"
         const val KEY_FT_SPORT = "fittrackee_sport_id"
+
+        // The secrets' names in the Keychain: Android's DataStore keys.
+        const val KEY_INTERVALS_API_KEY = "intervals_api_key"
+        const val KEY_INTERVALS_ACCESS = "intervals_access_token"
+        const val KEY_FT_CLIENT_SECRET = "fittrackee_client_secret"
+        const val KEY_FT_ACCESS = "fittrackee_access_token"
+        const val KEY_FT_REFRESH = "fittrackee_refresh_token"
         const val KEY_FT_AUTO = "fittrackee_auto_upload"
         const val KEY_FAVOURITES = "favourite_workout_ids"
         const val KEY_DEVICE_ID = "device_id"

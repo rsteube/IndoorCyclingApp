@@ -13,22 +13,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.sync
+package app.indoorbike.shared.sync
 
-import kotlinx.coroutines.CancellationException
-import android.content.Context
-import android.net.Uri
-import android.util.Base64
-import app.indoorbike.BuildConfig
-import app.indoorbike.library.HttpFetcher
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.net.HttpClient
+import app.indoorbike.shared.net.formEncode
 import app.indoorbike.shared.settings.UserSettings
-import app.indoorbike.shared.sync.IntervalsIcuOAuth
+import app.indoorbike.shared.util.KeyValueStore
 import app.indoorbike.shared.util.Log
-import java.security.SecureRandom
+import app.indoorbike.shared.util.secureRandomBytes
+import kotlinx.coroutines.CancellationException
 
 /**
  * Uploads a completed ride to Intervals.icu as a FIT activity, and signs the
@@ -56,6 +53,9 @@ import java.security.SecureRandom
  * user taps Upload (or after a ride completes when auto-upload is on). The
  * uploader itself never reads settings except to compose the request.
  *
+ * Shared by both apps: each supplies its HTTPS, where a sign-in in progress
+ * is kept, and the OAuth client its build carries.
+ *
  * **Posture.** Intervals.icu is a non-free SaaS, and this integration is the
  * app's only path to one. What matters is that it exists rather than that it
  * runs: with default settings the app makes
@@ -67,30 +67,30 @@ import java.security.SecureRandom
  * doesn't leak via that channel either.
  */
 class IntervalsIcuUploader(
-    context: Context,
+    private val http: HttpClient,
     private val historyRepository: HistoryRepository,
     private val userSettings: UserSettings,
-) {
-    private val appContext = context.applicationContext
-
     /**
      * The CSRF state for a sign-in in progress. Persisted rather than held in
      * memory because the app can be killed while the browser is in front of it,
      * and cleared the moment it is spent.
      */
-    private val pending by lazy {
-        appContext.getSharedPreferences("intervals_oauth", Context.MODE_PRIVATE)
-    }
+    private val pending: KeyValueStore,
+    /** The OAuth client this build carries; blank in a build from source without one. */
+    private val clientId: String,
+    private val clientSecret: String,
+    /**
+     * Whether this build may offer sign-in at all. Android's debug builds may
+     * not: the code comes back through a verified app link, and indoorbike.app
+     * vouches for the release key alone, so a debug build offering sign-in
+     * would send the rider to a consent page whose answer can never reach it.
+     */
+    private val signInAllowed: Boolean = true,
+) {
 
     /** Whether this build can sign a rider in, rather than asking for their API key. */
     val signInAvailable: Boolean
-        // Never in a debug build. The code comes back through a verified app
-        // link, and indoorbike.app vouches for the release key alone: the debug
-        // key is published with the source, so nothing may trust it. A debug
-        // build offering sign-in would send the rider to a consent page whose
-        // answer can never reach it.
-        get() = !BuildConfig.DEBUG &&
-            BuildConfig.INTERVALS_CLIENT_ID.isNotBlank() && BuildConfig.INTERVALS_CLIENT_SECRET.isNotBlank()
+        get() = signInAllowed && clientId.isNotBlank() && clientSecret.isNotBlank()
 
     /**
      * The consent page to open in a browser, or null in a build without the
@@ -99,10 +99,9 @@ class IntervalsIcuUploader(
      */
     fun authorizeUrl(): String? {
         if (!signInAvailable) return null
-        val bytes = ByteArray(16).also { SecureRandom().nextBytes(it) }
-        val state = Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-        pending.edit().putString(KEY_STATE, state).apply()
-        return IntervalsIcuOAuth.authorizeUrl(BuildConfig.INTERVALS_CLIENT_ID, state)
+        val state = base64UrlNoPadding(secureRandomBytes(16))
+        pending.put(KEY_STATE, state)
+        return IntervalsIcuOAuth.authorizeUrl(clientId, state)
     }
 
     /**
@@ -113,9 +112,8 @@ class IntervalsIcuUploader(
      * same job with less reach, and a key left behind on the phone is a key that
      * can still do everything.
      */
-    suspend fun completeAuthorization(redirect: Uri): SignIn {
-        val expected = pending.getString(KEY_STATE, null)
-        val parameters = redirect.queryParameterNames.associateWith { redirect.getQueryParameter(it) }
+    suspend fun completeAuthorization(parameters: Map<String, String?>): SignIn {
+        val expected = pending.get(KEY_STATE)
         val code = when (val callback = IntervalsIcuOAuth.readCallback(parameters, expected)) {
             is IntervalsIcuOAuth.Callback.Refused -> {
                 // A refusal that is not about the state still spends it: the
@@ -128,11 +126,11 @@ class IntervalsIcuUploader(
         clearPending()
 
         val result = try {
-            HttpFetcher.postForm(
+            http.postForm(
                 IntervalsIcuOAuth.TOKEN_URL,
                 mapOf(
-                    "client_id" to BuildConfig.INTERVALS_CLIENT_ID,
-                    "client_secret" to BuildConfig.INTERVALS_CLIENT_SECRET,
+                    "client_id" to clientId,
+                    "client_secret" to clientSecret,
                     "code" to code,
                 ),
             )
@@ -174,7 +172,7 @@ class IntervalsIcuUploader(
         clearPending()
         if (token.isNullOrBlank()) return true
         return try {
-            val result = HttpFetcher.delete(
+            val result = http.delete(
                 IntervalsIcuOAuth.DISCONNECT_URL,
                 headers = mapOf("Authorization" to "Bearer $token"),
             )
@@ -188,7 +186,7 @@ class IntervalsIcuUploader(
         }
     }
 
-    private fun clearPending() = pending.edit().clear().apply()
+    private fun clearPending() = pending.clear()
 
     /**
      * Builds the FIT bytes from the ride and POSTs them.
@@ -231,8 +229,7 @@ class IntervalsIcuUploader(
             // "i". Normalise so we never double it up or drop it.
             val normAthlete = athleteId.removePrefix("i").removePrefix("I").let { "i$it" }
             base = "https://intervals.icu/api/v1/athlete/$normAthlete/activities"
-            val basic = "API_KEY:$apiKey".toByteArray(Charsets.UTF_8)
-            auth = "Basic " + Base64.encodeToString(basic, Base64.NO_WRAP)
+            auth = "Basic " + base64("API_KEY:$apiKey".encodeToByteArray())
         }
 
         val safeName = (session.workoutName.ifBlank { "ride" })
@@ -244,10 +241,10 @@ class IntervalsIcuUploader(
         // The ride's own id, kept by Intervals.icu with the activity, so the
         // activity there can always be traced back to this ride.
         val url = if (session.externalId.isBlank()) base
-        else base + "?external_id=" + java.net.URLEncoder.encode(session.externalId, "UTF-8")
+        else base + "?external_id=" + formEncode(session.externalId)
 
         val result = try {
-            HttpFetcher.postMultipartFile(
+            http.postMultipartFile(
                 url = url,
                 fileFieldName = "file",
                 fileName = filename,

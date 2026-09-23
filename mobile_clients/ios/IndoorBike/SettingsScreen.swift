@@ -46,6 +46,14 @@ struct SettingsScreen: View {
 
                 Section("More") {
                     NavigationLink {
+                        ConnectionsView(app: app)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Connections")
+                            Text(connectionsSummary(app.sync)).font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    NavigationLink {
                         BikeGearingView(settings: app.settings)
                     } label: {
                         VStack(alignment: .leading, spacing: 2) {
@@ -56,6 +64,8 @@ struct SettingsScreen: View {
                         }
                     }
                 }
+
+                BackupSection(app: app)
 
                 Section("About") {
                     LabeledContent("App version", value: AppInfo.version)

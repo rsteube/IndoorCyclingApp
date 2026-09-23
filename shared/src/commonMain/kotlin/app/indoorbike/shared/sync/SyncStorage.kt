@@ -13,13 +13,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.sync
+package app.indoorbike.shared.sync
 
 /**
  * Abstraction over the rider's chosen sync folder. Implementations:
- *  - [SafSyncStorage] (production) — backed by a SAF tree URI the rider
- *    picked via the system folder picker, persisted via
- *    `takePersistableUriPermission` and stored in `UserSettings`.
+ *  - Android's `SafSyncStorage`, over a folder picked with the system picker.
+ *  - iOS's `IosSyncStorage`, over a folder picked in Files and kept as a
+ *    security-scoped bookmark.
  *  - In-memory fakes in tests.
  *
  * Methods are suspend and run on IO dispatchers; callers don't need to

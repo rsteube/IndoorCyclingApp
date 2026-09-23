@@ -88,7 +88,7 @@ class IosWorkoutLibrary(private val scope: CoroutineScope, private val bundled: 
     private val bundledById = bundled.associateBy { it.id }
 
     val questions = ImportQuestions()
-    private val core = WorkoutImportCore(IosFolder("user_workouts"), { bundledById }, questions)
+    internal val core = WorkoutImportCore(IosFolder("user_workouts"), { bundledById }, questions)
 
     private val _entries = MutableStateFlow(mergeWorkoutLibrary(emptyList(), bundled) { null })
     val entries: StateFlow<List<WorkoutEntry>> = _entries.asStateFlow()

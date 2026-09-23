@@ -32,6 +32,7 @@ The Simulator has no Bluetooth. **Use the demo trainer** connects the shared moc
 - `-demo-trainer` connects the demo trainer and starts it pedalling.
 - `-demo-ride [workout id]` does the same and opens the ride on that workout, or on the first workout if no id follows. `-demo-ride sample-test` runs a 30-second ride, which is the quickest way to reach the completion and save path.
 - `-demo-ride route` rides the first route in the library, and `-demo-ride free` starts a free ride.
+- `-demo-sync-folder` points sync at a folder in the app's own Documents (`sync-test`) and runs a round.
 - `-demo-open <link>` opens a link or `indoorbike://` URL as if the system had, without iOS's confirmation.
 - `-demo-tab history|progress|settings` opens on that tab, `-demo-section workouts|routes` opens that part of the Ride tab, and `-demo-latest-ride` opens the newest saved ride in History.
 
@@ -132,7 +133,24 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
     - `FollowedRepositories`, behind a `TextStore`.
     - `WorkoutLinkParser`, with `gunzip` as an `expect` function (zlib on iOS), tested on both platforms.
   - Android's importer, library and followed repositories now delegate to these.
-- [ ] **7. Sync and uploads.** Intervals.icu (OAuth through `ASWebAuthenticationSession`), FitTrackee, and the backup folder (Files, with a security-scoped bookmark). Secrets in the Keychain. The uploaders move into `shared` behind a small HTTP interface.
+- [x] **7. Sync and uploads.**
+  - **Connections:**
+    - Intervals.icu by athlete id and API key.
+    - FitTrackee, signed in through the browser (`ASWebAuthenticationSession` and `indoorbike://oauth`, with PKCE), with the sport picker.
+    - Auto-upload for either.
+    - The credentials go in the Keychain (`KeychainStore`, this device only).
+  - **Ride detail:** Upload and Re-upload cards for each connected service, with Android's messages.
+  - **Backup & sync:**
+    - A folder picked in Files and kept as a security-scoped bookmark.
+    - Android's slice files (`indoorbike-device-<id>.json` and `.prev`), with coordinated reads and writes.
+    - Device name, sync now, restore, and the paused review with both choices.
+    - Sync runs at launch, as on Android.
+  - **Verified in the Simulator:** a slice from an Android device ("Pixel 8"), dropped into the folder, merged into the iPhone's history.
+  - **Moved into `shared` for both apps:**
+    - `IntervalsIcuUploader`, `FitTrackeeUploader`, `RideUploads`, `SyncEngine` and `SyncStorage`.
+    - Their platform needs as interfaces: `HttpClient` (with the multipart builder and form encoding), `KeyValueStore`, `SyncWorkoutLibrary`, and `sha256` and `formatLocalMinute` as `expect` functions.
+  - Android keeps only `SafSyncStorage` and a small plumbing file (`AndroidSyncPlumbing.kt`).
+  - **Not on iOS yet: Intervals.icu sign-in.** Its redirect is `https://indoorbike.app/oauth/intervals`. An iOS app receives that only through Universal Links, which need the Associated Domains entitlement and an `apple-app-site-association` file on indoorbike.app. The OAuth client is also compiled only into Android release builds. Until both are set up, iOS uses the API-key mode, as a build from source does on Android.
 - [ ] **8. Companion mode.** Companion server on the local network, Bonjour advertising, and the Local Network permission. The UDP beacon needs Apple's multicast entitlement, which Apple has to approve. Without it, companions find the phone through Bonjour only.
 - [ ] **9. Zwift controllers.** The ECDH (P-256) key exchange and AES block encryption on iOS (Security and CommonCrypto). Until then those calls throw on iOS, and their 5 tests fail there.
 - [ ] **10. Release.** App icon, launch screen, App Store metadata, TestFlight through the Snapp Mobile team.

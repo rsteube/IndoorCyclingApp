@@ -42,7 +42,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.FitTrackeeUploader
 import app.indoorbike.ui.ExpandableCard
 import app.indoorbike.ui.IntervalsIcuCard
 import app.indoorbike.ui.IntervalsTextField

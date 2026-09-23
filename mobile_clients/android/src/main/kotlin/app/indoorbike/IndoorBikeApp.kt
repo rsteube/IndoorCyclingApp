@@ -15,6 +15,9 @@
  */
 package app.indoorbike
 
+import app.indoorbike.sync.AndroidHttpClient
+import app.indoorbike.sync.AndroidSyncLibrary
+import app.indoorbike.sync.SharedPreferencesStore
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
@@ -31,11 +34,11 @@ import app.indoorbike.route.AndroidRouteProgressStore
 import app.indoorbike.session.AndroidActiveSessionStore
 import app.indoorbike.session.AndroidActiveTelemetryStore
 import app.indoorbike.shared.session.WorkoutState
-import app.indoorbike.sync.FitTrackeeUploader
-import app.indoorbike.sync.IntervalsIcuUploader
+import app.indoorbike.shared.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.IntervalsIcuUploader
 import app.indoorbike.sync.SafSyncStorage
-import app.indoorbike.sync.RideUploads
-import app.indoorbike.sync.SyncEngine
+import app.indoorbike.shared.sync.RideUploads
+import app.indoorbike.shared.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
@@ -314,20 +317,27 @@ class AppContainer(
                 importer = workoutImporter,
             )
             val fitTrackeeUploader = FitTrackeeUploader(
-                context = application,
+                http = AndroidHttpClient,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
+                pending = SharedPreferencesStore(application, "fittrackee_oauth"),
             )
             val intervalsIcuUploader = IntervalsIcuUploader(
-                context = application,
+                http = AndroidHttpClient,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
+                pending = SharedPreferencesStore(application, "intervals_oauth"),
+                clientId = BuildConfig.INTERVALS_CLIENT_ID,
+                clientSecret = BuildConfig.INTERVALS_CLIENT_SECRET,
+                // Never in a debug build: the code comes back through a
+                // verified app link, and indoorbike.app vouches for the release
+                // key alone.
+                signInAllowed = !BuildConfig.DEBUG,
             )
             val syncEngine = SyncEngine(
                 userSettings = userSettings,
                 historyRepository = historyRepository,
-                workoutImporter = workoutImporter,
-                workoutLibrary = workoutLibrary,
+                workoutLibrary = AndroidSyncLibrary(workoutImporter, workoutLibrary),
                 // Re-evaluated on each syncNow() so a freshly-picked folder is
                 // honored without rebuilding the engine.
                 storageProvider = {

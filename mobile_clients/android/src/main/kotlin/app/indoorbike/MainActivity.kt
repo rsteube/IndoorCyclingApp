@@ -15,6 +15,7 @@
  */
 package app.indoorbike
 
+import app.indoorbike.sync.completeAuthorization
 import app.indoorbike.shared.repo.WorkoutLinkParser
 import android.content.Context
 import android.content.Intent
@@ -112,8 +113,8 @@ import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.shared.workout.simulationWorkoutId
 import app.indoorbike.ui.ControllerPairingScreen
 import app.indoorbike.shared.sync.IntervalsIcuOAuth
-import app.indoorbike.sync.FitTrackeeUploader
-import app.indoorbike.sync.IntervalsIcuUploader
+import app.indoorbike.shared.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.IntervalsIcuUploader
 import app.indoorbike.ui.screens.ConnectionsScreen
 import app.indoorbike.ui.screens.SimulationSettingsScreen
 import app.indoorbike.ui.screens.LibraryScreen

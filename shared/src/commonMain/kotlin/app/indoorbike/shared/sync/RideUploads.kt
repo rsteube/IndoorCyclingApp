@@ -13,13 +13,16 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.sync
+package app.indoorbike.shared.sync
 
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.settings.UserSettings
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.util.ReentrantLock
+import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.util.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -49,6 +52,7 @@ import kotlinx.coroutines.launch
  * So the upload and the mark that records it run here, on the app's scope, one
  * per ride and service at a time. A screen waiting on one only waits; leaving
  * does not stop it. Every path that saves a ride asks for [autoUpload].
+ * Shared by both apps.
  */
 class RideUploads(
     private val scope: CoroutineScope,
@@ -62,6 +66,7 @@ class RideUploads(
     private data class Key(val sessionId: Long, val service: Service)
 
     private val running = HashMap<Key, Deferred<*>>()
+    private val runningLock = ReentrantLock()
 
     private val _inFlight = MutableStateFlow<Set<Pair<Long, Service>>>(emptySet())
 
@@ -96,7 +101,7 @@ class RideUploads(
         once(Key(session.id, Service.INTERVALS)) {
             val outcome = intervals.upload(session, workout, ftp)
             if (outcome is IntervalsIcuUploader.Outcome.Success) {
-                history.markIntervalsUploaded(session.id, System.currentTimeMillis())
+                history.markIntervalsUploaded(session.id, getCurrentEpochMillis())
                 _recorded.tryEmit(session.id)
             }
             outcome
@@ -107,7 +112,7 @@ class RideUploads(
         once(Key(session.id, Service.FITTRACKEE)) {
             val outcome = fitTrackee.upload(session, workout, ftp)
             if (outcome is FitTrackeeUploader.Outcome.Success) {
-                history.markFitTrackeeUploaded(session.id, System.currentTimeMillis())
+                history.markFitTrackeeUploaded(session.id, getCurrentEpochMillis())
                 _recorded.tryEmit(session.id)
             }
             outcome
@@ -120,12 +125,12 @@ class RideUploads(
      */
     @Suppress("UNCHECKED_CAST")
     private suspend fun <T> once(key: Key, block: suspend () -> T): T {
-        val job = synchronized(running) {
+        val job = runningLock.withLock {
             running[key] ?: scope.async {
                 try {
                     block()
                 } finally {
-                    synchronized(running) { running.remove(key) }
+                    runningLock.withLock { running.remove(key) }
                     _inFlight.update { it - (key.sessionId to key.service) }
                 }
             }.also {

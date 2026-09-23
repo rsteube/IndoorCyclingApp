@@ -13,26 +13,23 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.sync
+package app.indoorbike.shared.sync
 
-import kotlinx.coroutines.CancellationException
-import android.content.Context
-import android.net.Uri
-import android.util.Base64
-import app.indoorbike.library.HttpFetcher
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.net.HttpClient
+import app.indoorbike.shared.net.PostResult
+import app.indoorbike.shared.net.formEncode
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.settings.UserSettings
+import app.indoorbike.shared.util.KeyValueStore
 import app.indoorbike.shared.util.Log
-import java.net.URLEncoder
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.security.MessageDigest
-import java.security.SecureRandom
+import app.indoorbike.shared.util.formatLocalMinute
+import app.indoorbike.shared.util.secureRandomBytes
+import app.indoorbike.shared.util.sha256
+import kotlinx.coroutines.CancellationException
 
 /**
  * Uploads a finished ride to the rider's own **FitTrackee** server.
@@ -61,22 +58,21 @@ import java.security.SecureRandom
  * The PKCE verifier is persisted rather than held in memory, because the app
  * can be killed while the browser is in front of it and returning to a lost
  * verifier would mean an authorization code that can never be redeemed.
+ *
+ * Shared by both apps: each supplies its HTTPS and where a sign-in in
+ * progress is kept.
  */
 class FitTrackeeUploader(
-    context: Context,
+    private val http: HttpClient,
     private val historyRepository: HistoryRepository,
     private val userSettings: UserSettings,
-) {
-    private val appContext = context.applicationContext
-
     /**
-     * Short-lived PKCE state, kept out of [UserSettings] because it is neither
-     * a user preference nor cross-platform: it exists only between opening the
-     * browser and coming back, and is cleared the moment it is spent.
+     * Short-lived PKCE state, kept out of [UserSettings] because it is not a
+     * user preference: it exists only between opening the browser and coming
+     * back, and is cleared the moment it is spent.
      */
-    private val pending by lazy {
-        appContext.getSharedPreferences("fittrackee_oauth", Context.MODE_PRIVATE)
-    }
+    private val pending: KeyValueStore,
+) {
 
     // ── Step 1: send the rider to their own server's consent page ─────────
 
@@ -92,11 +88,10 @@ class FitTrackeeUploader(
 
         val verifier = randomUrlSafe(64)
         val state = randomUrlSafe(16)
-        pending.edit().putString(KEY_VERIFIER, verifier).putString(KEY_STATE, state).apply()
+        pending.put(KEY_VERIFIER, verifier)
+        pending.put(KEY_STATE, state)
 
-        val challenge = base64Url(
-            MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII))
-        )
+        val challenge = base64UrlNoPadding(sha256(verifier.encodeToByteArray()))
         return buildString {
             append(base).append("/profile/apps/authorize")
             append("?response_type=code")
@@ -115,15 +110,15 @@ class FitTrackeeUploader(
      * Handle `indoorbike://oauth?code=…&state=…`. Verifies the state matches
      * the request we started, then trades the code for tokens.
      */
-    suspend fun completeAuthorization(redirect: Uri): SignIn {
-        val error = redirect.getQueryParameter("error")
+    suspend fun completeAuthorization(parameters: Map<String, String?>): SignIn {
+        val error = parameters["error"]
         if (error != null) return SignIn.Failure("FitTrackee declined: $error")
 
-        val code = redirect.getQueryParameter("code")
+        val code = parameters["code"]
             ?: return SignIn.Failure("No authorization code came back.")
-        val state = redirect.getQueryParameter("state")
-        val expectedState = pending.getString(KEY_STATE, null)
-        val verifier = pending.getString(KEY_VERIFIER, null)
+        val state = parameters["state"]
+        val expectedState = pending.get(KEY_STATE)
+        val verifier = pending.get(KEY_VERIFIER)
             ?: return SignIn.Failure("This sign-in wasn't started here. Try again.")
         // A mismatched state means the redirect didn't come from the request we
         // made, so the code is not ours to spend. The sign-in under way is
@@ -147,7 +142,7 @@ class FitTrackeeUploader(
             "code_verifier" to verifier,
         )
         val result = try {
-            HttpFetcher.postForm("$base/api/oauth/token", form)
+            http.postForm("$base/api/oauth/token", form)
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
@@ -184,7 +179,7 @@ class FitTrackeeUploader(
         val base = userSettings.fitTrackeeUrl.value?.trimEnd('/').orEmpty()
         val refresh = userSettings.fitTrackeeRefreshToken.value ?: return Renewal.Refused
         val result = try {
-            HttpFetcher.postForm(
+            http.postForm(
                 "$base/api/oauth/token",
                 mapOf(
                     "grant_type" to "refresh_token",
@@ -216,7 +211,7 @@ class FitTrackeeUploader(
         clearPending()
     }
 
-    private fun clearPending() = pending.edit().clear().apply()
+    private fun clearPending() = pending.clear()
 
     // ── Using the connection ──────────────────────────────────────────────
 
@@ -228,7 +223,7 @@ class FitTrackeeUploader(
         val base = userSettings.fitTrackeeUrl.value?.trimEnd('/') ?: return emptyList()
         val token = userSettings.fitTrackeeAccessToken.value ?: return emptyList()
         val body = try {
-            HttpFetcher.getString("$base/api/sports", mapOf("Authorization" to "Bearer $token"))
+            http.getText("$base/api/sports", mapOf("Authorization" to "Bearer $token"))
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
@@ -292,7 +287,7 @@ class FitTrackeeUploader(
         val filename = "indoorbike-$safeName-${session.id}.fit"
         val data = """{"sport_id":$sportId,"title":${jsonString(session.workoutName.ifBlank { "Indoor ride" })}}"""
 
-        suspend fun post(bearer: String) = HttpFetcher.postMultipartFile(
+        suspend fun post(bearer: String) = http.postMultipartFile(
             url = "$base/api/workouts",
             fileFieldName = "file",
             fileName = filename,
@@ -363,8 +358,7 @@ class FitTrackeeUploader(
         )
         // FitTrackee wants local wall-clock to the minute; seconds are rejected
         // outright with "invalid format for workout date".
-        val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
-            .format(Date(session.startTimeEpoch))
+        val date = formatLocalMinute(session.startTimeEpoch)
 
         val notes = buildString {
             append("Indoor ride recorded by Indoor Bike.\n")
@@ -391,7 +385,7 @@ class FitTrackeeUploader(
         }
 
         val result = try {
-            HttpFetcher.postJson(
+            http.postJson(
                 "$base/api/workouts/no_gpx", body,
                 headers = mapOf("Authorization" to "Bearer $token"),
             )
@@ -412,19 +406,12 @@ class FitTrackeeUploader(
 
     // ── helpers ───────────────────────────────────────────────────────────
 
-    private fun randomUrlSafe(bytes: Int): String {
-        val buf = ByteArray(bytes)
-        SecureRandom().nextBytes(buf)
-        return base64Url(buf)
-    }
+    private fun randomUrlSafe(bytes: Int): String = base64UrlNoPadding(secureRandomBytes(bytes))
 
-    private fun base64Url(raw: ByteArray): String =
-        Base64.encodeToString(raw, Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-
-    private fun enc(v: String): String = URLEncoder.encode(v, "UTF-8")
+    private fun enc(v: String): String = formEncode(v)
 
     /** FitTrackee reports problems as {"message": "...", "status": "error"}. */
-    private fun errorMessage(result: HttpFetcher.PostResult): String? =
+    private fun errorMessage(result: PostResult): String? =
         (firstMatch(result.body, "error_description")
             ?: firstMatch(result.body, "message")
             ?: firstMatch(result.body, "error"))?.take(160)
@@ -441,7 +428,7 @@ class FitTrackeeUploader(
                 '\n' -> append("\\n")
                 '\r' -> append("\\r")
                 '\t' -> append("\\t")
-                else -> if (c < ' ') append("\\u%04x".format(c.code)) else append(c)
+                else -> if (c < ' ') append("\\u").append(c.code.toString(16).padStart(4, '0')) else append(c)
             }
         }
         return "\"$escaped\""

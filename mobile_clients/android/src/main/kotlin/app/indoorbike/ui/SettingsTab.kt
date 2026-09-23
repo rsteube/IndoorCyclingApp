@@ -87,7 +87,7 @@ import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
-import app.indoorbike.sync.SyncStatus
+import app.indoorbike.shared.sync.SyncStatus
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.marginRidges
 import app.indoorbike.ui.components.ContentMaxWidth

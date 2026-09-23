@@ -34,6 +34,14 @@ import app.indoorbike.shared.repo.RegistryEntry
 import app.indoorbike.shared.repo.RepoFetchResult
 import app.indoorbike.shared.repo.WorkoutLinkParser
 import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.net.queryParameters
+import app.indoorbike.shared.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.IntervalsIcuUploader
+import app.indoorbike.shared.sync.RideUploads
+import app.indoorbike.shared.sync.SyncEngine
+import app.indoorbike.shared.sync.SyncWorkoutLibrary
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.activity.exportFileName
@@ -91,11 +99,14 @@ import kotlinx.coroutines.sync.withLock
  * it. What the Android app does in `Application.onCreate` - reconnecting the
  * paired devices, surfacing an unfinished ride - is [start].
  */
+@OptIn(ExperimentalUuidApi::class)
 class IosAppContainer(
     /** The workout files shipped in the app: the same JSON the Android app bundles. */
     bundledWorkoutJson: List<String>,
+    /** The Keychain, for the upload services' credentials. */
+    secrets: SecretStore,
 ) {
-    val userSettings = IosUserSettings()
+    val userSettings = IosUserSettings(secrets)
     val trainerManager = TrainerManager()
     val heartRateMonitor = HeartRateMonitor()
     val controllerManager = ControllerManager()
@@ -135,6 +146,49 @@ class IosAppContainer(
     /** Every workout the rider can ride here: their own, then the bundled ones. */
     val workoutLibrary = IosWorkoutLibrary(scope, WorkoutRepository.parseWorkouts(bundledWorkoutJson))
 
+    /**
+     * Intervals.icu by athlete id and API key. Signing in needs the verified
+     * https redirect Android gets from indoorbike.app, which an iOS build
+     * cannot receive without Universal Links, and a client this build doesn't
+     * carry; see docs/IOS_PORT.md.
+     */
+    val intervalsIcuUploader = IntervalsIcuUploader(
+        http = IosHttpClient,
+        historyRepository = historyRepository,
+        userSettings = userSettings,
+        pending = DefaultsStore("intervals_oauth"),
+        clientId = "",
+        clientSecret = "",
+        signInAllowed = false,
+    )
+
+    /** FitTrackee, signed in through the browser and `indoorbike://oauth`. */
+    val fitTrackeeUploader = FitTrackeeUploader(
+        http = IosHttpClient,
+        historyRepository = historyRepository,
+        userSettings = userSettings,
+        pending = DefaultsStore("fittrackee_oauth"),
+    )
+
+    /** Uploads as the app's work, once per ride and service; see [RideUploads]. */
+    val rideUploads = RideUploads(scope, historyRepository, userSettings, intervalsIcuUploader, fitTrackeeUploader)
+
+    /** The backup folder: each device's slice, merged; see [SyncEngine]. */
+    val syncEngine = SyncEngine(
+        userSettings = userSettings,
+        historyRepository = historyRepository,
+        workoutLibrary = object : SyncWorkoutLibrary {
+            override fun loadUserWorkouts() = workoutLibrary.core.loadUserWorkouts()
+            override fun loadImportMeta(workoutId: String) = workoutLibrary.core.loadImportMeta(workoutId)
+            override suspend fun saveWorkout(workout: Workout, sourceRepoId: String?, sourceRepoName: String?, addedEpoch: Long) =
+                withContext(Dispatchers.IO) { workoutLibrary.core.saveWorkout(workout, sourceRepoId, sourceRepoName, addedEpoch) }
+            override suspend fun deleteUserWorkout(workoutId: String) =
+                withContext(Dispatchers.IO) { workoutLibrary.core.deleteUserWorkout(workoutId) }
+            override suspend fun refresh() = workoutLibrary.rebuild()
+        },
+        storageProvider = { userSettings.syncFolderUri.value?.let { IosSyncStorage(it) } },
+    )
+
     /** The community repositories the rider follows, and what each has that they haven't seen. */
     val followedRepositories = FollowedRepositories(IosFolder("followed").asTextStore(), IosHttp.textFetcher)
 
@@ -154,6 +208,13 @@ class IosAppContainer(
         Log.i(TAG, "App start")
         routeLibrary.start()
         workoutLibrary.start()
+        // Give rides from before external ids existed one, then sync. With no
+        // folder picked this does nothing at all.
+        scope.launch {
+            val deviceId = userSettings.deviceId
+            runCatching { historyRepository.backfillExternalIds { "$deviceId:${Uuid.random()}" } }
+            syncEngine.syncNow()
+        }
         scope.launch { sessionManager.loadPersistedSnapshot() }
         // Keep retrying the devices this rider paired, so they don't have to
         // pick them every time they open the app. Gated by [setForeground] and
@@ -429,6 +490,76 @@ class IosAppContainer(
         }
     }
 
+    // ─── Uploads and sync ────────────────────────────────────────────────
+
+    /** Finish a FitTrackee sign-in from the `indoorbike://oauth` redirect. */
+    fun completeFitTrackeeSignIn(redirect: String, onDone: (String?) -> Unit) {
+        scope.launch {
+            onDone(
+                when (val result = fitTrackeeUploader.completeAuthorization(queryParameters(redirect))) {
+                    is FitTrackeeUploader.SignIn.Success -> null
+                    is FitTrackeeUploader.SignIn.Failure -> result.message
+                }
+            )
+        }
+    }
+
+    fun fitTrackeeSports(onLoaded: (List<FitTrackeeUploader.Sport>) -> Unit) {
+        scope.launch { onLoaded(fitTrackeeUploader.sports()) }
+    }
+
+    fun disconnectIntervals(onDone: (Boolean) -> Unit) {
+        scope.launch { onDone(intervalsIcuUploader.disconnect()) }
+    }
+
+    /** Upload a saved ride to Intervals.icu, and say how it went in words for the rider. */
+    fun uploadToIntervals(sessionId: Long, library: List<Workout>, onDone: (String) -> Unit) {
+        scope.launch {
+            val session = historyRepository.getSessionById(sessionId) ?: return@launch onDone("That ride is gone.")
+            val workout = library.firstOrNull { it.id == session.workoutId }
+            onDone(
+                when (val outcome = rideUploads.uploadIntervals(session, workout, session.ftp.toInt().takeIf { it > 0 } ?: userSettings.ftp.value)) {
+                    is IntervalsIcuUploader.Outcome.Success -> "Uploaded to Intervals.icu"
+                    IntervalsIcuUploader.Outcome.NotConfigured -> "Connect Intervals.icu in Settings → Connections first"
+                    IntervalsIcuUploader.Outcome.Unauthorized ->
+                        "Intervals.icu no longer accepts this connection. Connect again in Settings → Connections."
+                    is IntervalsIcuUploader.Outcome.Failure -> outcome.message
+                }
+            )
+        }
+    }
+
+    /** Upload a saved ride to FitTrackee, and say how it went in words for the rider. */
+    fun uploadToFitTrackee(sessionId: Long, library: List<Workout>, onDone: (String) -> Unit) {
+        scope.launch {
+            val session = historyRepository.getSessionById(sessionId) ?: return@launch onDone("That ride is gone.")
+            val workout = library.firstOrNull { it.id == session.workoutId }
+            onDone(
+                when (val outcome = rideUploads.uploadFitTrackee(session, workout, session.ftp.toInt().takeIf { it > 0 } ?: userSettings.ftp.value)) {
+                    is FitTrackeeUploader.Outcome.Success -> if (outcome.withStreams) "Uploaded to FitTrackee"
+                        else "Uploaded to FitTrackee as a summary (it can't take indoor files)"
+                    FitTrackeeUploader.Outcome.NotConfigured -> "Connect FitTrackee in Settings → Connections first"
+                    FitTrackeeUploader.Outcome.Unauthorized ->
+                        "FitTrackee sign-in has expired. Sign in again in Settings → Connections."
+                    is FitTrackeeUploader.Outcome.Failure -> outcome.message
+                }
+            )
+        }
+    }
+
+    /** Run a sync round now: a tap on Sync now, or a folder just picked. */
+    fun syncNow() {
+        scope.launch { syncEngine.syncNow() }
+    }
+
+    fun restoreFromBackup() {
+        scope.launch { syncEngine.resolveRestoreFromBackup() }
+    }
+
+    fun keepThisDevicesData() {
+        scope.launch { syncEngine.resolveKeepLocal() }
+    }
+
     // ─── Feedback ────────────────────────────────────────────────────────
 
     /**
@@ -500,6 +631,11 @@ class IosAppContainer(
             } catch (e: Exception) {
                 Log.e(TAG, "Couldn't save the ride", e)
                 null
+            }
+            // Every way a ride reaches history comes through here, so this is
+            // where automatic upload starts, as on Android.
+            if (id != null) {
+                rideUploads.autoUpload(id, workout, record.ftp.takeIf { it > 0 } ?: userSettings.ftp.value)
             }
             onSaved(id)
         }

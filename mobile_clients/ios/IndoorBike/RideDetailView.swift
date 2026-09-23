@@ -57,6 +57,7 @@ struct RideDetailView: View {
             ActivityView(items: item.items)
         }
         .task { load() }
+        .onChange(of: app.sync.recordedCount) { _, _ in load() }
     }
 
     private func load() {
@@ -132,6 +133,31 @@ struct RideDetailView: View {
                     Card(title: "Power adherence", trailing: "target · actual") {
                         AdherenceChart(workout: workout, power: detail.powerWatts.map { Int(truncating: $0) }, ftp: app.settings.ftp)
                             .frame(height: 140)
+                    }
+                }
+
+                if app.sync.intervalsConfigured {
+                    UploadCard(
+                        title: "Intervals.icu",
+                        uploadedEpoch: session.intervalsUploadedEpoch,
+                        autoUpload: app.sync.intervalsAutoUpload,
+                        uploading: app.sync.uploading(session.id, .intervals)
+                    ) {
+                        app.container.uploadToIntervals(sessionId: session.id, library: app.workouts) { message in
+                            MainActor.assumeIsolated { app.show(message) }
+                        }
+                    }
+                }
+                if app.sync.fitTrackeeConnected {
+                    UploadCard(
+                        title: "FitTrackee",
+                        uploadedEpoch: session.fitTrackeeUploadedEpoch,
+                        autoUpload: app.sync.fitTrackeeAutoUpload,
+                        uploading: app.sync.uploading(session.id, .fittrackee)
+                    ) {
+                        app.container.uploadToFitTrackee(sessionId: session.id, library: app.workouts) { message in
+                            MainActor.assumeIsolated { app.show(message) }
+                        }
                     }
                 }
 
