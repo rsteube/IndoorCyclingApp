@@ -83,7 +83,13 @@ class IntervalsIcuUploader(
 
     /** Whether this build can sign a rider in, rather than asking for their API key. */
     val signInAvailable: Boolean
-        get() = BuildConfig.INTERVALS_CLIENT_ID.isNotBlank() && BuildConfig.INTERVALS_CLIENT_SECRET.isNotBlank()
+        // Never in a debug build. The code comes back through a verified app
+        // link, and indoorbike.app vouches for the release key alone: the debug
+        // key is published with the source, so nothing may trust it. A debug
+        // build offering sign-in would send the rider to a consent page whose
+        // answer can never reach it.
+        get() = !BuildConfig.DEBUG &&
+            BuildConfig.INTERVALS_CLIENT_ID.isNotBlank() && BuildConfig.INTERVALS_CLIENT_SECRET.isNotBlank()
 
     /**
      * The consent page to open in a browser, or null in a build without the

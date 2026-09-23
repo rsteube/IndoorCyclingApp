@@ -262,6 +262,13 @@ access), give it release permissions on the app, and save its JSON key as
 `keystore.properties` and `forge.properties`. All three are gitignored. See
 [fastlane/Appfile](../mobile_clients/android/fastlane/Appfile).
 
+(The one key that is committed is `mobile_clients/android/debug.keystore`, the
+debug key every machine signs debug builds with, so a debug build from one
+machine updates one installed from another. It never signs a release, and
+because it is public nothing may trust it: `website/.well-known/assetlinks.json`
+lists the release key alone, so a debug build connects Intervals.icu with an
+API key rather than the sign-in.)
+
 **4. The Console-only declarations.** Nothing in this repo can fill these in
 and the first release is blocked until they are done: content rating
 questionnaire, Data Safety form, target audience, ads declaration, app access

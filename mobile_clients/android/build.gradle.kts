@@ -63,6 +63,25 @@ android {
     }
 
     signingConfigs {
+        // The debug key, shared. Each machine used to sign debug builds with
+        // its own ~/.android/debug.keystore, so a debug build from one machine
+        // could not update one installed from another: Android refused it as a
+        // different signer, and the only way past was uninstalling, which
+        // takes the rides and pairings on the device with it. It is a debug
+        // key with the stock passwords, published with the source, and it
+        // signs nothing that is distributed.
+        //
+        // Published, so nothing may trust it: website/.well-known/assetlinks.json
+        // lists the release key alone. It used to list this one too, and a
+        // published key a verified link trusts is anyone's to sign an app
+        // with that answers the Intervals.icu sign-in. A debug build therefore
+        // connects Intervals.icu with an API key, not the sign-in.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (keystorePropsFile.exists()) {
             create("release") {
                 storeFile = file(keystoreProps["storeFile"] as String)

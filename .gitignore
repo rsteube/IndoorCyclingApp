@@ -22,6 +22,9 @@ keystore.properties
 forge.properties
 *.jks
 *.keystore
+# Except the shared debug key, which is not a secret: see
+# mobile_clients/android/build.gradle.kts.
+!/mobile_clients/android/debug.keystore
 # Scratch git worktrees created by Claude Code for isolated work. The rest of
 # .claude/ (launch.json, settings.json) is deliberately tracked.
 /.claude/worktrees/
