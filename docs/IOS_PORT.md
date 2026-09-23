@@ -171,7 +171,7 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
     - Stores laid out as Android's.
     - `NSLocalNetworkUsageDescription` and `NSBonjourServices`.
   - **Verified in the Simulator:** a test game, a plain WebSocket client, connected with the pairing code and negotiated 0.10, then started the ride with `setState`. It streamed telemetry, shifted a gear and finished, and the host saved the ride.
-  - **Not on iOS: the UDP beacon.** It needs Apple's multicast entitlement (`com.apple.developer.networking.multicast`), which Apple grants on request. Until then, companions find an iPhone through Bonjour or its address and port.
+  - **The UDP beacon** (`IosCompanionBeacon`) sends Android's datagram to each interface's broadcast address. A development build on an iPad got it out without Apple's multicast entitlement (`com.apple.developer.networking.multicast`), and a Mac on the same Wi-Fi received it. Check this again with a TestFlight build: Apple documents the entitlement as needed. If a release build is refused, the diagnostics log says so once ("Discovery beacon refused ..."), and Bonjour and the typed address still work.
   - **Background:** iOS closes listening sockets in the background, so a companion ride keeps the app in front with the screen awake.
 - [x] **9. Zwift controllers.** `ZwiftCrypto` on iOS:
   - The P-256 key pair and ECDH come from the Security framework (`SecKeyCreateRandomKey`, `SecKeyCopyKeyExchangeResult`).

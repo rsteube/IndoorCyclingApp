@@ -214,6 +214,14 @@ struct RideView: View {
                 ControlButton(systemImage: "plus", label: "Harder", action: ride.harder)
             }
             Spacer()
+            if trainer.isMock {
+                // The demo trainer sits still until told to pedal, and a ride,
+                // or a companion's game, waits on pedalling to start.
+                let pedalling = trainer.cadence > 0
+                Button(pedalling ? "Demo: stop pedalling" : "Demo: pedal", action: trainer.toggleMockPedaling)
+                    .buttonStyle(.bordered)
+                    .tint(pedalling ? nil : .accentColor)
+            }
             if ride.state == .paused {
                 ControlButton(systemImage: "play.fill", label: "Resume", action: ride.resume)
             } else {

@@ -214,9 +214,9 @@ class IosAppContainer(
     )
 
     /**
-     * The companion socket: the same host the Android app runs. Bonjour only:
-     * the UDP beacon needs Apple's multicast entitlement, which Apple grants
-     * on request, so companions find an iPhone by Bonjour or its address.
+     * The companion socket: the same host the Android app runs, found by
+     * Bonjour and the UDP beacon. The beacon only gets out with Apple's
+     * multicast entitlement; see [IosCompanionBeacon].
      */
     val companionHost = CompanionHost(
         engine = companionEngine,
@@ -241,7 +241,7 @@ class IosAppContainer(
         screenshots = screenshots,
         brands = brands,
         advertiser = NetServiceAdvertiser(),
-        beacon = null,
+        beacon = IosCompanionBeacon(CoroutineScope(SupervisorJob() + Dispatchers.IO)),
         isDebug = isDebug,
         decodeIcon = { png -> UIImage.imageWithData(png.toNSData()) },
     ).also { host ->
