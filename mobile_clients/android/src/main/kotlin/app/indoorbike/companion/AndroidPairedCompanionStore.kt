@@ -16,11 +16,15 @@
 package app.indoorbike.companion
 
 import android.content.Context
+import app.indoorbike.shared.companion.CompanionSecurity
 import app.indoorbike.shared.companion.PairedCompanion
 import app.indoorbike.shared.companion.PairedCompanionStore
 import app.indoorbike.shared.util.Log
+import app.indoorbike.util.AtomicFiles
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -53,57 +57,71 @@ class AndroidPairedCompanionStore(appContext: Context) : PairedCompanionStore {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val serializer = MapSerializer(String.serializer(), PairedCompanion.serializer())
 
+    /**
+     * Every change reads the file, changes the list and writes it back. Two at
+     * once, a companion proving its pairing while the rider forgets another,
+     * could each write back a copy missing the other's change, and a forgotten
+     * companion came back. One at a time.
+     */
+    private val mutex = Mutex()
+
     override suspend fun all(): List<PairedCompanion> = withContext(Dispatchers.IO) {
-        readBlocking().values.sortedByDescending { it.lastSeenEpochMs }
+        mutex.withLock { readBlocking().values.sortedByDescending { it.lastSeenEpochMs } }
     }
 
     override suspend fun find(deviceId: String): PairedCompanion? = withContext(Dispatchers.IO) {
-        readBlocking()[deviceId]
+        mutex.withLock { readBlocking()[deviceId] }
     }
 
     override suspend fun save(companion: PairedCompanion) {
         withContext(Dispatchers.IO) {
-            write(readBlocking() + (companion.deviceId to companion))
+            mutex.withLock { write(readBlocking() + (companion.deviceId to companion)) }
         }
     }
 
     override suspend fun forget(deviceId: String) {
         withContext(Dispatchers.IO) {
-            val current = readBlocking()
-            if (deviceId !in current) return@withContext
-            write(current - deviceId)
+            mutex.withLock {
+                val current = readBlocking()
+                if (deviceId in current) write(current - deviceId)
+            }
         }
     }
 
     override suspend fun forgetAll() {
-        withContext(Dispatchers.IO) { write(emptyMap()) }
+        withContext(Dispatchers.IO) { mutex.withLock { write(emptyMap()) } }
     }
 
     private fun readBlocking(): Map<String, PairedCompanion> {
-        if (!file.exists()) return emptyMap()
+        val text = try {
+            AtomicFiles.readText(file)
+        } catch (e: Exception) {
+            null
+        } ?: return emptyMap()
         return try {
-            json.decodeFromString(serializer, file.readText())
+            // A key that is not a key is dropped on the way in: it can never be
+            // proved, and only a fail-closed proof check stopped it being
+            // matched by an empty one.
+            json.decodeFromString(serializer, text).filterValues { CompanionSecurity.looksLikeKey(it.keyHex) }
         } catch (e: Exception) {
             // Deleted rather than kept. A half-readable list of secrets is not
             // something to guess at, and the cost of being wrong is that the
             // rider pairs again with a code, which takes seconds. The exception
             // is logged without its contents, because its contents are keys.
             Log.w(TAG, "Paired companions file unreadable, starting over")
-            file.delete()
+            AtomicFiles.delete(file)
             emptyMap()
         }
     }
 
+    /** See [AtomicFiles]: a torn write must not eat the lot. */
     private fun write(all: Map<String, PairedCompanion>) {
         try {
             if (all.isEmpty()) {
-                if (file.exists()) file.delete()
+                AtomicFiles.delete(file)
                 return
             }
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(json.encodeToString(serializer, all))
-            if (file.exists()) file.delete()
-            tmp.renameTo(file)
+            AtomicFiles.writeText(file, json.encodeToString(serializer, all))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to persist paired companions")
         }

@@ -68,6 +68,10 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
          */
         routeShape: String = "",
         routeProfile: String = "",
+        /** The FTP the ride was ridden at; 0 when not known (a ride from another device). */
+        ftp: Int = 0,
+        /** Where each segment began, encoded by `SegmentMark.encode`; empty when not known. */
+        segmentMarks: String = "",
         externalId: String,
         telemetry: List<TelemetryPoint>
     ): Long {
@@ -87,6 +91,8 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                     routeStartElevationGainMeters = routeStartElevationGainMeters,
                     routeShape = routeShape,
                     routeProfile = routeProfile,
+                    ftp = ftp.toLong(),
+                    segmentMarks = segmentMarks,
                     externalId = externalId
                 )
 

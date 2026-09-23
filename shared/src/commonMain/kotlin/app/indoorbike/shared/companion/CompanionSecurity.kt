@@ -107,7 +107,12 @@ object CompanionSecurity {
      * ordering they have to notice.
      */
     fun proof(keyHex: String, role: String, nonceApp: String, nonceCompanion: String): String {
-        val key = keyHex.hexToBytes() ?: return ""
+        // Fails closed. An unreadable key used to give an empty tag, and an
+        // empty tag matches an empty proof, so a corrupt stored key let in
+        // anybody who sent "proof": "". A key that cannot be read cannot be
+        // proved, and the error says so rather than a comparison letting it by.
+        val key = keyHex.hexToBytes()
+            ?: throw IllegalArgumentException("not a pairing key")
         val message = PROOF_PREFIX + ":" + role + ":" + nonceApp + ":" + nonceCompanion
         return hmacSha256(key, message.encodeToByteArray()).toHex()
     }
@@ -122,6 +127,7 @@ object CompanionSecurity {
      * therefore not a secret.
      */
     fun proofMatches(expected: String, presented: String?): Boolean {
+        if (expected.isEmpty()) return false
         if (presented == null || expected.length != presented.length) return false
         var difference = 0
         for (i in expected.indices) {

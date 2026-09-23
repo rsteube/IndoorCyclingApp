@@ -19,8 +19,11 @@ import android.content.Context
 import app.indoorbike.shared.simulation.RouteProgress
 import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.util.Log
+import app.indoorbike.util.AtomicFiles
 import java.io.File
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -39,50 +42,63 @@ class AndroidRouteProgressStore(appContext: Context) : RouteProgressStore {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val serializer = MapSerializer(String.serializer(), RouteProgress.serializer())
 
+    /**
+     * Save and clear each read the file, change it and write it back. Two of
+     * them at once, a ride ending while another route's mark is cleared, could
+     * each write back a copy missing the other's change.
+     */
+    private val mutex = Mutex()
+
     override suspend fun read(): Map<String, RouteProgress> = withContext(Dispatchers.IO) {
-        readBlocking()
+        mutex.withLock { readBlocking() }
     }
 
     override suspend fun save(progress: RouteProgress) {
         withContext(Dispatchers.IO) {
-            write(readBlocking() + (progress.routeId to progress))
+            mutex.withLock { write(readBlocking() + (progress.routeId to progress)) }
         }
     }
 
     override suspend fun clear(routeId: String) {
         withContext(Dispatchers.IO) {
-            val current = readBlocking()
-            // Nothing to forget is the common case - most rides finish, or end
-            // before the first quarter kilometre - so it costs no write.
-            if (routeId !in current) return@withContext
-            write(current - routeId)
+            mutex.withLock { clearLocked(routeId) }
         }
     }
 
+    private fun clearLocked(routeId: String) {
+        val current = readBlocking()
+        // Nothing to forget is the common case - most rides finish, or end
+        // before the first quarter kilometre - so it costs no write.
+        if (routeId !in current) return
+        write(current - routeId)
+    }
+
     private fun readBlocking(): Map<String, RouteProgress> {
-        if (!file.exists()) return emptyMap()
+        val text = try {
+            AtomicFiles.readText(file)
+        } catch (e: Exception) {
+            Log.w(TAG, "Route progress file unreadable", e)
+            null
+        } ?: return emptyMap()
         return try {
-            json.decodeFromString(serializer, file.readText())
+            json.decodeFromString(serializer, text)
         } catch (e: Exception) {
             // A corrupt file costs the rider their place on a route, which is
             // annoying; refusing to start any route would be worse.
-            Log.w(TAG, "Route progress file corrupt, ignoring", e)
-            file.delete()
+            Log.w(TAG, "Route progress file corrupt, setting it aside", e)
+            AtomicFiles.setAside(file)
             emptyMap()
         }
     }
 
-    /** Atomic, the same way the session snapshot is written: a torn write must not eat the lot. */
+    /** See [AtomicFiles]: a torn write must not eat the lot. */
     private fun write(all: Map<String, RouteProgress>) {
         try {
             if (all.isEmpty()) {
-                if (file.exists()) file.delete()
+                AtomicFiles.delete(file)
                 return
             }
-            val tmp = File(file.parentFile, file.name + ".tmp")
-            tmp.writeText(json.encodeToString(serializer, all))
-            if (file.exists()) file.delete()
-            tmp.renameTo(file)
+            AtomicFiles.writeText(file, json.encodeToString(serializer, all))
         } catch (e: Exception) {
             Log.w(TAG, "Failed to persist route progress", e)
         }

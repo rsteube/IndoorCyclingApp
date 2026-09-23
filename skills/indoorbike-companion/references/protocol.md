@@ -296,6 +296,23 @@ started pedalling.
 | A proof that does not match the pairing on file | `error` `unauthorized` | 4002 |
 | A nonce that is not 32 hex characters | `error` `unauthorized` | 4002 |
 | Anything but `pairProof` while a challenge is outstanding | `error` `unauthorized` | 4002 |
+| No completed handshake 10 s after connecting | `error` `unauthorized` | 4002 |
+| Before the handshake: a binary frame, or a text frame over 16 KB | `error` `unauthorized` | 4002 |
+| A frame nested deeper than 32 levels, at any time | `error` `malformed` | 4008 |
+| Already 8 connections, or 4 still in their handshake | none | 1013 |
+| An address still waiting after repeated failures | none | 4002, reason says how long |
+
+**Wrong codes cost time.** From the third failed handshake, an address waits 1 s before it may
+try again, doubling each time to at most 60 s. After 10 failures in all the pairing code is
+replaced and the phone shows the new one. A paired companion never uses a code.
+
+**Keep reading your socket.** The app pings every 5 s and closes a connection that has not
+answered for 10 s; any WebSocket library answers pings by itself as long as something is
+reading. Each companion has its own outgoing queue: telemetry is skipped while 4 frames are
+already waiting, and a frame that cannot be written within 5 s closes the connection. After the
+handshake a frame may be up to 8 MB (a `screenshot` needs it).
+
+Names are shown with control characters and bidirectional-text overrides removed.
 
 The app always sends the `error` frame **and then** closes with a code and a reason string.
 Handle both: you may close the socket before you read the frame, and then the close reason is
@@ -556,6 +573,9 @@ own idea of when a ride begins and the app cannot see it.
 `state` is `"active"`, `"paused"` or, with the `untracked` capability, `"untracked"`; anything
 else is refused with a `rejected` warning rather than guessed at, because reading a misspelt
 word as "paused" would silently stop recording a ride the rider is still doing.
+
+At most two `setState` frames a second are acted on. Each one writes to the trainer, so a third
+within the same second is dropped with a `rateLimited` warning.
 
 Use it for your own pause: a menu, a loading screen, a rider who stopped. Without it the ride
 record quietly accumulates minutes of zeroes nobody rode.

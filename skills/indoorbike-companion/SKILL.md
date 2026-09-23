@@ -460,12 +460,17 @@ and normal thereafter, that is this and not a bug in your world.
 | `requestShift` | max 10/s | Excess is warned and dropped, never an error |
 | `setPower` | max 10/s | Same limiter, its own budget. Honoured only while `untracked` |
 | `course` out | whenever | Merged field by field. Once at the start and once at the end is the usual shape |
-| `setState` out | on your own transitions | A request, not a command. `stateChanged` is the answer |
+| `setState` out | on your own transitions, max 2/s | A request, not a command. `stateChanged` is the answer. A third within a second is warned and dropped |
 | `controls` out | when a menu opens, changes or closes | The last frame wins. Do not forget `visible: false` |
 | Deadman | 1500 ms | Then the gradient ramps to flat over 2000 ms |
 
 The physics on the phone moves four times a second. A faster telemetry stream would be
 inventing data, which is why there is no way to ask for one.
+
+The connection itself has limits too, none of which a well-behaved companion meets: finish the
+handshake within 10 s, keep frames before it under 16 KB, keep reading the socket (it is pinged
+every 5 s and closed after 10 s without an answer), and expect a wait after repeated wrong
+codes. `references/protocol.md` section 4.4 has them all.
 
 ## The deadman, and what it means for your loop
 

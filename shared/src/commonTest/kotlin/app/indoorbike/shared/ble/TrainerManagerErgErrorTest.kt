@@ -16,6 +16,7 @@
 package app.indoorbike.shared.ble
 
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -84,5 +85,29 @@ class TrainerManagerErgErrorTest {
         val tm = TrainerManager()
         tm.handleControlPointResponse(bytes(0x80, 0x05))
         assertNull(tm.ergError.value)
+    }
+
+    /**
+     * A trainer that turns out not to simulate is not an error any more: the
+     * road goes to it another way (see TrainerControl), so there is nothing to
+     * tell the rider, only something to remember.
+     */
+    @Test
+    fun refusedSimulationIsRoutedAroundNotReported() {
+        val tm = TrainerManager()
+        tm.handleControlPointResponse(bytes(0x80, 0x11, 0x02)) // Op Code Not Supported
+        assertNull(tm.ergError.value)
+        assertFalse(tm.control.value.targets.simulation)
+    }
+
+    /** The spec disagrees with itself about a resistance level's width, so a refusal gets the other one first. */
+    @Test
+    fun refusedResistanceWidthIsRetriedOnceThenReported() {
+        val tm = TrainerManager()
+        tm.handleControlPointResponse(bytes(0x80, 0x04, 0x03)) // Invalid Parameter
+        assertNull(tm.ergError.value)
+        tm.handleControlPointResponse(bytes(0x80, 0x04, 0x03))
+        val msg = tm.ergError.value
+        assertTrue(msg != null && msg.contains("resistance level was out of range"), msg)
     }
 }

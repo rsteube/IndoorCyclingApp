@@ -23,7 +23,9 @@ import app.indoorbike.shared.simulation.DriveSpeed
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.simulation.VirtualDrivetrain
+import app.indoorbike.shared.util.ReentrantLock
 import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.util.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -285,6 +287,18 @@ class CompanionEngine(
 
     private var loop: Job? = null
 
+    /**
+     * Held by every entry point and by each tick.
+     *
+     * The engine is driven from three places at once: its own loop, the socket
+     * delivering roads and shifts, and the session manager starting and
+     * stopping it. Nothing serialised them. A pause stopped the engine and
+     * zeroed the trainer, and a tick already under way could then write its
+     * road or its wattage after the zero, leaving a paused rider on a hill or
+     * in ERG with nothing running to let them go.
+     */
+    private val lock = ReentrantLock()
+
     /** The target last written, so an unchanged one is not written again. */
     private var lastSentWatts: Int? = null
 
@@ -297,7 +311,7 @@ class CompanionEngine(
      * bikes mid-ride would silently change what the gear number on screen
      * means.
      */
-    fun load(gearIndex: Int = USE_START_GEAR) {
+    fun load(gearIndex: Int = USE_START_GEAR) = lock.withLock {
         stop()
         val drivetrain = drivetrainProvider()
         gearing.load(
@@ -327,7 +341,7 @@ class CompanionEngine(
     }
 
     /** Start commanding the trainer. Safe with no companion connected: that is a flat road. */
-    fun start() {
+    fun start() = lock.withLock {
         loop?.cancel()
         lastSentWatts = null
         advanceSeeded = false
@@ -336,7 +350,9 @@ class CompanionEngine(
         if (hold.target != null) pushPowerToTrainer(force = true) else pushRoadToTrainer(force = true)
         loop = scope.launch {
             while (isActive) {
-                advance(getCurrentEpochMillis())
+                // Only while running, checked under the lock: a tick that
+                // began before a stop does not get to write after it.
+                lock.withLock { if (_running.value) advance(getCurrentEpochMillis()) }
                 delay(SimulationEngine.TICK_MS)
             }
         }
@@ -349,7 +365,7 @@ class CompanionEngine(
      * caller that pauses a ride already zeroes it through the session manager,
      * and a second write racing that one would only fight it.
      */
-    fun stop() {
+    fun stop() = lock.withLock {
         loop?.cancel()
         loop = null
         _running.value = false
@@ -371,7 +387,7 @@ class CompanionEngine(
         if (wasHolding) onPowerTargetChanged?.invoke(null, SOURCE_STATE)
     }
 
-    fun clear() {
+    fun clear() = lock.withLock {
         stop()
         load()
     }
@@ -390,7 +406,7 @@ class CompanionEngine(
         watts: Int?,
         source: String = SOURCE_STATE,
         nowMs: Long = getCurrentEpochMillis(),
-    ): Int? {
+    ): Int? = lock.withLock {
         val clamped = watts?.coerceIn(
             CompanionProtocol.MIN_POWER_WATTS,
             CompanionProtocol.MAX_POWER_WATTS,
@@ -413,7 +429,7 @@ class CompanionEngine(
             gearing.clearCommand()
             if (_running.value) pushPowerToTrainer(force = true)
         }
-        return clamped
+        clamped
     }
 
     /**
@@ -426,7 +442,7 @@ class CompanionEngine(
         speedMps: Double,
         crr: Double = CompanionProtocol.DEFAULT_CRR,
         nowMs: Long = getCurrentEpochMillis(),
-    ) {
+    ) = lock.withLock {
         rawGradient = gradient
         rawCrr = crr
         ridingCrr = crr
@@ -453,19 +469,25 @@ class CompanionEngine(
      * and guarded again here because this is what the saved ride reports and a
      * distance that goes backwards is worse than one that stalls.
      */
-    fun setProgress(distanceM: Double?, ascentM: Double?) {
-        if (awaitingRideOrigin && (distanceM != null || ascentM != null)) {
+    fun setProgress(distanceM: Double?, ascentM: Double?) = lock.withLock {
+        // Totals nobody could have ridden are a companion's bug, not the
+        // rider's ride, and a running maximum keeps whatever it is given: one
+        // frame claiming 1e300 m used to become the saved distance for good,
+        // in history, in the export and in every upload.
+        val distance = distanceM?.takeIf { it.isFinite() && it >= 0.0 && it <= MAX_PLAUSIBLE_DISTANCE_M }
+        val ascent = ascentM?.takeIf { it.isFinite() && it >= 0.0 && it <= MAX_PLAUSIBLE_ASCENT_M }
+        if (awaitingRideOrigin && (distance != null || ascent != null)) {
             // The first thing the companion says about position after a ride
             // starts is where that ride starts. A game that resets its counter
             // per ride reports something near zero and this costs nothing; one
             // that counts for the whole session reports a large number, and
             // this is the only chance to learn it.
-            distanceM?.let { _rideStartMeters.value = it }
-            ascentM?.let { _rideStartElevationGainMeters.value = it }
+            distance?.let { _rideStartMeters.value = it }
+            ascent?.let { _rideStartElevationGainMeters.value = it }
             awaitingRideOrigin = false
         }
-        distanceM?.let { if (it > _distanceMeters.value) _distanceMeters.value = it }
-        ascentM?.let { if (it > _elevationGainMeters.value) _elevationGainMeters.value = it }
+        distance?.let { if (it > _distanceMeters.value) _distanceMeters.value = it }
+        ascent?.let { if (it > _elevationGainMeters.value) _elevationGainMeters.value = it }
     }
 
     /**
@@ -475,7 +497,7 @@ class CompanionEngine(
      * coming back from a pause is continuing the ride they were on, and
      * re-basing it there would throw away everything they had already done.
      */
-    fun markRideStart() {
+    fun markRideStart() = lock.withLock {
         awaitingRideOrigin = true
         _rideStartMeters.value = _distanceMeters.value
         _rideStartElevationGainMeters.value = _elevationGainMeters.value
@@ -495,7 +517,7 @@ class CompanionEngine(
      * with is not the one the companion described: near-identical ratios are
      * dropped on the way in.
      */
-    fun setDrivetrain(drivetrain: Drivetrain) {
+    fun setDrivetrain(drivetrain: Drivetrain) = lock.withLock {
         if (drivetrain.gears.isEmpty()) return
         gearing.setDrivetrain(drivetrain)
         // The gear decides the force, so the trainer needs telling at once
@@ -511,7 +533,7 @@ class CompanionEngine(
      * order a free-roaming game can manage: it does not know what road the
      * rider took until they have taken it.
      */
-    fun setCourse(update: CompanionCourse) {
+    fun setCourse(update: CompanionCourse) = lock.withLock {
         if (update.isEmpty) return
         _course.value = _course.value.mergedWith(update)
     }
@@ -532,14 +554,14 @@ class CompanionEngine(
      * companion showing a gear display needs to know whether the rider reached
      * for the handlebar or whether its own request landed.
      */
-    fun shiftBy(steps: Int, source: String = SOURCE_SCREEN): Int {
+    fun shiftBy(steps: Int, source: String = SOURCE_SCREEN): Int = lock.withLock {
         val before = gearing.gearIndex.value
         val next = gearing.shiftBy(steps)
         val changed = next != before
         // A shift has to be felt immediately, not on the next road update.
         if (changed && _running.value) pushRoadToTrainer(force = true)
         onGearChanged?.invoke(next, changed, source)
-        return next
+        next
     }
 
     fun dispose() {
@@ -555,7 +577,7 @@ class CompanionEngine(
      * Internal rather than private so tests can drive the loop with a clock of
      * their own, the same contract [SimulationEngine.advance] offers.
      */
-    internal fun advance(nowMs: Long) {
+    internal fun advance(nowMs: Long) = lock.withLock {
         // Both filters are fed from the tick rather than from [setRoad], so a
         // companion that goes quiet decays its own momentum away instead of
         // freezing an acceleration into the commanded force forever.
@@ -651,5 +673,11 @@ class CompanionEngine(
 
         /** A `powerTargetChanged` the ride's own state caused, rather than a request. */
         const val SOURCE_STATE = EventFrame.SOURCE_STATE
+
+        /** Further than any ride, including a whole day of them in one game session. */
+        const val MAX_PLAUSIBLE_DISTANCE_M = 2_000_000.0
+
+        /** More climbing than any day's riding. */
+        const val MAX_PLAUSIBLE_ASCENT_M = 50_000.0
     }
 }

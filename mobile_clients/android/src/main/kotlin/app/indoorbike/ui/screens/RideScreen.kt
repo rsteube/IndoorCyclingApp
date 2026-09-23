@@ -34,7 +34,6 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -58,6 +57,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.EmojiEvents
+import androidx.compose.material.icons.outlined.LinkOff
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.filled.Pause
@@ -74,11 +74,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import app.indoorbike.ui.leavingForGood
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -97,6 +99,12 @@ import app.indoorbike.BuildConfig
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.feedback.ReportProblemDialog
 import app.indoorbike.ride.saveRideToHistory
+import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.animation.core.VectorConverter
 import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.service.RideSessionService
 import androidx.compose.ui.platform.LocalConfiguration
@@ -126,6 +134,7 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.zones.HeartRateZone
 import app.indoorbike.ui.zones.PowerZone
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun LockScreenOrientationAndFullScreen(orientation: Int) {
@@ -179,32 +188,45 @@ fun RideScreen(
      */
     onCompanionSessionDone: () -> Unit = {},
 ) {
+    val container = LocalAppContainer.current
+    val context = LocalContext.current
+    val sessionManager = container.sessionManager
+
+    // Opened with no ride behind it. That is the back stack coming back after
+    // the process died with this screen on top: the screen survives, the ride
+    // does not. It used to sit there blank, full screen with the system bars
+    // hidden and no controls, over the banner that could have given the ride
+    // back. So it steps back to where the banner is. Judged once, at entry:
+    // a ride backed out of normally also has no workout by the time it leaves.
+    val openedWithoutRide = remember { sessionManager.activeWorkout.value == null }
+    if (openedWithoutRide && sessionManager.activeWorkout.collectAsStateWithLifecycle().value == null) {
+        LaunchedEffect(Unit) { onBack() }
+        Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0))
+        return
+    }
+
     // Follow the device's own rotation (respecting the user's auto-rotate
     // setting) rather than forcing landscape - the HUD adapts to whichever
     // orientation the rider chooses. Still goes fullscreen + keeps the screen on.
     LockScreenOrientationAndFullScreen(ActivityInfo.SCREEN_ORIENTATION_USER)
-
-    val container = LocalAppContainer.current
-    val context = LocalContext.current
-    val sessionManager = container.sessionManager
     val trainerManager = container.trainerManager
     val historyRepository = container.historyRepository
 
-    val state by sessionManager.state.collectAsState()
-    val workout by sessionManager.activeWorkout.collectAsState()
-    val elapsed by sessionManager.elapsedSeconds.collectAsState()
-    val actualRide by sessionManager.actualRideSeconds.collectAsState()
-    val elapsedInSeg by sessionManager.elapsedInSegment.collectAsState()
-    val currentSegIdx by sessionManager.currentSegmentIndex.collectAsState()
-    val countdown by sessionManager.countdownSeconds.collectAsState()
-    val biasPercent by sessionManager.targetBiasPercent.collectAsState()
+    val state by sessionManager.state.collectAsStateWithLifecycle()
+    val workout by sessionManager.activeWorkout.collectAsStateWithLifecycle()
+    val elapsed by sessionManager.elapsedSeconds.collectAsStateWithLifecycle()
+    val actualRide by sessionManager.actualRideSeconds.collectAsStateWithLifecycle()
+    val elapsedInSeg by sessionManager.elapsedInSegment.collectAsStateWithLifecycle()
+    val currentSegIdx by sessionManager.currentSegmentIndex.collectAsStateWithLifecycle()
+    val countdown by sessionManager.countdownSeconds.collectAsStateWithLifecycle()
+    val biasPercent by sessionManager.targetBiasPercent.collectAsStateWithLifecycle()
     // "Just ride": no plan, no finish line. The ± stepper moves an absolute
     // wattage, the timer counts up with nothing to count towards, and the
     // interval furniture (segment label, up-next, timeline) has nothing to
     // show, so it's left off entirely.
     val isFreeRide = workout?.isFreeRide == true
-    val freeRideTarget by sessionManager.freeRideTargetWatts.collectAsState()
-    val ftp by container.userSettings.ftp.collectAsState()
+    val freeRideTarget by sessionManager.freeRideTargetWatts.collectAsStateWithLifecycle()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
 
     // "Simulation": a real route under the wheels. The trainer is in FTMS
     // simulation mode rather than ERG, so there is no target to hold and no
@@ -216,35 +238,53 @@ fun RideScreen(
     // below; unlike a route ride there is no course, so it draws its own HUD.
     val isCompanion = workout?.isCompanion == true
     val simulationEngine = container.simulationEngine
-    val simulationRoute by simulationEngine.route.collectAsState()
-    val simulationPosition by simulationEngine.position.collectAsState()
-    val simulationDistance by simulationEngine.distanceMeters.collectAsState()
-    val simulationGradient by simulationEngine.gradient.collectAsState()
-    val simulationSpeedMps by simulationEngine.speedMps.collectAsState()
-    val simulationGear by simulationEngine.gearIndex.collectAsState()
-    val simulationDrivetrain by simulationEngine.drivetrain.collectAsState()
-    val simulationClimb by simulationEngine.elevationGainMeters.collectAsState()
+    val simulationRoute by simulationEngine.route.collectAsStateWithLifecycle()
+    val simulationPosition by simulationEngine.position.collectAsStateWithLifecycle()
+    val simulationDistance by simulationEngine.distanceMeters.collectAsStateWithLifecycle()
+    val simulationGradient by simulationEngine.gradient.collectAsStateWithLifecycle()
+    val simulationSpeedMps by simulationEngine.speedMps.collectAsStateWithLifecycle()
+    val simulationGear by simulationEngine.gearIndex.collectAsStateWithLifecycle()
+    val simulationDrivetrain by simulationEngine.drivetrain.collectAsStateWithLifecycle()
+    val simulationClimb by simulationEngine.elevationGainMeters.collectAsStateWithLifecycle()
 
-    val currentPower by trainerManager.power.collectAsState()
-    val currentCadence by trainerManager.cadence.collectAsState()
-    val trainerHr by trainerManager.heartRate.collectAsState()
-    val hrmHr by container.heartRateMonitor.heartRate.collectAsState()
+    // Reading live values.
+    //
+    // Power, cadence, heart rate, the clock and the road change several times a
+    // second. Read in this function's body, each change recomposed the whole
+    // screen, and the tweens that smooth them recomposed it on every frame, for
+    // hours. So the body never reads them:
+    //
+    //  - A readout reads its value inside an [Isolated] scope, which is all
+    //    that recomposes when the value changes.
+    //  - What only matters when it crosses a line - stale or not, which zone -
+    //    is a derivedStateOf, which tells the body only when it flips.
+    //  - What is computed from a live value is a local function, called from
+    //    inside the scope that shows it.
+    //  - The smoothing animations follow their targets through snapshotFlow in
+    //    an effect, and are read only by the readouts.
+    //
+    // A new readout that reads one of these in the body, or in a
+    // BoxWithConstraints' content, brings the old cost back.
+    val currentPower by trainerManager.power.collectAsStateWithLifecycle()
+    val currentCadence by trainerManager.cadence.collectAsStateWithLifecycle()
+    val trainerHr by trainerManager.heartRate.collectAsStateWithLifecycle()
+    val hrmHr by container.heartRateMonitor.heartRate.collectAsStateWithLifecycle()
     // Surfaces messages set by RideSessionService when the foreground service
     // can't start (BLE permission missing, background-start refused). The
     // session manager auto-pauses on this signal; the banner explains why
     // and gives the rider a path to recover.
-    val fgsFailure by sessionManager.foregroundServiceFailure.collectAsState()
+    val fgsFailure by sessionManager.foregroundServiceFailure.collectAsStateWithLifecycle()
     // Surfaces ERG-mode problems from the trainer (no FTMS control point, control
     // not granted, write failed, or a command the trainer rejected) so target
     // power not reaching the trainer doesn't fail silently.
-    val ergError by trainerManager.ergError.collectAsState()
+    val ergError by trainerManager.ergError.collectAsStateWithLifecycle()
     // Prefer the dedicated HRM if it's emitting; fall back to whatever the trainer has.
-    val currentHr = if (hrmHr > 0) hrmHr else trainerHr
-    val targetPower by trainerManager.targetPower.collectAsState()
-    val isMockTrainer by trainerManager.isMockTrainer.collectAsState()
-    val maxHr by container.userSettings.maxHr.collectAsState()
-    val hrZone = remember(currentHr, maxHr) {
-        app.indoorbike.ui.zones.HeartRateZone.fromHr(currentHr, maxHr)
+    fun currentHr() = if (hrmHr > 0) hrmHr else trainerHr
+    val targetPower by trainerManager.targetPower.collectAsStateWithLifecycle()
+    val isMockTrainer by trainerManager.isMockTrainer.collectAsStateWithLifecycle()
+    val maxHr by container.userSettings.maxHr.collectAsStateWithLifecycle()
+    val hrZone by remember {
+        derivedStateOf { app.indoorbike.ui.zones.HeartRateZone.fromHr(currentHr(), maxHr) }
     }
 
     var continueRequested by remember { mutableStateOf(false) }
@@ -263,10 +303,17 @@ fun RideScreen(
     // Untracked riding offers it too: the rider is on the bike with the clock
     // stopped, and what they rode before they went off the record is a ride
     // worth keeping. It saves nothing when they never started one.
-    val canEndAndSave = (state == WorkoutState.Paused ||
-        (state == WorkoutState.Standby && actualRide > 0) ||
-        (state == WorkoutState.Untracked && actualRide > 0) ||
-        ((isFreeRide || isSimulation) && state == WorkoutState.Active && actualRide > 0))
+    // Read from the workout itself rather than the locals above, so the one
+    // derived state stays right for the screen's whole life.
+    val canEndAndSave by remember {
+        derivedStateOf {
+            val openEnded = workout?.isFreeRide == true || workout?.isSimulation == true
+            state == WorkoutState.Paused ||
+                (state == WorkoutState.Standby && actualRide > 0) ||
+                (state == WorkoutState.Untracked && actualRide > 0) ||
+                (openEnded && state == WorkoutState.Active && actualRide > 0)
+        }
+    }
     // Idempotency guard for the post-completion save+navigate path. The
     // LaunchedEffect that watches `state` + `continueRequested` would otherwise
     // re-run if its keys re-emit, racing the in-flight insert and producing a
@@ -278,25 +325,32 @@ fun RideScreen(
     // screen no longer kills the ride. We still need to *ask* for permissions
     // here because the FGS won't start without them, and the user can reach
     // this screen on first launch without ever visiting the pairing flow.
-    val notificationLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { /* no-op: service runs even without notification visibility */ }
-
     val bluetoothLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
-        // Permission just landed — nudge the FGS to retry now that it would
+        // Permission just landed - nudge the FGS to retry now that it would
         // succeed. The state observer in IndoorBikeApp won't re-emit because
         // state is unchanged, so a manual one-shot is needed here.
         if (results.values.any { it }) RideSessionService.start(context)
     }
 
+    // The service runs without notification visibility, so the answer only
+    // matters as the cue to ask for Bluetooth next. The two are asked in turn,
+    // not together: Android drops a second request made while the first is
+    // still on screen, which lost the Bluetooth one whenever both were needed.
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) {
+        if (!hasAnyBluetoothPermission(context)) bluetoothLauncher.launch(bluetoothRuntimePerms())
+    }
+
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        if (!hasAnyBluetoothPermission(context)) {
-            bluetoothLauncher.launch(bluetoothRuntimePerms())
+        val needsNotifications = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        when {
+            needsNotifications -> notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            !hasAnyBluetoothPermission(context) -> bluetoothLauncher.launch(bluetoothRuntimePerms())
         }
     }
 
@@ -310,32 +364,32 @@ fun RideScreen(
     var companionDebugExpanded by remember { mutableStateOf(false) }
     val companionEngine = container.companionEngine
     val companionHost = container.companionHost
-    val companionStatus by companionHost.status.collectAsState()
+    val companionStatus by companionHost.status.collectAsStateWithLifecycle()
     // A menu on the companion's screen, when it has one up. Null the rest of
     // the time, which is nearly always.
-    val companionControls by companionHost.remoteControls.collectAsState()
+    val companionControls by companionHost.remoteControls.collectAsStateWithLifecycle()
     // A companion can ask to be remembered after the ride is under way, in
     // which case the rider is looking at the HUD rather than the pairing card.
-    val pendingPairing by companionHost.pendingPairing.collectAsState()
-    val untrackedLabel by sessionManager.untrackedLabel.collectAsState()
-    val companionPowerTarget by companionEngine.powerTarget.collectAsState()
-    val companionPowerReleased by companionEngine.powerReleased.collectAsState()
-    val companionGradient by companionEngine.gradient.collectAsState()
-    val companionSpeed by companionEngine.speedMps.collectAsState()
-    val companionDistance by companionEngine.distanceMeters.collectAsState()
-    val companionClimb by companionEngine.elevationGainMeters.collectAsState()
-    val companionDrivetrain by companionEngine.drivetrain.collectAsState()
-    val companionGear by companionEngine.gearIndex.collectAsState()
-    val companionRideStart by companionEngine.rideStartMeters.collectAsState()
-    val companionCourse by companionEngine.course.collectAsState()
-    val companionSessionRides by companionHost.sessionRides.collectAsState()
-    val companionPhase by companionHost.sessionPhase.collectAsState()
-    val companionSessionName by companionHost.sessionCompanionName.collectAsState()
-    val companionHosting by companionHost.hosting.collectAsState()
-    val companionLook by companionHost.look.collectAsState()
-    val companionShowAllData by container.userSettings.companionShowAllData.collectAsState()
-    val screenshotsOffered by companionHost.screenshotsOffered.collectAsState()
-    val screenshotStatus by companionHost.screenshotStatus.collectAsState()
+    val pendingPairing by companionHost.pendingPairing.collectAsStateWithLifecycle()
+    val untrackedLabel by sessionManager.untrackedLabel.collectAsStateWithLifecycle()
+    val companionPowerTarget by companionEngine.powerTarget.collectAsStateWithLifecycle()
+    val companionPowerReleased by companionEngine.powerReleased.collectAsStateWithLifecycle()
+    val companionGradient by companionEngine.gradient.collectAsStateWithLifecycle()
+    val companionSpeed by companionEngine.speedMps.collectAsStateWithLifecycle()
+    val companionDistance by companionEngine.distanceMeters.collectAsStateWithLifecycle()
+    val companionClimb by companionEngine.elevationGainMeters.collectAsStateWithLifecycle()
+    val companionDrivetrain by companionEngine.drivetrain.collectAsStateWithLifecycle()
+    val companionGear by companionEngine.gearIndex.collectAsStateWithLifecycle()
+    val companionRideStart by companionEngine.rideStartMeters.collectAsStateWithLifecycle()
+    val companionCourse by companionEngine.course.collectAsStateWithLifecycle()
+    val companionSessionRides by companionHost.sessionRides.collectAsStateWithLifecycle()
+    val companionPhase by companionHost.sessionPhase.collectAsStateWithLifecycle()
+    val companionSessionName by companionHost.sessionCompanionName.collectAsStateWithLifecycle()
+    val companionHosting by companionHost.hosting.collectAsStateWithLifecycle()
+    val companionLook by companionHost.look.collectAsStateWithLifecycle()
+    val companionShowAllData by container.userSettings.companionShowAllData.collectAsStateWithLifecycle()
+    val screenshotsOffered by companionHost.screenshotsOffered.collectAsStateWithLifecycle()
+    val screenshotStatus by companionHost.screenshotStatus.collectAsStateWithLifecycle()
     // Whose job it is to write this ride. The host's, when it is hosting the
     // session this ride belongs to; this screen's for every other ride,
     // including a companion ride continued from the unfinished-ride banner,
@@ -345,8 +399,10 @@ fun RideScreen(
     // The socket outlives the pairing screen so the ride can use it, which
     // makes this screen the one that has to close it. Leaving here means the
     // ride is over one way or another: saved, abandoned or backed out of.
+    // Android reclaiming the activity in the background is not leaving: the
+    // ride runs on in its service, and the game must not be told it ended.
     DisposableEffect(isCompanion) {
-        onDispose { if (isCompanion) companionHost.stop() }
+        onDispose { if (isCompanion && context.leavingForGood()) companionHost.stop() }
     }
 
     val adjustEffort: (Int) -> Unit = { direction ->
@@ -358,18 +414,20 @@ fun RideScreen(
         }
     }
 
-    // Bridge: external controller (Zwift Click v1, …) → the same ± steps the
+    // Bridge: external controller (Zwift Click v1, ...) to the same steps the
     // in-app stepper takes. Only active while the ride screen is composed; the
     // manager keeps running in the background but emissions to nowhere are
-    // cheap. Re-keyed on the mode so the collector always holds a lambda that
-    // knows which kind of ride it's stepping.
-    LaunchedEffect(isFreeRide, isSimulation) {
+    // cheap. One collector for the screen's life, always calling the latest
+    // lambda: re-keying on the mode missed Companion, so a ride that became
+    // one without either key changing stepped difficulty instead of gears.
+    val onControllerStep by rememberUpdatedState(adjustEffort)
+    LaunchedEffect(Unit) {
         container.controllerManager.events.collect { event ->
             val direction = when (event) {
                 app.indoorbike.shared.ble.ControllerEvent.Plus -> +1
                 app.indoorbike.shared.ble.ControllerEvent.Minus -> -1
             }
-            adjustEffort(direction)
+            onControllerStep(direction)
         }
     }
 
@@ -391,14 +449,28 @@ fun RideScreen(
         // skipping a segment fast-forwards `elapsed` so it would inflate the
         // saved duration. `actualRideSeconds` only counts wall-clock time
         // spent in the Active state.
-        val newSessionId = saveRideToHistory(
-            container = container,
-            workout = workout!!,
-            startTimeEpoch = sessionManager.sessionStartTimeEpoch,
-            durationSeconds = sessionManager.actualRideSeconds.value,
-            telemetry = sessionManager.telemetrySnapshot(),
-            road = sessionManager.pendingRideRoad(),
-        )
+        //
+        // The insert runs on the app's scope and this effect only waits for
+        // it. On the effect's own scope a rotation or leaving the screen mid-
+        // save cancelled the insert, and the ride was left as an unfinished
+        // one to save again. Only opening the summary belongs to the screen.
+        val ride = workout!!
+        val startTimeEpoch = sessionManager.sessionStartTimeEpoch
+        val durationSeconds = sessionManager.actualRideSeconds.value
+        val telemetry = sessionManager.telemetrySnapshot()
+        val road = sessionManager.pendingRideRoad()
+        val record = sessionManager.pendingRideRecord()
+        val newSessionId = container.appScope.async {
+            saveRideToHistory(
+                container = container,
+                workout = ride,
+                startTimeEpoch = startTimeEpoch,
+                durationSeconds = durationSeconds,
+                telemetry = telemetry,
+                road = road,
+                record = record,
+            )
+        }.await()
         onNavigateToOverview(newSessionId)
     }
 
@@ -414,22 +486,32 @@ fun RideScreen(
     // Null for the overwhelming majority of segments — cadence targets are
     // opt-in per interval, so the readout stays exactly as it was without one.
     val cadenceTarget = currentSeg?.cadenceTarget
-    val remainingInSeg = maxOf(0, (currentSeg?.lengthInSeconds ?: 0) - elapsedInSeg)
+    fun remainingInSeg() = maxOf(0, (currentSeg?.lengthInSeconds ?: 0) - elapsedInSeg)
     // A free ride's synthetic segment is fixed at its opening percentage, so
     // colouring from it would leave the HUD in Z1 no matter how hard the
     // rider is working. Read the zone off what they actually asked for.
-    val currentZone = when {
-        // Nothing sets a target on a route, so the zone is read off the effort
-        // the rider is actually producing. That makes the HUD's colour say
-        // something true about the climb they're on rather than about a
-        // synthetic segment nobody is holding them to.
-        isSimulation -> PowerZone.fromFtpPercent(
-            if (ftp > 0) currentPower * 100 / ftp else 0
-        )
-        isFreeRide -> PowerZone.fromFtpPercent(
-            if (ftp > 0) freeRideTarget * 100 / ftp else 0
-        )
-        else -> currentSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) } ?: PowerZone.Z1
+    //
+    // Derived, so a route ride's colour, which follows the watts, changes the
+    // screen only when the zone does. Read from the workout and segment states
+    // rather than the locals above, for the same reason as canEndAndSave.
+    val currentZone by remember {
+        derivedStateOf {
+            val ride = workout
+            when {
+                // Nothing sets a target on a route, so the zone is read off the effort
+                // the rider is actually producing. That makes the HUD's colour say
+                // something true about the climb they're on rather than about a
+                // synthetic segment nobody is holding them to.
+                ride?.isSimulation == true -> PowerZone.fromFtpPercent(
+                    if (ftp > 0) currentPower * 100 / ftp else 0
+                )
+                ride?.isFreeRide == true -> PowerZone.fromFtpPercent(
+                    if (ftp > 0) freeRideTarget * 100 / ftp else 0
+                )
+                else -> ride?.segments?.getOrNull(currentSegIdx)
+                    ?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) } ?: PowerZone.Z1
+            }
+        }
     }
     val nextZone = if (isFreeRide || isSimulation) null
         else nextSeg?.let { PowerZone.fromFtpPercent(it.powerPercentFTP) }
@@ -440,7 +522,10 @@ fun RideScreen(
     // not the trainer's live target: the trainer sits at 0 W until the ride
     // goes active, and a pill stuck on "TARGET 0 W" would make the ± buttons
     // look broken exactly when they're being used to pick an opening effort.
-    val displayTarget = if (isFreeRide) freeRideTarget else targetPower
+    fun displayTarget() = if (isFreeRide) freeRideTarget else targetPower
+    // Whether the trainer is holding a wattage. Derived: a ramp moves the
+    // target every second, but this only flips at its ends.
+    val ergLocked by remember { derivedStateOf { state == WorkoutState.Active && targetPower > 0 } }
 
     // A companion session shows its ending on this screen rather than moving
     // the rider somewhere else. The panel is up while the companion is away and
@@ -485,52 +570,75 @@ fun RideScreen(
     BackHandler { handleBack() }
 
     if (confirmingEnd) {
-        EndRideConfirmDialog(
-            elapsed = actualRide,
-            onCancel = { confirmingEnd = false },
-            onConfirm = {
-                confirmingEnd = false
-                // Route through the same save+navigate path as a naturally
-                // finished ride: mark it complete, then flag the continue so the
-                // save LaunchedEffect fires and takes the rider to the summary.
-                continueRequested = true
-                sessionManager.endWorkoutEarly()
-            }
-        )
+        Isolated {
+            EndRideConfirmDialog(
+                elapsed = actualRide,
+                onCancel = { confirmingEnd = false },
+                onConfirm = {
+                    confirmingEnd = false
+                    // Route through the same save+navigate path as a naturally
+                    // finished ride: mark it complete, then flag the continue so the
+                    // save LaunchedEffect fires and takes the rider to the summary.
+                    continueRequested = true
+                    sessionManager.endWorkoutEarly()
+                }
+            )
+        }
     }
 
-    val showStaleHr = currentHr <= 0
-    val showStalePower = currentPower <= 0 && (state == WorkoutState.Active)
-    val weightKg by container.userSettings.weightKg.collectAsState()
-    val wattsPerKg = if (weightKg > 0f && currentPower > 0) currentPower / weightKg else 0f
+    val showStaleHr by remember { derivedStateOf { currentHr() <= 0 } }
+    val showStalePower by remember { derivedStateOf { currentPower <= 0 && state == WorkoutState.Active } }
+    val weightKg by container.userSettings.weightKg.collectAsStateWithLifecycle()
+    fun wattsPerKg() = if (weightKg > 0f && currentPower > 0) currentPower / weightKg else 0f
     // A trainer has no road under it, so speed is what the rider's current
     // watts would carry them at on a flat one, and distance is that integrated
     // over the ride (the session manager keeps the running total, so it
     // survives this screen being torn down and rebuilt). No weight set means
     // no estimate, and the readout stays away rather than showing zeroes.
-    val virtualDistanceMeters by sessionManager.virtualDistanceMeters.collectAsState()
-    val virtualSpeedKmh = VirtualSpeed.speedKmh(currentPower, weightKg)
+    val virtualDistanceMeters by sessionManager.virtualDistanceMeters.collectAsStateWithLifecycle()
+    fun virtualSpeedKmh() = VirtualSpeed.speedKmh(currentPower, weightKg)
     val showVirtualSpeed = weightKg > 0f
 
     // Single animated zone color — drives every zone-tinted element on the screen so
     // the crossfade across segment boundaries stays in sync.
-    val animatedZoneColor by animateColorAsState(
-        targetValue = currentZone.color,
-        animationSpec = tween(durationMillis = 1200),
-        label = "zone-color"
-    )
-
+    //
     // Cadence + HR also tween to absorb 1-Hz BLE jitter.
-    val animatedCadence by animateIntAsState(
-        targetValue = currentCadence.coerceAtLeast(0),
-        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
-        label = "cadence"
-    )
-    val animatedHr by animateIntAsState(
-        targetValue = currentHr.coerceAtLeast(0),
-        animationSpec = tween(durationMillis = 700, easing = FastOutSlowInEasing),
-        label = "hr"
-    )
+    //
+    // Each follows its target from an effect rather than from animate*AsState,
+    // which would read the target in this body. Seeded from the flows' current
+    // values, which are not snapshot reads, and a new target interrupts the
+    // running tween from where it is, as animate*AsState does.
+    val zoneColorAnim = remember {
+        androidx.compose.animation.Animatable(Snapshot.withoutReadObservation { currentZone.color })
+    }
+    val cadenceAnim = remember {
+        Animatable(trainerManager.cadence.value.coerceAtLeast(0), Int.VectorConverter)
+    }
+    val hrAnim = remember {
+        val hr = container.heartRateMonitor.heartRate.value.takeIf { it > 0 } ?: trainerManager.heartRate.value
+        Animatable(hr.coerceAtLeast(0), Int.VectorConverter)
+    }
+    LaunchedEffect(Unit) {
+        launch {
+            snapshotFlow { currentZone.color }.collect { target ->
+                launch { zoneColorAnim.animateTo(target, tween(durationMillis = 1200)) }
+            }
+        }
+        launch {
+            snapshotFlow { currentCadence.coerceAtLeast(0) }.collect { target ->
+                launch { cadenceAnim.animateTo(target, tween(durationMillis = 600, easing = FastOutSlowInEasing)) }
+            }
+        }
+        launch {
+            snapshotFlow { currentHr().coerceAtLeast(0) }.collect { target ->
+                launch { hrAnim.animateTo(target, tween(durationMillis = 700, easing = FastOutSlowInEasing)) }
+            }
+        }
+    }
+    // Delegates, so each is read where it is used, and only there.
+    val animatedZoneColor by zoneColorAnim.asState()
+    val animatedCadence by cadenceAnim.asState()
+    val animatedHr by hrAnim.asState()
 
     // Interval-complete flash: when the segment index advances mid-ride, the
     // screen edges pulse once in the NEW zone's color - a half-second "next
@@ -549,27 +657,35 @@ fun RideScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(CadenceColors.Bg0)) {
-        HorizonRidgeBackdrop(
-            workout = workout!!,
-            tintColor = animatedZoneColor,
-            modifier = Modifier.fillMaxSize()
-        )
-
-        if (segFlash.value > 0.01f) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                currentZone.color.copy(alpha = 0.28f * segFlash.value),
-                                Color.Transparent,
-                                currentZone.color.copy(alpha = 0.28f * segFlash.value)
-                            )
-                        )
-                    )
+        Isolated {
+            HorizonRidgeBackdrop(
+                workout = workout!!,
+                tintColor = animatedZoneColor,
+                modifier = Modifier.fillMaxSize()
             )
         }
+
+        // Read in the draw phase, so the flash redraws this one layer for its
+        // 850 ms rather than recomposing the whole screen on every frame of it.
+        val flashColor = currentZone.color
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .drawBehind {
+                    val flash = segFlash.value
+                    if (flash > 0.01f) {
+                        drawRect(
+                            Brush.verticalGradient(
+                                listOf(
+                                    flashColor.copy(alpha = 0.28f * flash),
+                                    Color.Transparent,
+                                    flashColor.copy(alpha = 0.28f * flash)
+                                )
+                            )
+                        )
+                    }
+                }
+        )
 
         // Layer 2: foreground content
         // Non-null while the "Report a problem" disclosure dialog is open; holds
@@ -642,6 +758,10 @@ fun RideScreen(
                             1 -> "1 ride saved"
                             else -> "$saved rides saved"
                         },
+                        // Where the controller is. A name is only what the
+                        // companion says it is; an address is something the
+                        // rider can check against the machine in front of them.
+                        companionStatus.controllerAddress?.let { "from $it" },
                     ).joinToString(" \u00b7 ").ifBlank { null },
                     icon = companionLook?.icon,
                     palette = companionLook?.palette,
@@ -650,70 +770,81 @@ fun RideScreen(
             } else {
                 null
             }
-            RideHeader(
-                workoutName = workout!!.name,
-                state = state,
-                untrackedLabel = untrackedLabel,
-                powerTarget = companionPowerTarget,
-                powerReleased = companionPowerReleased,
-                elapsed = elapsed,
-                totalDuration = totalDuration,
-                // A companion ride has no total either: the game decides when it
-                // ends, so a "/ 6:00:00" beside the clock is a number nobody set.
-                openEnded = isFreeRide || isSimulation || isCompanion,
-                isMockTrainer = isMockTrainer,
-                onBack = handleBack,
-                onPauseToggle = {
-                    when (state) {
-                        // Pausing untracked riding is an ordinary pause, and
-                        // resuming puts the rider back on the walk they were
-                        // on rather than starting to record them.
-                        WorkoutState.Active, WorkoutState.Untracked ->
-                            sessionManager.pauseWorkout()
-                        WorkoutState.Paused -> sessionManager.resumeWorkout()
-                        else -> {}
+            Isolated {
+                RideHeader(
+                    workoutName = workout!!.name,
+                    state = state,
+                    untrackedLabel = untrackedLabel,
+                    powerTarget = companionPowerTarget,
+                    powerReleased = companionPowerReleased,
+                    elapsed = elapsed,
+                    totalDuration = totalDuration,
+                    // A companion ride has no total either: the game decides when it
+                    // ends, so a "/ 6:00:00" beside the clock is a number nobody set.
+                    openEnded = isFreeRide || isSimulation || isCompanion,
+                    isMockTrainer = isMockTrainer,
+                    onBack = handleBack,
+                    onPauseToggle = {
+                        when (state) {
+                            // Pausing untracked riding is an ordinary pause, and
+                            // resuming puts the rider back on the walk they were
+                            // on rather than starting to record them.
+                            WorkoutState.Active, WorkoutState.Untracked ->
+                                sessionManager.pauseWorkout()
+                            WorkoutState.Paused -> sessionManager.resumeWorkout()
+                            else -> {}
+                        }
+                    },
+                    onSkipStep = { sessionManager.skipSegment() },
+                    onMockToggle = { trainerManager.toggleMockPedaling() },
+                    canEndAndSave = canEndAndSave,
+                    onEndAndSave = { confirmingEnd = true },
+                    // Skip means "the next interval", and only a structured workout has
+                    // one. A companion ride is a single synthetic segment the game
+                    // drives, so skipping it jumped past the whole ride and left the
+                    // session broken, with nothing the rider could have wanted from it.
+                    canSkip = !isFreeRide && !isSimulation && !isCompanion,
+                    awaitingCompanionStart = isCompanion,
+                    companion = companionHeader,
+                    // While the panel is up it is the one way to decide what happens
+                    // to the ride. A Resume pill beside it would restart a ride with
+                    // no game driving the road, and an End pill would be a second,
+                    // different ending for the same ride.
+                    rideControlsHidden = showSessionPanel,
+                    // Offered only while a ride is underway: a picture is kept with
+                    // a ride, and between rides there is none to keep it with.
+                    screenshot = if (
+                        hostSavesRide && screenshotsOffered &&
+                        sessionManager.sessionStartTimeEpoch != 0L &&
+                        state != WorkoutState.Completed && state != WorkoutState.Idle
+                    ) {
+                        ScreenshotButton(
+                            busy = screenshotStatus?.kind ==
+                                app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.WAITING,
+                            onClick = companionHost::requestScreenshot,
+                        )
+                    } else {
+                        null
+                    },
+                    // Always offered while a companion holds the ride, in every
+                    // build. It used to exist only in the debug panel, so in a
+                    // release the one way to stop a companion driving the trainer
+                    // was to end the whole session.
+                    takeBackControl = if (hostSavesRide && companionStatus.controllerName != null) {
+                        companionHost::revokeControl
+                    } else {
+                        null
+                    },
+                    // Narrow widths and portrait get a reflowed two-row header so the
+                    // title and state don't collapse into a one-letter-wide column.
+                    // Width alone missed an upright tablet: 800 dp passed, and one
+                    // row of title, status, clock and buttons cut the ride's name
+                    // down to its first letter.
+                    compact = LocalConfiguration.current.let {
+                        it.screenWidthDp < 600 || it.screenWidthDp < it.screenHeightDp
                     }
-                },
-                onSkipStep = { sessionManager.skipSegment() },
-                onMockToggle = { trainerManager.toggleMockPedaling() },
-                canEndAndSave = canEndAndSave,
-                onEndAndSave = { confirmingEnd = true },
-                // Skip means "the next interval", and only a structured workout has
-                // one. A companion ride is a single synthetic segment the game
-                // drives, so skipping it jumped past the whole ride and left the
-                // session broken, with nothing the rider could have wanted from it.
-                canSkip = !isFreeRide && !isSimulation && !isCompanion,
-                awaitingCompanionStart = isCompanion,
-                companion = companionHeader,
-                // While the panel is up it is the one way to decide what happens
-                // to the ride. A Resume pill beside it would restart a ride with
-                // no game driving the road, and an End pill would be a second,
-                // different ending for the same ride.
-                rideControlsHidden = showSessionPanel,
-                // Offered only while a ride is underway: a picture is kept with
-                // a ride, and between rides there is none to keep it with.
-                screenshot = if (
-                    hostSavesRide && screenshotsOffered &&
-                    sessionManager.sessionStartTimeEpoch != 0L &&
-                    state != WorkoutState.Completed && state != WorkoutState.Idle
-                ) {
-                    ScreenshotButton(
-                        busy = screenshotStatus?.kind ==
-                            app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.WAITING,
-                        onClick = companionHost::requestScreenshot,
-                    )
-                } else {
-                    null
-                },
-                // Narrow widths and portrait get a reflowed two-row header so the
-                // title and state don't collapse into a one-letter-wide column.
-                // Width alone missed an upright tablet: 800 dp passed, and one
-                // row of title, status, clock and buttons cut the ride's name
-                // down to its first letter.
-                compact = LocalConfiguration.current.let {
-                    it.screenWidthDp < 600 || it.screenWidthDp < it.screenHeightDp
-                }
-            )
+                )
+            }
 
             // Responsive HUD: the layout is chosen from the ACTUAL space the HUD
             // gets (covering every orientation, foldable posture, and split-screen
@@ -735,7 +866,6 @@ fun RideScreen(
                 val tall = maxHeight >= 600.dp
                 val expanded = maxWidth >= 840.dp && tall
 
-                val ergLocked = state == WorkoutState.Active && targetPower > 0
                 // Interval types come out of the workout file in whatever case
                 // its author wrote them ("CONSTANT", "ramp"); the HUD says them
                 // in the app's voice.
@@ -752,59 +882,63 @@ fun RideScreen(
                     // SimulationHud minus its three "where" elements - the map,
                     // the profile and the progress bar - because where the
                     // rider is is exactly what this mode does not know.
-                    CompanionHud(
-                        gradient = companionGradient,
-                        speedMps = companionSpeed,
-                        distanceMeters = companionDistance,
-                        elevationGainMeters = companionClimb,
-                        drivetrain = companionDrivetrain,
-                        gearIndex = companionGear,
-                        powerWatts = currentPower,
-                        isPowerStale = showStalePower,
-                        wattsPerKg = wattsPerKg,
-                        cadenceRpm = animatedCadence,
-                        heartRate = animatedHr,
-                        isHrStale = showStaleHr,
-                        hrColor = hrZone?.color ?: CadenceColors.Danger,
-                        hrSublabel = if (showStaleHr) null
-                            else hrZone?.let { "Z${it.number} · ${it.label}" },
-                        zoneColor = animatedZoneColor,
-                        accent = companionLook?.palette?.accent?.brandColor(),
-                        onAccent = companionLook?.palette?.onAccent?.brandColor(),
-                        onShiftDown = { companionEngine.shiftDown() },
-                        onShiftUp = { companionEngine.shiftUp() },
-                        shiftingEnabled = state != WorkoutState.Countdown,
-                        showAllData = companionShowAllData,
-                        remoteControls = companionControls,
-                        onControlPress = companionHost::pressControl,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    Isolated {
+                        CompanionHud(
+                            gradient = companionGradient,
+                            speedMps = companionSpeed,
+                            distanceMeters = companionDistance,
+                            elevationGainMeters = companionClimb,
+                            drivetrain = companionDrivetrain,
+                            gearIndex = companionGear,
+                            powerWatts = currentPower,
+                            isPowerStale = showStalePower,
+                            wattsPerKg = wattsPerKg(),
+                            cadenceRpm = animatedCadence,
+                            heartRate = animatedHr,
+                            isHrStale = showStaleHr,
+                            hrColor = hrZone?.color ?: CadenceColors.Danger,
+                            hrSublabel = if (showStaleHr) null
+                                else hrZone?.let { "Z${it.number} · ${it.label}" },
+                            zoneColor = animatedZoneColor,
+                            accent = companionLook?.palette?.accent?.brandColor(),
+                            onAccent = companionLook?.palette?.onAccent?.brandColor(),
+                            onShiftDown = { companionEngine.shiftDown() },
+                            onShiftUp = { companionEngine.shiftUp() },
+                            shiftingEnabled = state != WorkoutState.Countdown,
+                            showAllData = companionShowAllData,
+                            remoteControls = companionControls,
+                            onControlPress = companionHost::pressControl,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     if (showSessionPanel) {
                         // Underway, which while the companion is away means paused.
                         val rideRunning = companionPhase ==
                             app.indoorbike.companion.CompanionHost.SessionPhase.COMPANION_AWAY &&
                             sessionManager.sessionStartTimeEpoch != 0L &&
                             state != WorkoutState.Completed && state != WorkoutState.Idle
-                        app.indoorbike.ui.screens.companion.CompanionSessionPanel(
-                            phase = companionPhase,
-                            companionName = companionLook?.name ?: companionSessionName,
-                            rides = companionSessionRides,
-                            inProgress = if (rideRunning) {
-                                app.indoorbike.ui.screens.companion.RideInProgress(
-                                    name = companionCourse.name?.takeIf { it.isNotBlank() }
-                                        ?: workout!!.name,
-                                    durationSeconds = actualRide,
-                                    distanceMeters = companionDistance - companionRideStart,
-                                    startTimeEpoch = sessionManager.sessionStartTimeEpoch,
-                                )
-                            } else {
-                                null
-                            },
-                            icon = companionLook?.icon,
-                            palette = companionLook?.palette,
-                            onEndSession = companionHost::endSession,
-                            onDone = onCompanionSessionDone,
-                        )
+                        Isolated {
+                            app.indoorbike.ui.screens.companion.CompanionSessionPanel(
+                                phase = companionPhase,
+                                companionName = companionLook?.name ?: companionSessionName,
+                                rides = companionSessionRides,
+                                inProgress = if (rideRunning) {
+                                    app.indoorbike.ui.screens.companion.RideInProgress(
+                                        name = companionCourse.name?.takeIf { it.isNotBlank() }
+                                            ?: workout!!.name,
+                                        durationSeconds = actualRide,
+                                        distanceMeters = companionDistance - companionRideStart,
+                                        startTimeEpoch = sessionManager.sessionStartTimeEpoch,
+                                    )
+                                } else {
+                                    null
+                                },
+                                icon = companionLook?.icon,
+                                palette = companionLook?.palette,
+                                onEndSession = companionHost::endSession,
+                                onDone = onCompanionSessionDone,
+                            )
+                        }
                     }
                     }
                     }
@@ -841,34 +975,36 @@ fun RideScreen(
                     // nothing else, and threading a map and an elevation
                     // profile through the workout layout's three-across
                     // arrangement would leave both worse.
-                    SimulationHud(
-                        route = route,
-                        position = simulationPosition,
-                        distanceMeters = simulationDistance,
-                        gradient = simulationGradient,
-                        speedMps = simulationSpeedMps,
-                        drivetrain = simulationDrivetrain,
-                        gearIndex = simulationGear,
-                        elevationGainMeters = simulationClimb,
-                        powerWatts = currentPower,
-                        isPowerStale = showStalePower,
-                        wattsPerKg = wattsPerKg,
-                        cadenceRpm = animatedCadence,
-                        heartRate = animatedHr,
-                        isHrStale = showStaleHr,
-                        hrColor = hrZone?.color ?: CadenceColors.Danger,
-                        hrSublabel = if (showStaleHr) null
-                            else hrZone?.let { "Z${it.number} · ${it.label}" },
-                        zoneColor = animatedZoneColor,
-                        onShiftDown = { simulationEngine.shiftDown() },
-                        onShiftUp = { simulationEngine.shiftUp() },
-                        // Shifting a bike that isn't moving does nothing on the
-                        // road either, but the rider setting up before they
-                        // start pedalling is a real thing to want, so it's only
-                        // the countdown that locks the shifter out.
-                        shiftingEnabled = state != WorkoutState.Countdown,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    Isolated {
+                        SimulationHud(
+                            route = route,
+                            position = simulationPosition,
+                            distanceMeters = simulationDistance,
+                            gradient = simulationGradient,
+                            speedMps = simulationSpeedMps,
+                            drivetrain = simulationDrivetrain,
+                            gearIndex = simulationGear,
+                            elevationGainMeters = simulationClimb,
+                            powerWatts = currentPower,
+                            isPowerStale = showStalePower,
+                            wattsPerKg = wattsPerKg(),
+                            cadenceRpm = animatedCadence,
+                            heartRate = animatedHr,
+                            isHrStale = showStaleHr,
+                            hrColor = hrZone?.color ?: CadenceColors.Danger,
+                            hrSublabel = if (showStaleHr) null
+                                else hrZone?.let { "Z${it.number} · ${it.label}" },
+                            zoneColor = animatedZoneColor,
+                            onShiftDown = { simulationEngine.shiftDown() },
+                            onShiftUp = { simulationEngine.shiftUp() },
+                            // Shifting a bike that isn't moving does nothing on the
+                            // road either, but the rider setting up before they
+                            // start pedalling is a real thing to want, so it's only
+                            // the countdown that locks the shifter out.
+                            shiftingEnabled = state != WorkoutState.Countdown,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 } else if (wide) {
                     // ── three-across (landscape phone → tablet) ──
                     // Sizes step down with available height so the power column
@@ -901,13 +1037,6 @@ fun RideScreen(
                         else -> 56.dp
                     }
 
-                    // Live average power for the stats strip; only computed when
-                    // the strip is actually shown (expanded). Recomputed per second.
-                    val avgPowerWatts = if (expanded) remember(elapsed) {
-                        val tele = sessionManager.telemetrySnapshot()
-                        if (tele.isEmpty()) 0 else (tele.sumOf { it.power } / tele.size).toInt()
-                    } else 0
-
                     Column(modifier = Modifier.fillMaxSize()) {
                         // The number is sized from the height this row actually
                         // gets, not from the screen's. Everything under the row
@@ -935,90 +1064,104 @@ fun RideScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CadenceFlankMetric(
-                                rpm = animatedCadence,
-                                target = cadenceTarget,
-                                cardWidth = flankWidth,
-                                valueFontSize = flankFont
-                            )
-                            HeroPowerReadout(
-                                powerWatts = currentPower,
-                                isStale = showStalePower,
-                                targetWatts = displayTarget,
-                                wattsPerKg = wattsPerKg,
-                                zoneColor = animatedZoneColor,
-                                biasPercent = biasPercent,
-                                ergLocked = ergLocked,
-                                onAdjust = adjustEffort,
-                                freeRide = isFreeRide,
-                                modifier = Modifier.weight(1f),
-                                powerFontSize = heroFont,
-                                numberWidth = heroNumberWidth,
-                                wkgBarWidth = heroWkgBarWidth
-                            )
-                            FlankMetric(
-                                label = "Heart rate",
-                                value = if (showStaleHr) "--" else animatedHr.toString(),
-                                unit = "bpm",
-                                isStale = showStaleHr,
-                                // Flanking metric, one ink step down: the
-                                // wattage is what the rider is chasing. See
-                                // CadenceFlankMetric.
-                                valueColor = CadenceColors.Fg2,
-                                zoneBadge = if (showStaleHr) null else hrZone,
-                                cardWidth = flankWidth,
-                                valueFontSize = flankFont
-                            )
+                            Isolated {
+                                CadenceFlankMetric(
+                                    rpm = animatedCadence,
+                                    target = cadenceTarget,
+                                    cardWidth = flankWidth,
+                                    valueFontSize = flankFont
+                                )
+                            }
+                            Isolated {
+                                HeroPowerReadout(
+                                    powerWatts = currentPower,
+                                    isStale = showStalePower,
+                                    targetWatts = displayTarget(),
+                                    wattsPerKg = wattsPerKg(),
+                                    zoneColor = animatedZoneColor,
+                                    biasPercent = biasPercent,
+                                    ergLocked = ergLocked,
+                                    onAdjust = adjustEffort,
+                                    freeRide = isFreeRide,
+                                    modifier = Modifier.weight(1f),
+                                    powerFontSize = heroFont,
+                                    numberWidth = heroNumberWidth,
+                                    wkgBarWidth = heroWkgBarWidth
+                                )
+                            }
+                            Isolated {
+                                FlankMetric(
+                                    label = "Heart rate",
+                                    value = if (showStaleHr) "--" else animatedHr.toString(),
+                                    unit = "bpm",
+                                    isStale = showStaleHr,
+                                    // Flanking metric, one ink step down: the
+                                    // wattage is what the rider is chasing. See
+                                    // CadenceFlankMetric.
+                                    valueColor = CadenceColors.Fg2,
+                                    zoneBadge = if (showStaleHr) null else hrZone,
+                                    cardWidth = flankWidth,
+                                    valueFontSize = flankFont
+                                )
+                            }
                         }
                         }
 
                         if (showVirtualSpeed && state != WorkoutState.Countdown) {
-                            VirtualSpeedReadout(
-                                speedKmh = virtualSpeedKmh,
-                                distanceMeters = virtualDistanceMeters,
-                                modifier = Modifier.padding(bottom = Spacing.s3)
-                            )
+                            Isolated {
+                                VirtualSpeedReadout(
+                                    speedKmh = virtualSpeedKmh(),
+                                    distanceMeters = virtualDistanceMeters,
+                                    modifier = Modifier.padding(bottom = Spacing.s3)
+                                )
+                            }
                         }
 
                         if (expanded && state != WorkoutState.Countdown) {
-                            RideStatsStrip(
-                                elapsedSeconds = elapsed,
-                                avgPowerWatts = avgPowerWatts,
-                                // A free ride has a single endless interval, so
-                                // the tile shows the wattage being held instead.
-                                thirdLabel = if (isFreeRide) "Target" else "Interval",
-                                thirdValue = if (isFreeRide) {
-                                    displayTarget.toString()
-                                } else {
-                                    val shown = (currentSegIdx + 1).coerceAtMost(workout!!.segments.size)
-                                    "$shown / ${workout!!.segments.size}"
-                                },
-                                thirdUnit = if (isFreeRide) "W" else "",
-                                // A free ride has no timeline under this, so the
-                                // strip is the last thing in the column and was
-                                // being laid out flush against the bottom edge:
-                                // the tiles' own rounded corners were cropped by
-                                // the screen. Give it the room the timeline would
-                                // otherwise have taken, plus the gesture inset.
-                                modifier = Modifier
-                                    .padding(bottom = if (isFreeRide) Spacing.s5 else Spacing.s3)
-                                    .navigationBarsPadding()
-                            )
+                            Isolated {
+                                RideStatsStrip(
+                                    elapsedSeconds = elapsed,
+                                    // Live average power, refreshed each second from
+                                    // the session manager's running total.
+                                    avgPowerWatts = remember(elapsed) { sessionManager.averagePowerWatts() },
+                                    // A free ride has a single endless interval, so
+                                    // the tile shows the wattage being held instead.
+                                    thirdLabel = if (isFreeRide) "Target" else "Interval",
+                                    thirdValue = if (isFreeRide) {
+                                        displayTarget().toString()
+                                    } else {
+                                        val shown = (currentSegIdx + 1).coerceAtMost(workout!!.segments.size)
+                                        "$shown / ${workout!!.segments.size}"
+                                    },
+                                    thirdUnit = if (isFreeRide) "W" else "",
+                                    // A free ride has no timeline under this, so the
+                                    // strip is the last thing in the column and was
+                                    // being laid out flush against the bottom edge:
+                                    // the tiles' own rounded corners were cropped by
+                                    // the screen. Give it the room the timeline would
+                                    // otherwise have taken, plus the gesture inset.
+                                    modifier = Modifier
+                                        .padding(bottom = if (isFreeRide) Spacing.s5 else Spacing.s3)
+                                        .navigationBarsPadding()
+                                )
+                            }
                         }
 
                         if (!isFreeRide) {
-                            SegmentAndTimeline(
-                                workout = workout!!,
-                                currentSegIdx = currentSegIdx,
-                                elapsedInSeg = elapsedInSeg,
-                                segLabel = segLabel,
-                                segPower = segPower,
-                                remainingInSeg = remainingInSeg,
-                                nextZone = nextZone,
-                                nextSeconds = nextSeconds,
-                                zoneColor = animatedZoneColor,
-                                timelineHeight = wideTimelineHeight
-                            )
+                            Isolated {
+                                SegmentAndTimeline(
+                                    workout = workout!!,
+                                    currentSegIdx = currentSegIdx,
+                                    elapsedInSeg = elapsedInSeg,
+                                    segLabel = segLabel,
+                                    segPower = segPower,
+                                    remainingInSeg = remainingInSeg(),
+                                    nextZone = nextZone,
+                                    nextSeconds = nextSeconds,
+                                    zoneColor = animatedZoneColor,
+                                    timelineHeight = wideTimelineHeight
+                                )
+                            }
                         }
                     }
                 } else {
@@ -1038,21 +1181,23 @@ fun RideScreen(
                             verticalArrangement = Arrangement.spacedBy(Spacing.s6, Alignment.CenterVertically),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            HeroPowerReadout(
-                                powerWatts = currentPower,
-                                isStale = showStalePower,
-                                targetWatts = displayTarget,
-                                wattsPerKg = wattsPerKg,
-                                zoneColor = animatedZoneColor,
-                                biasPercent = biasPercent,
-                                ergLocked = ergLocked,
-                                onAdjust = adjustEffort,
-                                freeRide = isFreeRide,
-                                modifier = Modifier.fillMaxWidth(),
-                                powerFontSize = heroFont,
-                                numberWidth = heroNumberWidth,
-                                wkgBarWidth = heroWkgBarWidth
-                            )
+                            Isolated {
+                                HeroPowerReadout(
+                                    powerWatts = currentPower,
+                                    isStale = showStalePower,
+                                    targetWatts = displayTarget(),
+                                    wattsPerKg = wattsPerKg(),
+                                    zoneColor = animatedZoneColor,
+                                    biasPercent = biasPercent,
+                                    ergLocked = ergLocked,
+                                    onAdjust = adjustEffort,
+                                    freeRide = isFreeRide,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    powerFontSize = heroFont,
+                                    numberWidth = heroNumberWidth,
+                                    wkgBarWidth = heroWkgBarWidth
+                                )
+                            }
                             // Intrinsic-max height so the two cards stay the
                             // same size when only one of them has a cadence
                             // target bar to show. Side by side, a card that's
@@ -1065,46 +1210,54 @@ fun RideScreen(
                                     .padding(horizontal = sidePad),
                                 horizontalArrangement = Arrangement.spacedBy(Spacing.s3)
                             ) {
-                                CadenceFlankMetric(
-                                    rpm = animatedCadence,
-                                    target = cadenceTarget,
-                                    cardWidth = flankWidth,
-                                    valueFontSize = 34.sp,
-                                    modifier = Modifier.fillMaxHeight()
-                                )
-                                FlankMetric(
-                                    label = "Heart rate",
-                                    value = if (showStaleHr) "--" else animatedHr.toString(),
-                                    unit = "bpm",
-                                    isStale = showStaleHr,
-                                    valueColor = CadenceColors.Fg2,
-                                    zoneBadge = if (showStaleHr) null else hrZone,
-                                    cardWidth = flankWidth,
-                                    valueFontSize = 34.sp,
-                                    modifier = Modifier.fillMaxHeight()
-                                )
+                                Isolated {
+                                    CadenceFlankMetric(
+                                        rpm = animatedCadence,
+                                        target = cadenceTarget,
+                                        cardWidth = flankWidth,
+                                        valueFontSize = 34.sp,
+                                        modifier = Modifier.fillMaxHeight()
+                                    )
+                                }
+                                Isolated {
+                                    FlankMetric(
+                                        label = "Heart rate",
+                                        value = if (showStaleHr) "--" else animatedHr.toString(),
+                                        unit = "bpm",
+                                        isStale = showStaleHr,
+                                        valueColor = CadenceColors.Fg2,
+                                        zoneBadge = if (showStaleHr) null else hrZone,
+                                        cardWidth = flankWidth,
+                                        valueFontSize = 34.sp,
+                                        modifier = Modifier.fillMaxHeight()
+                                    )
+                                }
                             }
                             if (showVirtualSpeed && state != WorkoutState.Countdown) {
-                                VirtualSpeedReadout(
-                                    speedKmh = virtualSpeedKmh,
-                                    distanceMeters = virtualDistanceMeters
-                                )
+                                Isolated {
+                                    VirtualSpeedReadout(
+                                        speedKmh = virtualSpeedKmh(),
+                                        distanceMeters = virtualDistanceMeters
+                                    )
+                                }
                             }
                         }
                         if (!isFreeRide) {
-                            SegmentAndTimeline(
-                                workout = workout!!,
-                                currentSegIdx = currentSegIdx,
-                                elapsedInSeg = elapsedInSeg,
-                                segLabel = segLabel,
-                                segPower = segPower,
-                                remainingInSeg = remainingInSeg,
-                                nextZone = nextZone,
-                                nextSeconds = nextSeconds,
-                                zoneColor = animatedZoneColor,
-                                timelineHeight = 88.dp,
-                                compact = true
-                            )
+                            Isolated {
+                                SegmentAndTimeline(
+                                    workout = workout!!,
+                                    currentSegIdx = currentSegIdx,
+                                    elapsedInSeg = elapsedInSeg,
+                                    segLabel = segLabel,
+                                    segPower = segPower,
+                                    remainingInSeg = remainingInSeg(),
+                                    nextZone = nextZone,
+                                    nextSeconds = nextSeconds,
+                                    zoneColor = animatedZoneColor,
+                                    timelineHeight = 88.dp,
+                                    compact = true
+                                )
+                            }
                         }
                     }
                 }
@@ -1263,6 +1416,8 @@ private fun RideHeader(
     rideControlsHidden: Boolean = false,
     /** Ask the companion for a picture of its screen. Null when there is nobody to ask. */
     screenshot: ScreenshotButton? = null,
+    /** Take the ride back from the companion driving it. Null when none is. */
+    takeBackControl: (() -> Unit)? = null,
 ) {
     val rideStateText: String? = when (state) {
         // A Standby that can be ended-and-saved is a stop-pedaling auto-pause of
@@ -1329,7 +1484,8 @@ private fun RideHeader(
                 }
                 RideControls(
                     state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-                    canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, screenshot = screenshot, compact = true
+                    canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, screenshot = screenshot,
+                    takeBackControl = takeBackControl, compact = true
                 )
             }
             Row(
@@ -1408,7 +1564,8 @@ private fun RideHeader(
         }
         RideControls(
             state, isMockTrainer, onMockToggle, onSkipStep, onPauseToggle,
-            canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, screenshot = screenshot, compact = false
+            canEndAndSave, onEndAndSave, canSkip, hidden = rideControlsHidden, screenshot = screenshot,
+            takeBackControl = takeBackControl, compact = false
         )
     }
 }
@@ -1489,6 +1646,7 @@ private fun RideControls(
     canSkip: Boolean,
     hidden: Boolean = false,
     screenshot: ScreenshotButton? = null,
+    takeBackControl: (() -> Unit)? = null,
     /**
      * Portrait, where these share one row with the back button and the ride
      * name. Three full-width labels leave the name nothing, so the most
@@ -1502,6 +1660,17 @@ private fun RideControls(
     ) {
         if (isMockTrainer) {
             HudPill(text = "Mock", onClick = onMockToggle)
+        }
+        // Before everything else and never hidden: a rider whose trainer is
+        // being driven by something they no longer trust must always have the
+        // one tap that stops it, including while the session panel is up.
+        if (takeBackControl != null) {
+            HudPill(
+                text = if (compact) null else "Take control",
+                icon = Icons.Outlined.LinkOff,
+                contentDescription = "Take control back from the companion",
+                onClick = takeBackControl,
+            )
         }
         if (hidden) return@Row
         // Before pause and end: it is the one a rider reaches for mid-effort,
@@ -1659,6 +1828,21 @@ private fun EndRideConfirmDialog(
             }
         }
     }
+}
+
+
+/**
+ * [content] in a recomposition scope of its own.
+ *
+ * The ride screen's animated values - the zone colour's crossfade, the cadence
+ * and heart-rate tweens - change on every frame while they run, and the tweens
+ * run for most of every second. Read in the screen's body, each frame
+ * recomposed the whole screen, for hours. Read inside one of these, a frame
+ * recomposes only the readout that shows the value.
+ */
+@Composable
+private fun Isolated(content: @Composable () -> Unit) {
+    content()
 }
 
 @Composable

@@ -66,27 +66,42 @@ object ZwiftHandshake {
  * A live encrypted session with a Zwift controller.
  *
  * Every frame the controller sends is a four-byte little-endian counter, the
- * ciphertext, then a four-byte MIC. The counter is both the replay guard and
- * part of the nonce, so it is used exactly as it arrives on the wire.
+ * ciphertext, then a four-byte MIC. The counter is part of the nonce, so it is
+ * used exactly as it arrives on the wire, and it is the replay guard: a frame
+ * whose counter this session has already accepted is refused, however well it
+ * authenticates. The doc said so before anything checked it, and a recorded
+ * button press would authenticate as often as it was played back.
  */
 class ZwiftSession internal constructor(
     private val key: ByteArray,
     private val noncePrefix: ByteArray,
 ) {
+    private val replay = ReplayWindow()
+
     /**
-     * Plaintext of [frame], or null if it is too short or fails its MIC. A
-     * failure is not recoverable by retrying: it means the frame was not
-     * written by the peer this session was established with.
+     * Plaintext of [frame], or null if it is too short, fails its MIC, or
+     * repeats a counter already accepted. A failure is not recoverable by
+     * retrying: it means the frame was not freshly written by the peer this
+     * session was established with.
      */
     fun decrypt(frame: ByteArray): ByteArray? {
         if (frame.size <= COUNTER_BYTES + MIC_BYTES) return null
+        val counter = (frame[0].toLong() and 0xFF) or
+            ((frame[1].toLong() and 0xFF) shl 8) or
+            ((frame[2].toLong() and 0xFF) shl 16) or
+            ((frame[3].toLong() and 0xFF) shl 24)
+        if (!replay.isFresh(counter)) return null
         val nonce = noncePrefix + frame.copyOfRange(0, COUNTER_BYTES)
-        return AesCcm.decrypt(
+        val plaintext = AesCcm.decrypt(
             key = key,
             nonce = nonce,
             ciphertext = frame.copyOfRange(COUNTER_BYTES, frame.size),
             macLength = MIC_BYTES,
-        )
+        ) ?: return null
+        // Only once it has authenticated: a forged frame must not be able to
+        // burn a counter the real controller has yet to use.
+        replay.accept(counter)
+        return plaintext
     }
 
     companion object {
@@ -114,5 +129,41 @@ class ZwiftSession internal constructor(
                 noncePrefix = material.copyOfRange(AES_KEY_BYTES, KEY_MATERIAL_BYTES),
             )
         }
+    }
+}
+
+/**
+ * Which frame counters a session has accepted: the highest, and a window of
+ * the [SIZE] below it.
+ *
+ * A window rather than "must exceed the last" because a controller sends on
+ * two channels, and a frame from one can arrive after a later frame from the
+ * other. Anything older than the window is refused: there is no telling it
+ * from a replay.
+ */
+internal class ReplayWindow {
+    private var highest = -1L
+    /** Bit n set: counter `highest - n` has been accepted. */
+    private var seen = 0UL
+
+    fun isFresh(counter: Long): Boolean {
+        if (highest < 0 || counter > highest) return true
+        val back = highest - counter
+        if (back >= SIZE) return false
+        return (seen shr back.toInt()) and 1UL == 0UL
+    }
+
+    fun accept(counter: Long) {
+        if (highest < 0 || counter > highest) {
+            val shift = if (highest < 0) SIZE.toLong() else counter - highest
+            seen = if (shift >= SIZE) 1UL else (seen shl shift.toInt()) or 1UL
+            highest = counter
+        } else {
+            seen = seen or (1UL shl (highest - counter).toInt())
+        }
+    }
+
+    companion object {
+        const val SIZE = 64
     }
 }

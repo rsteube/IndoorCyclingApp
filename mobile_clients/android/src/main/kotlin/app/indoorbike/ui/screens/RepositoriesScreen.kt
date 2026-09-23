@@ -45,7 +45,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -79,6 +78,7 @@ import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Manage the repositories the rider follows.
@@ -103,10 +103,10 @@ fun RepositoriesScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val followed by container.followedRepositories.repos.collectAsState()
-    val status by container.followedRepositories.status.collectAsState()
-    val refreshing by container.followedRepositories.refreshing.collectAsState()
-    val registry by container.repositoryManager.registry.collectAsState()
+    val followed by container.followedRepositories.repos.collectAsStateWithLifecycle()
+    val status by container.followedRepositories.status.collectAsStateWithLifecycle()
+    val refreshing by container.followedRepositories.refreshing.collectAsStateWithLifecycle()
+    val registry by container.repositoryManager.registry.collectAsStateWithLifecycle()
 
     var url by remember { mutableStateOf("") }
     var adding by remember { mutableStateOf(false) }

@@ -133,6 +133,8 @@ class FitWriterTest {
     routeStartElevationGainMeters = 0.0,
     routeShape = "",
     routeProfile = "",
+    ftp = 0L,
+    segmentMarks = "",
         )
 
         val bytes = RideFitBuilder.build(session, telemetry, workout, ftp = 200)
@@ -181,6 +183,8 @@ class FitWriterTest {
     routeStartElevationGainMeters = 0.0,
     routeShape = "",
     routeProfile = "",
+    ftp = 0L,
+    segmentMarks = "",
         )
 
         val laps = lapDeveloperFields(RideFitBuilder.build(session, telemetry, workout, ftp = 200))
@@ -209,6 +213,8 @@ class FitWriterTest {
     routeStartElevationGainMeters = 0.0,
     routeShape = "",
     routeProfile = "",
+    ftp = 0L,
+    segmentMarks = "",
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(
@@ -333,6 +339,8 @@ class FitWriterTest {
         routeStartElevationGainMeters = 0.0,
         routeShape = "",
         routeProfile = "",
+        ftp = 0L,
+        segmentMarks = "",
     )
 
     private fun telemetry(stamps: List<Long>) = stamps.mapIndexed { i, stamp ->
@@ -468,6 +476,8 @@ class FitWriterTest {
     routeStartElevationGainMeters = 0.0,
     routeShape = "",
     routeProfile = "",
+    ftp = 0L,
+    segmentMarks = "",
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(

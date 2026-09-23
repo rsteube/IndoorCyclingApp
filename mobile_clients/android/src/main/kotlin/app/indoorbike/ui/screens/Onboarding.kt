@@ -68,7 +68,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -123,6 +122,7 @@ import app.indoorbike.ui.workout.zoneSegments
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * First-run onboarding: the welcome banner, and the sheet it opens.
@@ -233,8 +233,8 @@ fun OnboardingSheet(
 @Composable
 private fun ProfileStep(onSaved: (Int, Float) -> Unit) {
     val container = LocalAppContainer.current
-    val currentFtp by container.userSettings.ftp.collectAsState()
-    val currentWeight by container.userSettings.weightKg.collectAsState()
+    val currentFtp by container.userSettings.ftp.collectAsStateWithLifecycle()
+    val currentWeight by container.userSettings.weightKg.collectAsStateWithLifecycle()
 
     var ftpInput by remember { mutableStateOf(currentFtp.toString()) }
     var weightInput by remember { mutableStateOf(formatWeightForInput(currentWeight)) }

@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.cancellation.CancellationException
@@ -106,7 +107,7 @@ sealed class ControllerEvent {
  * the consumer, so a long press produces one Plus or Minus today.
  */
 class ControllerManager {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = bleManagerScope()
 
     private val _connectionState = MutableStateFlow(ControllerConnectionState.Disconnected)
     val connectionState: StateFlow<ControllerConnectionState> = _connectionState.asStateFlow()
@@ -128,18 +129,9 @@ class ControllerManager {
     private val _justConnected = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val justConnected: SharedFlow<String> = _justConnected.asSharedFlow()
 
+    // Touched only on the manager's own thread (see bleManagerScope).
     private var scanJob: Job? = null
-    private var connectionJob: Job? = null
-    private var stateListenerJob: Job? = null
-    private var observeJobs: List<Job> = emptyList()
-
-    /**
-     * The retried RideOn handshake. Tracked so a disconnect or a fresh
-     * connect cancels it rather than leaving it writing to a peripheral
-     * that has gone away.
-     */
-    private var handshakeJob: Job? = null
-    private var activePeripheral: Peripheral? = null
+    private var link: BleLink? = null
 
     /**
      * The ephemeral key pair offered to the controller, and the session its
@@ -176,10 +168,12 @@ class ControllerManager {
     private val scanningAllowed = MutableStateFlow(true)
     private var targetPairedId: String? = null
 
+    /** See [TrainerManager.startScan]: a pairing scan hands auto-reconnect back when it ends. */
+    private var reconnectBeforeScan = false
+
     init { scope.launch { reconnectSupervisor() } }
 
-    // Edge-tracking for press detection — only emit on released → pressed.
-/**
+    /**
      * Which protocol this controller turned out to speak.
      *
      * Nothing can be parsed until this is decided. A controller starts
@@ -197,6 +191,7 @@ class ControllerManager {
     /** How many of the controller's channels have a live subscription. */
     private val subscriptionsReady = MutableStateFlow(0)
 
+    // Edge-tracking for press detection: only emit on released → pressed.
     private var plusPressed = false
     private var minusPressed = false
 
@@ -215,8 +210,8 @@ class ControllerManager {
      * the controller is found. Scanning is gated to foreground/active-ride via
      * [pauseAutoReconnect] / [resumeAutoReconnect].
      */
-    fun autoConnectIfPaired(pairedId: String?) {
-        if (pairedId.isNullOrBlank()) return
+    fun autoConnectIfPaired(pairedId: String?) = onManager {
+        if (pairedId.isNullOrBlank()) return@onManager
         targetPairedId = pairedId
         _pairedDeviceId.value = pairedId
         wantReconnect.value = true
@@ -295,11 +290,19 @@ class ControllerManager {
 
             if (found != null) {
                 connectInternal(found)
-                _connectionState.first {
-                    it == ControllerConnectionState.Disconnected || it == ControllerConnectionState.Error
+                if (connectionCameUp(_connectionState)) {
+                    _connectionState.first {
+                        it == ControllerConnectionState.Disconnected || it == ControllerConnectionState.Error
+                    }
+                    backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                    delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
+                } else {
+                    // See TrainerManager: found but will not connect waits
+                    // longer each time.
+                    Log.i(TAG, "Controller found but didn't connect; next attempt in ${backoff / 1000} s")
+                    delay(backoff)
+                    backoff = (backoff * 2).coerceAtMost(BleReconnectPolicy.MAX_BACKOFF_MS)
                 }
-                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
-                delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
             } else {
                 if (_connectionState.value == ControllerConnectionState.Scanning) {
                     _connectionState.value = ControllerConnectionState.Disconnected
@@ -310,11 +313,12 @@ class ControllerManager {
         }
     }
 
-    fun startScan() {
-        // Manual pairing takes over from background auto-reconnect.
-        wantReconnect.value = false
+    /** A manual pairing scan; see [TrainerManager.startScan]. */
+    fun startScan() = onManager {
+        if (_connectionState.value == ControllerConnectionState.Connected) return@onManager
 
-        if (_connectionState.value == ControllerConnectionState.Connected) return
+        reconnectBeforeScan = reconnectBeforeScan || wantReconnect.value
+        wantReconnect.value = false
 
         _connectionState.value = ControllerConnectionState.Scanning
         resetDiscoveryCaches()
@@ -333,7 +337,14 @@ class ControllerManager {
             .launchIn(scope)
     }
 
-    fun stopScan() {
+    /** End a manual pairing scan, giving auto-reconnect back if it had it. */
+    fun stopScan() = onManager {
+        endScan()
+        if (reconnectBeforeScan && targetPairedId != null) wantReconnect.value = true
+        reconnectBeforeScan = false
+    }
+
+    private fun endScan() {
         scanJob?.cancel()
         scanJob = null
         if (_connectionState.value == ControllerConnectionState.Scanning) {
@@ -341,28 +352,26 @@ class ControllerManager {
         }
     }
 
-    fun connectToCandidate(candidateId: String) {
-        val ad = advertisementById[candidateId] ?: run {
+    fun connectToCandidate(candidateId: String) = onManager {
+        val ad = advertisementById[candidateId]
+        if (ad == null) {
             Log.w(TAG, "connectToCandidate: unknown controller id=${redactDeviceId(candidateId)}")
             _connectionState.value = ControllerConnectionState.Error
-            return
+            return@onManager
         }
         connectInternal(ad)
     }
 
-    fun disconnect() {
+    fun disconnect() = onManager { disconnectInternal() }
+
+    private fun disconnectInternal() {
         wantReconnect.value = false
-        scope.launch {
-            try {
-                activePeripheral?.disconnect()
-            } catch (e: Exception) {
-                Log.w(TAG, "Controller disconnect failed", e)
-            }
-        }
+        reconnectBeforeScan = false
+        link?.let { endLink(it) }
     }
 
-    fun forgetDevice() {
-        disconnect()
+    fun forgetDevice() = onManager {
+        disconnectInternal()
         targetPairedId = null
         _pairedDeviceId.value = null
         _connectedDeviceName.value = null
@@ -374,6 +383,11 @@ class ControllerManager {
     }
 
     // Internals ──────────────────────────────────────────────────────────────
+
+    /** Run [block] on the manager's thread. Every public entry point that touches its state does. */
+    private fun onManager(block: suspend () -> Unit) {
+        scope.launch { block() }
+    }
 
     /**
      * Forget what the previous scan window saw.
@@ -418,7 +432,7 @@ class ControllerManager {
     }
 
     private fun looksLikeController(ad: Advertisement): Boolean {
-        // The Zwift custom service may or may not be in the advertisement —
+        // The Zwift custom service may or may not be in the advertisement -
         // accept both signals.
         val zwiftService = uuidFrom(ZWIFT_CUSTOM_SERVICE)
         if (ad.uuids.any { it == zwiftService }) return true
@@ -427,7 +441,11 @@ class ControllerManager {
     }
 
     private fun connectInternal(advertisement: Advertisement) {
-        stopScan()
+        endScan()
+        // See TrainerManager.connectInternal: the previous link ends here, and
+        // its handshake and observers with it.
+        link?.let { endLink(it, settle = false) }
+
         _connectionState.value = ControllerConnectionState.Connecting
         _pairedDeviceId.value = advertisement.identifier
         _connectedDeviceName.value = advertisement.name ?: "Unknown Controller"
@@ -435,13 +453,8 @@ class ControllerManager {
         // Stay on this controller: arm persistent reconnect for future drops.
         targetPairedId = advertisement.identifier
         wantReconnect.value = true
+        reconnectBeforeScan = false
 
-        stateListenerJob?.cancel()
-        observeJobs.forEach { it.cancel() }
-        observeJobs = emptyList()
-        handshakeJob?.cancel()
-        handshakeJob = null
-        connectionJob?.cancel()
         keyPair = null
         session = null
         _keypadLive.value = false
@@ -450,57 +463,67 @@ class ControllerManager {
         minusPressed = false
         keypadStateKnown = false
 
-        connectionJob = scope.launch {
-            try {
-                val peripheral = scope.peripheral(advertisement) {
-                    logging(peripheralLogging(advertisement.identifier))
-                    // With a handler registered, Kable sends observation
-                    // failures here rather than through the observe flow. Log
-                    // with device context, then rethrow to keep the existing
-                    // behaviour of terminating the flow.
-                    observationExceptionHandler { cause ->
-                        Log.w(
-                            TAG,
-                            "Controller observation failed on ${redactDeviceId(advertisement.identifier)}",
-                            cause,
-                        )
-                        throw cause
+        val newLink = BleLink.open(scope, advertisement) {
+            logging(peripheralLogging(advertisement.identifier))
+            // With a handler registered, Kable sends observation
+            // failures here rather than through the observe flow. Log
+            // with device context, then rethrow to keep the existing
+            // behaviour of terminating the flow.
+            observationExceptionHandler { cause ->
+                Log.w(
+                    TAG,
+                    "Controller observation failed on ${redactDeviceId(advertisement.identifier)}",
+                    cause,
+                )
+                throw cause
+            }
+        }
+        link = newLink
+
+        newLink.scope.launch {
+            newLink.states.collect { state ->
+                if (link !== newLink) return@collect
+                when (state) {
+                    is State.Connecting -> _connectionState.value = ControllerConnectionState.Connecting
+                    is State.Connected -> {
+                        _connectionState.value = ControllerConnectionState.Connected
+                        _justConnected.tryEmit(_connectedDeviceName.value ?: "Controller")
+                        startKeypadObserve(newLink)
                     }
+                    is State.Disconnecting -> _connectionState.value = ControllerConnectionState.Disconnecting
+                    is State.Disconnected -> endLink(newLink)
                 }
-                activePeripheral = peripheral
-
-                stateListenerJob = peripheral.state.onEach { state ->
-                    when (state) {
-                        is State.Connecting -> _connectionState.value = ControllerConnectionState.Connecting
-                        is State.Connected -> {
-                            _connectionState.value = ControllerConnectionState.Connected
-                            _justConnected.tryEmit(_connectedDeviceName.value ?: "Controller")
-                            startKeypadObserve(peripheral)
-                        }
-                        is State.Disconnecting -> _connectionState.value = ControllerConnectionState.Disconnecting
-                        is State.Disconnected -> {
-                            _connectionState.value = ControllerConnectionState.Disconnected
-                            observeJobs.forEach { it.cancel() }
-                            observeJobs = emptyList()
-                            // Otherwise a handshake still in its confirm wait
-                            // keeps writing RideOn to a peripheral that has
-                            // gone away, once every eight seconds.
-                            handshakeJob?.cancel()
-                            handshakeJob = null
-                            activePeripheral = null
-                        }
-                    }
-                }.launchIn(scope)
-
-                peripheral.connect()
+            }
+        }
+        newLink.scope.launch {
+            try {
+                newLink.peripheral.connect()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Controller connect failed", e)
-                _connectionState.value = ControllerConnectionState.Error
-                activePeripheral = null
+                if (link === newLink) {
+                    endLink(newLink, settle = false)
+                    _connectionState.value = ControllerConnectionState.Error
+                }
             }
         }
+    }
+
+    /**
+     * Retire [ending] and close it in the background. Its observers and its
+     * handshake live in its scope, so a handshake still in its confirm wait
+     * no longer keeps writing RideOn to a controller that has gone away.
+     * [settle] as in [TrainerManager].
+     */
+    private fun endLink(ending: BleLink, settle: Boolean = true) {
+        if (link === ending) {
+            link = null
+            session = null
+            keyPair = null
+            if (settle) _connectionState.value = ControllerConnectionState.Disconnected
+        }
+        scope.launch { ending.close() }
     }
 
     /**
@@ -549,6 +572,8 @@ class ControllerManager {
                 val char = peripheral.findCharacteristic(DEVICE_INFO_SERVICE, uuid) ?: return
                 val text = peripheral.read(char).decodeToString().trim { it <= ' ' }
                 if (text.isNotEmpty()) Log.i(TAG, "  $label: $text")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "  $label unreadable", e)
             }
@@ -578,14 +603,11 @@ class ControllerManager {
      * raced the job bookkeeping. Same fix both times, and the same one here:
      * suspend, and do it in order.
      *
-     * [observeJobs] is bound to the list up front rather than at the end, so a
-     * disconnect arriving midway cancels the subscriptions made so far instead
-     * of seeing an empty list and leaking them.
+     * Everything launched here lives in the link's scope, so a link that ends
+     * takes its subscriptions and its handshake with it.
      */
-    private suspend fun startKeypadObserve(peripheral: Peripheral) {
-        observeJobs.forEach { it.cancel() }
-        val jobs = mutableListOf<Job>()
-        observeJobs = jobs
+    private suspend fun startKeypadObserve(l: BleLink) {
+        val peripheral = l.peripheral
         protocol.value = ControllerProtocol.Unknown
         subscriptionsReady.value = 0
 
@@ -610,14 +632,19 @@ class ControllerManager {
         listenable.forEach { char ->
             val label = char.characteristicUuid.toString().substringBefore('-')
             try {
-                jobs += peripheral
+                peripheral
                     .observe(char) {
                         Log.i(TAG, "$label subscription established")
-                        subscriptionsReady.value += 1
+                        // Two channels subscribe at once, and `+= 1` on a
+                        // StateFlow is a read and a write: one could be lost,
+                        // and the handshake then waited out its full timeout.
+                        subscriptionsReady.update { it + 1 }
                     }
-                    .onEach { bytes -> onControllerFrame(label, bytes) }
+                    .onEach { bytes -> if (link === l) onControllerFrame(label, bytes) }
                     .catch { Log.w(TAG, "Controller $label observe failed", it) }
-                    .launchIn(scope)
+                    .launchIn(l.scope)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "Controller $label subscribe failed", e)
             }
@@ -631,8 +658,7 @@ class ControllerManager {
             return
         }
 
-        handshakeJob?.cancel()
-        handshakeJob = scope.launch {
+        l.scope.launch {
             // Kable sets subscriptions up asynchronously, so having called
             // observe() first is not the same as being subscribed. Without this
             // the device can answer before the phone is listening, and the
@@ -648,15 +674,15 @@ class ControllerManager {
             keyPair = keys
 
             repeat(RIDE_ON_ATTEMPTS) { round ->
-                val sent = runCatching {
-                    peripheral.write(
-                        controlPoint,
-                        ZwiftHandshake.hello(keys.publicKey),
-                        WriteType.WithResponse,
-                    )
-                }.onFailure {
-                    Log.w(TAG, "Handshake write failed (round ${round + 1})", it)
-                }.isSuccess
+                val sent = try {
+                    peripheral.write(controlPoint, ZwiftHandshake.hello(keys.publicKey), WriteType.WithResponse)
+                    true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "Handshake write failed (round ${round + 1})", e)
+                    false
+                }
 
                 if (sent) Log.i(TAG, "Handshake sent (round ${round + 1})")
                 delay(RIDE_ON_CONFIRM_MS)
@@ -677,10 +703,25 @@ class ControllerManager {
      * The first frame after a handshake is the controller's half of the key
      * exchange, and it arrives on the same channel as everything else, so this
      * has to recognise it rather than wait for it somewhere separate. After
-     * that every frame is encrypted and the counter that prefixes it is both
-     * the replay guard and part of the nonce.
+     * that every frame is encrypted and the counter that prefixes it is part
+     * of the nonce and, through [ZwiftSession], the replay guard.
+     *
+     * Nothing a controller sends may end its subscription. A throw in here
+     * used to escape into the observe flow and stop the channel for good: a
+     * public key that is not a point on the curve, or a keypad frame whose
+     * length field overflows, and the buttons went dead with nothing said.
      */
     private fun onControllerFrame(label: String, bytes: ByteArray) {
+        try {
+            readControllerFrame(label, bytes)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "$label frame could not be read; dropped", e)
+        }
+    }
+
+    private fun readControllerFrame(label: String, bytes: ByteArray) {
         if (protocol.value == ControllerProtocol.Unknown) {
             keyPair?.let { keys ->
                 ZwiftSession.establish(keys, bytes)?.let {
@@ -703,7 +744,7 @@ class ControllerManager {
 
         val plaintext = if (protocol.value == ControllerProtocol.Encrypted) {
             session?.decrypt(bytes) ?: run {
-                Log.w(TAG, "$label frame did not authenticate; dropped")
+                Log.w(TAG, "$label frame did not authenticate or was a replay; dropped")
                 return
             }
         } else {
@@ -862,8 +903,12 @@ internal fun parseClickKeypadStatus(bytes: ByteArray): ClickKeypadStatus? {
                 }
             }
             2 -> {
-                // length-delimited — skip it
+                // Length-delimited: skip it. A length past the end of the
+                // frame, or one so large it turns negative as an Int, ends the
+                // walk: stepping by it read backwards through the frame, or
+                // past its end.
                 val (len, consumed) = readVarint(bytes, i) ?: break
+                if (len < 0 || len > bytes.size - i - consumed) break
                 i += consumed + len.toInt()
             }
             else -> break // unknown wire type; bail out safely

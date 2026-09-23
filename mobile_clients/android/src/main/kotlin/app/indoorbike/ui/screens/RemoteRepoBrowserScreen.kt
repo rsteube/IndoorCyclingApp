@@ -48,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -85,6 +84,7 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.workout.zoneSegments
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Remote-repo browser. Fetches a single repository's manifest plus all of its
@@ -107,8 +107,8 @@ fun RemoteRepoBrowserScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val ftp by container.userSettings.ftp.collectAsState()
-    val entries by container.workoutLibrary.entries.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
+    val entries by container.workoutLibrary.entries.collectAsStateWithLifecycle()
     // Imported = "in your library". Bundled is excluded so a repo workout that
     // happens to share an id with the bundled starter doesn't read as already
     // added (it isn't — adding it would create a local copy).

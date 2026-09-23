@@ -1,0 +1,21 @@
+-- Migrates HistoryDatabase v7 -> v8: what a ride was ridden against, kept with
+-- the ride, and an index for the query every ride screen runs.
+--
+-- ftp is the FTP the ride was ridden at. The exports used to take whatever FTP
+-- was set on the day they were made, so re-exporting an old ride after an FTP
+-- test rewrote its target watts, intensity factor and training stress. 0 is
+-- "not recorded", which is every row already here, and the exports fall back
+-- to the current setting for those exactly as before.
+--
+-- segmentMarks is where each segment of the ride actually began, as
+-- `segment@sample` pairs joined by `;` (see SegmentMark). The exports used to
+-- cut laps on the planned segment lengths, so a skipped segment or a ride ended
+-- early put one interval's riding under the next one's target. Empty is every
+-- row already here, and those keep the old cutting.
+ALTER TABLE WorkoutSession ADD COLUMN ftp INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE WorkoutSession ADD COLUMN segmentMarks TEXT NOT NULL DEFAULT '';
+
+-- A ride-hour is about 3600 telemetry rows, and every overview, export, upload
+-- and delete looks one ride's rows up by sessionId, in time order. Without
+-- this each of those scanned and sorted the whole table.
+CREATE INDEX ix_workout_telemetry_session ON WorkoutTelemetry(sessionId, timestampEpoch);

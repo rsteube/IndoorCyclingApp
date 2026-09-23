@@ -56,6 +56,7 @@ import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Where a ride can be sent after it's finished.
@@ -135,12 +136,12 @@ private fun FitTrackeeCard() {
     val uploader = container.fitTrackeeUploader
     val context = LocalContext.current
 
-    val url by settings.fitTrackeeUrl.collectAsState()
-    val clientId by settings.fitTrackeeClientId.collectAsState()
-    val clientSecret by settings.fitTrackeeClientSecret.collectAsState()
-    val accessToken by settings.fitTrackeeAccessToken.collectAsState()
-    val sportId by settings.fitTrackeeSportId.collectAsState()
-    val autoUpload by settings.fitTrackeeAutoUpload.collectAsState()
+    val url by settings.fitTrackeeUrl.collectAsStateWithLifecycle()
+    val clientId by settings.fitTrackeeClientId.collectAsStateWithLifecycle()
+    val clientSecret by settings.fitTrackeeClientSecret.collectAsStateWithLifecycle()
+    val accessToken by settings.fitTrackeeAccessToken.collectAsStateWithLifecycle()
+    val sportId by settings.fitTrackeeSportId.collectAsStateWithLifecycle()
+    val autoUpload by settings.fitTrackeeAutoUpload.collectAsStateWithLifecycle()
     val connected = !accessToken.isNullOrBlank()
 
     var expanded by rememberSaveable { mutableStateOf(false) }

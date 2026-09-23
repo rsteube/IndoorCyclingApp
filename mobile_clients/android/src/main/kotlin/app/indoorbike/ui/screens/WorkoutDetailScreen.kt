@@ -57,7 +57,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -107,6 +106,7 @@ import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
 import kotlin.math.roundToInt
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Picks which bottom CTA the workout-detail screen shows. The screen is
@@ -150,11 +150,11 @@ fun WorkoutDetailScreen(
     showBack: Boolean = true,
 ) {
     val container = LocalAppContainer.current
-    val ftp by container.userSettings.ftp.collectAsState()
-    val favouriteIds by container.userSettings.favouriteWorkoutIds.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
+    val favouriteIds by container.userSettings.favouriteWorkoutIds.collectAsStateWithLifecycle()
     val isFavourite = workout.id in favouriteIds
-    val trainerState by container.trainerManager.connectionState.collectAsState()
-    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
+    val trainerState by container.trainerManager.connectionState.collectAsStateWithLifecycle()
+    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsStateWithLifecycle()
     val isTrainerReady = trainerState == TrainerConnectionState.Connected || isMockTrainer
     val summary = remember(workout, ftp) { workout.toSummary(ftp) }
     val isRemoteAdd = mode is WorkoutDetailMode.RemoteAdd

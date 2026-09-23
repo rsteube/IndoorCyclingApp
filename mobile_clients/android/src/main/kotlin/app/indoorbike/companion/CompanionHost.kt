@@ -31,7 +31,10 @@ import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.companion.CompanionControl
 import app.indoorbike.shared.companion.CompanionEffect
 import app.indoorbike.shared.companion.CompanionEngine
+import app.indoorbike.shared.companion.CompanionClose
+import app.indoorbike.shared.companion.CompanionError
 import app.indoorbike.shared.companion.CompanionProtocol
+import app.indoorbike.shared.companion.CompanionSecurity
 import app.indoorbike.shared.companion.CompanionSession
 import app.indoorbike.shared.companion.CompanionSnapshot
 import app.indoorbike.shared.companion.CompanionState
@@ -49,6 +52,8 @@ import app.indoorbike.shared.companion.TrainerInfo
 import app.indoorbike.ride.CompanionRideRecorder
 import app.indoorbike.ride.SavedCompanionRide
 import app.indoorbike.shared.session.RideEndWatch
+import app.indoorbike.shared.session.RideRoad
+import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.util.Log
@@ -57,6 +62,7 @@ import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.routing.routing
+import io.ktor.server.websocket.DefaultWebSocketServerSession
 import io.ktor.server.websocket.WebSockets
 import io.ktor.server.websocket.webSocket
 import io.ktor.websocket.CloseReason
@@ -65,12 +71,17 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,6 +114,12 @@ data class CompanionStatus(
     val advertising: Boolean = false,
     /** Self-declared name of the connected controller, or null when none holds the ride. */
     val controllerName: String? = null,
+    /**
+     * Where the controller is connecting from. Shown to the rider, so a
+     * connection they did not expect is one they can see and take control back
+     * from, rather than a name any device could claim.
+     */
+    val controllerAddress: String? = null,
     val observers: Int = 0,
     /** True once any road has arrived. The pairing screen waits for this. */
     val receivingRoad: Boolean = false,
@@ -113,6 +130,14 @@ data class CompanionStatus(
     /** Which world or game it is in, if it said. Shown beside [label]. */
     val world: String? = null,
     val error: String? = null,
+    /**
+     * Changes with every start and every stop. The pairing screen keys its
+     * "open the socket" effect on it: a stop that landed while the screen was
+     * up used to reset the status to exactly the values the effect had already
+     * run for, so it never ran again and the rider was left looking at a card
+     * with no code and no address.
+     */
+    val epoch: Int = 0,
 ) {
     val primaryAddress: String? get() = addresses.firstOrNull()
 
@@ -189,7 +214,75 @@ class CompanionHost(
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * Where closing happens. Its own scope, never cancelled, so that [dispose]
+     * cancelling [scope] cannot cut short the shutdown [stop] has just asked
+     * for, which used to leave the socket listening after the host was gone.
+     */
+    private val teardownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val advertiser = CompanionAdvertiser(appContext)
+
+    /**
+     * Guards the lifecycle fields - [server], the jobs, [generation] - which a
+     * screen's start and another screen's stop reach from different threads,
+     * in either order.
+     */
+    private val lifecycle = Any()
+
+    /**
+     * Bumped by every start and every stop. A start that is still opening
+     * checks it before publishing anything, so a stop that lands in the middle
+     * wins: before, the opening carried on after the stop, wired up a server
+     * nothing could reach and left the port open until the process died.
+     */
+    private var generation = 0
+
+    /** The pairing code now being accepted. Read by each new connection. */
+    @Volatile
+    private var currentToken = ""
+
+    /** Guards the controller slot, so two handshakes finishing at once cannot both take it. */
+    private val slot = Any()
+
+    /**
+     * Each pairing write reads the stored list, changes it and writes it back,
+     * and the in-memory keys are rebuilt from the result. Two at once, a forget
+     * from the screen and a companion proving its pairing on the socket, could
+     * each write back a copy missing the other's change and bring a forgotten
+     * companion back. One at a time.
+     */
+    private val pairingMutex = Mutex()
+
+    /** Failed handshakes by address, for the backoff. */
+    private class Failures(var count: Int = 0, var blockedUntilMs: Long = 0L)
+    private val failuresByHost = ConcurrentHashMap<String, Failures>()
+
+    /** Failed handshakes since the pairing code was last issued. */
+    private val codeFailures = AtomicInteger(0)
+
+    /**
+     * The ride's road as it stood when the companion said the ride was over,
+     * held until the ride is written. See [applyCourse].
+     */
+    @Volatile
+    private var roadAtFinish: RideRoad? = null
+
+    /**
+     * A course that arrived for the next ride while the last one was still
+     * being written. Preparing the next ride clears the engine's course, so it
+     * waits here and is applied once that is done.
+     */
+    @Volatile
+    private var nextRideCourse: CompanionCourse? = null
+
+    /**
+     * The bike the companion described, kept for the rest of the session.
+     * Every new ride restores the rider's own bike, and a game's drivetrain
+     * used to revert at every lap with nothing to tell the game so.
+     */
+    @Volatile
+    private var companionDrivetrain: Drivetrain? = null
 
     /**
      * The other half of discovery. mDNS is the standard answer; this is the one
@@ -398,22 +491,34 @@ class CompanionHost(
     private var telemetrySeq = 0L
     private var hostStartedAtMs = 0L
 
+    /** Something to put on a connection's socket, in turn. */
+    private sealed interface Outbound {
+        class Send(val frame: ServerFrame) : Outbound
+        class Close(val code: Int, val reason: String) : Outbound
+    }
+
     private class Conn(
         val session: CompanionSession,
         val ws: DefaultWebSocketSession,
-        /**
-         * Serialises everything written to this socket.
-         *
-         * A Ktor websocket session is not safe for concurrent sends, and this
-         * host has three writers: the 4 Hz telemetry loop, event broadcasts off
-         * the engine's callbacks, and the per-connection read loop answering a
-         * frame. Two of them overlapping interleaves bytes on the wire, and the
-         * peer drops the connection with a 1006 rather than the close code it
-         * was being sent - which is exactly the failure the protocol's
-         * "send the frame *and* the reason" rule exists to prevent.
-         */
-        val write: Mutex = Mutex(),
+        /** The address it connected from. */
+        val remoteHost: String,
     ) {
+        /**
+         * Everything bound for this socket, in order, drained by one writer.
+         *
+         * Writes used to be made by whichever thread had something to say,
+         * under a lock, each event on a coroutine of its own. Two events could
+         * reach the wire in either order, and a peer that stopped reading - a
+         * laptop asleep with its socket half open - filled its window, parked a
+         * sender on the lock, and every other connection's telemetry waited
+         * behind it. One queue per connection keeps its frames in order, and a
+         * bounded one means a stalled peer is dropped rather than waited on.
+         */
+        val outbox = Channel<Outbound>(OUTBOX_CAPACITY)
+
+        /** Frames queued and not yet written. */
+        val queued = AtomicInteger(0)
+
         /**
          * The ride state this connection was last told about, in its own
          * vocabulary.
@@ -438,62 +543,95 @@ class CompanionHost(
      * servers fighting over a port.
      */
     fun start() {
-        if (server != null || startJob != null) return
-        hostStartedAtMs = System.currentTimeMillis()
-        telemetrySeq = 0
-        ridePrepared = false
-        rideUnderway = false
-        _hosting.value = true
-        clearLook()
-        _sessionPhase.value = SessionPhase.LIVE
-        _sessionCompanionName.value = null
-        _sessionRides.value = emptyList()
-        sessionClosing = false
-        resumeForCompanion = null
+        synchronized(lifecycle) {
+            if (server != null || startJob != null) return
+            generation += 1
+            val gen = generation
+            hostStartedAtMs = System.currentTimeMillis()
+            telemetrySeq = 0
+            ridePrepared = false
+            rideUnderway = false
+            _hosting.value = true
+            clearLook()
+            _sessionPhase.value = SessionPhase.LIVE
+            _sessionCompanionName.value = null
+            _sessionRides.value = emptyList()
+            sessionClosing = false
+            resumeForCompanion = null
+            roadAtFinish = null
+            nextRideCourse = null
+            companionDrivetrain = null
+            failuresByHost.clear()
+            codeFailures.set(0)
 
-        val token = CompanionPairing.newToken()
-        val sessionId = CompanionPairing.newSessionId()
-        _status.value = CompanionStatus(
-            running = false,
-            token = token,
-            sessionId = sessionId,
-            addresses = CompanionPairing.localAddresses(),
-        )
+            currentToken = CompanionPairing.newToken()
+            val sessionId = CompanionPairing.newSessionId()
+            _status.value = CompanionStatus(
+                running = false,
+                token = currentToken,
+                sessionId = sessionId,
+                addresses = CompanionPairing.localAddresses(),
+                epoch = gen,
+            )
+            startJob = scope.launch { open(gen, sessionId) }
+        }
+    }
 
-        startJob = scope.launch {
-            // Before the server, and outside the try: the rider should still be
-            // able to see and prune their paired companions on a night when the
-            // socket refuses to open.
+    private fun isCurrent(gen: Int): Boolean = synchronized(lifecycle) { generation == gen }
+
+    private suspend fun open(gen: Int, sessionId: String) {
+        // A server made here and not yet handed to [server] belongs to this
+        // attempt alone, and is stopped on the way out if it was never handed
+        // over.
+        var orphan: EmbeddedServer<*, *>? = null
+        try {
+            // Before the server: the rider should still be able to see and
+            // prune their paired companions on a night when the socket refuses
+            // to open.
             refreshPairedCompanions()
-            try {
-                // Port 0 asks the OS for a free one, which is the right answer
-                // for something that only exists for the length of a ride: a
-                // fixed port would collide with whatever else the rider runs,
-                // and the number reaches the companion through mDNS and the QR
-                // payload anyway.
-                val started = embeddedServer(CIO, port = 0) {
-                    install(WebSockets)
-                    routing {
-                        webSocket(CompanionProtocol.PATH) {
-                            serve(token, sessionId, this)
-                        }
+            if (!isCurrent(gen)) return
+            // Port 0 asks the OS for a free one, which is the right answer
+            // for something that only exists for the length of a ride: a
+            // fixed port would collide with whatever else the rider runs,
+            // and the number reaches the companion through mDNS and the QR
+            // payload anyway.
+            val started = embeddedServer(CIO, port = 0) {
+                install(WebSockets) {
+                    // A peer that has gone - a laptop asleep, Wi-Fi dropped -
+                    // sends no FIN, and without pings its socket stayed "open"
+                    // for as long as TCP took to give up, a quarter of an hour
+                    // or more, holding the ride and refusing the game when it
+                    // came back.
+                    pingPeriodMillis = PING_PERIOD_MS
+                    timeoutMillis = PING_TIMEOUT_MS
+                    // Big enough for a screenshot, far short of what used to be
+                    // accepted: anything, which let one frame from any device on
+                    // the network exhaust the app's memory mid-ride.
+                    maxFrameSize = MAX_FRAME_BYTES
+                }
+                routing {
+                    webSocket(CompanionProtocol.PATH) {
+                        serve(sessionId, this)
                     }
                 }
-                started.start(wait = false)
-                val port = withTimeoutOrNull(START_TIMEOUT_MS) {
-                    started.engine.resolvedConnectors().firstOrNull()?.port
-                } ?: error("the server did not report a port")
+            }
+            orphan = started
+            started.start(wait = false)
+            val port = withTimeoutOrNull(START_TIMEOUT_MS) {
+                started.engine.resolvedConnectors().firstOrNull()?.port
+            } ?: error("the server did not report a port")
 
+            synchronized(lifecycle) {
+                if (generation != gen) throw CancellationException("stopped while opening")
                 server = started
-                _status.value = _status.value.copy(
-                    running = true,
-                    port = port,
-                    addresses = CompanionPairing.localAddresses(),
-                )
+                orphan = null
+                _status.update {
+                    it.copy(running = true, port = port, addresses = CompanionPairing.localAddresses())
+                }
                 Log.i(TAG, "Companion socket listening on " + port)
 
                 advertiser.start(port, sessionId, appVersion) { advertising ->
-                    _status.value = _status.value.copy(advertising = advertising)
+                    _status.update { it.copy(advertising = advertising) }
                 }
                 beacon.start {
                     CompanionAnnouncement(
@@ -515,57 +653,63 @@ class CompanionHost(
                 // not when the rider gets round to tapping through the summary.
                 // Tying this to the screen meant a game sat waiting on a ride
                 // that had been over for minutes.
-                rideWatchJob = scope.launch {
-                    // Not `state == Completed`. The session sits on that from
-                    // the moment a ride is saved until the next one is
-                    // prepared, which includes every second of the pairing
-                    // screen the rider comes back to, so the socket would open
-                    // and shut itself and the second ride of an evening could
-                    // never start. [RideEndWatch] carries the rule and the
-                    // tests that pin it.
-                    val rideEnd = RideEndWatch()
-                    sessionManager.state.collect { rideState ->
-                        if (rideEnd.ended(rideState)) {
-                            onRideEnded()
-                            return@collect
-                        }
-                        if (rideState == WorkoutState.Completed) return@collect
-                        if (rideState == WorkoutState.Active) {
-                            // A ride that is running again is a ride the
-                            // previous one can no longer be added to.
-                            completableRide = null
-                            // The first move into active is where this ride
-                            // starts measuring from. Not a resume: a rider back
-                            // from a pause is continuing, and re-basing there
-                            // would discard everything they had already done.
-                            if (!rideUnderway) {
-                                rideUnderway = true
-                                engine.markRideStart()
-                                // The ride now has a start time to file it
-                                // under, which is what the brand was waiting
-                                // for: it arrives at connect, before there is
-                                // any ride to attach it to.
-                                rememberBrand()
-                            }
-                        }
-                        // Pausing is not only something a companion asks for.
-                        // The rider has a pause button, the stop-pedalling
-                        // watchdog has its own, and the foreground service can
-                        // force one. A game that only ever heard about the
-                        // pauses it requested would carry on rolling its world
-                        // while the recording sat still.
-                        announceState(rideState.asCompanionState())
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Could not open the companion socket", e)
-                _status.value = _status.value.copy(
-                    running = false,
-                    error = "Could not open the companion socket: " + (e.message ?: "unknown error"),
-                )
-            } finally {
-                startJob = null
+                rideWatchJob = scope.launch { watchRide() }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not open the companion socket", e)
+            if (isCurrent(gen)) {
+                _status.update {
+                    it.copy(
+                        running = false,
+                        error = "Could not open the companion socket: " + (e.message ?: "unknown error"),
+                    )
+                }
+            }
+        } finally {
+            orphan?.let { unpublished -> teardownScope.launch { runCatching { unpublished.stop(GRACE_MS, TIMEOUT_MS) } } }
+            // Only this attempt's own handle: a newer start has one of its own.
+            synchronized(lifecycle) { if (generation == gen) startJob = null }
+        }
+    }
+
+    private suspend fun watchRide() {
+        // Not `state == Completed`. The session sits on that from the moment a
+        // ride is saved until the next one is prepared, which includes every
+        // second of the pairing screen the rider comes back to, so the socket
+        // would open and shut itself and the second ride of an evening could
+        // never start. [RideEndWatch] carries the rule and the tests that pin it.
+        val rideEnd = RideEndWatch()
+        sessionManager.state.collect { rideState ->
+            if (rideEnd.ended(rideState)) {
+                onRideEnded()
+                return@collect
+            }
+            if (rideState == WorkoutState.Completed) return@collect
+            if (rideState == WorkoutState.Active) {
+                // A ride that is running again is a ride the previous one can
+                // no longer be added to.
+                completableRide = null
+                // The first move into active is where this ride starts
+                // measuring from. Not a resume: a rider back from a pause is
+                // continuing, and re-basing there would discard everything
+                // they had already done.
+                if (!rideUnderway) {
+                    rideUnderway = true
+                    engine.markRideStart()
+                    // The ride now has a start time to file it under, which is
+                    // what the brand was waiting for: it arrives at connect,
+                    // before there is any ride to attach it to.
+                    rememberBrand()
+                }
+            }
+            // Pausing is not only something a companion asks for. The rider
+            // has a pause button, the stop-pedalling watchdog has its own, and
+            // the foreground service can force one. A game that only ever
+            // heard about the pauses it requested would carry on rolling its
+            // world while the recording sat still.
+            announceState(rideState.asCompanionState())
         }
     }
 
@@ -574,19 +718,24 @@ class CompanionHost(
      * and forget the session: the rider has left Companion mode.
      */
     fun stop() {
-        stopListening()
-        clearLook()
-        _hosting.value = false
-        _sessionPhase.value = SessionPhase.LIVE
-        _sessionCompanionName.value = null
-        sessionClosing = false
-        resumeForCompanion = null
-        // The rides stay in history; the list of them belongs to the session
-        // that is ending here, and the next one starts empty.
-        _sessionRides.value = emptyList()
-        completableRide = null
-        pendingShots.clear()
-        _screenshotStatus.value = null
+        synchronized(lifecycle) {
+            stopListening()
+            clearLook()
+            _hosting.value = false
+            _sessionPhase.value = SessionPhase.LIVE
+            _sessionCompanionName.value = null
+            sessionClosing = false
+            resumeForCompanion = null
+            roadAtFinish = null
+            nextRideCourse = null
+            companionDrivetrain = null
+            // The rides stay in history; the list of them belongs to the session
+            // that is ending here, and the next one starts empty.
+            _sessionRides.value = emptyList()
+            completableRide = null
+            pendingShots.clear()
+            _screenshotStatus.value = null
+        }
     }
 
     /**
@@ -596,7 +745,10 @@ class CompanionHost(
      * summary: nothing more can connect or start a ride, and the list of what
      * the session produced stays on screen until they dismiss it.
      */
-    private fun stopListening() {
+    private fun stopListening() = synchronized(lifecycle) {
+        // Whatever start is still opening is now out of date, and stands down
+        // at its next check rather than publishing a server after this.
+        generation += 1
         startJob?.cancel()
         startJob = null
         telemetryJob?.cancel()
@@ -613,23 +765,30 @@ class CompanionHost(
         server = null
         val closing = connections.toList()
         connections.clear()
-        controller = null
+        synchronized(slot) {
+            controller = null
+            ridePrepared = false
+        }
         _remoteControls.value = null
         _pendingPairing.value = null
-        ridePrepared = false
         if (running != null || closing.isNotEmpty()) {
             // Stopped off the caller's thread: CIO's shutdown joins its
             // selector, and doing that on the main thread while a screen is
-            // being disposed is a visible stall.
-            scope.launch {
+            // being disposed is a visible stall. On the teardown scope, so a
+            // dispose right behind this cannot cancel it.
+            teardownScope.launch {
                 // Say why before the socket goes away. Without this a
                 // companion cannot tell a finished ride from a crashed phone,
                 // and the protocol promises it a `stateChanged` and a 4005.
-                closing.forEach { runCatching { dispatch(it, it.session.rideEnded()) } }
+                closing.forEach { conn ->
+                    runCatching { dispatch(conn, synchronized(conn.session) { conn.session.rideEnded() }) }
+                }
+                // Long enough for each writer to put those two on the wire.
+                delay(GRACE_MS)
                 runCatching { running?.stop(GRACE_MS, TIMEOUT_MS) }
             }
         }
-        _status.value = CompanionStatus()
+        _status.value = CompanionStatus(epoch = generation)
     }
 
     /**
@@ -641,8 +800,17 @@ class CompanionHost(
      */
     fun revokeControl() {
         val holder = controller ?: return
+        // Everything the companion was holding is let go of now, not when its
+        // lease runs out: the road goes flat at the speed the rider is doing,
+        // a power target goes, and an untracked stretch stops being one. The
+        // revoke used to release only the session's own copy of the road, so
+        // the hill stood for another three and a half seconds and a target
+        // stood for good.
+        engine.setPowerTarget(null, CompanionEngine.SOURCE_STATE)
+        engine.setRoad(gradient = 0.0, speedMps = engine.speedMps.value)
+        sessionManager.takeBackFromCompanion()
         scope.launch {
-            dispatch(holder, holder.session.revoke())
+            dispatch(holder, synchronized(holder.session) { holder.session.revoke() })
         }
     }
 
@@ -675,9 +843,21 @@ class CompanionHost(
      * top of this one and reset it underneath the rider.
      */
     fun prepareRideWithoutCompanion() {
-        if (ridePrepared) return
+        prepareOnce()
+    }
+
+    /**
+     * Prepare the session's ride, once. A check and a set under one lock:
+     * checked and set separately, a debug tap and a companion connecting at
+     * the same moment could each prepare a ride, the second resetting the
+     * first underneath the rider.
+     */
+    private fun prepareOnce() {
+        synchronized(slot) {
+            if (ridePrepared) return
+            ridePrepared = true
+        }
         sessionManager.prepareCompanion(ftp())
-        ridePrepared = true
     }
 
     fun dispose() {
@@ -687,27 +867,73 @@ class CompanionHost(
 
     // One connection ─────────────────────────────────────────────────────────
 
-    private suspend fun serve(token: String, sessionId: String, ws: DefaultWebSocketSession) {
+    private suspend fun serve(sessionId: String, ws: DefaultWebSocketServerSession) {
+        val remoteHost = runCatching { ws.call.request.local.remoteHost }.getOrDefault("unknown")
+
+        // An address that has just failed a handshake several times waits
+        // before it may try again, so the pairing code cannot be guessed at
+        // the speed of the network.
+        refusalFor(remoteHost)?.let { reason ->
+            runCatching { ws.close(CloseReason(CompanionClose.UNAUTHORIZED.toShort(), reason)) }
+            return
+        }
+        // And there is a ceiling on how many may be connected, or connecting,
+        // at once: nothing limited it, and every open socket is a file
+        // descriptor shared with the trainer link and the database.
+        if (connections.size >= MAX_CONNECTIONS ||
+            connections.count { !it.session.isReady } >= MAX_UNAUTHENTICATED
+        ) {
+            runCatching { ws.close(CloseReason(CloseReason.Codes.TRY_AGAIN_LATER, "too many connections")) }
+            return
+        }
+
         val session = CompanionSession(
             config = CompanionConfig(
                 appVersion = appVersion,
                 deviceId = deviceId(),
                 appName = BEACON_NAME,
                 sessionId = sessionId,
-                token = token,
+                token = currentToken,
             ),
             snapshot = ::snapshot,
             controllerConnected = { controller != null },
             pairedKeyFor = { pairedKeys[it] },
             rideState = ::rideState,
         )
-        val conn = Conn(session, ws)
+        val conn = Conn(session, ws, remoteHost)
         connections.add(conn)
+        val writer = ws.launch { writeOut(conn) }
+        // A connection that has not finished its handshake in time is closed.
+        // One that never said anything at all used to stay open for good.
+        val deadline = ws.launch {
+            delay(HANDSHAKE_MS)
+            val effects = synchronized(session) {
+                session.refuseUnauthenticated(
+                    "No completed handshake within " + HANDSHAKE_MS / 1000 + " s. Send 'hello' first.",
+                )
+            }
+            if (effects.isNotEmpty()) dispatch(conn, effects)
+        }
         // The controller this app closed for something it sent. Gone just the
         // same as one that closed its own socket, and handled the same way below.
         var refusedController = false
         try {
             for (frame in ws.incoming) {
+                if (!session.isReady) {
+                    // Until the handshake is done, only a short text frame is
+                    // read at all. A hello is a few hundred bytes; the frames
+                    // that need megabytes - a screenshot - come after it.
+                    val refusal = when {
+                        frame !is Frame.Text -> "Only text frames are read before the handshake."
+                        frame.data.size > PRE_AUTH_MAX_BYTES ->
+                            "A frame before the handshake may be at most " + PRE_AUTH_MAX_BYTES + " bytes."
+                        else -> null
+                    }
+                    if (refusal != null) {
+                        dispatch(conn, synchronized(session) { session.refuseUnauthenticated(refusal) })
+                        break
+                    }
+                }
                 if (frame !is Frame.Text) continue
                 val wasController = controller === conn
                 val text = frame.readText()
@@ -735,15 +961,22 @@ class CompanionHost(
                     refusedController = wasController
                     break
                 }
-                registerRoleIfNeeded(conn)
+                if (!registerRoleIfNeeded(conn)) break
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "Companion connection ended: " + (e.message ?: e::class.simpleName))
         } finally {
+            deadline.cancel()
             connections.remove(conn)
             // A refused controller only counts while nobody has taken its place.
-            if (controller === conn || (refusedController && controller == null)) {
-                controller = null
+            val wasHolding = synchronized(slot) {
+                val holding = controller === conn || (refusedController && controller == null)
+                if (holding) controller = null
+                holding
+            }
+            if (wasHolding) {
                 // Whatever menu it was showing is gone with it. Leaving the pad
                 // up would offer the rider buttons with nothing on the other
                 // end of them.
@@ -758,7 +991,7 @@ class CompanionHost(
                     // while they fetched a drink is a ride they did not choose
                     // to end.
                     if (sessionManager.holdCompanionRide()) {
-                        resumeForCompanion = conn.session.clientName
+                        resumeForCompanion = identityOf(conn)
                         Log.i(TAG, "Controller disconnected mid-ride; ride paused until it returns")
                     } else {
                         Log.i(TAG, "Controller disconnected; nothing was riding")
@@ -766,22 +999,99 @@ class CompanionHost(
                 }
             }
             publishConnectionCounts()
+            // Whatever is still queued - the error and the close that explain
+            // why it was dropped - gets its moment on the wire before the
+            // handler returns and the socket goes with it.
+            conn.outbox.close()
+            withContext(NonCancellable) { withTimeoutOrNull(CLOSE_DRAIN_MS) { writer.join() } }
+        }
+    }
+
+    /** One connection's writer: its queue, in order, onto the socket. */
+    private suspend fun writeOut(conn: Conn) {
+        try {
+            for (item in conn.outbox) {
+                conn.queued.decrementAndGet()
+                when (item) {
+                    is Outbound.Send -> {
+                        val sent = withTimeoutOrNull(SEND_TIMEOUT_MS) {
+                            conn.ws.send(CompanionCodec.encode(item.frame))
+                            true
+                        }
+                        if (sent == null) {
+                            // Not reading. Its socket is closed rather than
+                            // written to for ever, which also ends the read
+                            // loop and lets the ride be held.
+                            Log.w(TAG, conn.session.clientName + " stopped taking frames; closing it")
+                            conn.ws.cancel()
+                            return
+                        }
+                    }
+                    is Outbound.Close -> {
+                        withTimeoutOrNull(SEND_TIMEOUT_MS) {
+                            conn.ws.close(
+                                CloseReason(
+                                    item.code.toShort(),
+                                    // Clamped again here because the 125-byte
+                                    // cap is a fact about WebSocket frames
+                                    // rather than about the protocol, and the
+                                    // transport is the last place that can
+                                    // still honour it.
+                                    CompanionProtocol.closeReason(item.reason),
+                                )
+                            )
+                        }
+                        return
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "Writing to " + conn.session.clientName + " failed: " + (e.message ?: e::class.simpleName))
         }
     }
 
     /**
+     * Who a connection is, as far as handing a held ride back to it goes. A
+     * proven pairing where there is one; the name it gave, which the pairing
+     * code already vouched for, otherwise. A ride held for a game used to be
+     * handed back to anything that connected with the same self-declared name.
+     */
+    private fun identityOf(conn: Conn): String =
+        conn.session.peerDeviceId?.takeIf { conn.session.authenticatedByPairing }?.let { "device:" + it }
+            ?: ("name:" + conn.session.clientName)
+
+    /**
      * Note the role the handshake granted, and prepare the ride for a
-     * controller.
+     * controller. Returns false when the connection has been refused.
      *
      * Preparing here rather than on the first road frame is deliberate. Doing
      * it later would mean [WorkoutSessionManager.prepareCompanion] clearing the
      * engine *after* a road had already landed in it, and the rider would feel
      * the first hill of the ride disappear.
      */
-    private fun registerRoleIfNeeded(conn: Conn) {
-        val role = conn.session.role ?: return
+    private suspend fun registerRoleIfNeeded(conn: Conn): Boolean {
+        val role = conn.session.role ?: return true
         if (role == HelloFrame.ROLE_CONTROLLER && controller !== conn) {
-            controller = conn
+            // Claimed in one step. Two handshakes that finished together
+            // could each see the slot empty and each take it, and the one
+            // overwritten could still steer, since what it may do is its own
+            // session's to say.
+            val claimed = synchronized(slot) {
+                val holder = controller
+                if (holder == null || holder === conn) {
+                    controller = conn
+                    true
+                } else {
+                    false
+                }
+            }
+            if (!claimed) {
+                Log.w(TAG, "Refused " + conn.session.clientName + ": another companion took control first")
+                dispatch(conn, synchronized(conn.session) { conn.session.refuseControl() })
+                return false
+            }
             if (lookOwner != null && lookOwner != conn.session.clientName) clearLook()
             _sessionCompanionName.value = conn.session.clientName
             if (_sessionPhase.value == SessionPhase.COMPANION_AWAY) {
@@ -796,26 +1106,69 @@ class CompanionHost(
             val resumeFor = resumeForCompanion
             if (resumeFor != null) {
                 resumeForCompanion = null
-                if (resumeFor == conn.session.clientName) {
+                if (resumeFor == identityOf(conn)) {
                     sessionManager.resumeWorkout()
                     Log.i(TAG, "Controller back; ride resumed")
                 }
             }
-            if (!ridePrepared) {
-                sessionManager.prepareCompanion(ftp())
-                ridePrepared = true
-            }
-            Log.i(TAG, "Controller connected: " + conn.session.clientName)
+            prepareOnce()
+            Log.i(TAG, "Controller connected: " + conn.session.clientName + " from " + conn.remoteHost)
         }
         publishConnectionCounts()
+        return true
+    }
+
+    /**
+     * Count a failed handshake against its address, and against the code.
+     *
+     * An address that keeps failing waits longer each time before it may try
+     * again, and a code that has been guessed at too often is replaced: at a
+     * thousand guesses a second across the network, a six-character code held
+     * for a whole evening is a real chance, and nothing counted.
+     */
+    private fun noteAuthFailure(conn: Conn) {
+        val now = System.currentTimeMillis()
+        val failures = failuresByHost.getOrPut(conn.remoteHost) { Failures() }
+        synchronized(failures) {
+            failures.count += 1
+            if (failures.count >= FREE_FAILURES) {
+                val doublings = (failures.count - FREE_FAILURES).coerceAtMost(6)
+                failures.blockedUntilMs = now + (1_000L shl doublings).coerceAtMost(MAX_BACKOFF_MS)
+            }
+        }
+        if (codeFailures.incrementAndGet() >= ROTATE_CODE_AFTER) rotateCode()
+    }
+
+    private fun refusalFor(host: String): String? {
+        val failures = failuresByHost[host] ?: return null
+        val waitMs = synchronized(failures) { failures.blockedUntilMs - System.currentTimeMillis() }
+        return if (waitMs > 0) "too many failed attempts; try again in " + ((waitMs + 999) / 1000) + " s" else null
+    }
+
+    /**
+     * Issue a new pairing code. The card shows it at once; paired companions
+     * are unaffected, since they never use one. Not in a debug build, whose
+     * code is fixed by design.
+     */
+    private fun rotateCode() {
+        if (app.indoorbike.BuildConfig.DEBUG) return
+        codeFailures.set(0)
+        val token = CompanionPairing.newToken()
+        currentToken = token
+        _status.update { it.copy(token = token) }
+        Log.w(TAG, "Pairing code replaced after repeated failed attempts")
     }
 
     private fun publishConnectionCounts() {
-        _screenshotsOffered.value = screenshots != null && controller?.session?.answersScreenshots == true
-        _status.value = _status.value.copy(
-            controllerName = controller?.session?.clientName,
-            observers = connections.count { it.session.role == HelloFrame.ROLE_OBSERVER },
-        )
+        val holder = controller
+        _screenshotsOffered.value = screenshots != null && holder?.session?.answersScreenshots == true
+        _status.update {
+            it.copy(
+                controllerName = holder?.session?.clientName,
+                controllerAddress = holder?.remoteHost,
+                observers = connections.count { c -> c.session.role == HelloFrame.ROLE_OBSERVER },
+            )
+        }
     }
 
     /**
@@ -834,43 +1187,33 @@ class CompanionHost(
                     if (frame is WarningFrame && frame.code == CompanionWarning.REJECTED) {
                         Log.w(TAG, "Refused from " + conn.session.clientName + ": " + frame.message)
                     }
+                    // A handshake refused is counted against where it came from.
+                    if (frame is ErrorFrame && frame.code == CompanionError.UNAUTHORIZED && !conn.session.isReady) {
+                        noteAuthFailure(conn)
+                    }
                     conn.send(frame)
                 }
 
                 is CompanionEffect.Close -> {
                     // Retire the connection *before* closing it. The telemetry
                     // loop writes to everything in `connections` four times a
-                    // second, and a frame landing on a socket that is closing
-                    // aborts it: the companion then sees a bare 1006 instead
-                    // of the code and reason that explain why it was dropped,
-                    // which defeats the whole point of sending both.
+                    // second, and a frame queued behind the close would never
+                    // be written; the companion should see the code and reason
+                    // that explain why it was dropped, not a bare 1006.
                     connections.remove(conn)
-                    if (controller === conn) {
-                        controller = null
-                        _remoteControls.value = null
+                    val wasController = synchronized(slot) {
+                        (controller === conn).also { if (it) controller = null }
                     }
-                    runCatching {
-                        conn.write.withLock {
-                            conn.ws.close(
-                                CloseReason(
-                                    effect.code.toShort(),
-                                    // Clamped again here because the 125-byte
-                                    // cap is a fact about WebSocket frames
-                                    // rather than about the protocol, and the
-                                    // transport is the last place that can
-                                    // still honour it.
-                                    CompanionProtocol.closeReason(effect.reason),
-                                )
-                            )
-                        }
-                    }
+                    if (wasController) _remoteControls.value = null
+                    conn.outbox.trySend(Outbound.Close(effect.code, effect.reason))
+                    conn.outbox.close()
                     open = false
                 }
 
                 is CompanionEffect.ApplyRoad -> {
                     engine.setRoad(effect.gradient, effect.speedMps, effect.crr)
                     if (!_status.value.receivingRoad) {
-                        _status.value = _status.value.copy(receivingRoad = true)
+                        _status.update { it.copy(receivingRoad = true) }
                     }
                 }
 
@@ -881,30 +1224,11 @@ class CompanionHost(
                     engine.shiftBy(effect.steps, CompanionEngine.SOURCE_COMPANION)
 
                 is CompanionEffect.SetLabel ->
-                    _status.value = _status.value.copy(
-                        label = effect.name,
-                        world = effect.world ?: _status.value.world,
-                    )
+                    _status.update {
+                        it.copy(label = effect.name.ifEmpty { null } ?: it.label, world = effect.world ?: it.world)
+                    }
 
-                is CompanionEffect.SetCourse -> {
-                    engine.setCourse(effect.course)
-                    // The HUD shows what the ride is called while it is
-                    // happening; the engine keeps the whole course for the
-                    // moment the ride is written to history.
-                    val merged = engine.course.value
-                    // A course arriving while no ride is running belongs to the
-                    // one that just ended. A game that only knows its polyline
-                    // after the rider stopped drawing it is following the
-                    // specification, not breaking it, and its map should not be
-                    // lost to four hundred milliseconds. Read here, on the
-                    // frame's own thread, so the write cannot pick up a later
-                    // ride's road.
-                    completeRideLater(merged)
-                    _status.value = _status.value.copy(
-                        label = merged.name ?: _status.value.label,
-                        world = merged.world ?: _status.value.world,
-                    )
-                }
+                is CompanionEffect.SetCourse -> applyCourse(effect.course)
 
                 is CompanionEffect.RequestPairing -> {
                     // The one place this design asks for a human. Everything
@@ -913,19 +1237,19 @@ class CompanionHost(
                     _pendingPairing.value = PendingPairing(effect.deviceId, effect.name)
                 }
 
-                is CompanionEffect.SavePairing -> {
+                is CompanionEffect.SavePairing -> pairingMutex.withLock {
                     pairedKeys = pairedKeys + (effect.companion.deviceId to effect.companion.keyHex)
                     pairedStore?.save(effect.companion)
-                    refreshPairedCompanions()
+                    refreshPairedCompanionsLocked()
                     Log.i(TAG, "Paired with a companion; it will connect without a code from now on")
                 }
 
-                is CompanionEffect.PairingProved -> {
+                is CompanionEffect.PairingProved -> pairingMutex.withLock {
                     // A timestamp, so a stale row in the rider's list is
                     // obvious when they come to prune it.
                     pairedStore?.find(effect.deviceId)?.let {
                         pairedStore.save(it.copy(lastSeenEpochMs = System.currentTimeMillis()))
-                        refreshPairedCompanions()
+                        refreshPairedCompanionsLocked()
                     }
                 }
 
@@ -946,6 +1270,7 @@ class CompanionHost(
                 is CompanionEffect.SetBrand -> applyLook(conn, effect.brand)
 
                 is CompanionEffect.SetDrivetrain -> {
+                    companionDrivetrain = effect.drivetrain
                     engine.setDrivetrain(effect.drivetrain)
                     // The ladder that came out is not the one that went in:
                     // near-identical ratios are dropped, so a 2x described as
@@ -960,7 +1285,20 @@ class CompanionHost(
                     )
                 }
 
-                is CompanionEffect.SetRideState -> when (effect.state) {
+                is CompanionEffect.SetRideState -> if (sessionManager.state.value == WorkoutState.Completed) {
+                    // Between a finish and the next ride being ready, there is
+                    // no ride to act on, and the request used to vanish without
+                    // a word: a game that asked to start the next lap at once
+                    // heard nothing and started nothing.
+                    conn.send(
+                        WarningFrame(
+                            code = CompanionWarning.REJECTED,
+                            field = "state",
+                            message = "The last ride has just finished and the next is not ready yet; " +
+                                "ask again after 'stateChanged: paused'.",
+                        )
+                    )
+                } else when (effect.state) {
                     // Requests, not commands. Each of these ignores a ride that
                     // is not in a state it can act on, so a companion that
                     // pauses twice, or resumes a ride the rider already
@@ -988,7 +1326,20 @@ class CompanionHost(
 
                 is CompanionEffect.SetPowerTarget -> {
                     val watts = effect.watts
-                    if (watts != null && !trainerAcceptsPower()) {
+                    if (watts != null && sessionManager.state.value != WorkoutState.Untracked) {
+                        // Checked again here, where it is applied: the ride can
+                        // leave untracked riding between the session checking
+                        // and this line, and a target that landed then would
+                        // hold a recorded ride in ERG.
+                        conn.send(
+                            WarningFrame(
+                                code = CompanionWarning.REJECTED,
+                                field = "watts",
+                                message = "The ride left untracked riding before the target could be " +
+                                    "applied; a power target holds only while untracked.",
+                            )
+                        )
+                    } else if (watts != null && !trainerAcceptsPower()) {
                         // P8: nothing is queued for a trainer that might turn
                         // up later. The rider stays on the road, and the game
                         // can ask again once one is connected.
@@ -1015,7 +1366,14 @@ class CompanionHost(
                     // the SetCourse effect the session emits ahead of this one,
                     // which is the whole reason the ordering is fixed there:
                     // ending the ride is what writes the row.
+                    //
+                    // The road is taken now, before the ending: it is what the
+                    // ride was, and anything the game sends from here on is the
+                    // next ride's, which reading the engine at save time used
+                    // to give to this one. See [applyCourse].
+                    roadAtFinish = sessionManager.pendingRideRoad()
                     sessionManager.endWorkoutEarly()
+                    if (sessionManager.state.value != WorkoutState.Completed) roadAtFinish = null
                     // A ride nobody ever pedalled has nothing to save, so that
                     // call deliberately does nothing and the ride watch never
                     // sees a `Completed` to act on. The companion still asked
@@ -1098,9 +1456,23 @@ class CompanionHost(
         lastIcon = null
     }
 
-    private suspend fun Conn.send(frame: ServerFrame) {
-        runCatching { write.withLock { ws.send(CompanionCodec.encode(frame)) } }
-            .onFailure { Log.w(TAG, "Dropping a frame to " + session.clientName + ": " + it.message) }
+    /**
+     * Queue [frame] for this connection's writer, in call order. Never waits.
+     *
+     * Telemetry is the one frame that is fine to lose, the next being 250 ms
+     * away, so it is skipped rather than queued behind a backlog. Anything else
+     * that finds the queue full means the peer has stopped reading, and it is
+     * closed rather than waited on.
+     */
+    private fun Conn.send(frame: ServerFrame) {
+        if (frame is TelemetryFrame && queued.get() >= TELEMETRY_BACKLOG) return
+        queued.incrementAndGet()
+        val result = outbox.trySend(Outbound.Send(frame))
+        if (result.isSuccess) return
+        queued.decrementAndGet()
+        if (result.isClosed) return
+        Log.w(TAG, "Dropping " + session.clientName + ": it has stopped reading")
+        ws.cancel()
     }
 
     // Outbound ───────────────────────────────────────────────────────────────
@@ -1116,7 +1488,7 @@ class CompanionHost(
         if (_pendingPairing.value == null) return
         _pendingPairing.value = null
         scope.launch {
-            dispatch(holder, holder.session.acceptPairing(System.currentTimeMillis()))
+            dispatch(holder, synchronized(holder.session) { holder.session.acceptPairing(System.currentTimeMillis()) })
         }
     }
 
@@ -1126,7 +1498,7 @@ class CompanionHost(
         if (_pendingPairing.value == null) return
         _pendingPairing.value = null
         scope.launch {
-            dispatch(holder, holder.session.declinePairing("The rider declined."))
+            dispatch(holder, synchronized(holder.session) { holder.session.declinePairing("The rider declined.") })
         }
     }
 
@@ -1144,8 +1516,10 @@ class CompanionHost(
     fun forgetPairing(deviceId: String) {
         pairedKeys = pairedKeys - deviceId
         scope.launch {
-            pairedStore?.forget(deviceId)
-            refreshPairedCompanions()
+            pairingMutex.withLock {
+                pairedStore?.forget(deviceId)
+                refreshPairedCompanionsLocked()
+            }
         }
     }
 
@@ -1160,7 +1534,16 @@ class CompanionHost(
      * derived from one read means that cannot happen again.
      */
     private suspend fun refreshPairedCompanions() {
-        val all = pairedStore?.all() ?: emptyList()
+        pairingMutex.withLock { refreshPairedCompanionsLocked() }
+    }
+
+    /**
+     * Call with [pairingMutex] held. A stored key that is not a key is left
+     * out: it could never be proved, and until the proof check was made to
+     * fail closed it could be matched by an empty proof.
+     */
+    private suspend fun refreshPairedCompanionsLocked() {
+        val all = (pairedStore?.all() ?: emptyList()).filter { CompanionSecurity.looksLikeKey(it.keyHex) }
         _pairedCompanions.value = all
         pairedKeys = all.associate { it.deviceId to it.keyHex }
     }
@@ -1181,11 +1564,7 @@ class CompanionHost(
         if (!CompanionControl.isKnown(control)) return
         if (_remoteControls.value?.isEnabled(control) != true) return
         val holder = controller ?: return
-        scope.launch {
-            holder.send(
-                EventFrame(event = EventFrame.CONTROL_PRESSED, control = control)
-            )
-        }
+        holder.send(EventFrame(event = EventFrame.CONTROL_PRESSED, control = control))
     }
 
     /**
@@ -1305,13 +1684,17 @@ class CompanionHost(
                 EventFrame(event = EventFrame.WORLD_RESUMED)
             }
         )
-        _status.value = _status.value.copy(roadStale = stale)
+        _status.update { it.copy(roadStale = stale) }
     }
 
+    /**
+     * Queue [frame] for every connection past its handshake. Straight onto each
+     * queue, in call order: each event used to be launched on a coroutine of its
+     * own, and two close together could arrive the wrong way round - a
+     * `paused` after the `finished` it came before.
+     */
     private fun broadcast(frame: ServerFrame) {
-        val ready = connections.filter { it.session.role != null }
-        if (ready.isEmpty()) return
-        scope.launch { ready.forEach { it.send(frame) } }
+        connections.filter { it.session.role != null }.forEach { it.send(frame) }
     }
 
     /**
@@ -1424,7 +1807,9 @@ class CompanionHost(
         }
 
         rideUnderway = false
-        val saved = runCatching { rideRecorder?.save() }
+        val road = roadAtFinish
+        roadAtFinish = null
+        val saved = runCatching { rideRecorder?.save(road) }
             .onFailure { Log.e(TAG, "Could not write the companion ride to history", it) }
             .getOrNull()
         if (saved != null) {
@@ -1444,7 +1829,16 @@ class CompanionHost(
         // the watch above announces as `paused`, so a companion sees
         // active -> finished -> paused and knows it may start another.
         sessionManager.prepareCompanion(ftp())
-        ridePrepared = true
+        synchronized(slot) { ridePrepared = true }
+        // Preparing puts the rider back on their own bike and clears the
+        // course. The bike the game described stays for the session, and a
+        // course the game sent for the next ride while this one was being
+        // written is that ride's.
+        companionDrivetrain?.let { engine.setDrivetrain(it) }
+        nextRideCourse?.let { course ->
+            nextRideCourse = null
+            applyCourse(course)
+        }
     }
 
     /**
@@ -1484,6 +1878,47 @@ class CompanionHost(
         sessionClosing = false
         Log.i(TAG, "Companion session ended with " + _sessionRides.value.size + " ride(s)")
         stopListening()
+    }
+
+    /**
+     * Put a course where it belongs: the ride under way, the one that has just
+     * finished, or the next one.
+     *
+     * Every course used to go into the engine, whose course the saved ride is
+     * read from and which preparing the next ride clears. So a game that sent
+     * `finish` and then `course{name: "Lap 2"}` had its first lap saved as
+     * "Lap 2", and the second lap then started unnamed.
+     *
+     *  - Between a finish and the ride being written, a course continuing the
+     *    finished ride is added to it, and any other is kept for the next.
+     *  - Once it is written, until the next ride starts, a course continuing it
+     *    completes the saved row, and any other begins the next ride.
+     *  - Otherwise it is the ride under way's.
+     */
+    private fun applyCourse(course: CompanionCourse) {
+        val ending = roadAtFinish
+        if (ending != null) {
+            if (course.continuesSavedRide(ending.course?.name?.takeIf { it.isNotBlank() })) {
+                roadAtFinish = ending.copy(course = (ending.course ?: CompanionCourse()).mergedWith(course))
+            } else {
+                nextRideCourse = nextRideCourse?.mergedWith(course) ?: course
+            }
+            return
+        }
+        val saved = completableRide
+        if (saved != null && course.continuesSavedRide(saved.courseName)) {
+            completeRideLater(course)
+            return
+        }
+        if (saved != null) {
+            completableRide = null
+            Log.i(TAG, "Course for the next ride: " + course.name + "; " + saved.name + " left as saved")
+        }
+        engine.setCourse(course)
+        // The HUD shows what the ride is called while it is happening; the
+        // engine keeps the whole course for the moment the ride is written.
+        val merged = engine.course.value
+        _status.update { it.copy(label = merged.name ?: it.label, world = merged.world ?: it.world) }
     }
 
     /**
@@ -1571,8 +2006,7 @@ class CompanionHost(
                 conn to EventFrame(event = EventFrame.STATE_CHANGED, state = mine)
             }
         }
-        if (owed.isEmpty()) return
-        scope.launch { owed.forEach { (conn, frame) -> conn.send(frame) } }
+        owed.forEach { (conn, frame) -> conn.send(frame) }
     }
 
     private fun snapshot(): CompanionSnapshot {
@@ -1601,6 +2035,44 @@ class CompanionHost(
         const val START_TIMEOUT_MS = 5_000L
         const val GRACE_MS = 200L
         const val TIMEOUT_MS = 1_000L
+
+        /** How often a connection is pinged, and how long an unanswered ping is allowed. */
+        const val PING_PERIOD_MS = 5_000L
+        const val PING_TIMEOUT_MS = 10_000L
+
+        /** The largest frame accepted at all: a screenshot, with room to spare. */
+        const val MAX_FRAME_BYTES = 8L * 1024 * 1024
+
+        /** The largest frame read before the handshake is done. A hello is a few hundred bytes. */
+        const val PRE_AUTH_MAX_BYTES = 16 * 1024
+
+        /** How long a connection has to finish its handshake, proof included. */
+        const val HANDSHAKE_MS = 10_000L
+
+        /** Frames a connection may have queued before it counts as not reading. */
+        const val OUTBOX_CAPACITY = 64
+
+        /** Queued frames past which telemetry is skipped rather than queued. */
+        const val TELEMETRY_BACKLOG = 4
+
+        /** How long one write may take before the peer counts as gone. */
+        const val SEND_TIMEOUT_MS = 5_000L
+
+        /** How long a closing connection's queue gets to reach the wire. */
+        const val CLOSE_DRAIN_MS = 2_000L
+
+        /** Connections at once, and of those, ones still in their handshake. */
+        const val MAX_CONNECTIONS = 8
+        const val MAX_UNAUTHENTICATED = 4
+
+        /** Failed handshakes an address may make before it has to wait. */
+        const val FREE_FAILURES = 3
+
+        /** The longest an address is made to wait. */
+        const val MAX_BACKOFF_MS = 60_000L
+
+        /** Failed handshakes after which the pairing code is replaced. */
+        const val ROTATE_CODE_AFTER = 10
 
         /** What a companion's device picker shows. Matches the mDNS service name. */
         const val BEACON_NAME = "Indoor Bike"

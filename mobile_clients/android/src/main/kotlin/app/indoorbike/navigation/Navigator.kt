@@ -18,12 +18,19 @@ package app.indoorbike.navigation
 import androidx.navigation3.runtime.NavKey
 
 class Navigator(val state: NavigationState) {
+    /**
+     * Go to [route]. A push of the screen already on top is ignored: a double
+     * tap on Start used to stack two ride screens, and backing out of the top
+     * one stopped the ride and left the rider on a second, blank one.
+     */
     fun navigate(route: NavKey) {
         if (route in state.backStacks.keys) {
             // This is a top level route, just switch to it
             state.topLevelRoute = route
         } else {
-            state.backStacks[state.topLevelRoute]?.add(route)
+            val stack = state.backStacks[state.topLevelRoute] ?: return
+            if (stack.lastOrNull() == route) return
+            stack.add(route)
         }
     }
 

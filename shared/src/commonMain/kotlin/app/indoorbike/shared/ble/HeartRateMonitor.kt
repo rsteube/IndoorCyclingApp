@@ -72,7 +72,7 @@ typealias HrmCandidate = TrainerCandidate
  * rules out so it can run on a device that has none.
  */
 class HeartRateMonitor {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = bleManagerScope()
 
     private val _connectionState = MutableStateFlow(HrmConnectionState.Disconnected)
     val connectionState: StateFlow<HrmConnectionState> = _connectionState.asStateFlow()
@@ -108,12 +108,9 @@ class HeartRateMonitor {
     private val _justConnected = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val justConnected: SharedFlow<String> = _justConnected.asSharedFlow()
 
+    // Touched only on the manager's own thread (see bleManagerScope).
     private var scanJob: Job? = null
-    private var connectionJob: Job? = null
-    private var stateListenerJob: Job? = null
-    private var observeJob: Job? = null
-    private var watchdogJob: Job? = null
-    private var activePeripheral: Peripheral? = null
+    private var link: BleLink? = null
     private val advertisementById = mutableMapOf<String, Advertisement>()
 
     /** Consecutive connections that produced no sample. Reset by the first one. */
@@ -124,6 +121,9 @@ class HeartRateMonitor {
     private val scanningAllowed = MutableStateFlow(true)
     private var targetPairedId: String? = null
 
+    /** See [TrainerManager.startScan]: a pairing scan hands auto-reconnect back when it ends. */
+    private var reconnectBeforeScan = false
+
     init { scope.launch { reconnectSupervisor() } }
 
     /**
@@ -133,8 +133,8 @@ class HeartRateMonitor {
      * giving up after one scan. Scanning is gated to foreground/active-ride via
      * [pauseAutoReconnect] / [resumeAutoReconnect].
      */
-    fun autoConnectIfPaired(pairedId: String?) {
-        if (pairedId.isNullOrBlank()) return
+    fun autoConnectIfPaired(pairedId: String?) = onManager {
+        if (pairedId.isNullOrBlank()) return@onManager
         targetPairedId = pairedId
         _pairedDeviceId.value = pairedId
         wantReconnect.value = true
@@ -211,11 +211,20 @@ class HeartRateMonitor {
 
             if (found != null) {
                 connectInternal(found)
-                _connectionState.first {
-                    it == HrmConnectionState.Disconnected || it == HrmConnectionState.Error
+                if (connectionCameUp(_connectionState)) {
+                    _connectionState.first {
+                        it == HrmConnectionState.Disconnected || it == HrmConnectionState.Error
+                    }
+                    backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                    delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
+                } else {
+                    // See TrainerManager: a strap that is found but will not
+                    // connect waits longer each time rather than being retried
+                    // every few seconds for ever.
+                    Log.i(TAG, "HRM found but didn't connect; next attempt in ${backoff / 1000} s")
+                    delay(backoff)
+                    backoff = (backoff * 2).coerceAtMost(BleReconnectPolicy.MAX_BACKOFF_MS)
                 }
-                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
-                delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
             } else {
                 if (_connectionState.value == HrmConnectionState.Scanning) {
                     _connectionState.value = HrmConnectionState.Disconnected
@@ -226,16 +235,17 @@ class HeartRateMonitor {
         }
     }
 
-    fun startScan() {
-        // Manual pairing takes over from background auto-reconnect.
-        wantReconnect.value = false
-
+    /** A manual pairing scan; see [TrainerManager.startScan]. */
+    fun startScan() = onManager {
         // A rider who taps "pair" is retrying by hand, so give the next connect
         // a clean slate rather than judging it by earlier silent ones.
         silentConnects = 0
         _sensorSilent.value = false
 
-        if (_connectionState.value == HrmConnectionState.Connected) return
+        if (_connectionState.value == HrmConnectionState.Connected) return@onManager
+
+        reconnectBeforeScan = reconnectBeforeScan || wantReconnect.value
+        wantReconnect.value = false
 
         _connectionState.value = HrmConnectionState.Scanning
         resetDiscoveryCaches()
@@ -250,7 +260,14 @@ class HeartRateMonitor {
             .launchIn(scope)
     }
 
-    fun stopScan() {
+    /** End a manual pairing scan, giving auto-reconnect back if it had it. */
+    fun stopScan() = onManager {
+        endScan()
+        if (reconnectBeforeScan && targetPairedId != null) wantReconnect.value = true
+        reconnectBeforeScan = false
+    }
+
+    private fun endScan() {
         scanJob?.cancel()
         scanJob = null
         if (_connectionState.value == HrmConnectionState.Scanning) {
@@ -258,35 +275,30 @@ class HeartRateMonitor {
         }
     }
 
-    fun connectToCandidate(candidateId: String) {
-        val ad = advertisementById[candidateId] ?: run {
+    fun connectToCandidate(candidateId: String) = onManager {
+        val ad = advertisementById[candidateId]
+        if (ad == null) {
             Log.w(TAG, "connectToCandidate: unknown HRM id=${redactDeviceId(candidateId)}")
             _connectionState.value = HrmConnectionState.Error
-            return
+            return@onManager
         }
         connectInternal(ad)
     }
 
-    fun disconnect() {
+    fun disconnect() = onManager { disconnectInternal() }
+
+    private fun disconnectInternal() {
         wantReconnect.value = false
-        scope.launch {
-            try {
-                activePeripheral?.disconnect()
-            } catch (e: Exception) {
-                Log.w(TAG, "HRM disconnect failed", e)
-            }
-        }
+        reconnectBeforeScan = false
+        link?.let { endLink(it) }
     }
 
-    fun forgetDevice() {
-        disconnect()
+    fun forgetDevice() = onManager {
+        disconnectInternal()
         targetPairedId = null
         _pairedDeviceId.value = null
         _connectedDeviceName.value = null
         _connectionState.value = HrmConnectionState.Disconnected
-        _heartRate.value = 0
-        watchdogJob?.cancel()
-        watchdogJob = null
         silentConnects = 0
         _sensorSilent.value = false
     }
@@ -296,6 +308,11 @@ class HeartRateMonitor {
     }
 
     // ─── internals ───────────────────────────────────────────────────────
+
+    /** Run [block] on the manager's thread. Every public entry point that touches its state does. */
+    private fun onManager(block: suspend () -> Unit) {
+        scope.launch { block() }
+    }
 
     /**
      * Forget what the previous scan window saw.
@@ -347,7 +364,10 @@ class HeartRateMonitor {
     }
 
     private fun connectInternal(advertisement: Advertisement) {
-        stopScan()
+        endScan()
+        // See TrainerManager.connectInternal: the previous link ends here.
+        link?.let { endLink(it, settle = false) }
+
         _connectionState.value = HrmConnectionState.Connecting
         _pairedDeviceId.value = advertisement.identifier
         _connectedDeviceName.value = advertisement.name ?: "Unknown HRM"
@@ -355,62 +375,67 @@ class HeartRateMonitor {
         // Stay on this strap: arm persistent reconnect for future drops.
         targetPairedId = advertisement.identifier
         wantReconnect.value = true
+        reconnectBeforeScan = false
 
-        stateListenerJob?.cancel()
-        observeJob?.cancel()
-        watchdogJob?.cancel()
-        connectionJob?.cancel()
+        val newLink = BleLink.open(scope, advertisement) {
+            logging(peripheralLogging(advertisement.identifier))
+            // Kable normally routes observation failures through the
+            // observe flow; with a handler registered they come here
+            // instead. Log with device context, then rethrow so the
+            // flow still terminates and the watchdog rebuilds the link.
+            observationExceptionHandler { cause ->
+                Log.w(
+                    TAG,
+                    "HRM observation failed on ${redactDeviceId(advertisement.identifier)}",
+                    cause,
+                )
+                throw cause
+            }
+        }
+        link = newLink
 
-        connectionJob = scope.launch {
-            try {
-                val peripheral = scope.peripheral(advertisement) {
-                    logging(peripheralLogging(advertisement.identifier))
-                    // Kable normally routes observation failures through the
-                    // observe flow; with a handler registered they come here
-                    // instead. Log with device context, then rethrow so the
-                    // flow still terminates and the watchdog rebuilds the link.
-                    observationExceptionHandler { cause ->
-                        Log.w(
-                            TAG,
-                            "HRM observation failed on ${redactDeviceId(advertisement.identifier)}",
-                            cause,
-                        )
-                        throw cause
+        newLink.scope.launch {
+            newLink.states.collect { state ->
+                if (link !== newLink) return@collect
+                when (state) {
+                    is State.Connecting -> _connectionState.value = HrmConnectionState.Connecting
+                    is State.Connected -> {
+                        _connectionState.value = HrmConnectionState.Connected
+                        _justConnected.tryEmit(_connectedDeviceName.value ?: "Heart rate monitor")
+                        startHeartRateObserve(newLink)
+                        armFirstSampleWatchdog(newLink)
                     }
+                    is State.Disconnecting -> _connectionState.value = HrmConnectionState.Disconnecting
+                    is State.Disconnected -> endLink(newLink)
                 }
-                activePeripheral = peripheral
-
-                stateListenerJob = peripheral.state.onEach { state ->
-                    when (state) {
-                        is State.Connecting -> _connectionState.value = HrmConnectionState.Connecting
-                        is State.Connected -> {
-                            _connectionState.value = HrmConnectionState.Connected
-                            _justConnected.tryEmit(_connectedDeviceName.value ?: "Heart rate monitor")
-                            startHeartRateObserve(peripheral)
-                            armFirstSampleWatchdog(peripheral)
-                        }
-                        is State.Disconnecting -> _connectionState.value = HrmConnectionState.Disconnecting
-                        is State.Disconnected -> {
-                            _connectionState.value = HrmConnectionState.Disconnected
-                            observeJob?.cancel()
-                            observeJob = null
-                            watchdogJob?.cancel()
-                            watchdogJob = null
-                            _heartRate.value = 0
-                            activePeripheral = null
-                        }
-                    }
-                }.launchIn(scope)
-
-                peripheral.connect()
+            }
+        }
+        newLink.scope.launch {
+            try {
+                newLink.peripheral.connect()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "HRM connect failed", e)
-                _connectionState.value = HrmConnectionState.Error
-                activePeripheral = null
+                if (link === newLink) {
+                    endLink(newLink, settle = false)
+                    _connectionState.value = HrmConnectionState.Error
+                }
             }
         }
+    }
+
+    /**
+     * Retire [ending]: stop reporting its heart rate and close it in the
+     * background. [settle] as in [TrainerManager].
+     */
+    private fun endLink(ending: BleLink, settle: Boolean = true) {
+        if (link === ending) {
+            link = null
+            _heartRate.value = 0
+            if (settle) _connectionState.value = HrmConnectionState.Disconnected
+        }
+        scope.launch { ending.close() }
     }
 
     /**
@@ -433,11 +458,13 @@ class HeartRateMonitor {
      * by itself, and a reconnect loop that runs for the rest of the ride costs
      * battery without ever fixing anything. Recovery from there needs the rider
      * to toggle Bluetooth, which tears the link down and re-arms all of this.
+     *
+     * Runs in the link's scope, so a link that ends takes its watchdog with it.
      */
-    private fun armFirstSampleWatchdog(peripheral: Peripheral) {
-        watchdogJob?.cancel()
-        watchdogJob = scope.launch {
+    private fun armFirstSampleWatchdog(l: BleLink) {
+        l.scope.launch {
             val gotSample = awaitFirstSample(_lastSampleEpochMs, FIRST_SAMPLE_TIMEOUT_MS)
+            if (link !== l) return@launch
             if (!gotSample) silentConnects += 1
 
             when (firstSampleOutcome(gotSample, silentConnects, MAX_SILENT_CONNECTS)) {
@@ -455,7 +482,9 @@ class HeartRateMonitor {
                         "No HR sample within $FIRST_SAMPLE_TIMEOUT_MS ms of connect " +
                             "(attempt $silentConnects of $MAX_SILENT_CONNECTS); cycling the link",
                     )
-                    cycleLink(peripheral)
+                    // Keeps the reconnect intent, so the supervisor picks the
+                    // strap back up with a fresh peripheral.
+                    endLink(l)
                 }
 
                 FirstSampleOutcome.GiveUp -> {
@@ -471,47 +500,22 @@ class HeartRateMonitor {
     }
 
     /**
-     * Drop the link while keeping the reconnect intent, so the supervisor picks
-     * the strap back up with a fresh peripheral. Deliberately launched on its
-     * own coroutine rather than run inline in the watchdog: the disconnect it
-     * asks for is what cancels the watchdog job, so doing it inline would
-     * cancel the call halfway through.
+     * Subscribe to the strap's heart rate. The observer lives in the link's
+     * scope, and each sample checks it still belongs to the current link.
      */
-    private fun cycleLink(peripheral: Peripheral) {
-        scope.launch {
-            try {
-                peripheral.disconnect()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "HRM watchdog disconnect failed", e)
-            }
-        }
-    }
-
-    /**
-     * Suspending and sequential, for the same reason
-     * [TrainerManager.startTelemetrySubscriptions] is: the previous version did
-     * the lookup and subscribe inside a `scope.launch { ... }` and assigned
-     * [observeJob] from within it, so a disconnect arriving in that window ran
-     * `observeJob?.cancel()` against the *previous* connection's job (or null)
-     * and leaked this one. Assigning the job on the same coroutine that starts
-     * it removes the window entirely.
-     */
-    private suspend fun startHeartRateObserve(peripheral: Peripheral) {
-        observeJob?.cancel()
-        observeJob = null
+    private suspend fun startHeartRateObserve(l: BleLink) {
         try {
             val sUuid = uuidFrom(HEART_RATE_SERVICE_UUID)
             val cUuid = uuidFrom(HEART_RATE_MEASUREMENT_UUID)
-            val service = peripheral.services?.firstOrNull { it.serviceUuid == sUuid }
+            val service = l.peripheral.services?.firstOrNull { it.serviceUuid == sUuid }
             val char = service?.characteristics?.firstOrNull { it.characteristicUuid == cUuid }
             if (char == null) {
                 Log.w(TAG, "Heart Rate Measurement characteristic not found")
                 return
             }
-            observeJob = peripheral.observe(char)
+            l.peripheral.observe(char)
                 .onEach { bytes ->
+                    if (link !== l) return@onEach
                     parseHeartRateMeasurement(bytes)?.let { bpm ->
                         _heartRate.value = bpm
                         _lastSampleEpochMs.value = getCurrentEpochMillis()
@@ -524,7 +528,7 @@ class HeartRateMonitor {
                     }
                 }
                 .catch { Log.w(TAG, "HRM observe failed", it) }
-                .launchIn(scope)
+                .launchIn(l.scope)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

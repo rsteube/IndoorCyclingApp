@@ -17,10 +17,21 @@ package app.indoorbike.ride
 
 import app.indoorbike.AppContainer
 import app.indoorbike.shared.Workout
+import app.indoorbike.shared.activity.averageHeartRate
 import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.session.RideRecord
 import app.indoorbike.shared.session.RideRoad
+import app.indoorbike.shared.session.SegmentMark
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
+
+/**
+ * One save at a time. Two at once, from a double tap on the banner, could each
+ * look for the ride, each find nothing, and each insert it.
+ */
+private val saveLock = Mutex()
 
 /**
  * Write a finished ride to history and retire its crash-recovery copies.
@@ -40,7 +51,14 @@ import java.util.UUID
  * in memory empty, and this used to read those empty engines: a recovered
  * route ride saved with zero distance and zero climbing against a road it had
  * plainly ridden. `WorkoutSessionManager.pendingRideRoad` is the one place
- * that knows which source still has the answer.
+ * that knows which source still has the answer, and
+ * `WorkoutSessionManager.pendingRideRecord` the same for [record].
+ *
+ * Saving the same ride twice returns the first copy. A ride carries its own id
+ * from the moment it starts ([RideRecord.rideId]), and history is keyed on it,
+ * so a double tap, or a save that reached history just before the app died and
+ * is offered again from the banner, no longer makes a second row that then
+ * syncs to every other device as a second ride.
  */
 suspend fun saveRideToHistory(
     container: AppContainer,
@@ -49,7 +67,8 @@ suspend fun saveRideToHistory(
     durationSeconds: Int,
     telemetry: List<TelemetryPoint>,
     road: RideRoad,
-): Long {
+    record: RideRecord,
+): Long = saveLock.withLock {
     // The road itself, for the one mode whose road is not in the catalogue.
     // Optional in the protocol and therefore usually absent; when it is there,
     // it is what lets a companion ride draw its shape in history and in the
@@ -58,9 +77,17 @@ suspend fun saveRideToHistory(
 
     val avgPower = telemetry.averageOf { it.power }
     val avgCadence = telemetry.averageOf { it.cadence }
-    val avgHeartRate = telemetry.averageOf { it.heartRate }
+    val avgHeartRate = averageHeartRate(telemetry.map { it.heartRate })
 
-    val sessionId = container.historyRepository.insertWorkoutSession(
+    // Globally-unique stable id for the backup-sync layer: the device-id
+    // namespace means two phones can never collide without any cross-device
+    // coordination. The ride's own id when it has one, which is what makes a
+    // second save of it find the first.
+    val deviceId = container.userSettings.deviceId
+    val externalId = "$deviceId:${record.rideId ?: UUID.randomUUID()}"
+    val existing = record.rideId?.let { container.historyRepository.getSessionByExternalId(externalId) }
+
+    val sessionId = existing?.id ?: container.historyRepository.insertWorkoutSession(
         workoutId = workout.id,
         // A companion that named its course names the ride. "Watopia Volcano
         // Circuit" in the history list is worth a great deal more than twenty
@@ -83,17 +110,29 @@ suspend fun saveRideToHistory(
         routeStartElevationGainMeters = road.startedAtElevationGainMeters,
         routeShape = course?.shape.orEmpty(),
         routeProfile = course?.let { CompanionCourse.encodeProfile(it.profileMeters) }.orEmpty(),
-        // Globally-unique stable id for the backup-sync layer. The device-id
-        // namespace + a fresh UUID per session means two phones can never
-        // collide on a session id without any cross-device coordination.
-        externalId = "${container.userSettings.deviceId}:${UUID.randomUUID()}",
+        // What the ride was ridden against, so an export made later cuts its
+        // laps where the segments really fell and uses the FTP it was ridden
+        // at, not the one set on the day of the export.
+        ftp = record.ftp,
+        segmentMarks = SegmentMark.encode(record.segmentMarks),
+        externalId = externalId,
         telemetry = telemetry,
     )
 
     // Durable in history now, so the snapshot and telemetry log have done their
     // job. Only after the insert returns: until then they're the sole copy.
-    container.sessionManager.markRideSaved()
-    return sessionId
+    // Named by its start, so the recovery copies of a ride begun since are left
+    // alone.
+    container.sessionManager.markRideSaved(startTimeEpoch)
+    // Every way a ride reaches history comes through here, so this is where
+    // automatic upload starts: companion rides included, which never pass the
+    // summary screen that used to be the only thing that uploaded.
+    container.rideUploads.autoUpload(
+        sessionId = sessionId,
+        workout = workout,
+        ftp = record.ftp.takeIf { it > 0 } ?: container.userSettings.ftp.value,
+    )
+    sessionId
 }
 
 private inline fun List<TelemetryPoint>.averageOf(selector: (TelemetryPoint) -> Long): Long =

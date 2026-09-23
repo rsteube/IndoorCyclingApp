@@ -295,9 +295,15 @@ data class RideStats(
 )
 
 /**
- * Compute headline ride stats from telemetry. Uses simplified NP (4th-power mean over
- * raw 1Hz samples; no rolling 30s smoothing — accurate enough for intervals shorter than
- * a few minutes and ERG-driven steady states, which is the typical case here).
+ * Compute headline ride stats from telemetry.
+ *
+ * Normalized power is the standard one: a 30 s rolling average of the 1 Hz
+ * samples, raised to the fourth power, averaged, and the fourth root taken.
+ * It used to skip the rolling average, and the note here said that was close
+ * enough for short intervals, which was backwards: short hard efforts are
+ * exactly where it goes wrong. Ten seconds at 1000 W every five minutes over
+ * 150 W made 429 W of NP instead of about 244, and roughly three times the
+ * training stress, and both went into the FIT file's standard fields.
  */
 fun computeRideStats(
     telemetryWatts: List<Long>,
@@ -310,10 +316,7 @@ fun computeRideStats(
         return RideStats(0, 0, 0f, 0, 0)
     }
     val avg = telemetryWatts.average()
-    val fourthMean = telemetryWatts
-        .map { (it.toDouble()).let { d -> d * d * d * d } }
-        .average()
-    val np = if (fourthMean > 0) fourthMean.pow(0.25) else 0.0
+    val np = normalizedPower(telemetryWatts)
     val intensity = if (ftp > 0) (np / ftp).toFloat() else 0f
     val tss = ((durationSeconds / 3600.0) * intensity * intensity * 100).toInt()
     val kj = ((avg * durationSeconds) / 1000.0).toInt()
@@ -331,6 +334,33 @@ fun computeRideStats(
         distanceMeters = distance.toInt(),
         avgSpeedKmh = VirtualSpeed.averageSpeedKmh(distance, durationSeconds).toFloat(),
     )
+}
+
+/** Samples in normalized power's rolling average: 30 s at 1 Hz. */
+private const val NP_WINDOW = 30
+
+/**
+ * Normalized power of 1 Hz [watts]: the fourth root of the mean fourth power
+ * of their 30 s rolling average. Zero for a ride shorter than one window, which
+ * has no 30 s average to take.
+ */
+fun normalizedPower(watts: List<Long>): Double {
+    if (watts.size < NP_WINDOW) return 0.0
+    var windowSum = 0.0
+    for (i in 0 until NP_WINDOW) windowSum += watts[i]
+    var sumFourth = 0.0
+    var count = 0
+    var i = NP_WINDOW
+    while (true) {
+        val mean = windowSum / NP_WINDOW
+        sumFourth += mean * mean * mean * mean
+        count += 1
+        if (i >= watts.size) break
+        windowSum += watts[i] - watts[i - NP_WINDOW]
+        i += 1
+    }
+    val fourthMean = sumFourth / count
+    return if (fourthMean > 0) fourthMean.pow(0.25) else 0.0
 }
 
 fun durationLabelLong(totalSeconds: Long): String {

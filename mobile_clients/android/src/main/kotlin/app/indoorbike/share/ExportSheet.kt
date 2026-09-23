@@ -126,12 +126,16 @@ fun ExportSheet(
                         busy = true
                         scope.launch {
                             try {
-                                val export = withContext(Dispatchers.IO) {
-                                    ActivityExporter.build(format, session, telemetry, workout, ftp, riderKg)
+                                // Built and written to the cache off the main
+                                // thread; only the chooser needs it.
+                                val (export, uri) = withContext(Dispatchers.IO) {
+                                    val export = ActivityExporter.build(format, session, telemetry, workout, ftp, riderKg)
+                                    export to ActivityExporter.stageForShare(context, export)
                                 }
-                                val uri = ActivityExporter.stageForShare(context, export)
                                 ActivityExporter.launchShareChooser(context, uri, export.mime)
                                 onDismiss()
+                            } catch (e: kotlinx.coroutines.CancellationException) {
+                                throw e
                             } catch (t: Throwable) {
                                 Toast.makeText(context, "Export failed: ${t.message}", Toast.LENGTH_LONG).show()
                             } finally {

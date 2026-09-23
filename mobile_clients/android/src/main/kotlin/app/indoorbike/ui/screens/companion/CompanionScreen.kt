@@ -39,7 +39,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -48,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import app.indoorbike.ui.leavingForGood
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -63,6 +63,7 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.DisplayFontFamily
 import app.indoorbike.ui.theme.Spacing
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Pairing, and then out of the way.
@@ -101,11 +102,11 @@ fun CompanionScreen(
 ) {
     val container = LocalAppContainer.current
     val host = container.companionHost
-    val status by host.status.collectAsState()
+    val status by host.status.collectAsStateWithLifecycle()
 
-    val showAllData by container.userSettings.companionShowAllData.collectAsState()
-    val trainerState by container.trainerManager.connectionState.collectAsState()
-    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
+    val showAllData by container.userSettings.companionShowAllData.collectAsStateWithLifecycle()
+    val trainerState by container.trainerManager.connectionState.collectAsStateWithLifecycle()
+    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsStateWithLifecycle()
     val trainerLive = trainerState == TrainerConnectionState.Connected || isMockTrainer
 
     // The socket lives exactly as long as the rider is trying to pair or ride.
@@ -115,8 +116,12 @@ fun CompanionScreen(
     // hands off without a road and would otherwise close the socket on its way
     // to the screen that exists to drive it.
     var handedOff by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     DisposableEffect(Unit) {
-        onDispose { if (!handedOff) host.stop() }
+        // Not when Android reclaims the activity behind the rider: see
+        // [leavingForGood]. That stop issued a new code and a new session for a
+        // rider who had not gone anywhere.
+        onDispose { if (!handedOff && context.leavingForGood()) host.stop() }
     }
 
     // Stated as an invariant rather than a single call on entry: while this
@@ -130,7 +135,7 @@ fun CompanionScreen(
     // way that lands. `start` is a no-op while one is already running or
     // opening, so the usual case is still exactly one call, and a socket that
     // genuinely failed to open leaves `error` set and is not retried in a loop.
-    LaunchedEffect(status.running, status.error, handedOff) {
+    LaunchedEffect(status.running, status.error, status.epoch, handedOff) {
         if (!handedOff && !status.running && status.error == null) host.start()
     }
 
@@ -143,9 +148,9 @@ fun CompanionScreen(
 
     // A companion asks to be remembered right after it connects, which is
     // usually while this screen is still up.
-    val pendingPairing by host.pendingPairing.collectAsState()
+    val pendingPairing by host.pendingPairing.collectAsStateWithLifecycle()
     // The other half of that dialog: it promises the trust can be undone here.
-    val paired by host.pairedCompanions.collectAsState()
+    val paired by host.pairedCompanions.collectAsStateWithLifecycle()
     pendingPairing?.let {
         CompanionPairingDialog(
             pending = it,

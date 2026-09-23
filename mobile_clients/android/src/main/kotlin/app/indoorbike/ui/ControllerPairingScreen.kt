@@ -58,6 +58,7 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun ControllerPairingScreen(
@@ -65,8 +66,8 @@ fun ControllerPairingScreen(
 ) {
     val container = LocalAppContainer.current
     val controller = container.controllerManager
-    val connectionState by controller.connectionState.collectAsState()
-    val discoveredDevices by controller.discoveredDevices.collectAsState()
+    val connectionState by controller.connectionState.collectAsStateWithLifecycle()
+    val discoveredDevices by controller.discoveredDevices.collectAsStateWithLifecycle()
 
     LaunchedEffect(connectionState) {
         if (connectionState == ControllerConnectionState.Connected) {

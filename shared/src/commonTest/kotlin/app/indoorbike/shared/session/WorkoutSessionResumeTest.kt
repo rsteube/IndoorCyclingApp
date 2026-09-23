@@ -198,16 +198,43 @@ class WorkoutSessionResumeTest {
     }
 
     @Test
-    fun noUnfinishedRideReapsAnOrphanedLog() = runTest {
-        // A log with no snapshot belongs to a ride that already ended. Left in
-        // place it would prepend itself to whatever ride is resumed next.
-        val telemetryStore = FakeTelemetryStore(preCrashSamples(500))
+    fun aShortOrphanedLogIsReaped() = runTest {
+        // Less than a minute of samples with no snapshot is the tail of
+        // something already dealt with. Left in place it would prepend itself
+        // to whatever ride is resumed next.
+        val telemetryStore = FakeTelemetryStore(preCrashSamples(30))
 
         withManager(FakeSessionStore(null), telemetryStore) { sessionManager ->
             sessionManager.loadPersistedSnapshot()
 
             assertTrue(telemetryStore.cleared, "orphaned telemetry log should be cleared")
             assertEquals(emptyList(), telemetryStore.points)
+            assertEquals(null, sessionManager.persistedSnapshot.value)
+        }
+    }
+
+    /**
+     * A real ride's samples with no snapshot: the snapshot was lost to a crash
+     * mid-write, or an update could no longer decode it. The samples are the
+     * ride, and deleting them with the snapshot lost it for good. They are
+     * offered back as a finished ride to save instead.
+     */
+    @Test
+    fun aRideWhoseSnapshotWasLostIsOfferedToSave() = runTest {
+        val recorded = preCrashSamples(500)
+        val telemetryStore = FakeTelemetryStore(recorded)
+
+        withManager(FakeSessionStore(null), telemetryStore) { sessionManager ->
+            sessionManager.loadPersistedSnapshot()
+
+            assertEquals(false, telemetryStore.cleared)
+            val offered = assertNotNull(sessionManager.persistedSnapshot.value)
+            assertEquals(WorkoutState.Completed, offered.state)
+            assertEquals(START_EPOCH, offered.sessionStartTimeEpochMs)
+            assertEquals(recorded, sessionManager.pendingRideTelemetry(offered))
+            // The same id every time it is offered, so saving it twice across
+            // two restarts is one ride.
+            assertEquals("recovered-$START_EPOCH", sessionManager.pendingRideRecord(offered).rideId)
         }
     }
 
@@ -267,7 +294,7 @@ class WorkoutSessionResumeTest {
                 sessionStore.current?.state == WorkoutState.Completed
             }
 
-            sessionManager.markRideSaved()
+            sessionManager.markRideSaved(START_EPOCH)
 
             assertEquals(null, sessionManager.persistedSnapshot.value)
             awaitUntil("recovery copies to be released") {

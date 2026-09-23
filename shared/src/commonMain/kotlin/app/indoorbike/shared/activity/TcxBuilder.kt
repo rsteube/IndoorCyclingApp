@@ -18,7 +18,6 @@ package app.indoorbike.shared.activity
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
-import app.indoorbike.shared.physics.VirtualSpeed
 
 /**
  * Encodes a completed indoor ride as a Garmin TCX (Training Center Database v2)
@@ -27,9 +26,10 @@ import app.indoorbike.shared.physics.VirtualSpeed
  * with no GPS track required, so it suits indoor cycling and is accepted by
  * Strava, Garmin Connect, intervals.icu, TrainingPeaks, Golden Cheetah, etc.
  *
- * One `Lap` is emitted per workout segment (or a single whole-ride lap when
- * [workout] is null), mirroring [app.indoorbike.shared.fit.RideFitBuilder] so
- * the two exports describe the same structure. Output is a self-contained
+ * One `Lap` is emitted per segment the ride actually rode (or a single
+ * whole-ride lap when [workout] is null), laid out by the same [ExportRide] as
+ * [app.indoorbike.shared.fit.RideFitBuilder] so the two exports describe the
+ * same structure, the same distance and the same heart rate. Output is a self-contained
  * UTF-8 XML string the caller can write to disk or hand to a share intent.
  *
  * Pure Kotlin in commonMain (no kotlinx-datetime dependency) - timestamps are
@@ -59,56 +59,40 @@ object TcxBuilder {
         session: WorkoutSession,
         telemetry: List<WorkoutTelemetry>,
         workout: Workout?,
+        /** Today's FTP, used only when history did not record the ride's own. */
         ftp: Int,
         /**
          * Rider body mass, for the virtual speed and distance a trainer has no
          * road to measure. 0 = not set, in which case the speed elements are
          * left out entirely and distance stays at zero, as it was before there
-         * was an estimate to make.
+         * was an estimate to make - unless the ride was on a road, whose own
+         * distance is used either way.
          */
         riderKg: Float = 0f,
     ): String {
-        val hasRiderMass = riderKg > 0f
+        val ride = ExportRide(session, telemetry, workout, ftp, riderKg)
+        val hasDistance = ride.hasDistance
         val startMs = session.startTimeEpoch
-        val totalSeconds = session.durationSeconds.toInt().coerceAtLeast(1)
+        val timeline = ride.timeline
 
         // One sample per integer second, in time order, placed on both clocks
         // by the same timeline the FIT writer uses so both exports see
         // identical data. TCX has no pause marker: a pause is the gap between
         // two trackpoints, and each lap's TotalTimeSeconds leaves it out.
-        val timeline = RideTimeline.of(startMs, totalSeconds, telemetry.map { it.timestampEpoch })
-        val pts = timeline.points.map { point ->
+        var running = 0.0
+        val pts = timeline.points.mapIndexed { pi, point ->
             val s = telemetry[point.index]
+            running += ride.metres[pi]
             Pt(
                 wallSec = point.wallSeconds,
                 rideSec = point.rideSeconds,
                 power = s.power.toInt().coerceAtLeast(0),
                 hr = s.heartRate.toInt().coerceIn(0, 254),
                 cad = s.cadence.toInt().coerceIn(0, 254),
-            )
-        }
-
-        // Distance is speed integrated in ride order. Each sample stands for
-        // one second of riding.
-        var metres = 0.0
-        for (p in pts) {
-            p.speedMps = VirtualSpeed.speedMps(p.power.toDouble(), riderKg)
-            metres += p.speedMps
-            p.metres = metres
-        }
-
-        // Lap partition: one per segment, or a single whole-ride lap.
-        val segSec = workout?.segments?.map { it.lengthInSeconds.coerceAtLeast(1) }
-            ?: listOf(totalSeconds)
-        val ends = ArrayList<Int>(segSec.size)
-        var acc = 0
-        for (d in segSec) { acc += d; ends.add(acc) }
-
-        val laps = Array(segSec.size) { ArrayList<Pt>() }
-        for (p in pts) {
-            var li = 0
-            while (li < ends.size - 1 && p.rideSec >= ends[li]) li++
-            laps[li].add(p)
+            ).also {
+                it.speedMps = ride.metres[pi]
+                it.metres = running
+            }
         }
 
         val sb = StringBuilder(pts.size * 96 + 1024)
@@ -120,11 +104,9 @@ object TcxBuilder {
         sb.append("    <Activity Sport=\"Biking\">\n")
         sb.append("      <Id>").append(isoUtc(startMs)).append("</Id>\n")
 
-        var lapStartOffset = 0
-        for (li in segSec.indices) {
-            val lapPts = laps[li]
-            val lapEnd = if (li == segSec.size - 1) totalSeconds else ends[li]
-            val lapDur = (lapEnd - lapStartOffset).coerceAtLeast(1)
+        for (lap in ride.laps) {
+            val lapPts = pts.subList(lap.firstPoint, lap.endPoint)
+            val lapDur = lap.timerSeconds
 
             var sumP = 0L; var maxP = 0
             var sumHr = 0L; var nHr = 0; var maxHr = 0
@@ -146,14 +128,14 @@ object TcxBuilder {
             val kj = (sumP / 1000L).toInt()
 
             sb.append("      <Lap StartTime=\"")
-                .append(isoUtc(startMs + timeline.wallAt(lapStartOffset) * 1000L)).append("\">\n")
+                .append(isoUtc(startMs + timeline.wallAt(lap.startRideSeconds) * 1000L)).append("\">\n")
             sb.append("        <TotalTimeSeconds>").append(lapDur).append("</TotalTimeSeconds>\n")
             // Schema order is fixed: DistanceMeters, then MaximumSpeed,
             // then Calories. A reader that meets them out of order rejects
             // the file.
             sb.append("        <DistanceMeters>").append(decimals(lapMetres, 2))
                 .append("</DistanceMeters>\n")
-            if (hasRiderMass) {
+            if (hasDistance) {
                 sb.append("        <MaximumSpeed>").append(decimals(lapMaxSpeed, 3))
                     .append("</MaximumSpeed>\n")
             }
@@ -165,30 +147,35 @@ object TcxBuilder {
             sb.append("        <Intensity>Active</Intensity>\n")
             sb.append("        <Cadence>").append(avgCad).append("</Cadence>\n")
             sb.append("        <TriggerMethod>Manual</TriggerMethod>\n")
-            sb.append("        <Track>\n")
-            for (p in lapPts) {
-                sb.append("          <Trackpoint>\n")
-                sb.append("            <Time>").append(isoUtc(startMs + p.wallSec * 1000L)).append("</Time>\n")
-                // Trackpoint_t orders DistanceMeters ahead of HeartRateBpm.
-                sb.append("            <DistanceMeters>").append(decimals(p.metres, 2))
-                    .append("</DistanceMeters>\n")
-                if (p.hr > 0) {
-                    sb.append("            <HeartRateBpm><Value>").append(p.hr).append("</Value></HeartRateBpm>\n")
+            // Track_t requires at least one Trackpoint, so a lap with none (a
+            // planned segment an older ride passed through without a sample)
+            // leaves the Track out rather than writing an empty one.
+            if (lapPts.isNotEmpty()) {
+                sb.append("        <Track>\n")
+                for (p in lapPts) {
+                    sb.append("          <Trackpoint>\n")
+                    sb.append("            <Time>").append(isoUtc(startMs + p.wallSec * 1000L)).append("</Time>\n")
+                    // Trackpoint_t orders DistanceMeters ahead of HeartRateBpm.
+                    sb.append("            <DistanceMeters>").append(decimals(p.metres, 2))
+                        .append("</DistanceMeters>\n")
+                    if (p.hr > 0) {
+                        sb.append("            <HeartRateBpm><Value>").append(p.hr).append("</Value></HeartRateBpm>\n")
+                    }
+                    sb.append("            <Cadence>").append(p.cad).append("</Cadence>\n")
+                    // TPX orders Speed ahead of Watts.
+                    sb.append("            <Extensions><ns3:TPX>")
+                    if (hasDistance) {
+                        sb.append("<ns3:Speed>").append(decimals(p.speedMps, 3)).append("</ns3:Speed>")
+                    }
+                    sb.append("<ns3:Watts>").append(p.power)
+                        .append("</ns3:Watts></ns3:TPX></Extensions>\n")
+                    sb.append("          </Trackpoint>\n")
                 }
-                sb.append("            <Cadence>").append(p.cad).append("</Cadence>\n")
-                // TPX orders Speed ahead of Watts.
-                sb.append("            <Extensions><ns3:TPX>")
-                if (hasRiderMass) {
-                    sb.append("<ns3:Speed>").append(decimals(p.speedMps, 3)).append("</ns3:Speed>")
-                }
-                sb.append("<ns3:Watts>").append(p.power)
-                    .append("</ns3:Watts></ns3:TPX></Extensions>\n")
-                sb.append("          </Trackpoint>\n")
+                sb.append("        </Track>\n")
             }
-            sb.append("        </Track>\n")
             // LX orders AvgSpeed ahead of AvgWatts.
             sb.append("        <Extensions><ns3:LX>")
-            if (hasRiderMass) {
+            if (hasDistance) {
                 sb.append("<ns3:AvgSpeed>").append(decimals(lapMetres / lapDur, 3))
                     .append("</ns3:AvgSpeed>")
             }
@@ -196,8 +183,6 @@ object TcxBuilder {
                 .append("</ns3:AvgWatts><ns3:MaxWatts>").append(maxP)
                 .append("</ns3:MaxWatts></ns3:LX></Extensions>\n")
             sb.append("      </Lap>\n")
-
-            lapStartOffset = ends[li]
         }
 
         sb.append("      <Creator xsi:type=\"Device_t\">\n")

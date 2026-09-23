@@ -50,6 +50,8 @@ private fun session(
     routeStartElevationGainMeters = 0.0,
     routeShape = "",
     routeProfile = "",
+    ftp = 0L,
+    segmentMarks = "",
 )
 
 class StreakTest {

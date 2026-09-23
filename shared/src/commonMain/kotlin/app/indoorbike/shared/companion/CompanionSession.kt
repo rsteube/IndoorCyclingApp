@@ -202,13 +202,31 @@ class CompanionSession(
     /** Set while the rider is being asked whether to remember this companion. */
     private var pairRequestPending = false
 
+    /** The name the rider was asked to trust, which is the name a pairing is saved under. */
+    private var pairingName: String? = null
+
     /** Null until the handshake succeeds. */
     var version: ProtocolVersion? = null
         private set
 
-    /** Null until the handshake succeeds. */
-    var role: String? = null
-        private set
+    /** The role the hello asked for and was given, before it is proved. */
+    private var grantedRole: String? = null
+
+    /**
+     * The role this connection holds, or null until the handshake is complete.
+     *
+     * Complete means proved, for a companion that claimed a pairing. The role
+     * used to be visible from the moment the hello was read, before the
+     * challenge was answered, and the host keys everything off it: a hello
+     * naming a paired device, sent by anyone who had seen that device's id go
+     * past, took the controller slot, was streamed telemetry and resumed a held
+     * ride, all without the key.
+     */
+    val role: String?
+        get() = if (phase == Phase.READY) grantedRole else null
+
+    /** The handshake is complete and the connection may be answered. */
+    val isReady: Boolean get() = phase == Phase.READY
 
     var clientName: String = "Unnamed companion"
         private set
@@ -236,6 +254,9 @@ class CompanionSession(
     /** The same, for power targets. Kept apart so one cannot starve the other. */
     private val powerRequests = ArrayDeque<Long>()
 
+    /** And for ride-state requests, each of which writes to the trainer. */
+    private val stateRequests = ArrayDeque<Long>()
+
     /**
      * Handle one text frame.
      *
@@ -252,10 +273,21 @@ class CompanionSession(
                 CompanionClose.MALFORMED,
             )
 
-            // Ignored on purpose. This is what lets a companion built against a
-            // later version share a socket with this build without either end
-            // having to know it happened.
-            is Decoded.Unknown -> emptyList()
+            // Ignored on purpose once the handshake is done. This is what lets a
+            // companion built against a later version share a socket with this
+            // build without either end having to know it happened. Before it,
+            // a frame this build cannot read is not a later version talking:
+            // every version's first frame is a hello. Ignoring those let a
+            // socket that never said hello stay open for as long as it liked.
+            is Decoded.Unknown -> if (phase == Phase.READY) {
+                emptyList()
+            } else {
+                fail(
+                    CompanionError.UNAUTHORIZED,
+                    "The first frame on a Companion socket must be 'hello'.",
+                    CompanionClose.UNAUTHORIZED,
+                )
+            }
 
             is Decoded.Ok -> onDecoded(decoded.frame, decoded.fields, decoded.unreadable, nowMs)
         }
@@ -304,7 +336,7 @@ class CompanionSession(
             is RequestShiftFrame -> onRequestShift(frame, nowMs)
             is LabelFrame -> onLabel(frame)
             is CourseFrame -> onCourse(frame)
-            is SetStateFrame -> onSetState(frame)
+            is SetStateFrame -> onSetState(frame, nowMs)
             is SetPowerFrame -> onSetPower(frame, fields, nowMs)
             is ControlsFrame -> onControls(frame)
             is DrivetrainFrame -> onDrivetrain(frame)
@@ -346,7 +378,7 @@ class CompanionSession(
     // Handshake ──────────────────────────────────────────────────────────────
 
     private fun onHello(frame: HelloFrame): List<CompanionEffect> {
-        clientName = frame.client.name
+        clientName = CompanionText.clean(frame.client.name) ?: clientName
 
         val min = ProtocolVersion.parse(frame.protoMin)
         val max = ProtocolVersion.parse(frame.protoMax)
@@ -395,7 +427,7 @@ class CompanionSession(
 
         val granted = if (wantsControl) HelloFrame.ROLE_CONTROLLER else HelloFrame.ROLE_OBSERVER
         version = negotiated
-        role = granted
+        grantedRole = granted
         clientCapabilities = frame.capabilities.toSet()
         peerDeviceId = frame.deviceId?.takeIf { it.isNotBlank() }
 
@@ -444,9 +476,12 @@ class CompanionSession(
                 CompanionClose.UNAUTHORIZED,
             )
         }
-        val expected = CompanionSecurity.proof(
-            key, CompanionSecurity.ROLE_COMPANION, nonceApp, frame.nonce,
-        )
+        // A stored key that is not a key proves nothing: see [CompanionSecurity.proof].
+        val expected = if (CompanionSecurity.looksLikeKey(key)) {
+            CompanionSecurity.proof(key, CompanionSecurity.ROLE_COMPANION, nonceApp, frame.nonce)
+        } else {
+            ""
+        }
         if (!CompanionSecurity.proofMatches(expected, frame.proof)) {
             return fail(
                 CompanionError.UNAUTHORIZED,
@@ -463,7 +498,7 @@ class CompanionSession(
             key, CompanionSecurity.ROLE_APP, nonceApp, frame.nonce,
         )
         val negotiated = version ?: CompanionProtocol.VERSION
-        val granted = role ?: HelloFrame.ROLE_CONTROLLER
+        val granted = grantedRole ?: HelloFrame.ROLE_CONTROLLER
         return listOf(
             CompanionEffect.PairingProved(deviceId),
             CompanionEffect.Send(welcomeFrame(negotiated, granted, proof = ourProof)),
@@ -526,7 +561,9 @@ class CompanionSession(
         }
         if (pairRequestPending) return emptyList()
         pairRequestPending = true
-        return listOf(CompanionEffect.RequestPairing(deviceId, frame.name ?: clientName))
+        val name = CompanionText.clean(frame.name) ?: clientName
+        pairingName = name
+        return listOf(CompanionEffect.RequestPairing(deviceId, name))
     }
 
     /**
@@ -547,7 +584,9 @@ class CompanionSession(
             CompanionEffect.SavePairing(
                 PairedCompanion(
                     deviceId = deviceId,
-                    name = clientName,
+                    // The name the rider said yes to. It used to be the hello's
+                    // name, which the dialog never showed.
+                    name = pairingName ?: clientName,
                     keyHex = key,
                     pairedAtEpochMs = nowMs,
                     lastSeenEpochMs = nowMs,
@@ -669,7 +708,7 @@ class CompanionSession(
 
     private fun onLabel(frame: LabelFrame): List<CompanionEffect> {
         if (!isController) return listOf(notController("label"))
-        return listOf(CompanionEffect.SetLabel(frame.name, frame.world))
+        return listOf(CompanionEffect.SetLabel(CompanionText.clean(frame.name).orEmpty(), CompanionText.clean(frame.world)))
     }
 
     /**
@@ -860,8 +899,28 @@ class CompanionSession(
      * stops recording a ride the rider is still doing, and they find out
      * afterwards.
      */
-    private fun onSetState(frame: SetStateFrame): List<CompanionEffect> {
+    private fun onSetState(frame: SetStateFrame, nowMs: Long): List<CompanionEffect> {
         if (!isController) return listOf(notController("setState"))
+        // Every one of these writes to the trainer, outside the pacer the road
+        // goes through: a pause zeroes it, a resume restates the road. A
+        // companion toggling in a loop flooded the control point, which the
+        // protocol promises a chatty companion cannot do.
+        while (stateRequests.isNotEmpty() && nowMs - stateRequests.first() >= 1_000L) {
+            stateRequests.removeFirst()
+        }
+        if (stateRequests.size >= MAX_STATE_REQUESTS_PER_SECOND) {
+            return listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.RATE_LIMITED,
+                        frame = "setState",
+                        message = "More than " + MAX_STATE_REQUESTS_PER_SECOND +
+                            " setState requests in a second; the surplus was dropped.",
+                    )
+                )
+            )
+        }
+        stateRequests.addLast(nowMs)
         return when (frame.state) {
             CompanionState.PAUSED, CompanionState.ACTIVE ->
                 listOf(CompanionEffect.SetRideState(frame.state))
@@ -1109,6 +1168,31 @@ class CompanionSession(
         return listOf(CompanionEffect.Send(ScreenshotRequestFrame(id = id)))
     }
 
+    /**
+     * Refuse a connection that has not finished its handshake: it sent something
+     * no handshake sends, or took too long to send anything. A no-op once the
+     * handshake is done or the connection closed.
+     */
+    fun refuseUnauthenticated(message: String): List<CompanionEffect> =
+        if (phase == Phase.READY || phase == Phase.CLOSED) {
+            emptyList()
+        } else {
+            fail(CompanionError.UNAUTHORIZED, message, CompanionClose.UNAUTHORIZED)
+        }
+
+    /**
+     * This connection won the handshake but lost the controller slot to a
+     * connection that got there first. Only possible when two arrive within
+     * the same instant; the second is told what it would have been told had
+     * it been a moment later.
+     */
+    fun refuseControl(): List<CompanionEffect> = fail(
+        CompanionError.CONTROLLER_BUSY,
+        "Another companion is already driving this ride. Connect as an observer, " +
+            "or disconnect the other one first.",
+        CompanionClose.CONTROLLER_BUSY,
+    )
+
     /** The rider took back control. The recording continues without a companion. */
     fun revoke(): List<CompanionEffect> {
         if (phase == Phase.CLOSED) return emptyList()
@@ -1187,6 +1271,11 @@ class CompanionSession(
      * dashboard because it sent one frame too many would be worse than saying
      * no.
      */
+    private companion object {
+        /** Ride-state requests a controller may make in any one second. */
+        const val MAX_STATE_REQUESTS_PER_SECOND = 2
+    }
+
     private fun notController(frameType: String): CompanionEffect =
         CompanionEffect.Send(
             ErrorFrame(

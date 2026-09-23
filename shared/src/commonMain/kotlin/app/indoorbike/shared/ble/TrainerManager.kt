@@ -42,14 +42,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.abs
 import kotlin.math.min
 
 enum class TrainerConnectionState {
@@ -69,18 +74,25 @@ enum class TrainerConnectionState {
  * Telemetry sources:
  *  - **Cycling Power Service (0x1818)** → Cycling Power Measurement (0x2A63):
  *    parses instantaneous power and crank revolutions for cadence.
- *  - **Fitness Machine Service (0x1826)** → Indoor Bike Data (0x2AD2): also
- *    yields power/cadence (Wahoo Kickr supports both; CPS is preferred).
- *    FTMS Control Point (0x2AD9) is used to write target power in ERG mode.
+ *  - **Fitness Machine Service (0x1826)** → Indoor Bike Data (0x2AD2): power,
+ *    cadence and heart rate. The second opinion on a trainer that has both
+ *    (a Kickr), and the only one on a smart bike or spin bike that has only
+ *    this. [TelemetrySources] decides, reading by reading, which is believed.
  *  - **Heart Rate Service (0x180D)** → Heart Rate Measurement (0x2A37): if
  *    a chest strap is present.
  *
- * If a real trainer is paired, [setTargetPower] writes to the FTMS Control
- * Point. The mock trainer path is gated explicitly via [connectMock] and is
- * only used when no real BLE connection is active.
+ * Control goes through the FTMS Control Point (0x2AD9), and not every machine
+ * accepts every command. The Fitness Machine Feature characteristic says which
+ * it does, a refusal says the same thing later, and [TrainerControl] routes
+ * each of the rides' two commands (a wattage, a road) to whatever the machine
+ * can do: natively, as ERG, as a resistance level steered against measured
+ * power, or by the rider's own hand.
+ *
+ * The mock trainer path is gated explicitly via [connectMock] and is only
+ * used when no real BLE connection is active.
  */
 class TrainerManager {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = bleManagerScope()
 
     private val _connectionState = MutableStateFlow(TrainerConnectionState.Disconnected)
     val connectionState: StateFlow<TrainerConnectionState> = _connectionState.asStateFlow()
@@ -156,11 +168,18 @@ class TrainerManager {
     private val _lastTelemetryEpochMs = MutableStateFlow(0L)
     val lastTelemetryEpochMs: StateFlow<Long> = _lastTelemetryEpochMs.asStateFlow()
 
+    /**
+     * What the connected trainer can be told, and so how a wattage and a road
+     * each reach it. [TrainerControl.NONE] with no trainer, or one that has no
+     * control point.
+     */
+    private val _control = MutableStateFlow(TrainerControl.NONE)
+    val control: StateFlow<TrainerControl> = _control.asStateFlow()
+
     // Internal state ────────────────────────────────────────────────────────
+    // Everything below is touched only on the manager's own thread (see
+    // bleManagerScope), apart from what is noted otherwise.
     private var scanJob: Job? = null
-    private var connectionJob: Job? = null
-    private var stateListenerJob: Job? = null
-    private var telemetryJobs: List<Job> = emptyList()
     private var mockJob: Job? = null
 
     // Persistent auto-reconnect, modelled as a single supervisor coroutine
@@ -171,13 +190,37 @@ class TrainerManager {
     //  - scanningAllowed: lifecycle gate (app foreground OR active ride).
     // The supervisor scans/connects only while BOTH are true, cancels its scan
     // worker the moment either drops, and never tears down an established
-    // connection (that's owned by `connectionJob`) — only scanning pauses.
+    // connection (that's owned by the link) - only scanning pauses.
     private val wantReconnect = MutableStateFlow(false)
     private val scanningAllowed = MutableStateFlow(true)
     private var targetPairedId: String? = null
 
-    private var activePeripheral: Peripheral? = null
+    /**
+     * Whether auto-reconnect was armed when a manual pairing scan took over
+     * from it, so backing out of the pairing screen gives it back. See
+     * [startScan].
+     */
+    private var reconnectBeforeScan = false
+
+    /** The current connection, from the first connect attempt until it drops. */
+    private var link: BleLink? = null
     private var ftmsControlPointWriter: (suspend (ByteArray) -> Unit)? = null
+
+    /**
+     * Whether this link's control point has been looked for yet, found or not.
+     * Until it has, a command cannot be routed, so it is held rather than
+     * judged: judging it then is what told riders their Kickr "doesn't support
+     * ERG" in the second between connecting and finding the control point.
+     */
+    private var controlKnown = false
+
+    /**
+     * Whether the rides have commanded anything since the app started, so a
+     * connection restates it. A trainer that drops mid-interval and comes back
+     * used to stay out of ERG until the next segment; one connected at app
+     * start with nothing to say is left alone.
+     */
+    private var commanded = false
 
     /** A command for the FTMS control point: whichever of the two the ride last asked for. */
     private sealed interface ControlWrite {
@@ -213,6 +256,35 @@ class TrainerManager {
     private var ftmsControlGranted = false
     private var ftmsControlRetries = 0
 
+    /**
+     * Held by both writers to the control point, the command consumer and the
+     * emulation loop, so a command and an emulated restatement never interleave
+     * on the GATT queue, and each emulated write reads the command it serves
+     * after any newer one has been handled.
+     */
+    private val controlLock = Mutex()
+
+    // Emulation, for a command the machine cannot take as itself. Guarded by
+    // controlLock, apart from the resistance width, which only a refusal flips.
+    private var resistanceHold: ResistanceHold? = null
+    private var resistanceWide = false
+    private var resistanceWidthFlipped = false
+    private var emulatedWatts: Int? = null
+    private var emulatedLevel: Double? = null
+    private var emulatedAtMs = 0L
+    private var emulationTickAtMs = 0L
+
+    /**
+     * Whether this connection's rider has been told they set the resistance
+     * themselves, for a wattage and for a road. Once each: the rides restate a
+     * road every few seconds, and a banner that came back each time would be
+     * impossible to dismiss.
+     */
+    private var toldManualPower = false
+    private var toldManualRoad = false
+
+    private val sources = TelemetrySources()
+
     private var isMockPedaling = false
     // Cadence math from CPS uses crank revolution timestamps to derive RPM.
     private var lastCrankRevs: Int? = null
@@ -230,46 +302,38 @@ class TrainerManager {
     // Public API ─────────────────────────────────────────────────────────────
 
     /**
-     * Whether a [setTargetPower] write would actually reach a trainer.
+     * Whether a [setTargetPower] write would actually hold the rider at it.
      *
-     * A machine with no FTMS control point cannot be held at a wattage at all,
-     * and one that is not connected cannot be told anything. Asked before a
-     * companion is promised a power target, so it can be told which of the two
-     * it has run into rather than watching its target quietly do nothing.
+     * True for a machine that can be steered onto a wattage through its
+     * resistance level as well as for one with ERG. A machine that can be told
+     * neither, and one that is not connected, cannot. Asked before a companion
+     * is promised a power target, so it can be told which of the two it has
+     * run into rather than watching its target quietly do nothing.
      */
     val acceptsTargetPower: Boolean
         get() = _isMockTrainer.value ||
             (_connectionState.value == TrainerConnectionState.Connected &&
-                ftmsControlPointWriter != null)
+                _control.value.power != ControlPath.MANUAL)
 
+    /**
+     * Hold the rider at [watts]. Callable from any thread: it records the
+     * command and queues it, and the manager's own thread routes it to the
+     * machine ([performControlWrite]).
+     */
     fun setTargetPower(watts: Int) {
         val clamped = watts.coerceAtLeast(0)
         _targetPower.value = clamped
         // Leaving simulation mode: a Set Target Power write puts the machine
         // back into ERG, so the road we were commanding is no longer in force.
         _simulationParameters.value = null
-        if (ftmsControlPointWriter == null) {
-            // No FTMS Control Point on this peripheral. Only a problem for a real
-            // trainer we're actually connected to — the mock path and the
-            // disconnected state legitimately have no writer.
-            if (_connectionState.value == TrainerConnectionState.Connected && !_isMockTrainer.value) {
-                _ergError.value = "This trainer doesn't support ERG mode " +
-                    "(no FTMS control point). Target power can't be set automatically."
-            }
-            return
-        }
-        // App-driven target change: fresh recovery budget for the control handshake.
-        ftmsControlRetries = 0
         writeTargetPower(clamped)
     }
 
     /**
-     * Queue Set Target Power (0x05) for the control point. Written by
-     * [performControlWrite], in order behind anything already queued. Also used
-     * by the rejection-recovery path.
+     * Queue a wattage for the control point, in order behind anything already
+     * queued. Also used by the rejection-recovery path.
      */
     private fun writeTargetPower(watts: Int) {
-        if (ftmsControlPointWriter == null) return
         controlWrites.trySend(ControlWrite.Power(watts.coerceAtLeast(0)))
     }
 
@@ -288,40 +352,67 @@ class TrainerManager {
      * own wheel speed until the next one arrives, so the rider's watts are
      * theirs to choose. The caller re-sends it as the gradient changes.
      *
-     * A trainer with no FTMS control point cannot simulate at all. That is a
-     * harder failure than it is for ERG (there is no fallback: the whole mode
-     * is the resistance) so it reports through the same [ergError] banner the
-     * ride screen already shows.
+     * A machine that cannot simulate still gets the road, as the wattage it
+     * asks for or as a resistance level ([TrainerControl.road]). One with no
+     * control point at all is ridden by hand, and the rider is told so through
+     * the same [ergError] banner the ride screen already shows.
      */
     fun setSimulationParameters(parameters: SimulationParameters) {
         _simulationParameters.value = parameters
         // ERG is not driving the trainer any more; a stale target would only
         // mislead the HUD's readouts.
         _targetPower.value = 0
-        val writer = ftmsControlPointWriter
-        if (writer == null) {
-            if (_connectionState.value == TrainerConnectionState.Connected && !_isMockTrainer.value) {
-                _ergError.value = "This trainer doesn't support simulation mode " +
-                    "(no FTMS control point). Gradient can't be sent to it."
-            }
-            return
-        }
-        ftmsControlRetries = 0
         writeSimulationParameters(parameters)
     }
 
-    /**
-     * Queue Set Indoor Bike Simulation Parameters (0x11) for the control point.
-     * Written by [performControlWrite], in order behind anything already queued.
-     */
+    /** Queue a road for the control point, in order behind anything already queued. */
     private fun writeSimulationParameters(parameters: SimulationParameters) {
-        if (ftmsControlPointWriter == null) return
         controlWrites.trySend(ControlWrite.Road(parameters))
     }
 
     /**
+     * Carry one command to the machine by whichever path it can take
+     * ([TrainerControl]): as itself, through the emulation, or not at all.
+     * Called on the manager's thread with [controlLock] held.
+     *
+     * A command that arrives before the link's control point has been looked
+     * for is held, not judged: it is restated once the link knows what it has
+     * ([restateAfterConnect]).
+     */
+    private suspend fun performControlWrite(write: ControlWrite) {
+        commanded = true
+        if (!controlKnown) return
+        val writer = ftmsControlPointWriter
+        val control = _control.value
+        val path = when (write) {
+            is ControlWrite.Power -> control.power
+            is ControlWrite.Road -> control.road
+        }
+        when (path) {
+            ControlPath.NATIVE -> if (writer != null) when (write) {
+                is ControlWrite.Power -> sendControl(
+                    writer,
+                    targetPowerCommand(write.watts),
+                    what = "Set Target Power ${write.watts} W",
+                    failure = "Couldn't send target power to the trainer. ERG mode may not be working.",
+                )
+                is ControlWrite.Road -> sendControl(
+                    writer,
+                    FtmsSimulationCodec.encode(write.parameters),
+                    what = "Set Simulation Parameters",
+                    failure = "Couldn't send the road gradient to the trainer. " +
+                        "Simulation resistance may not be working.",
+                )
+            }
+            // A command the rider caused lands now rather than on the next tick.
+            ControlPath.VIA_POWER, ControlPath.VIA_RESISTANCE -> emulate(nowMs(), forced = true)
+            ControlPath.MANUAL -> tellManual(write)
+        }
+    }
+
+    /**
      * Write one command to the control point, taking control first if the grant
-     * has not been confirmed yet.
+     * has not been confirmed yet. Returns whether both writes went out.
      *
      * Both writes use WriteType.WithResponse, which serialises them on the GATT
      * queue, so the trainer processes the control grant before the command that
@@ -329,38 +420,135 @@ class TrainerManager {
      * of replying "Control Not Permitted". A trainer that rejects the command
      * still says so through the control-point indication
      * ([handleControlPointResponse]), which drives recovery.
+     *
+     * A write going out is not the machine accepting it, so this never clears
+     * the error banner: the machine's own success indication does. Clearing it
+     * here made a trainer that refuses every road flicker its banner on and off
+     * for a whole route, and wiped a "close the other app" message the moment
+     * the next write reached the radio.
      */
-    private suspend fun performControlWrite(write: ControlWrite) {
+    private suspend fun sendControl(
+        writer: suspend (ByteArray) -> Unit,
+        payload: ByteArray,
+        what: String,
+        failure: String,
+    ): Boolean = try {
+        if (!ftmsControlGranted) writer(byteArrayOf(0x00)) // Request Control
+        writer(payload)
+        true
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "FTMS $what write failed", e)
+        // A write that failed because the link was going away is the drop,
+        // which says so for itself; raising this over it would outlive it.
+        if (_connectionState.value == TrainerConnectionState.Connected) _ergError.value = failure
+        false
+    }
+
+    /**
+     * One step of whichever emulation the current command needs, if any.
+     * Called with [controlLock] held, every [EMULATION_TICK_MS] while one is
+     * running and at once ([forced]) when the rides send a command.
+     *
+     * The command is read from [targetPower] and [simulationParameters] rather
+     * than carried in, so a step always serves the newest one.
+     */
+    private suspend fun emulate(nowMs: Long, forced: Boolean) {
         val writer = ftmsControlPointWriter ?: return
-        try {
-            if (!ftmsControlGranted) writer(byteArrayOf(0x00)) // Request Control
-            when (write) {
-                is ControlWrite.Power -> writer(
-                    byteArrayOf(
-                        0x05,
-                        (write.watts and 0xFF).toByte(),
-                        ((write.watts shr 8) and 0xFF).toByte(),
-                    )
+        val control = _control.value
+        val road = _simulationParameters.value
+        val path = if (road != null) control.road else control.power
+        val watts = if (road != null) RoadAsPower.watts(road, _cadence.value) else _targetPower.value
+        val dtSeconds = if (emulationTickAtMs == 0L) EMULATION_TICK_MS / 1000.0
+        else (nowMs - emulationTickAtMs) / 1000.0
+        emulationTickAtMs = nowMs
+        val restateDue = nowMs - emulatedAtMs >= EMULATED_RESTATE_MS
+
+        when (path) {
+            ControlPath.VIA_POWER -> {
+                val last = emulatedWatts
+                val due = forced || restateDue || last == null || abs(watts - last) >= EMULATED_WATTS_EPSILON
+                if (!due) return
+                val sent = sendControl(
+                    writer,
+                    targetPowerCommand(watts),
+                    what = "Set Target Power $watts W (road)",
+                    failure = "Couldn't send the road to the trainer. Its resistance may not be following the route.",
                 )
-                is ControlWrite.Road -> writer(FtmsSimulationCodec.encode(write.parameters))
+                if (sent) {
+                    emulatedWatts = watts
+                    emulatedAtMs = nowMs
+                }
             }
-            _ergError.value = null
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            when (write) {
-                is ControlWrite.Power -> {
-                    Log.w(TAG, "FTMS Set Target Power write failed: ${write.watts} W", e)
-                    _ergError.value = "Couldn't send target power to the trainer. " +
-                        "ERG mode may not be working."
+            ControlPath.VIA_RESISTANCE -> {
+                val hold = resistanceHold ?: return
+                val level = hold.update(watts, _power.value, _cadence.value, dtSeconds)
+                if (!forced && !restateDue && level == emulatedLevel) return
+                val sent = sendControl(
+                    writer,
+                    FtmsResistanceCodec.encode(level, resistanceWide),
+                    what = "Set Target Resistance Level $level",
+                    failure = "Couldn't send a resistance level to the trainer. " +
+                        "Its resistance may not be following the ride.",
+                )
+                if (sent) {
+                    emulatedLevel = level
+                    emulatedAtMs = nowMs
                 }
-                is ControlWrite.Road -> {
-                    Log.w(TAG, "FTMS Set Simulation Parameters write failed", e)
-                    _ergError.value = "Couldn't send the road gradient to the trainer. " +
-                        "Simulation resistance may not be working."
-                }
+            }
+            ControlPath.NATIVE, ControlPath.MANUAL -> Unit
+        }
+    }
+
+    /** Whether the current command needs [emulate] running on a clock. */
+    private fun needsEmulation(control: TrainerControl, road: SimulationParameters?, watts: Int): Boolean =
+        if (road != null) {
+            control.road == ControlPath.VIA_POWER || control.road == ControlPath.VIA_RESISTANCE
+        } else {
+            // A zero target on a resistance-only machine is one write to its
+            // lightest level, which the command itself makes.
+            watts > 0 && control.power == ControlPath.VIA_RESISTANCE
+        }
+
+    /** Fresh emulation state for a machine that has just said what it can take. */
+    private fun resetEmulation(control: TrainerControl) {
+        resistanceHold = control.resistanceRange?.let(::ResistanceHold)
+        resistanceWide = control.resistanceRange?.let(FtmsResistanceCodec::startsWide) ?: false
+        resistanceWidthFlipped = false
+        emulatedWatts = null
+        emulatedLevel = null
+        emulatedAtMs = 0L
+        emulationTickAtMs = 0L
+    }
+
+    /**
+     * Tell a rider whose machine cannot be told [write] at all that the
+     * resistance is theirs to set, once per connection for each kind. A zero
+     * target on a machine nobody is steering changes nothing, so says nothing.
+     */
+    private fun tellManual(write: ControlWrite) {
+        if (_isMockTrainer.value || _connectionState.value != TrainerConnectionState.Connected) return
+        when (write) {
+            is ControlWrite.Power -> {
+                if (write.watts <= 0 || toldManualPower) return
+                toldManualPower = true
+                _ergError.value = "This trainer's resistance can't be set from the app. Set it " +
+                    "yourself to hold the target; your power is still recorded as you ride."
+            }
+            is ControlWrite.Road -> {
+                if (toldManualRoad) return
+                toldManualRoad = true
+                _ergError.value = "This trainer's resistance can't be set from the app, so the " +
+                    "road won't change it. Set it yourself as the road changes; your speed still " +
+                    "follows your power."
             }
         }
+    }
+
+    private fun targetPowerCommand(watts: Int): ByteArray {
+        val w = watts.coerceIn(0, 0x7FFF)
+        return byteArrayOf(0x05, (w and 0xFF).toByte(), ((w shr 8) and 0xFF).toByte())
     }
 
     /**
@@ -398,35 +586,21 @@ class TrainerManager {
         touchTelemetry()
     }
 
-    fun toggleMockPedaling() {
+    fun toggleMockPedaling() = onManager {
         isMockPedaling = !isMockPedaling
-        if (!isMockPedaling) {
-            _power.value = 0
-            _cadence.value = 0
-            _heartRate.value = 0
-        }
+        if (!isMockPedaling) zeroTelemetry()
     }
 
-    fun connectMock() {
-        // Tear down any in-flight real connection first so mock and real
-        // telemetry can never both write the same StateFlows. Without this,
-        // toggling Mock while a real trainer is connected leaves the BLE
-        // observe jobs running and racing the mock stream.
-        // A mock session is an explicit override — stop chasing the real trainer.
+    fun connectMock() = onManager {
+        // A mock session is an explicit override: stop chasing the real
+        // trainer, and end its link so mock and real telemetry can never both
+        // write the same flows.
         wantReconnect.value = false
+        reconnectBeforeScan = false
         targetPairedId = null
-
-        scope.launch {
-            try {
-                activePeripheral?.disconnect()
-            } catch (_: Exception) { /* best-effort */ }
-        }
         scanJob?.cancel()
-        stateListenerJob?.cancel()
-        telemetryJobs.forEach { it.cancel() }
-        telemetryJobs = emptyList()
-        ftmsControlPointWriter = null
-        activePeripheral = null
+        scanJob = null
+        link?.let { endLink(it) }
 
         _isMockTrainer.value = true
         _mockManual.value = false
@@ -439,16 +613,16 @@ class TrainerManager {
     /**
      * Arm persistent auto-reconnect to a previously paired trainer. Unlike a
      * one-shot scan, this records the standing intent to stay connected and
-     * keeps retrying (in scan windows with backoff) until the trainer is found —
+     * keeps retrying (in scan windows with backoff) until the trainer is found -
      * so opening the app before the trainer wakes up still results in a
      * connection once it starts advertising. Scanning is gated to
      * foreground/active-ride via [pauseAutoReconnect] / [resumeAutoReconnect].
      *
      * No-op for the "mock" pseudo-id and while a mock session is active.
      */
-    fun autoConnectIfPaired(pairedId: String?) {
-        if (pairedId.isNullOrBlank() || pairedId == "mock") return
-        if (_isMockTrainer.value) return
+    fun autoConnectIfPaired(pairedId: String?) = onManager {
+        if (pairedId.isNullOrBlank() || pairedId == "mock") return@onManager
+        if (_isMockTrainer.value) return@onManager
 
         targetPairedId = pairedId
         _pairedTrainerId.value = pairedId
@@ -458,7 +632,7 @@ class TrainerManager {
     /**
      * Lifecycle gate: stop scanning while the app is backgrounded with no active
      * ride, to spare the radio. Keeps the standing reconnect intent and does NOT
-     * drop an established connection — only scanning pauses. Resume with
+     * drop an established connection - only scanning pauses. Resume with
      * [resumeAutoReconnect].
      */
     fun pauseAutoReconnect() { scanningAllowed.value = false }
@@ -553,12 +727,20 @@ class TrainerManager {
 
             if (found != null) {
                 connectInternal(found)
-                // Returns on a failed attempt or a later drop, then we rescan.
-                _connectionState.first {
-                    it == TrainerConnectionState.Disconnected || it == TrainerConnectionState.Error
+                if (connectionCameUp(_connectionState)) {
+                    _connectionState.first {
+                        it == TrainerConnectionState.Disconnected || it == TrainerConnectionState.Error
+                    }
+                    backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
+                    delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
+                } else {
+                    // Found but would not connect: held by another app, or a
+                    // GATT error. That used to reset the backoff like any other
+                    // ending, so it was retried every few seconds for ever.
+                    Log.i(TAG, "Trainer found but didn't connect; next attempt in ${backoff / 1000} s")
+                    delay(backoff)
+                    backoff = (backoff * 2).coerceAtMost(BleReconnectPolicy.MAX_BACKOFF_MS)
                 }
-                backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
-                delay(BleReconnectPolicy.POST_DROP_DELAY_MS)
             } else {
                 // Trainer still asleep / out of range. Settle the UI and back
                 // off before the next window (this is the wake-up watch path).
@@ -571,12 +753,18 @@ class TrainerManager {
         }
     }
 
-    fun startScan() {
-        // A manual pairing scan takes over from any background auto-reconnect so
-        // the two don't fight over the radio; a successful pick re-arms it.
-        wantReconnect.value = false
+    /**
+     * A manual pairing scan. It takes over from background auto-reconnect so
+     * the two don't fight over the radio, and gives it back in [stopScan]:
+     * backing out of the pairing screen used to leave auto-reconnect off for
+     * the rest of the session, so a paired trainer woken a minute later never
+     * came back.
+     */
+    fun startScan() = onManager {
+        if (_connectionState.value == TrainerConnectionState.Connected) return@onManager
 
-        if (_connectionState.value == TrainerConnectionState.Connected) return
+        reconnectBeforeScan = reconnectBeforeScan || wantReconnect.value
+        wantReconnect.value = false
 
         _connectionState.value = TrainerConnectionState.Scanning
         // Clears the advertisement map alongside the list. It used to clear
@@ -600,7 +788,14 @@ class TrainerManager {
             .launchIn(scope)
     }
 
-    fun stopScan() {
+    /** End a manual pairing scan, giving auto-reconnect back if it had it. */
+    fun stopScan() = onManager {
+        endScan()
+        if (reconnectBeforeScan && targetPairedId != null) wantReconnect.value = true
+        reconnectBeforeScan = false
+    }
+
+    private fun endScan() {
         scanJob?.cancel()
         scanJob = null
         if (_connectionState.value == TrainerConnectionState.Scanning) {
@@ -608,42 +803,37 @@ class TrainerManager {
         }
     }
 
-    fun connectToCandidate(candidateId: String) {
+    fun connectToCandidate(candidateId: String) = onManager {
         // Look up the underlying advertisement; we keep it around because Kable
         // requires the Advertisement (or the specific platform handle) to peripheral().
-        val ad = lastAdvertisements[candidateId] ?: run {
+        val ad = lastAdvertisements[candidateId]
+        if (ad == null) {
             Log.w(TAG, "connectToCandidate: unknown id=${redactDeviceId(candidateId)}")
             _connectionState.value = TrainerConnectionState.Error
-            return
+            return@onManager
         }
         connectInternal(ad)
     }
 
-    fun disconnect() {
+    fun disconnect() = onManager { disconnectInternal() }
+
+    private fun disconnectInternal() {
         // Explicit user action: stop auto-reconnecting until they reconnect/pair.
         wantReconnect.value = false
-        scope.launch {
-            try {
-                activePeripheral?.disconnect()
-            } catch (e: Exception) {
-                Log.w(TAG, "Peripheral disconnect failed", e)
-            }
-        }
+        reconnectBeforeScan = false
+        link?.let { endLink(it) }
         if (_isMockTrainer.value) {
             _isMockTrainer.value = false
-            _connectionState.value = TrainerConnectionState.Disconnected
-            _connectedTrainerName.value = null
             stopMockTelemetryStream()
         }
-    }
-
-    fun forgetTrainer() {
-        disconnect()
-        targetPairedId = null
-        _pairedTrainerId.value = null
-        _isMockTrainer.value = false
         _connectedTrainerName.value = null
         _connectionState.value = TrainerConnectionState.Disconnected
+    }
+
+    fun forgetTrainer() = onManager {
+        disconnectInternal()
+        targetPairedId = null
+        _pairedTrainerId.value = null
     }
 
     /** Cancel all in-flight jobs and BLE connections. Call once at app shutdown. */
@@ -655,11 +845,32 @@ class TrainerManager {
 
     private val lastAdvertisements = mutableMapOf<String, Advertisement>()
 
+    /** Run [block] on the manager's thread. Every public entry point that touches its state does. */
+    private fun onManager(block: suspend () -> Unit) {
+        scope.launch { block() }
+    }
+
     // Declared after all state the supervisor touches, so they're initialised
     // before its coroutine body runs.
     init {
         scope.launch { reconnectSupervisor() }
-        scope.launch { for (write in controlWrites) performControlWrite(write) }
+        scope.launch { for (write in controlWrites) controlLock.withLock { performControlWrite(write) } }
+        // The emulation's clock, running only while a command needs it: a road
+        // on a machine that cannot simulate, or a wattage on one that has only
+        // a resistance level. Both have to follow the rider between commands,
+        // the first because the wattage a road asks for moves with cadence, the
+        // second because the level is steered by what it measures.
+        scope.launch {
+            combine(_control, _simulationParameters, _targetPower, ::needsEmulation)
+                .distinctUntilChanged()
+                .collectLatest { running ->
+                    if (!running) return@collectLatest
+                    while (true) {
+                        delay(EMULATION_TICK_MS)
+                        controlLock.withLock { emulate(nowMs(), forced = false) }
+                    }
+                }
+        }
     }
 
     /**
@@ -696,7 +907,11 @@ class TrainerManager {
     }
 
     private fun connectInternal(advertisement: Advertisement) {
-        stopScan()
+        endScan()
+        // Whatever the previous link was doing, it is over: a trainer tapped
+        // while another was still connecting used to stay connected to both.
+        link?.let { endLink(it, settle = false) }
+
         _connectionState.value = TrainerConnectionState.Connecting
         _pairedTrainerId.value = advertisement.identifier
         _connectedTrainerName.value = advertisement.name ?: "Unknown Trainer"
@@ -705,6 +920,7 @@ class TrainerManager {
         // arm persistent reconnect so a later drop is chased automatically.
         targetPairedId = advertisement.identifier
         wantReconnect.value = true
+        reconnectBeforeScan = false
 
         // Tear down any mock-trainer state so a real connect after a mock
         // session doesn't have two telemetry sources racing the StateFlows.
@@ -720,97 +936,121 @@ class TrainerManager {
         lastCrankRevs = null
         lastCrankEventTime = null
         lastCrankActivityEpochMs = 0
+        // Nor is the new trainer's Indoor Bike Data judged by whether the old
+        // one's power service was speaking, or its rider assumed to have been
+        // told what the old one could not do.
+        sources.reset()
+        toldManualPower = false
+        toldManualRoad = false
 
-        // Cancel any prior connection state listener and telemetry subscriptions.
-        stateListenerJob?.cancel()
-        telemetryJobs.forEach { it.cancel() }
-        telemetryJobs = emptyList()
-        connectionJob?.cancel()
+        val newLink = BleLink.open(scope, advertisement) {
+            logging(peripheralLogging(advertisement.identifier))
+            // With a handler registered, Kable sends observation failures here
+            // rather than through the observe flow. Log with device context,
+            // then rethrow to keep the existing behaviour of terminating the flow.
+            observationExceptionHandler { cause ->
+                Log.w(
+                    TAG,
+                    "Trainer observation failed on ${redactDeviceId(advertisement.identifier)}",
+                    cause,
+                )
+                throw cause
+            }
+        }
+        link = newLink
 
-        connectionJob = scope.launch {
-            try {
-                val peripheral = scope.peripheral(advertisement) {
-                    logging(peripheralLogging(advertisement.identifier))
-                    // With a handler registered, Kable sends observation
-                    // failures here rather than through the observe flow. Log
-                    // with device context, then rethrow to keep the existing
-                    // behaviour of terminating the flow.
-                    observationExceptionHandler { cause ->
-                        Log.w(
-                            TAG,
-                            "Trainer observation failed on ${redactDeviceId(advertisement.identifier)}",
-                            cause,
-                        )
-                        throw cause
+        newLink.scope.launch {
+            newLink.states.collect { state ->
+                // A link that has been replaced has no say over the manager.
+                if (link !== newLink) return@collect
+                when (state) {
+                    is State.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
+                    is State.Connected -> {
+                        _connectionState.value = TrainerConnectionState.Connected
+                        _ergError.value = null
+                        _justConnected.tryEmit(_connectedTrainerName.value ?: "Trainer")
+                        startTelemetrySubscriptions(newLink)
+                    }
+                    is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
+                    is State.Disconnected -> {
+                        Log.i(TAG, "Trainer link dropped")
+                        endLink(newLink)
                     }
                 }
-                activePeripheral = peripheral
-
-                stateListenerJob = peripheral.state.onEach { state ->
-                    when (state) {
-                        is State.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
-                        is State.Connected -> {
-                            _connectionState.value = TrainerConnectionState.Connected
-                            _ergError.value = null
-                            _justConnected.tryEmit(_connectedTrainerName.value ?: "Trainer")
-                            startTelemetrySubscriptions(peripheral)
-                        }
-                        is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
-                        is State.Disconnected -> {
-                            _connectionState.value = TrainerConnectionState.Disconnected
-                            telemetryJobs.forEach { it.cancel() }
-                            telemetryJobs = emptyList()
-                            ftmsControlPointWriter = null
-                            ftmsControlGranted = false
-                            // Whatever was waiting was for the trainer that
-                            // just left. The ride restates its road or target
-                            // to whichever one connects next.
-                            controlWrites.tryReceive()
-                            activePeripheral = null
-                            _connectedTrainerName.value = null
-                            _ergError.value = null
-                            // The road we commanded died with the connection.
-                            // A reconnect mid-ride re-sends it on the next
-                            // gradient change rather than assuming it survived.
-                            _simulationParameters.value = null
-                        }
-                    }
-                }.launchIn(scope)
-
-                peripheral.connect()
+            }
+        }
+        newLink.scope.launch {
+            try {
+                newLink.peripheral.connect()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Connect failed", e)
-                _connectionState.value = TrainerConnectionState.Error
-                activePeripheral = null
+                if (link === newLink) {
+                    endLink(newLink, settle = false)
+                    _connectedTrainerName.value = null
+                    _connectionState.value = TrainerConnectionState.Error
+                }
             }
         }
     }
 
     /**
-     * Subscribe to whichever telemetry characteristics the peripheral exposes.
-     * Power/cadence prefer CPS (Cycling Power Measurement); FTMS Indoor Bike Data
-     * is used as a fallback. Heart Rate is a separate service if available.
+     * Retire [ending]: forget everything it established, zero what it was
+     * reporting, and close it in the background.
      *
-     * Suspending + sequential, by design. The previous implementation launched
-     * each `findCharacteristic + observe` in its own `scope.launch { ... }` and
-     * assigned `telemetryJobs` immediately afterwards — but the assignment
-     * fired before the launches had populated the list, so concurrent
-     * cancellations (e.g. a fast trainer swap) saw an empty `telemetryJobs`
-     * and leaked the observe jobs from the previous connection. Going
-     * sequential makes the bookkeeping trivially correct: each job is added
-     * to `telemetryJobs` the moment it's launched, and there's no window
-     * where a cancellation can miss it.
+     * The readings are the part that mattered most. They used to stay on the
+     * flows after a drop, so a ride went on recording the last 250 W every
+     * second with nobody pedalling, never auto-paused, and after a reconnect a
+     * rider who had stopped kept their old cadence for good.
+     *
+     * [settle] reports the manager as Disconnected. Off when something else is
+     * about to say what the manager is instead: a new link taking over, which
+     * must not look like a drop to the reconnect worker, or a failed connect,
+     * which reports an error.
      */
-    private suspend fun startTelemetrySubscriptions(peripheral: Peripheral) {
-        // Cancel any existing subscriptions and reset the tracker. Bind the
-        // mutable list to `telemetryJobs` up front so an interleaved
-        // disconnection callback's `telemetryJobs.forEach { it.cancel() }`
-        // sees additions as we go, not just the post-completion snapshot.
-        telemetryJobs.forEach { it.cancel() }
-        val jobs = mutableListOf<Job>()
-        telemetryJobs = jobs
+    private fun endLink(ending: BleLink, settle: Boolean = true) {
+        if (link === ending) {
+            link = null
+            ftmsControlPointWriter = null
+            ftmsControlGranted = false
+            controlKnown = false
+            _control.value = TrainerControl.NONE
+            // Whatever was waiting was for the trainer that just left. The
+            // command itself survives on targetPower / simulationParameters,
+            // and is restated to whichever trainer connects next.
+            controlWrites.tryReceive()
+            zeroTelemetry()
+            lastCrankRevs = null
+            lastCrankEventTime = null
+            lastCrankActivityEpochMs = 0
+            if (settle) {
+                _connectedTrainerName.value = null
+                _ergError.value = null
+                _connectionState.value = TrainerConnectionState.Disconnected
+            }
+        }
+        scope.launch { ending.close() }
+    }
+
+    private fun zeroTelemetry() {
+        _power.value = 0
+        _cadence.value = 0
+        _heartRate.value = 0
+    }
+
+    /**
+     * Subscribe to whichever telemetry characteristics the peripheral exposes,
+     * find its control point, then restate whatever the rides last commanded.
+     *
+     * Suspending and sequential, by design, and everything launched here lives
+     * in the link's scope, so a link that ends takes all of it with it. Each
+     * callback also checks it still belongs to the current link, because a
+     * notification already in flight when a newer link took over must not
+     * write over it.
+     */
+    private suspend fun startTelemetrySubscriptions(l: BleLink) {
+        val peripheral = l.peripheral
 
         suspend fun trySubscribe(
             label: String,
@@ -820,43 +1060,40 @@ class TrainerManager {
         ) {
             try {
                 val char = peripheral.findCharacteristic(service, characteristic) ?: return
-                jobs += peripheral.observe(char)
-                    .onEach { onBytes(it) }
+                peripheral.observe(char)
+                    .onEach { if (link === l) onBytes(it) }
                     .catch { Log.w(TAG, "$label observe failed", it) }
-                    .launchIn(scope)
+                    .launchIn(l.scope)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.w(TAG, "$label subscribe failed", e)
             }
         }
 
-        trySubscribe("CPS", CYCLING_POWER_SERVICE, CYCLING_POWER_MEASUREMENT) { bytes ->
-            parseCyclingPowerMeasurement(bytes)?.let { reading ->
-                _power.value = reading.powerWatts
-                reading.cadenceRpm?.let { _cadence.value = it }
-                touchTelemetry()
-            }
-        }
-        trySubscribe("Indoor Bike Data", FITNESS_MACHINE_SERVICE, INDOOR_BIKE_DATA) { bytes ->
-            parseIndoorBikeData(bytes)?.let { reading ->
-                if (_power.value == 0) reading.powerWatts?.let { _power.value = it }
-                if (_cadence.value == 0) reading.cadenceRpm?.let { _cadence.value = it }
-                touchTelemetry()
-            }
-        }
-        trySubscribe("HR", HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT) { bytes ->
-            parseHeartRateMeasurement(bytes)?.let { hr ->
-                _heartRate.value = hr
-                touchTelemetry()
-            }
-        }
+        trySubscribe("CPS", CYCLING_POWER_SERVICE, CYCLING_POWER_MEASUREMENT) { onCyclingPower(it) }
+        trySubscribe("Indoor Bike Data", FITNESS_MACHINE_SERVICE, INDOOR_BIKE_DATA) { onIndoorBikeData(it) }
+        trySubscribe("HR", HEART_RATE_SERVICE, HEART_RATE_MEASUREMENT) { onHeartRate(it) }
 
-        // FTMS Control Point — capture a writer closure so setTargetPower works,
-        // and observe it for the machine's Response Code indications. The writer
-        // reference is invalidated on disconnect via `ftmsControlPointWriter = null`;
-        // the observe job is tracked in `jobs` so it's cancelled on disconnect.
+        // FTMS Control Point - capture a writer closure so commands can reach
+        // it, and observe it for the machine's Response Code indications.
         try {
             val char = peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, FTMS_CONTROL_POINT)
             if (char != null) {
+                // What it can be told, settled before the writer exists, so no
+                // command is ever routed on a guess about a different machine.
+                val control = readControl(peripheral)
+                if (link !== l) return
+                controlLock.withLock {
+                    _control.value = control
+                    resetEmulation(control)
+                }
+                Log.i(
+                    TAG,
+                    "FTMS targets: power=${control.targets.power} " +
+                        "resistance=${control.targets.resistance} simulation=${control.targets.simulation} " +
+                        "range=${control.resistanceRange}; wattage ${control.power}, road ${control.road}",
+                )
                 // Fresh connection: control hasn't been granted yet.
                 ftmsControlGranted = false
                 ftmsControlRetries = 0
@@ -865,27 +1102,110 @@ class TrainerManager {
                 }
                 // The FTMS Control Point is Write + Indicate: per spec the machine
                 // answers every command with a Response Code (0x80) indication, and
-                // strict trainers (e.g. Zwift Hub) refuse to honor any control write —
-                // including Request Control and Set Target Power — until the client has
+                // strict trainers (e.g. Zwift Hub) refuse to honor any control write,
+                // including Request Control and Set Target Power, until the client has
                 // enabled indications on the CCCD. Observing the characteristic enables
                 // them and lets us report rejected commands back to the rider.
-                jobs += peripheral.observe(char)
-                    .onEach { bytes -> handleControlPointResponse(bytes) }
+                peripheral.observe(char)
+                    .onEach { bytes -> if (link === l) handleControlPointResponse(bytes) }
                     .catch { Log.w(TAG, "FTMS control point observe failed", it) }
-                    .launchIn(scope)
+                    .launchIn(l.scope)
                 // Best-effort early Request Control (0x00). If it lands and the
                 // trainer grants control, the success indication sets
                 // `ftmsControlGranted` so later target writes skip the re-request.
                 // If it doesn't take (a strict trainer may ignore it when sent
-                // before indications are fully enabled), it's not fatal:
-                // setTargetPower pairs a fresh Request Control with the target
-                // write and recovers from any "Control Not Permitted" reply.
-                runCatching { peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse) }
-                    .onFailure { Log.w(TAG, "FTMS early request-control failed (will retry on target write)", it) }
+                // before indications are fully enabled), it's not fatal: every
+                // command pairs a fresh Request Control with itself until the
+                // grant is confirmed, and recovers from "Control Not Permitted".
+                try {
+                    peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "FTMS early request-control failed (will retry on the next command)", e)
+                }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.w(TAG, "FTMS control point setup failed", e)
         }
+        if (link !== l) return
+        controlKnown = true
+        restateAfterConnect()
+    }
+
+    /**
+     * Send the connected trainer whatever the rides last commanded.
+     *
+     * Before this, nothing did. The road modes restate their road every few
+     * seconds anyway, but a structured workout only writes at a segment change,
+     * so a trainer that dropped three minutes into a twenty-minute interval and
+     * came straight back stayed out of ERG for the other seventeen. A command
+     * sent while the trainer was still connecting was dropped the same way.
+     */
+    private fun restateAfterConnect() {
+        if (commanded) resendCurrentCommand()
+    }
+
+    /** One Cycling Power Measurement notification. */
+    internal fun onCyclingPower(bytes: ByteArray, atMs: Long = nowMs()) {
+        val reading = parseCyclingPowerMeasurement(bytes) ?: return
+        sources.heardPowerService(atMs, carriesCrank = reading.carriesCrank)
+        _power.value = reading.powerWatts
+        reading.cadenceRpm?.let { _cadence.value = it }
+        touchTelemetry()
+    }
+
+    /**
+     * One Indoor Bike Data notification, believed wherever the dedicated
+     * service is silent, which on a machine that has only this is everywhere.
+     * See [TelemetrySources].
+     */
+    internal fun onIndoorBikeData(bytes: ByteArray, atMs: Long = nowMs()) {
+        val data = IndoorBikeData.parse(bytes) ?: return
+        if (sources.bikeDataPowerCounts(atMs)) data.powerWatts?.let { _power.value = it }
+        if (sources.bikeDataCadenceCounts(atMs)) data.cadenceRpm?.let { _cadence.value = it }
+        if (sources.bikeDataHeartRateCounts(atMs)) data.heartRateBpm?.let { _heartRate.value = it }
+        touchTelemetry()
+    }
+
+    /** One Heart Rate Measurement notification from the trainer's own service. */
+    internal fun onHeartRate(bytes: ByteArray, atMs: Long = nowMs()) {
+        val hr = parseHeartRateMeasurement(bytes) ?: return
+        sources.heardHeartRateService(atMs)
+        _heartRate.value = hr
+        touchTelemetry()
+    }
+
+    /**
+     * Ask the machine what its control point takes, and the resistance range
+     * it takes if a resistance level is among it.
+     *
+     * A machine that does not answer is taken to take what this app always
+     * sent ([FtmsTargets.ASSUMED]); a refusal later corrects that. A machine
+     * that accepts a resistance level but will not say its range is not
+     * steered through one: a level sent without knowing the range could be
+     * anything from off to a wall.
+     */
+    private suspend fun readControl(peripheral: Peripheral): TrainerControl {
+        val targets = readFitnessMachine(peripheral, FITNESS_MACHINE_FEATURE)
+            ?.let(FtmsTargets::parse) ?: FtmsTargets.ASSUMED
+        val range = if (targets.resistance) {
+            readFitnessMachine(peripheral, SUPPORTED_RESISTANCE_LEVEL_RANGE)?.let(ResistanceRange::parse)
+        } else {
+            null
+        }
+        return TrainerControl(targets, range, hasControlPoint = true)
+    }
+
+    private suspend fun readFitnessMachine(peripheral: Peripheral, characteristic: String): ByteArray? = try {
+        peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, characteristic)?.let { peripheral.read(it) }
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        Log.w(TAG, "Couldn't read FTMS characteristic $characteristic", e)
+        null
     }
 
     /**
@@ -894,10 +1214,15 @@ class TrainerManager {
      *
      *  - Request Control (0x00) success → control is granted; remember it so we
      *    stop prepending Request Control to every target write.
-     *  - Set Target Power (0x05) success → clear any error.
+     *  - A command's success → clear any error.
      *  - "Control Not Permitted" (0x05) → the grant didn't take (or was lost).
      *    Re-request control and re-apply the target rather than giving up;
      *    surface a helpful error only once recovery is exhausted.
+     *  - "Op Code Not Supported" (0x02) → the machine cannot take that command
+     *    after all, whatever its features said. Route around it
+     *    ([TrainerControl]) and re-send the current command the new way.
+     *  - "Invalid Parameter" (0x03) to a resistance level → the other width
+     *    ([FtmsResistanceCodec]), once.
      *  - Other result codes → surface to the rider.
      */
     internal fun handleControlPointResponse(bytes: ByteArray) {
@@ -916,7 +1241,7 @@ class TrainerManager {
         if (resultCode == 0x01) { // Success
             when (requestOpCode) {
                 0x00 -> { ftmsControlGranted = true; ftmsControlRetries = 0 }
-                0x05, 0x11 -> { ftmsControlRetries = 0; _ergError.value = null }
+                0x04, 0x05, 0x11 -> { ftmsControlRetries = 0; _ergError.value = null }
             }
             return
         }
@@ -929,8 +1254,7 @@ class TrainerManager {
                 Log.w(TAG, "FTMS control not permitted; re-requesting control (attempt $ftmsControlRetries)")
                 // Re-send Request Control (granted is false) then the command
                 // that was refused, serialised on the GATT queue.
-                val road = _simulationParameters.value
-                if (road != null) writeSimulationParameters(road) else writeTargetPower(_targetPower.value)
+                resendCurrentCommand()
             } else {
                 val mode = if (simulating) "simulation" else "ERG"
                 _ergError.value = "Trainer rejected $mode control. Close any other app " +
@@ -939,24 +1263,62 @@ class TrainerManager {
             return
         }
 
-        // A trainer that answers 0x11 with "not supported" can still do ERG.
-        // Say so plainly rather than leaving the rider on a route whose hills
-        // they cannot feel and cannot explain.
-        if (resultCode == 0x02 && requestOpCode == 0x11) {
-            _ergError.value = "This trainer doesn't support simulation mode, so the " +
-                "route's gradient won't change the resistance. Workouts and Just Ride " +
-                "still work."
+        // Not supported after all. A road on a machine that refuses one is
+        // still a road: as ERG, or as a resistance level, and only as a last
+        // resort by hand, which re-sending it the new way works out and says.
+        if (resultCode == 0x02) {
+            val before = _control.value
+            val after = when (requestOpCode) {
+                0x04 -> before.withoutResistance()
+                0x05 -> before.withoutPower()
+                0x11 -> before.withoutSimulation()
+                else -> before
+            }
+            if (after != before) {
+                _control.value = after
+                Log.i(TAG, "Trainer refused op 0x${requestOpCode.toString(16)}: wattage ${after.power}, road ${after.road}")
+                resendCurrentCommand()
+                return
+            }
+        }
+
+        // The other width, once. A machine that refuses both is not one this
+        // can steer, and says so below like any other refusal.
+        if (resultCode == 0x03 && requestOpCode == 0x04 && !resistanceWidthFlipped) {
+            resistanceWidthFlipped = true
+            resistanceWide = !resistanceWide
+            Log.i(TAG, "Trainer refused a resistance level; trying ${if (resistanceWide) "two bytes" else "one byte"}")
+            resendCurrentCommand()
             return
         }
 
         val reason = when (resultCode) {
             0x02 -> "the command isn't supported"
-            0x03 -> if (simulating) "the road parameters were out of range"
-                else "the target power was out of range"
+            0x03 -> when {
+                requestOpCode == 0x04 -> "the resistance level was out of range"
+                simulating -> "the road parameters were out of range"
+                else -> "the target power was out of range"
+            }
             else -> "the trainer reported an error"
         }
-        val mode = if (simulating) "simulation" else "ERG"
+        val mode = when {
+            requestOpCode == 0x04 -> "resistance"
+            simulating -> "simulation"
+            else -> "ERG"
+        }
         _ergError.value = "Trainer rejected the $mode command: $reason."
+    }
+
+    /**
+     * Queue whatever the rides last asked for again, to go out by whichever
+     * path it now takes. After a refusal, a lost control grant or a change of
+     * width, it is the command the machine is not currently following.
+     */
+    private fun resendCurrentCommand() {
+        emulatedWatts = null
+        emulatedLevel = null
+        val road = _simulationParameters.value
+        if (road != null) writeSimulationParameters(road) else writeTargetPower(_targetPower.value)
     }
 
     private fun touchTelemetry() {
@@ -1018,13 +1380,19 @@ class TrainerManager {
 
     // BLE byte parsing ───────────────────────────────────────────────────────
 
-    private data class CpsReading(val powerWatts: Int, val cadenceRpm: Int?)
+    /**
+     * @param carriesCrank whether the packet had crank data at all, which is
+     *   not the same as a cadence: most packets carry the same crank count as
+     *   the last and yield none.
+     */
+    private data class CpsReading(val powerWatts: Int, val cadenceRpm: Int?, val carriesCrank: Boolean)
 
     private fun parseCyclingPowerMeasurement(bytes: ByteArray): CpsReading? {
         if (bytes.size < 4) return null
-        // Bytes 0-1: flags (LE). Bytes 2-3: instantaneous power (sint16, LE).
+        // Bytes 0-1: flags (LE). Bytes 2-3: instantaneous power (sint16, LE),
+        // clamped at zero for the reason IndoorBikeData.parse gives.
         val flags = (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8)
-        val watts = (bytes[2].toInt() and 0xFF) or (bytes[3].toInt() shl 8)
+        val watts = ((bytes[2].toInt() and 0xFF) or (bytes[3].toInt() shl 8)).coerceAtLeast(0)
         var i = 4
 
         val pedalPowerBalancePresent = (flags and 0x01) != 0
@@ -1060,7 +1428,12 @@ class TrainerManager {
                     // 0 reading if it's been quiet long enough that the rider
                     // has clearly stopped pedaling.
                     val now = nowMs()
-                    if (lastCrankActivityEpochMs > 0 && now - lastCrankActivityEpochMs > CADENCE_STALE_MS) {
+                    // A link whose crank has not turned since it connected
+                    // starts the quiet clock now. Waiting for a first turn
+                    // instead meant a rider who had stopped before a reconnect
+                    // kept their old cadence for the rest of the ride.
+                    if (lastCrankActivityEpochMs == 0L) lastCrankActivityEpochMs = now
+                    if (now - lastCrankActivityEpochMs > CADENCE_STALE_MS) {
                         cadence = 0
                     }
                     // else: leave `cadence` null so the StateFlow keeps its
@@ -1071,46 +1444,7 @@ class TrainerManager {
             lastCrankRevs = crankRevs
             lastCrankEventTime = crankEventTime
         }
-        return CpsReading(watts, cadence)
-    }
-
-    private data class IbdReading(val powerWatts: Int?, val cadenceRpm: Int?)
-
-    private fun parseIndoorBikeData(bytes: ByteArray): IbdReading? {
-        // FTMS Indoor Bike Data flags (u16 LE) drive what's present after.
-        if (bytes.size < 2) return null
-        val flags = (bytes[0].toInt() and 0xFF) or ((bytes[1].toInt() and 0xFF) shl 8)
-        var i = 2
-        val moreData = (flags and 0x0001) != 0
-        if (!moreData && bytes.size >= i + 2) {
-            // Instantaneous Speed (u16, LE, 0.01 km/h) — present but skipped.
-            i += 2
-        }
-        val avgSpeedPresent = (flags and 0x0002) != 0
-        if (avgSpeedPresent) i += 2
-        val instCadencePresent = (flags and 0x0004) != 0
-        var cadence: Int? = null
-        if (instCadencePresent && bytes.size >= i + 2) {
-            val raw = (bytes[i].toInt() and 0xFF) or ((bytes[i + 1].toInt() and 0xFF) shl 8)
-            cadence = (raw / 2) // unit is 0.5 / minute
-            i += 2
-        }
-        val avgCadencePresent = (flags and 0x0008) != 0
-        if (avgCadencePresent) i += 2
-        val totalDistancePresent = (flags and 0x0010) != 0
-        if (totalDistancePresent) i += 3
-        val resistanceLevelPresent = (flags and 0x0020) != 0
-        if (resistanceLevelPresent) i += 2
-        val instPowerPresent = (flags and 0x0040) != 0
-        var power: Int? = null
-        if (instPowerPresent && bytes.size >= i + 2) {
-            // sint16 little-endian
-            val low = bytes[i].toInt() and 0xFF
-            val high = bytes[i + 1].toInt()
-            power = ((high shl 8) or low).toShort().toInt()
-            i += 2
-        }
-        return IbdReading(power, cadence)
+        return CpsReading(watts, cadence, carriesCrank = crankRevsPresent)
     }
 
     private fun parseHeartRateMeasurement(bytes: ByteArray): Int? {
@@ -1144,11 +1478,27 @@ class TrainerManager {
          */
         private const val CADENCE_STALE_MS = 3_000L
 
+        /**
+         * The emulation's clock. Fast enough that a road held as ERG follows a
+         * change of cadence within half a second, and that a resistance level
+         * gets a fresh measurement between steps; slow enough to leave the
+         * GATT queue to the telemetry.
+         */
+        const val EMULATION_TICK_MS = 500L
+
+        /** Change in an emulated wattage worth a write. */
+        const val EMULATED_WATTS_EPSILON = 3
+
+        /** An emulated command unchanged this long is sent again anyway. */
+        const val EMULATED_RESTATE_MS = 5_000L
+
         // Service UUIDs (16-bit assigned numbers, expanded to 128-bit base).
         const val CYCLING_POWER_SERVICE = "00001818-0000-1000-8000-00805f9b34fb"
         const val CYCLING_POWER_MEASUREMENT = "00002a63-0000-1000-8000-00805f9b34fb"
         const val FITNESS_MACHINE_SERVICE = "00001826-0000-1000-8000-00805f9b34fb"
+        const val FITNESS_MACHINE_FEATURE = "00002acc-0000-1000-8000-00805f9b34fb"
         const val INDOOR_BIKE_DATA = "00002ad2-0000-1000-8000-00805f9b34fb"
+        const val SUPPORTED_RESISTANCE_LEVEL_RANGE = "00002ad6-0000-1000-8000-00805f9b34fb"
         const val FTMS_CONTROL_POINT = "00002ad9-0000-1000-8000-00805f9b34fb"
         const val HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb"
         const val HEART_RATE_MEASUREMENT = "00002a37-0000-1000-8000-00805f9b34fb"

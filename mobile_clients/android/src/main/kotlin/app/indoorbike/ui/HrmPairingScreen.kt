@@ -58,6 +58,7 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun HrmPairingScreen(
@@ -65,8 +66,8 @@ fun HrmPairingScreen(
 ) {
     val container = LocalAppContainer.current
     val hrm = container.heartRateMonitor
-    val connectionState by hrm.connectionState.collectAsState()
-    val discoveredDevices by hrm.discoveredDevices.collectAsState()
+    val connectionState by hrm.connectionState.collectAsStateWithLifecycle()
+    val discoveredDevices by hrm.discoveredDevices.collectAsStateWithLifecycle()
 
     LaunchedEffect(connectionState) {
         if (connectionState == HrmConnectionState.Connected) {

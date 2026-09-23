@@ -18,7 +18,7 @@ package app.indoorbike.companion
 import app.indoorbike.shared.companion.CompanionProtocol
 import java.net.Inet4Address
 import java.net.NetworkInterface
-import kotlin.random.Random
+import java.security.SecureRandom
 
 /**
  * The pairing code, the addresses to reach the phone on, and the QR payload
@@ -57,18 +57,28 @@ object CompanionPairing {
     const val DEBUG_TOKEN = "AAAAAA"
 
     /**
-     * A fresh pairing code. One per ride: it is not stored and not reused.
+     * The code is what stands between the network and the rider's trainer, so
+     * it comes from the platform's cryptographic source. It came from
+     * `kotlin.random`, whose output is predictable from enough of what it has
+     * already produced.
+     */
+    private val random = SecureRandom()
+
+    /**
+     * A fresh pairing code, for a session. It is not stored, and it is
+     * replaced early if too many wrong ones are tried against it: see
+     * `CompanionHost.rotateCode`.
      *
      * Except in a debug build, where it is always [DEBUG_TOKEN].
      */
     fun newToken(): String {
         if (app.indoorbike.BuildConfig.DEBUG) return DEBUG_TOKEN
-        return (1..CODE_LENGTH).map { ALPHABET[Random.nextInt(ALPHABET.length)] }.joinToString("")
+        return (1..CODE_LENGTH).map { ALPHABET[random.nextInt(ALPHABET.length)] }.joinToString("")
     }
 
-    /** A short id for this ride, so a reconnecting companion can tell it is the same one. */
+    /** A short id for this session, so a reconnecting companion can tell it is the same one. */
     fun newSessionId(): String =
-        (1..6).map { "0123456789abcdef"[Random.nextInt(16)] }.joinToString("")
+        (1..6).map { "0123456789abcdef"[random.nextInt(16)] }.joinToString("")
 
     /**
      * Every IPv4 address this phone can plausibly be reached on.

@@ -65,4 +65,18 @@ object BackupSafety {
         if (localItemCount == 0 && priorItemCount > 0) return true
         return deletedItemCount >= BULK_DELETE_FLOOR && deletedItemCount * 2 >= priorItemCount
     }
+
+    /**
+     * True when deletes arriving from other devices would take a large share
+     * of what is on this one: [incomingDeletes] of [localItemCount] items.
+     *
+     * The check above only ever looked at deletes this device inferred. A
+     * second device that published tombstones for most of the library - an
+     * older build without this file, or a rider who confirmed a reset there -
+     * had every other device delete those rides at its next launch, with no
+     * prompt, and their per-second data with them, which no restore brings
+     * back. Same thresholds, same pause and review.
+     */
+    fun isSuspiciousIncomingDelete(localItemCount: Int, incomingDeletes: Int): Boolean =
+        incomingDeletes >= BULK_DELETE_FLOOR && incomingDeletes * 2 >= localItemCount
 }

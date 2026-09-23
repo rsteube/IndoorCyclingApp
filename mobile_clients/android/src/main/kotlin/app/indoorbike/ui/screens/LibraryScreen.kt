@@ -55,7 +55,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,6 +90,7 @@ import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * "Get workouts" screen — the entry point for adding workouts to the rider's
@@ -129,8 +129,8 @@ fun LibraryScreen(
     val context = androidx.compose.ui.platform.LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val registry by container.repositoryManager.registry.collectAsState()
-    val entries by container.workoutLibrary.entries.collectAsState()
+    val registry by container.repositoryManager.registry.collectAsStateWithLifecycle()
+    val entries by container.workoutLibrary.entries.collectAsStateWithLifecycle()
     val importedWorkouts = remember(entries) {
         entries.filter { it.source is app.indoorbike.library.WorkoutSource.Imported }
             .map { it.workout }
@@ -756,5 +756,7 @@ private suspend fun handleImportResult(
             ).show()
         }
         is ImportResult.Failure -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+        // The rider chose it in the dialog; nothing to add.
+        ImportResult.Cancelled -> Unit
     }
 }

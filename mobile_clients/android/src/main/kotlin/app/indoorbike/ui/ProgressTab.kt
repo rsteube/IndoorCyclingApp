@@ -36,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -74,6 +73,7 @@ import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.theme.rememberReducedMotion
 import kotlin.math.roundToInt
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * The one screen that's allowed to be playful. Everything animates on entry:
@@ -89,8 +89,8 @@ import kotlin.math.roundToInt
 @Composable
 fun ProgressTab(onNavigateToRides: () -> Unit = {}) {
     val container = LocalAppContainer.current
-    val sessions by container.sessions.collectAsState()
-    val weightKg by container.userSettings.weightKg.collectAsState()
+    val sessions by container.sessions.collectAsStateWithLifecycle()
+    val weightKg by container.userSettings.weightKg.collectAsStateWithLifecycle()
     val now = remember { getCurrentEpochMillis() }
     val tzOffset = remember { TimeZone.getDefault().getOffset(now).toLong() }
     val streak = remember(sessions) { computeStreak(sessions, now, timeZoneOffsetMs = tzOffset) }

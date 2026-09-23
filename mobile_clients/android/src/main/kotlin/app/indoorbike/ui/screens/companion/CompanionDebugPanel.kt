@@ -34,7 +34,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -58,6 +57,7 @@ import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * A hand on the numbers, for whoever is building the companion.
@@ -93,12 +93,12 @@ fun CompanionDebugPanel(
     val host = container.companionHost
     val engine = container.companionEngine
 
-    val isMock by trainer.isMockTrainer.collectAsState()
-    val manual by trainer.mockManual.collectAsState()
-    val livePower by trainer.power.collectAsState()
-    val liveCadence by trainer.cadence.collectAsState()
-    val liveHr by trainer.heartRate.collectAsState()
-    val status by host.status.collectAsState()
+    val isMock by trainer.isMockTrainer.collectAsStateWithLifecycle()
+    val manual by trainer.mockManual.collectAsStateWithLifecycle()
+    val livePower by trainer.power.collectAsStateWithLifecycle()
+    val liveCadence by trainer.cadence.collectAsStateWithLifecycle()
+    val liveHr by trainer.heartRate.collectAsStateWithLifecycle()
+    val status by host.status.collectAsStateWithLifecycle()
 
     var power by remember { mutableIntStateOf(180) }
     var cadence by remember { mutableIntStateOf(88) }

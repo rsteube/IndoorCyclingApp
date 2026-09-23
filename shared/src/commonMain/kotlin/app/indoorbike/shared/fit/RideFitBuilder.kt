@@ -17,10 +17,11 @@ package app.indoorbike.shared.fit
 
 import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
+import app.indoorbike.shared.activity.ExportRide
 import app.indoorbike.shared.activity.RideTimeline
+import app.indoorbike.shared.activity.averageHeartRate
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
-import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.workout.CadenceTarget
 import kotlin.math.max
@@ -37,9 +38,10 @@ import kotlin.math.min
  *   - event              (timer start)
  *   - record × N         (one per 1Hz telemetry sample)
  *   - event × 2P         (timer stop and start around each of P pauses)
- *   - lap × M            (one per workout segment, partitioning the records,
- *                         carrying the segment's power and cadence targets as
- *                         developer fields)
+ *   - lap × M            (one per segment the ride actually rode, cut where the
+ *                         ride recorded it changing, partitioning the records
+ *                         and carrying the segment's power and cadence targets
+ *                         as developer fields; see [ExportRide])
  *   - event              (timer stop)
  *   - session            (summary stats + sport = cycling, sub_sport = indoor)
  *   - activity           (single-session wrapper)
@@ -110,23 +112,26 @@ object RideFitBuilder {
         session: WorkoutSession,
         telemetry: List<WorkoutTelemetry>,
         workout: Workout?,
+        /** Today's FTP, used only when history did not record the ride's own. */
         ftp: Int,
         /**
          * Rider body mass, for the virtual speed and distance an indoor ride
          * has no wheel-on-road to measure. 0 = not set, in which case every
          * speed and distance field is written as the spec's invalid sentinel
-         * so a reader shows nothing rather than a confident zero.
+         * so a reader shows nothing rather than a confident zero - unless the
+         * ride was on a road, whose own distance is used either way.
          */
         riderKg: Float = 0f,
     ): ByteArray {
-        val hasRiderMass = riderKg > 0f
+        val ride = ExportRide(session, telemetry, workout, ftp, riderKg)
+        val rideFtp = ride.ftp
+        val hasDistance = ride.hasDistance
         val w = FitWriter()
         w.writePlaceholderHeader()
 
         val startUnixMs = session.startTimeEpoch
         val startFit = unixMillisToFit(startUnixMs)
-        val totalSeconds = session.durationSeconds.toInt().coerceAtLeast(1)
-        val timeline = RideTimeline.of(startUnixMs, totalSeconds, telemetry.map { it.timestampEpoch })
+        val timeline = ride.timeline
         val endFit = startFit + timeline.endWallSeconds
 
         // ── file_id ──────────────────────────────────────────────────────
@@ -177,31 +182,10 @@ object RideFitBuilder {
             Triple(4, 1, FitBaseType.UINT8),     // cadence (rpm)
         ))
 
-        // Running totals for the ride as a whole, accumulated as records are
-        // written so the session's distance is exactly the sum of what the
-        // records claim rather than a second, separately-rounded estimate.
-        var rideMetres = 0.0
-        var rideMaxSpeedMps = 0.0
-
-        // ── records + interleaved laps per segment ──────────────────────
-        // Partition telemetry by workout segment (or whole-ride lap if none).
-        val segmentsSec = workout?.segments?.map { it.lengthInSeconds.coerceAtLeast(1) }
-            ?: listOf(totalSeconds)
-        // Kept as the segments themselves rather than just their power target:
-        // each lap now also exports the segment's cadence ask.
-        val segments = workout?.segments
-
-        var segIdx = 0
-        var segStartOffset = 0
-        var segEndOffset = segmentsSec[0]
-        var lapStartFit = startFit
-        var lapStatsAccum = LapAccum()
-        // Per-build flag so we only emit the lap-definition message once.
-        // Captured by the local `emitLap` closure below so we don't need
-        // mutable state on the object itself.
+        // ── records + interleaved laps ───────────────────────────────────
         var lapDefWritten = false
         var lapsWritten = 0
-        fun emitLap(timerSec: Int, lapEndFit: Long, accum: LapAccum, segment: PowerZone?, lapIndex: Int) {
+        fun emitLap(timerSec: Int, lapStartFit: Long, lapEndFit: Long, accum: LapAccum, segment: PowerZone?) {
             if (!lapDefWritten) {
                 w.writeDefinition(
                     localType = LOCAL_LAP,
@@ -242,24 +226,24 @@ object RideFitBuilder {
             w.u32(lapStartFit)
             w.u32((safeElapsed * 1000L))
             w.u32((safeTimer * 1000L))
-            w.u32(fitDistance(accum.metres.takeIf { hasRiderMass }))
-            w.u16(fitSpeed(accum.avgSpeedMps(safeTimer).takeIf { hasRiderMass }))
-            w.u16(fitSpeed(accum.maxSpeedMps.takeIf { hasRiderMass }))
+            w.u32(fitDistance(accum.metres.takeIf { hasDistance }))
+            w.u16(fitSpeed(accum.avgSpeedMps(safeTimer).takeIf { hasDistance }))
+            w.u16(fitSpeed(accum.maxSpeedMps.takeIf { hasDistance }))
             w.u16(accum.avgPower().coerceIn(0, 65534))
             w.u16(accum.maxPower.coerceIn(0, 65534))
-            w.u8(accum.avgHr().coerceIn(0, 254))
-            w.u8(accum.maxHr.coerceIn(0, 254))
+            w.u8(fitHeartRate(accum.avgHr()))
+            w.u8(fitHeartRate(accum.maxHr))
             w.u8(accum.avgCad().coerceIn(0, 254))
             w.u8(accum.maxCad.coerceIn(0, 254))
             w.u8(9)                              // event = lap
             w.u8(1)                              // event_type = stop
-            w.u16(lapIndex)
+            w.u16(lapsWritten)
 
             // Developer fields, in the order declared above. A ride with no
             // workout behind it (or a segment with no cadence ask) writes the
             // spec's invalid sentinel so readers show nothing rather than zero.
             val pct = segment?.powerPercentFTP
-            w.u16(if (pct == null) FitInvalid.UINT16 else (pct * ftp / 100).coerceIn(0, 65534))
+            w.u16(if (pct == null) FitInvalid.UINT16 else (pct * rideFtp / 100).coerceIn(0, 65534))
             w.u16(pct?.coerceIn(0, 65534) ?: FitInvalid.UINT16)
             val cadence = CadenceTarget.of(segment?.cadenceMinRpm, segment?.cadenceMaxRpm)
             w.u8(cadence?.minRpm?.coerceIn(0, 254) ?: FitInvalid.UINT8)
@@ -267,73 +251,68 @@ object RideFitBuilder {
             lapsWritten += 1
         }
 
+        // Running totals for the ride as a whole, accumulated as records are
+        // written so the session's distance is exactly the sum of what the
+        // records claim rather than a second, separately-rounded estimate.
+        var rideMetres = 0.0
+        var rideMaxSpeedMps = 0.0
+
         // One record per integer-second sample: the timeline rounds each
-        // sample's timestamp to whole seconds and de-dupes. Segments are ride
-        // time, so laps are cut on the ride clock while records keep the wall
-        // clock they were taken on.
+        // sample's timestamp to whole seconds and de-dupes. Laps are ride
+        // time, so they are placed on the ride clock while records keep the
+        // wall clock they were taken on.
         var phase = 0
-        for (point in timeline.points) {
-            val sample = telemetry[point.index]
+        for ((lapNo, lap) in ride.laps.withIndex()) {
+            val accum = LapAccum()
+            for (pi in lap.firstPoint until lap.endPoint) {
+                val point = timeline.points[pi]
+                val sample = telemetry[point.index]
 
-            // If this sample crosses into the next segment, close the current lap first.
-            while (point.rideSeconds >= segEndOffset && segIdx < segmentsSec.size - 1) {
-                emitLap(
-                    timerSec = segEndOffset - segStartOffset,
-                    lapEndFit = startFit + timeline.wallAt(segEndOffset),
-                    accum = lapStatsAccum,
-                    segment = segments?.getOrNull(segIdx),
-                    lapIndex = segIdx,
+                // The ride was paused between the last sample and this one.
+                // Said the way a head unit says it, so a reader can tell a
+                // rider who stopped from a trainer that dropped out. Written
+                // after any lap closed before it: a lap ending at the pause
+                // ends before it.
+                if (point.phase != phase) {
+                    w.writeDataHeader(LOCAL_EVENT)
+                    w.u32(startFit + timeline.phases[phase].lastWallSeconds); w.u8(0); w.u8(4)  // timer / stop_all
+                    w.writeDataHeader(LOCAL_EVENT)
+                    w.u32(startFit + point.wallSeconds); w.u8(0); w.u8(0)                      // timer / start
+                    phase = point.phase
+                }
+
+                // A trainer measures no ground speed. On a road the metres are
+                // that road's, shared out over the ride; otherwise they are
+                // what the sample's watts would carry the rider on the flat.
+                // Either way one sample is one second, so metres are m/s.
+                val speedMps = ride.metres[pi]
+                rideMetres += speedMps
+                if (speedMps > rideMaxSpeedMps) rideMaxSpeedMps = speedMps
+
+                w.writeDataHeader(LOCAL_RECORD)
+                w.u32(startFit + point.wallSeconds)
+                w.u32(fitDistance(rideMetres.takeIf { hasDistance }))
+                w.u16(fitSpeed(speedMps.takeIf { hasDistance }))
+                w.u16(sample.power.toInt().coerceIn(0, 65534))
+                w.u8(fitHeartRate(sample.heartRate.toInt()))
+                w.u8(sample.cadence.toInt().coerceIn(0, 254))
+
+                accum.add(
+                    sample.power.toInt(),
+                    sample.heartRate.toInt(),
+                    sample.cadence.toInt(),
+                    speedMps,
                 )
-                segIdx += 1
-                segStartOffset = segEndOffset
-                segEndOffset += segmentsSec[segIdx]
-                lapStartFit = startFit + timeline.wallAt(segStartOffset)
-                lapStatsAccum = LapAccum()
             }
-
-            // The ride was paused between the last sample and this one. Said
-            // the way a head unit says it, so a reader can tell a rider who
-            // stopped from a trainer that dropped out. Written after any lap
-            // closed above: a lap ending at the pause ends before it.
-            if (point.phase != phase) {
-                w.writeDataHeader(LOCAL_EVENT)
-                w.u32(startFit + timeline.phases[phase].lastWallSeconds); w.u8(0); w.u8(4)  // timer / stop_all
-                w.writeDataHeader(LOCAL_EVENT)
-                w.u32(startFit + point.wallSeconds); w.u8(0); w.u8(0)                      // timer / start
-                phase = point.phase
-            }
-
-            // A trainer measures no ground speed, so this is the speed the
-            // sample's watts would carry the rider at on a flat road, and the
-            // distance is that speed held for the sample's one second.
-            val speedMps = VirtualSpeed.speedMps(sample.power.toDouble(), riderKg)
-            rideMetres += speedMps
-            if (speedMps > rideMaxSpeedMps) rideMaxSpeedMps = speedMps
-
-            w.writeDataHeader(LOCAL_RECORD)
-            w.u32(startFit + point.wallSeconds)
-            w.u32(fitDistance(rideMetres.takeIf { hasRiderMass }))
-            w.u16(fitSpeed(speedMps.takeIf { hasRiderMass }))
-            w.u16(sample.power.toInt().coerceIn(0, 65534))
-            w.u8(sample.heartRate.toInt().coerceIn(0, 254))
-            w.u8(sample.cadence.toInt().coerceIn(0, 254))
-
-            lapStatsAccum.add(
-                sample.power.toInt(),
-                sample.heartRate.toInt(),
-                sample.cadence.toInt(),
-                speedMps,
+            val lastLap = lapNo == ride.laps.lastIndex
+            emitLap(
+                timerSec = lap.timerSeconds,
+                lapStartFit = startFit + timeline.wallAt(lap.startRideSeconds),
+                lapEndFit = if (lastLap) endFit else startFit + timeline.wallAt(lap.endRideSeconds),
+                accum = accum,
+                segment = lap.segment,
             )
         }
-
-        // Final lap (close out the last segment / whole ride).
-        emitLap(
-            timerSec = totalSeconds - segStartOffset,
-            lapEndFit = endFit,
-            accum = lapStatsAccum,
-            segment = segments?.getOrNull(segIdx),
-            lapIndex = segIdx,
-        )
 
         // ── event: timer STOP ────────────────────────────────────────────
         w.writeDataHeader(LOCAL_EVENT)
@@ -343,8 +322,11 @@ object RideFitBuilder {
         val rideStats = computeRideStats(
             telemetryWatts = telemetry.map { it.power },
             durationSeconds = session.durationSeconds,
-            ftp = ftp,
+            ftp = rideFtp,
         )
+        // From the samples rather than the stored average: rides saved before
+        // the fix counted every reading of 0 bpm into it.
+        val heartRates = telemetry.map { it.heartRate }
 
         w.writeDefinition(LOCAL_SESSION, FitMessage.SESSION, listOf(
             Triple(253, 4, FitBaseType.UINT32), // timestamp
@@ -376,22 +358,22 @@ object RideFitBuilder {
         w.u32(startFit)
         w.u32(timeline.endWallSeconds * 1000L)
         w.u32((session.durationSeconds * 1000L).toULong().toLong())
-        w.u32(fitDistance(rideMetres.takeIf { hasRiderMass }))
+        w.u32(fitDistance(rideMetres.takeIf { hasDistance }))
         w.u16(fitSpeed(
-            (rideMetres / session.durationSeconds.coerceAtLeast(1)).takeIf { hasRiderMass }
+            (rideMetres / session.durationSeconds.coerceAtLeast(1)).takeIf { hasDistance }
         ))
-        w.u16(fitSpeed(rideMaxSpeedMps.takeIf { hasRiderMass }))
+        w.u16(fitSpeed(rideMaxSpeedMps.takeIf { hasDistance }))
         w.u16(session.avgPower.toInt().coerceIn(0, 65534))
         w.u16(telemetry.maxOfOrNull { it.power.toInt() }?.coerceIn(0, 65534) ?: 0)
-        w.u8(session.avgHeartRate.toInt().coerceIn(0, 254))
-        w.u8(telemetry.maxOfOrNull { it.heartRate.toInt() }?.coerceIn(0, 254) ?: 0)
+        w.u8(fitHeartRate(averageHeartRate(heartRates).toInt()))
+        w.u8(fitHeartRate(heartRates.maxOrNull()?.toInt() ?: 0))
         w.u8(session.avgCadence.toInt().coerceIn(0, 254))
         w.u8(telemetry.maxOfOrNull { it.cadence.toInt() }?.coerceIn(0, 254) ?: 0)
         w.u16(rideStats.kilojoules.coerceIn(0, 65534))      // kJ ≈ kcal for cycling
         w.u16(rideStats.normalizedPowerWatts.coerceIn(0, 65534))
         w.u16((rideStats.tss * 10).coerceIn(0, 65534))      // TSS at 0.1 res
         w.u16((rideStats.intensityFactor * 1000).toInt().coerceIn(0, 65534))
-        w.u16(ftp.coerceIn(0, 65534))
+        w.u16(rideFtp.coerceIn(0, 65534))
         w.u8(SPORT_CYCLING)
         w.u8(SUB_SPORT_INDOOR_CYCLING)
         w.u8(8)                                 // event = session
@@ -464,11 +446,14 @@ object RideFitBuilder {
         var sumP = 0L; var sumHr = 0L; var sumCad = 0L
         var maxPower = 0; var maxHr = 0; var maxCad = 0
         var n = 0
-        /** Metres covered in this lap: each sample's virtual speed held for its second. */
+        /** Samples with a heart rate: see [averageHeartRate]. */
+        var nHr = 0
+        /** Metres covered in this lap: each sample's share of the distance, held for its second. */
         var metres = 0.0
         var maxSpeedMps = 0.0
         fun add(p: Int, hr: Int, cad: Int, speedMps: Double) {
-            sumP += p; sumHr += hr; sumCad += cad; n += 1
+            sumP += p; sumCad += cad; n += 1
+            if (hr > 0) { sumHr += hr; nHr += 1 }
             if (p > maxPower) maxPower = p
             if (hr > maxHr) maxHr = hr
             if (cad > maxCad) maxCad = cad
@@ -476,7 +461,7 @@ object RideFitBuilder {
             if (speedMps > maxSpeedMps) maxSpeedMps = speedMps
         }
         fun avgPower(): Int = if (n == 0) 0 else (sumP / n).toInt()
-        fun avgHr(): Int = if (n == 0) 0 else (sumHr / n).toInt()
+        fun avgHr(): Int = if (nHr == 0) 0 else (sumHr / nHr).toInt()
         fun avgCad(): Int = if (n == 0) 0 else (sumCad / n).toInt()
         /**
          * Over the lap's wall-clock length rather than its sample count, so a
@@ -485,6 +470,14 @@ object RideFitBuilder {
         fun avgSpeedMps(elapsedSec: Int): Double =
             if (elapsedSec <= 0) 0.0 else metres / elapsedSec
     }
+
+    /**
+     * A heart rate in FIT's byte, or its "no data" value for 0. A ride with no
+     * strap used to export a record of 0 bpm every second, which Garmin
+     * Connect and others plot as a flatline at zero rather than as nothing.
+     */
+    private fun fitHeartRate(bpm: Int): Int =
+        if (bpm <= 0) FitInvalid.UINT8 else bpm.coerceIn(1, 254)
 
     /** Metres in the FIT distance unit (1/100 m); null means "no estimate". */
     private fun fitDistance(metres: Double?): Long =

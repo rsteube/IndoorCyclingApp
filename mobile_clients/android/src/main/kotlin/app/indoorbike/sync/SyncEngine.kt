@@ -28,8 +28,12 @@ import app.indoorbike.shared.sync.BackupSerializer
 import app.indoorbike.shared.sync.BackupSession
 import app.indoorbike.shared.sync.BackupSettings
 import app.indoorbike.shared.sync.BackupSliceBuilder
+import app.indoorbike.shared.sync.LocalChanges
 import app.indoorbike.shared.sync.MergedState
 import app.indoorbike.shared.util.Log
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -106,6 +110,8 @@ class SyncEngine(
         if (userSettings.syncPaused.value) {
             val s = try {
                 assess(storage)
+            } catch (e: CancellationException) {
+                throw e
             } catch (t: Throwable) {
                 Log.w(TAG, "Assess failed", t)
                 SyncStatus.Failed(t.message ?: "Couldn't read backup")
@@ -148,6 +154,12 @@ class SyncEngine(
         _status.value = SyncStatus.Syncing
         val out = try {
             performSync(storage, mode)
+        } catch (e: CancellationException) {
+            // Cancelled is not failed. Reporting it as one told the rider
+            // "Couldn't sync" about a sync that was only interrupted, and hid
+            // the cancellation from whoever cancelled it.
+            _status.value = SyncStatus.Idle
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Sync failed", t)
             SyncStatus.Failed(t.message ?: "Sync failed")
@@ -173,17 +185,27 @@ class SyncEngine(
      * what's in the backup so the UI can render the review prompt. Writes
      * nothing.
      */
-    private suspend fun assess(storage: SyncStorage): SyncStatus {
+    private suspend fun assess(storage: SyncStorage): SyncStatus = withContext(Dispatchers.IO) {
         val deviceId = userSettings.deviceId
-        val parsed = storage.readAllSlices().mapNotNull { text ->
-            runCatching { BackupSerializer.decode(text) }.getOrNull()
-        }
-        val previousOwn = parsed.firstOrNull { it.deviceId == deviceId }
-        val others = parsed.filter { it.deviceId != deviceId }
+        val others = storage.readAllSlices().mapNotNull { text ->
+            try {
+                BackupSerializer.decode(text)
+            } catch (e: BackupParseException) {
+                null
+            }
+        }.filter { it.deviceId != deviceId }
+        val previousOwn = (storage.readOwnSlice(deviceId) as? OwnSlice.Found)?.candidates
+            ?.firstNotNullOfOrNull { text ->
+                try {
+                    BackupSerializer.decode(text)
+                } catch (e: BackupParseException) {
+                    null
+                }
+            }
         val localSessions = historyRepository.getAllSessions().first()
             .count { it.externalId.isNotEmpty() }
         val localImports = workoutImporter.loadUserWorkouts().size
-        return needsReview(previousOwn, others, localSessions, localImports)
+        needsReview(previousOwn, others, localSessions, localImports)
     }
 
     private fun needsReview(
@@ -211,16 +233,16 @@ class SyncEngine(
      * success — see [SyncStatus.Success.slicesSkipped] for the user-facing
      * symptom.
      */
-    private suspend fun performSync(storage: SyncStorage, mode: SyncMode): SyncStatus {
+    private suspend fun performSync(storage: SyncStorage, mode: SyncMode): SyncStatus = withContext(Dispatchers.IO) {
         val nowMs = now()
         val deviceId = userSettings.deviceId
 
         // 1. Pull. Track skipped slices so the success status can flag any
-        //    that failed to parse — silently dropping them lets one corrupt
+        //    that failed to parse - silently dropping them lets one corrupt
         //    peer's data vanish from every other peer's view with no signal.
         val rawSlices = storage.readAllSlices()
         var slicesSkipped = 0
-        val parsed = rawSlices.mapNotNull { text ->
+        val others = rawSlices.mapNotNull { text ->
             try {
                 BackupSerializer.decode(text)
             } catch (t: BackupParseException) {
@@ -228,27 +250,51 @@ class SyncEngine(
                 Log.w(TAG, "Skipping unreadable slice: ${t.message}")
                 null
             }
+        }.filter { it.deviceId != deviceId }
+
+        // This device's own slice is read on its own, because what happens when
+        // it cannot be read is different. A peer that cannot be read is left
+        // out; this device's slice left out makes the round a first sync, with
+        // no deletes inferred and none of the old tombstones carried forward,
+        // so rides deleted here came back from the other devices, and the
+        // slice written back no longer said they had ever been deleted. A cloud
+        // folder that fails to open a file once is common.
+        val previousOwn: BackupDocument? = when (val own = storage.readOwnSlice(deviceId)) {
+            is OwnSlice.Missing -> null
+            is OwnSlice.Unreadable -> return@withContext SyncStatus.Failed(
+                "Couldn't read this device's backup file (${own.reason}). Nothing was changed; " +
+                    "the next sync will try again."
+            )
+            is OwnSlice.Found -> own.candidates.firstNotNullOfOrNull { text ->
+                runCatching { BackupSerializer.decode(text) }.getOrNull()?.takeIf { it.deviceId == deviceId }
+            } ?: run {
+                // Readable but not a slice, current or previous copy alike:
+                // nothing to wait for, so the round goes on as a first sync,
+                // and says it skipped something.
+                slicesSkipped += 1
+                Log.w(TAG, "This device's own slice would not parse; syncing as if it were the first time")
+                null
+            }
         }
-        val previousOwn = parsed.firstOrNull { it.deviceId == deviceId }
-        val others = parsed.filter { it.deviceId != deviceId }
 
         // 2. Snapshot local state BEFORE apply, then diff for new tombstones.
         val localSessionsBefore = historyRepository.getAllSessions().first()
             .filter { it.externalId.isNotEmpty() }
         val localSessionIdsBefore = localSessionsBefore.map { it.externalId }.toSet()
-        val localImportsBefore = workoutImporter.loadUserWorkouts()
-        val localImportIdsBefore = localImportsBefore.map { it.id }.toSet()
+        val localImportsBefore = localImports()
+        val localImportIdsBefore = localImportsBefore.map { it.workout.id }.toSet()
 
         // RestoreFromBackup deliberately infers NO deletes - the whole point is
         // to pull the backup back into an emptied local, not to mirror local's
         // emptiness up to the backup.
-        val newSessionTombstones = if (mode == SyncMode.RestoreFromBackup) emptyList()
+        val restoring = mode == SyncMode.RestoreFromBackup
+        val newSessionTombstones = if (restoring) emptyList()
         else BackupSliceBuilder.computeSessionDeletes(
             previousOwn = previousOwn,
             currentLocalExternalIds = localSessionIdsBefore,
             nowEpoch = nowMs,
         )
-        val newImportTombstones = if (mode == SyncMode.RestoreFromBackup) emptyList()
+        val newImportTombstones = if (restoring) emptyList()
         else BackupSliceBuilder.computeImportDeletes(
             previousOwn = previousOwn,
             currentLocalWorkoutIds = localImportIdsBefore,
@@ -272,7 +318,7 @@ class SyncEngine(
             if (suspicious) {
                 Log.w(TAG, "Suspicious reset detected; pausing sync to protect backup.")
                 userSettings.setSyncPaused(true)
-                return needsReview(
+                return@withContext needsReview(
                     previousOwn, others,
                     localSessions = localSessionIdsBefore.size,
                     localImports = localImportIdsBefore.size,
@@ -280,52 +326,77 @@ class SyncEngine(
             }
         }
 
-        // 3. Merge: previous-own (still authoritative for our previously-published
-        //    sessions on a reinstall) + others + a tombstone-only provisional self
-        //    so the merger filters out anything we just deleted.
-        val provisionalSelf = BackupDocument(
+        // 3. Merge. This device's current state goes in first, dated against
+        //    what it last published (see LocalChanges), so a change made here
+        //    since the last sync is in the merge rather than overwritten by it,
+        //    and a tie goes to it. The previous own slice still carries the
+        //    sessions a reinstall needs back, and its tombstones; its settings
+        //    and imports are superseded by the current ones. A restore is the
+        //    exception: it wants the backup's word, so local does not vote.
+        val self = BackupDocument(
             deviceId = deviceId,
             writtenEpoch = nowMs,
+            settings = if (restoring) null
+            else LocalChanges.settings(currentLocalSettings(), previousOwn?.settings, nowMs),
             sessions = emptyList(),
             sessionTombstones = (previousOwn?.sessionTombstones ?: emptyList()) + newSessionTombstones,
-            importedWorkouts = emptyList(),
+            importedWorkouts = if (restoring) emptyList()
+            else LocalChanges.imports(localImportsBefore, previousOwn?.importedWorkouts, nowMs),
             importedTombstones = (previousOwn?.importedTombstones ?: emptyList()) + newImportTombstones,
         )
-        val toMerge = mutableListOf<BackupDocument>().apply {
-            previousOwn?.let { add(it) }
-            addAll(others)
-            add(provisionalSelf)
+        val previousForMerge = previousOwn?.let {
+            if (restoring) it else it.copy(settings = null, importedWorkouts = emptyList())
         }
-        val merged = BackupMerger.merge(toMerge)
+        val merged = BackupMerger.merge(listOfNotNull(self, previousForMerge) + others)
+
+        // 3b. The same guard for deletes arriving from the other devices, which
+        //     it never used to look at. Keep-local is the rider having decided
+        //     this device's data stands, so it neither pauses nor applies them.
+        if (mode == SyncMode.Normal) {
+            val sessionStarts = localSessionsBefore.associate { it.externalId to it.startTimeEpoch }
+            val incoming = merged.sessionTombstones.count { t ->
+                sessionStarts[t.id]?.let { t.deletedEpoch >= it } == true
+            } + merged.importedTombstones.count { it.id in localImportIdsBefore }
+            if (BackupSafety.isSuspiciousIncomingDelete(localSessionIdsBefore.size + localImportIdsBefore.size, incoming)) {
+                Log.w(TAG, "Another device's deletes would remove $incoming item(s) here; pausing sync.")
+                userSettings.setSyncPaused(true)
+                return@withContext needsReview(
+                    previousOwn, others,
+                    localSessions = localSessionIdsBefore.size,
+                    localImports = localImportIdsBefore.size,
+                )
+            }
+        }
+        val applyDeletes = mode != SyncMode.ForceKeepLocal
 
         // 4. Apply merged to local.
         applyMergedSettings(merged.settings)
-        applyMergedSessions(merged)
-        applyMergedImports(merged)
-        // Single rebuild after all import writes — saves N redundant rebuilds
+        applyMergedSessions(merged, applyDeletes)
+        applyMergedImports(merged, localImportsBefore, applyDeletes)
+        // Single rebuild after all import writes - saves N redundant rebuilds
         // when many workouts arrive from a peer.
         workoutLibrary.refreshImportsAwait()
 
-        // 5. Build final self-slice from POST-apply local state.
+        // 5. Build final self-slice from POST-apply local state, each value
+        //    carrying the date it won the merge with.
         val localSessionsAfter = historyRepository.getAllSessions().first()
             .filter { it.externalId.isNotEmpty() }
         val sliceSessions = localSessionsAfter.map(::toBackupSession)
-        val sliceImports = workoutImporter.loadUserWorkouts().map { workout ->
-            val meta = workoutImporter.loadImportMeta(workout.id)
-            // Preserve importedEpoch across syncs: reuse whatever the previous
-            // own-slice had for this id (so cross-device LWW order doesn't
-            // reset every sync); otherwise meta.addedEpoch (the write
-            // timestamp); otherwise now (genuinely new).
+        val mergedImportEpochs = merged.importedWorkouts.associate { it.workout.id to it.importedEpoch }
+        val sliceImports = localImports().map { imported ->
             val previousEpoch = previousOwn?.importedWorkouts
-                ?.firstOrNull { it.workout.id == workout.id }?.importedEpoch
-            BackupImportedWorkout(
-                workout = workout,
-                sourceRepoId = meta?.sourceRepoId,
-                sourceRepoName = meta?.sourceRepoName,
-                importedEpoch = previousEpoch ?: meta?.addedEpoch?.takeIf { it > 0 } ?: nowMs,
+                ?.firstOrNull { it.workout.id == imported.workout.id }?.importedEpoch
+            imported.copy(
+                importedEpoch = mergedImportEpochs[imported.workout.id]
+                    ?: previousEpoch
+                    ?: imported.importedEpoch.takeIf { it > 0 }
+                    ?: nowMs,
             )
         }
-        val sliceSettings = currentLocalSettingsSnapshot(nowMs)
+        val sliceSettings = currentLocalSettings().copy(
+            epoch = nowMs,
+            fieldEpochs = merged.settings?.fieldEpochs ?: self.settings?.fieldEpochs ?: emptyMap(),
+        )
         val finalSelf = BackupSliceBuilder.build(
             deviceId = deviceId,
             deviceLabel = userSettings.deviceLabel.value,
@@ -342,13 +413,25 @@ class SyncEngine(
         storage.writeOwnSlice(deviceId, BackupSerializer.encode(finalSelf))
 
         // distinct device count, for the status line
-        val devicesSeen = parsed.map { it.deviceId }.toSet().size +
-            (if (previousOwn == null) 1 else 0)
-        return SyncStatus.Success(
+        val devicesSeen = others.map { it.deviceId }.toSet().size + 1
+        SyncStatus.Success(
             syncedAtEpoch = now(),
             devicesSeen = devicesSeen,
             slicesSkipped = slicesSkipped,
         )
+    }
+
+    /** This device's imported workouts, with where they came from, as the backup describes them. */
+    private suspend fun localImports(): List<BackupImportedWorkout> = withContext(Dispatchers.IO) {
+        workoutImporter.loadUserWorkouts().map { workout ->
+            val meta = workoutImporter.loadImportMeta(workout.id)
+            BackupImportedWorkout(
+                workout = workout,
+                sourceRepoId = meta?.sourceRepoId,
+                sourceRepoName = meta?.sourceRepoName,
+                importedEpoch = meta?.addedEpoch ?: 0L,
+            )
+        }
     }
 
     private fun applyMergedSettings(merged: BackupSettings?) {
@@ -369,17 +452,14 @@ class SyncEngine(
             if (userSettings.intervalsAutoUpload.value != it) userSettings.setIntervalsAutoUpload(it)
         }
         merged.favouriteWorkoutIds?.let { ids ->
-            // Reconcile the favourites set: add anything in target not local,
-            // remove anything in local not target. The setter is idempotent so
-            // this is safe to run on each sync — a no-op when already in sync.
+            // One write of the whole set. It was a write per changed id, each
+            // launched on its own, and they could land in any order.
             val target = ids.toSet()
-            val current = userSettings.favouriteWorkoutIds.value
-            for (id in target - current) userSettings.setWorkoutFavourite(id, true)
-            for (id in current - target) userSettings.setWorkoutFavourite(id, false)
+            if (userSettings.favouriteWorkoutIds.value != target) userSettings.setFavouriteWorkoutIds(target)
         }
     }
 
-    private suspend fun applyMergedSessions(state: MergedState) {
+    private suspend fun applyMergedSessions(state: MergedState, applyDeletes: Boolean) {
         // Insert sessions present in the merged view but missing locally.
         for (s in state.sessions) {
             if (historyRepository.getSessionByExternalId(s.externalId) == null) {
@@ -400,7 +480,7 @@ class SyncEngine(
                     // no catalogue entry for and could not reconstruct.
                     routeShape = s.routeShape.orEmpty(),
                     routeProfile = s.routeProfile.orEmpty(),
-                    // v1 deliberately drops telemetry from sync — sessions
+                    // v1 deliberately drops telemetry from sync - sessions
                     // arriving from another device land without per-second
                     // power data. The post-ride chart on those rides will be
                     // empty; totals/streaks/badges still work because they
@@ -409,6 +489,7 @@ class SyncEngine(
                 )
             }
         }
+        if (!applyDeletes) return
         // Apply tombstones: drop local sessions whose externalId has been
         // tombstoned across the cluster.
         for (t in state.sessionTombstones) {
@@ -420,11 +501,21 @@ class SyncEngine(
         }
     }
 
-    private suspend fun applyMergedImports(state: MergedState) {
-        // Save (or overwrite) every import that survived the merger's
-        // tombstone filter. saveWorkout is idempotent — the file is replaced
-        // atomically and the meta sidecar reflects current provenance.
+    private suspend fun applyMergedImports(
+        state: MergedState,
+        before: List<BackupImportedWorkout>,
+        applyDeletes: Boolean,
+    ) {
+        // Only what differs from what is here. Every merged import used to be
+        // written back, which rewrote the whole library each sync and, with
+        // this device's own state missing from the merge, put a renamed
+        // workout back under its old name.
+        val mine = before.associateBy { it.workout.id }
         for (w in state.importedWorkouts) {
+            val local = mine[w.workout.id]
+            val same = local != null && local.workout == w.workout &&
+                local.sourceRepoId == w.sourceRepoId && local.sourceRepoName == w.sourceRepoName
+            if (same) continue
             workoutImporter.saveWorkout(
                 workout = w.workout,
                 sourceRepoId = w.sourceRepoId,
@@ -432,17 +523,17 @@ class SyncEngine(
                 addedEpoch = w.importedEpoch,
             )
         }
+        if (!applyDeletes) return
         // Tombstones: delete local copies of anything tombstoned.
-        val localById = workoutImporter.loadUserWorkouts().associateBy { it.id }
+        val localIds = mine.keys
         for (t in state.importedTombstones) {
-            if (localById.containsKey(t.id)) {
-                workoutImporter.deleteUserWorkout(t.id)
-            }
+            if (t.id in localIds) workoutImporter.deleteUserWorkout(t.id)
         }
     }
 
-    private fun currentLocalSettingsSnapshot(nowMs: Long): BackupSettings = BackupSettings(
-        epoch = nowMs,
+    /** This device's settings as they stand, undated: [LocalChanges] dates them. */
+    private fun currentLocalSettings(): BackupSettings = BackupSettings(
+        epoch = 0L,
         ftp = userSettings.ftp.value,
         weightKg = userSettings.weightKg.value,
         maxHr = userSettings.maxHr.value,

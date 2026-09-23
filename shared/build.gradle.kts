@@ -75,6 +75,13 @@ sqldelight {
     databases {
         create("HistoryDatabase") {
             packageName.set("app.indoorbike.shared.db")
+            // The schema as it first shipped, so the build replays every
+            // migration from it and fails if the result is not History.sq.
+            // Nothing checked that before: a migration that drifted from the
+            // table it was meant to produce would only be found on a rider's
+            // phone.
+            schemaOutputDirectory.set(file("src/commonMain/sqldelight/databases"))
+            verifyMigrations.set(true)
         }
     }
 }

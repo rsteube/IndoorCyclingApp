@@ -190,6 +190,9 @@ interface UserSettings {
     val favouriteWorkoutIds: StateFlow<Set<String>>
     fun setWorkoutFavourite(workoutId: String, favourite: Boolean)
 
+    /** Replace the whole set of favourites in one write. For sync, which knows the set it wants. */
+    fun setFavouriteWorkoutIds(ids: Set<String>)
+
     // ── Device identity ───────────────────────────────────────────────────
     // Stable per-install identifier, generated once on first launch and never
     // changed. Used to namespace this device's slice in the backup folder and

@@ -27,7 +27,6 @@ import androidx.compose.material.icons.outlined.Replay
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,6 +73,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun HistoryTab(
@@ -88,7 +88,7 @@ fun HistoryTab(
     detailPane: (@Composable (sessionId: Long, onClose: () -> Unit) -> Unit)? = null,
 ) {
     val container = LocalAppContainer.current
-    val sessions by container.sessions.collectAsState()
+    val sessions by container.sessions.collectAsStateWithLifecycle()
     // Workout ids that still exist in the library - a session whose workout
     // was deleted can't offer "Ride again".
     val workouts = app.indoorbike.LocalWorkouts.current

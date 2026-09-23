@@ -48,4 +48,30 @@ interface SyncStorage {
      * copy of the shared sessions in its own slice.
      */
     suspend fun writeOwnSlice(deviceId: String, json: String)
+
+    /**
+     * This device's own slice, told apart from the rest because not being able
+     * to read it means something different: see [OwnSlice].
+     */
+    suspend fun readOwnSlice(deviceId: String): OwnSlice
+}
+
+/** What was found of a device's own slice. */
+sealed interface OwnSlice {
+    /** There is none: this device has never synced to this folder. */
+    data object Missing : OwnSlice
+
+    /**
+     * The slice, and the copy it replaced, newest first. The caller parses
+     * them in turn, so one that was written half way still has a whole one
+     * behind it.
+     */
+    class Found(val candidates: List<String>) : OwnSlice
+
+    /**
+     * It is there and could not be read. Not the same as [Missing]: treating
+     * it as missing makes the round a first sync, which brings back rides this
+     * device deleted. The round stops and tries again next time.
+     */
+    class Unreadable(val reason: String) : OwnSlice
 }

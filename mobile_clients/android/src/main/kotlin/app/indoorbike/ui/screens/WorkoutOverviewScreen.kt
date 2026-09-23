@@ -51,6 +51,7 @@ import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.sync.FitTrackeeUploader
 import app.indoorbike.sync.IntervalsIcuUploader
+import app.indoorbike.sync.RideUploads
 import android.widget.Toast
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.shared.progression.computeRideStats
@@ -87,6 +88,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun WorkoutOverviewScreen(
@@ -111,27 +113,39 @@ fun WorkoutOverviewScreen(
     var showShareSheet by remember { mutableStateOf(false) }
     var showExportSheet by remember { mutableStateOf(false) }
 
-    val ftp by container.userSettings.ftp.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
     // Speed and distance are estimated from power and the mass being moved,
     // so a rider who hasn't set a weight gets no estimate at all.
-    val weightKg by container.userSettings.weightKg.collectAsState()
-    val intervalsAthlete by container.userSettings.intervalsAthleteId.collectAsState()
-    val intervalsKey by container.userSettings.intervalsApiKey.collectAsState()
-    val intervalsToken by container.userSettings.intervalsAccessToken.collectAsState()
-    val autoUpload by container.userSettings.intervalsAutoUpload.collectAsState()
+    val weightKg by container.userSettings.weightKg.collectAsStateWithLifecycle()
+    val intervalsAthlete by container.userSettings.intervalsAthleteId.collectAsStateWithLifecycle()
+    val intervalsKey by container.userSettings.intervalsApiKey.collectAsStateWithLifecycle()
+    val intervalsToken by container.userSettings.intervalsAccessToken.collectAsStateWithLifecycle()
+    val autoUpload by container.userSettings.intervalsAutoUpload.collectAsStateWithLifecycle()
     val intervalsConfigured = !intervalsToken.isNullOrBlank() ||
         (!intervalsAthlete.isNullOrBlank() && !intervalsKey.isNullOrBlank())
-    val ftToken by container.userSettings.fitTrackeeAccessToken.collectAsState()
-    val ftAutoUpload by container.userSettings.fitTrackeeAutoUpload.collectAsState()
+    val ftToken by container.userSettings.fitTrackeeAccessToken.collectAsStateWithLifecycle()
+    val ftAutoUpload by container.userSettings.fitTrackeeAutoUpload.collectAsStateWithLifecycle()
     // A sport is no longer part of being configured: it defaults to Cycling
     // (Virtual) when the server won't share its list.
     val ftConfigured = !ftToken.isNullOrBlank()
     val context = androidx.compose.ui.platform.LocalContext.current
 
-    var uploading by remember { mutableStateOf(false) }
-    var uploadAttemptedForSession by remember { mutableStateOf<Long?>(null) }
-    var ftUploading by remember { mutableStateOf(false) }
-    var ftAttemptedForSession by remember { mutableStateOf<Long?>(null) }
+    // Uploads run on the app's scope (see RideUploads): this screen shows
+    // them and waits on them, and leaving it no longer stops them. Automatic
+    // ones are started when the ride is saved, not here.
+    val uploadsInFlight by container.rideUploads.inFlight.collectAsStateWithLifecycle()
+    val uploading = (sessionId to RideUploads.Service.INTERVALS) in uploadsInFlight
+    val ftUploading = (sessionId to RideUploads.Service.FITTRACKEE) in uploadsInFlight
+
+    // An upload recorded while this screen is open - an automatic one that
+    // finished after it appeared - flips the card without a revisit.
+    LaunchedEffect(sessionId) {
+        container.rideUploads.recorded.collect { id ->
+            if (id == sessionId) {
+                withContext(Dispatchers.IO) { historyRepository.getSessionById(sessionId) }?.let { session = it }
+            }
+        }
+    }
 
     LaunchedEffect(sessionId) {
         // SQLDelight's Android driver does its query work synchronously on the
@@ -221,26 +235,18 @@ fun WorkoutOverviewScreen(
             easing = SlateMotion.Easing,
         )
 
-        // Helper that runs the actual upload — used by both the manual button
-        // and the auto-upload-on-arrival LaunchedEffect below. Posts a toast
-        // with the result; doesn't block navigation.
+        // The manual upload buttons. Posts a toast with the result; doesn't
+        // block navigation.
         fun runIntervalsUpload() {
             if (uploading) return
-            uploading = true
             scope.launch {
-                val outcome = container.intervalsIcuUploader.upload(
+                // Recorded on the ride by RideUploads whether or not this
+                // screen is still here to see it.
+                val outcome = container.rideUploads.uploadIntervals(
                     session = activeSession,
                     workout = targetWorkout,
                     ftp = ftp,
                 )
-                if (outcome is IntervalsIcuUploader.Outcome.Success) {
-                    // Record it on the ride, then patch the copy this screen is
-                    // showing so the card flips to "Uploaded" on this frame
-                    // rather than on the next visit.
-                    val uploadedAt = System.currentTimeMillis()
-                    historyRepository.markIntervalsUploaded(activeSession.id, uploadedAt)
-                    session = session?.copy(intervalsUploadedEpoch = uploadedAt)
-                }
                 val msg = when (outcome) {
                     is IntervalsIcuUploader.Outcome.Success -> "Uploaded to Intervals.icu"
                     is IntervalsIcuUploader.Outcome.NotConfigured -> "Connect Intervals.icu in Settings → Connections first"
@@ -249,24 +255,17 @@ fun WorkoutOverviewScreen(
                     is IntervalsIcuUploader.Outcome.Failure -> outcome.message
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                uploading = false
             }
         }
 
         fun runFitTrackeeUpload() {
             if (ftUploading) return
-            ftUploading = true
             scope.launch {
-                val outcome = container.fitTrackeeUploader.upload(
+                val outcome = container.rideUploads.uploadFitTrackee(
                     session = activeSession,
                     workout = targetWorkout,
                     ftp = ftp,
                 )
-                if (outcome is FitTrackeeUploader.Outcome.Success) {
-                    val uploadedAt = System.currentTimeMillis()
-                    historyRepository.markFitTrackeeUploaded(activeSession.id, uploadedAt)
-                    session = session?.copy(fitTrackeeUploadedEpoch = uploadedAt)
-                }
                 val msg = when (outcome) {
                     // FitTrackee can't take a GPS-less file, so a ride usually
                     // lands as a summary. Say which happened rather than imply
@@ -283,27 +282,7 @@ fun WorkoutOverviewScreen(
                     is FitTrackeeUploader.Outcome.Failure -> outcome.message
                 }
                 Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
-                ftUploading = false
             }
-        }
-
-        LaunchedEffect(activeSession.id, fromRide, ftAutoUpload, ftConfigured) {
-            if (!fromRide || !ftAutoUpload || !ftConfigured) return@LaunchedEffect
-            if (activeSession.fitTrackeeUploadedEpoch > 0L) return@LaunchedEffect
-            if (ftAttemptedForSession == activeSession.id) return@LaunchedEffect
-            ftAttemptedForSession = activeSession.id
-            runFitTrackeeUpload()
-        }
-
-        // Auto-upload exactly once when arriving from a finished ride and the
-        // user has opted in. Recompositions don't retry — `uploadAttemptedForSession`
-        // gates per-session-id.
-        LaunchedEffect(activeSession.id, fromRide, autoUpload, intervalsConfigured) {
-            if (!fromRide || !autoUpload || !intervalsConfigured) return@LaunchedEffect
-            if (activeSession.intervalsUploadedEpoch > 0L) return@LaunchedEffect
-            if (uploadAttemptedForSession == activeSession.id) return@LaunchedEffect
-            uploadAttemptedForSession = activeSession.id
-            runIntervalsUpload()
         }
 
         Column(
@@ -819,8 +798,8 @@ private fun formatEpochToDate(epoch: Long): String {
 
 /**
  * Bottom-of-overview card that exposes the manual Intervals.icu upload. Only
- * rendered when credentials are configured; the auto-upload toggle runs
- * silently in the background via the LaunchedEffect above.
+ * rendered when credentials are configured; automatic upload runs in the
+ * background from the moment the ride is saved (see RideUploads).
  */
 @Composable
 private fun UploadCard(

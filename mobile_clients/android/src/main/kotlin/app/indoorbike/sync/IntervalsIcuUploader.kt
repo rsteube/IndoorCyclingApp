@@ -15,6 +15,7 @@
  */
 package app.indoorbike.sync
 
+import kotlinx.coroutines.CancellationException
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
@@ -135,6 +136,8 @@ class IntervalsIcuUploader(
                     "code" to code,
                 ),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Token exchange network error", t)
             return SignIn.Failure(t.message ?: "Could not reach Intervals.icu.")
@@ -177,6 +180,8 @@ class IntervalsIcuUploader(
             )
             // Already revoked on the website is as good as revoked now.
             result.isSuccess || result.code == 401
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Disconnect could not reach Intervals.icu", t)
             false
@@ -209,21 +214,23 @@ class IntervalsIcuUploader(
 
         val fitBytes = try {
             RideFitBuilder.build(session, telemetry, workout, ftp, userSettings.weightKg.value)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "FIT encode failed", t)
             return Outcome.Failure("Couldn't encode ride: ${t.message}")
         }
 
-        val url: String
+        val base: String
         val auth: String
         if (token.isNotEmpty()) {
-            url = IntervalsIcuOAuth.ACTIVITIES_URL
+            base = IntervalsIcuOAuth.ACTIVITIES_URL
             auth = "Bearer $token"
         } else {
             // Intervals.icu accepts the athlete id with or without the leading
             // "i". Normalise so we never double it up or drop it.
             val normAthlete = athleteId.removePrefix("i").removePrefix("I").let { "i$it" }
-            url = "https://intervals.icu/api/v1/athlete/$normAthlete/activities"
+            base = "https://intervals.icu/api/v1/athlete/$normAthlete/activities"
             val basic = "API_KEY:$apiKey".toByteArray(Charsets.UTF_8)
             auth = "Basic " + Base64.encodeToString(basic, Base64.NO_WRAP)
         }
@@ -234,6 +241,10 @@ class IntervalsIcuUploader(
             .trim('-')
             .ifEmpty { "ride" }
         val filename = "indoorbike-$safeName-${session.id}.fit"
+        // The ride's own id, kept by Intervals.icu with the activity, so the
+        // activity there can always be traced back to this ride.
+        val url = if (session.externalId.isBlank()) base
+        else base + "?external_id=" + java.net.URLEncoder.encode(session.externalId, "UTF-8")
 
         val result = try {
             HttpFetcher.postMultipartFile(
@@ -244,6 +255,8 @@ class IntervalsIcuUploader(
                 fileMimeType = "application/octet-stream",
                 headers = mapOf("Authorization" to auth, "Accept" to "application/json"),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "Upload network error", t)
             return Outcome.Failure(t.message ?: "Network error")

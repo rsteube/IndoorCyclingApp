@@ -44,7 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
 import app.indoorbike.library.RouteFetchResult
 import app.indoorbike.route.RouteImportResult
+import app.indoorbike.route.RouteSource
 import app.indoorbike.shared.repo.RepositoryManifest
 import app.indoorbike.shared.repo.RouteEntry
 import app.indoorbike.shared.route.RouteEstimate
@@ -81,6 +81,7 @@ import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Browses one repository's routes, the route-side twin of
@@ -106,10 +107,13 @@ fun RemoteRouteBrowserScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    val ftp by container.userSettings.ftp.collectAsState()
-    val riderKg by container.userSettings.weightKg.collectAsState()
-    val bikeKg by container.userSettings.bikeWeightKg.collectAsState()
-    val installed by container.routeCatalog.routes.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
+    val riderKg by container.userSettings.weightKg.collectAsStateWithLifecycle()
+    val bikeKg by container.userSettings.bikeWeightKg.collectAsStateWithLifecycle()
+    // What this repository's routes are installed as, by the ids it lists
+    // them under. A bundled route or another repository's with the same id
+    // used to count, which showed a route as added that was not.
+    val sources by container.routeCatalog.sources.collectAsStateWithLifecycle()
 
     var fetchState by remember(manifestUrl) { mutableStateOf<RouteFetchState>(RouteFetchState.Loading) }
     var selectedTag by remember { mutableStateOf(ALL_TAGS) }
@@ -133,8 +137,11 @@ fun RemoteRouteBrowserScreen(
         }
     }
 
-    val installedIds = remember(installed, justAdded) {
-        installed.mapTo(mutableSetOf()) { it.id } + justAdded
+    val repoId = (fetchState as? RouteFetchState.Loaded)?.manifest?.id
+    val installedIds = remember(sources, repoId, justAdded) {
+        sources.values.mapNotNullTo(mutableSetOf()) { source ->
+            (source as? RouteSource.Imported)?.takeIf { it.sourceRepoId == repoId }?.sourceEntryId
+        } + justAdded
     }
 
     val header = rememberCollapsingHeaderState()

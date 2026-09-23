@@ -27,7 +27,9 @@ import app.indoorbike.shared.simulation.SimulationEngine
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.companion.CompanionEngine
+import app.indoorbike.shared.util.ReentrantLock
 import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.util.withLock
 import app.indoorbike.shared.workout.FREE_RIDE_STEP_WATTS
 import app.indoorbike.shared.workout.clampFreeRideWatts
 import app.indoorbike.shared.workout.freeRideStartWatts
@@ -49,7 +51,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import com.benasher44.uuid.uuid4
 import kotlin.math.roundToInt
+import kotlin.time.TimeSource
 
 enum class WorkoutState {
     Idle,
@@ -78,8 +82,18 @@ enum class WorkoutState {
 /**
  * Owns the active workout session and drives the trainer in ERG mode.
  *
- * State updates are driven by wall-clock time anchored at [sessionStartTimeEpoch]
- * so we don't drift over a 60+ minute ride if the coroutine dispatcher hiccups.
+ * Ride time is measured by a monotonic [RideClock] rather than by counting
+ * ticks, so it doesn't drift over a 60+ minute ride if the coroutine
+ * dispatcher hiccups, and a correction to the wall clock can't move it.
+ *
+ * Threading: the UI, the companion socket, the foreground service and this
+ * class's own loops all call in, from different threads, and every caller
+ * expects its transition to have happened by the time the call returns. So
+ * every public entry point and every loop iteration holds one reentrant
+ * [lock]. There used to be nothing: a timer tick and a skip on two threads
+ * could each move the segment, a countdown finishing after the rider had
+ * backed out restarted a ride with no workout, and clearing the sample buffer
+ * on one thread while the timer copied it on another crashed the app.
  *
  * Telemetry is captured by sampling power/cadence/HR once per second from the
  * injected [TrainerManager]; samples are buffered in memory until the session
@@ -217,13 +231,21 @@ class WorkoutSessionManager(
     val foregroundServiceFailure: StateFlow<String?> = _foregroundServiceFailure.asStateFlow()
 
     private val _telemetry = mutableListOf<TelemetryPoint>()
+
+    /** The sum of [_telemetry]'s power, kept as samples come and go. */
+    private var telemetryPowerSum = 0L
+
+    /** A copy of the telemetry buffered so far. */
+    fun telemetrySnapshot(): List<TelemetryPoint> = lock.withLock { _telemetry.toList() }
+
     /**
-     * Snapshot of telemetry buffered so far. Reads only from the timer coroutine's
-     * dispatcher — callers should marshal through scope.launch if invoking from
-     * outside; for the common UI case (end-of-ride save) we guarantee the writer
-     * is paused (state == Completed) before this is read.
+     * The ride's average power so far, in watts. Kept as a running total: the
+     * ride screen used to work it out by copying the whole buffer every
+     * second, on the main thread, for as long as the ride went on.
      */
-    fun telemetrySnapshot(): List<TelemetryPoint> = _telemetry.toList()
+    fun averagePowerWatts(): Int = lock.withLock {
+        if (_telemetry.isEmpty()) 0 else (telemetryPowerSum / _telemetry.size).toInt()
+    }
 
     /**
      * How many entries of [_telemetry] have already been written to
@@ -252,10 +274,27 @@ class WorkoutSessionManager(
      * died first). In-process the live buffer is authoritative; otherwise it's
      * whatever [loadPersistedSnapshot] recovered from the durable log.
      */
-    fun pendingRideTelemetry(snapshot: ActiveSessionSnapshot): List<TelemetryPoint> {
-        val rideIsStillLoaded = _activeWorkout.value?.id == snapshot.workoutId &&
-            _state.value == WorkoutState.Completed
-        return if (rideIsStillLoaded) _telemetry.toList() else recoveredTelemetry
+    fun pendingRideTelemetry(snapshot: ActiveSessionSnapshot): List<TelemetryPoint> = lock.withLock {
+        if (rideIsStillLoaded(snapshot)) _telemetry.toList() else recoveredTelemetry
+    }
+
+    private fun rideIsStillLoaded(snapshot: ActiveSessionSnapshot): Boolean =
+        _activeWorkout.value?.id == snapshot.workoutId &&
+            _state.value == WorkoutState.Completed &&
+            sessionStartTimeEpoch == snapshot.sessionStartTimeEpochMs
+
+    /**
+     * The ride's own id, FTP and segment changes, for history: from the ride
+     * itself while it is loaded, or from [snapshot] when it is being saved from
+     * a recovery copy. The third of the "which source still has it" trio with
+     * [pendingRideTelemetry] and [pendingRideRoad].
+     */
+    fun pendingRideRecord(snapshot: ActiveSessionSnapshot? = null): RideRecord = lock.withLock {
+        if (snapshot == null || rideIsStillLoaded(snapshot)) {
+            RideRecord(rideId = rideId, ftp = ftpWatts, segmentMarks = segmentMarks.toList())
+        } else {
+            RideRecord(rideId = snapshot.rideId, ftp = snapshot.ftp, segmentMarks = snapshot.segmentMarks)
+        }
     }
 
     var sessionStartTimeEpoch: Long = 0
@@ -287,16 +326,44 @@ class WorkoutSessionManager(
     private var timerJob: Job? = null
     private var pedalingDetectionJob: Job? = null
 
-    // Wall-clock anchors — updated on resume so accumulated paused time doesn't count.
-    private var activePhaseStartEpochMs: Long = 0
-    private var elapsedAtPhaseStart: Int = 0
-    private var elapsedInSegAtPhaseStart: Int = 0
-    private var actualRideAtPhaseStart: Int = 0
+    /**
+     * The 3-2-1-GO. Tracked so everything that ends or replaces a ride can stop
+     * it: left alone it always ended by starting the ride, whatever had
+     * happened in the five seconds since. Backing out mid-countdown left a
+     * ride Active with no workout loaded, and an End & save that landed during
+     * one was flipped back to Active after the ride had been saved.
+     */
+    private var countdownJob: Job? = null
 
-    fun prepareWorkout(workout: Workout, ftp: Int) {
+    /** Held by every public entry point and every loop iteration. See the class doc. */
+    private val lock = ReentrantLock()
+
+    /** The ride's clocks, in milliseconds on a monotonic source. See [RideClock]. */
+    private val clock = RideClock()
+
+    /** A monotonic reference for the watchdogs, which a wall-clock step cannot trip. */
+    private val monotonicBase = TimeSource.Monotonic.markNow()
+    private fun monotonicMs(): Long = monotonicBase.elapsedNow().inWholeMilliseconds
+
+    /**
+     * Bumped whenever the persisted ride is retired or replaced (cleared, or
+     * completed). A snapshot write queued before that checks it and stands
+     * down, so a stale write can never land on disk after the clear or the
+     * completion it was overtaken by.
+     */
+    private var persistGeneration = 0
+
+    /** This ride's own id; see [ActiveSessionSnapshot.rideId]. Null until it first goes active. */
+    private var rideId: String? = null
+
+    /** Where each segment began, in samples; see [SegmentMark]. */
+    private val segmentMarks = mutableListOf<SegmentMark>()
+
+    fun prepareWorkout(workout: Workout, ftp: Int) = lock.withLock {
         if (_state.value != WorkoutState.Idle && _state.value != WorkoutState.Completed) {
             stopWorkout()
         }
+        countdownJob?.cancel()
         // Drop the outgoing ride's samples *before* wiping its persisted log.
         // The stopped timer's exit handler may still be racing us on another
         // thread; ordering it this way means it either finds an empty buffer
@@ -304,6 +371,7 @@ class WorkoutSessionManager(
         // guaranteed to land after (both go through snapshotDispatcher in FIFO
         // order). Either way the previous ride can't bleed into this one.
         _telemetry.clear()
+        telemetryPowerSum = 0L
         flushedTelemetryCount = 0
         _virtualDistanceMeters.value = 0.0
         // Starting a fresh workout — discard any stale unfinished ride. The
@@ -329,6 +397,9 @@ class WorkoutSessionManager(
         // after one can't inherit a stale target.
         _freeRideTargetWatts.value = 0
         sessionStartTimeEpoch = 0
+        clock.set(elapsedMs = 0, segmentMs = 0, rideMs = 0)
+        rideId = null
+        segmentMarks.clear()
         startPedalingDetection()
     }
 
@@ -341,7 +412,7 @@ class WorkoutSessionManager(
      * and holds whatever [adjustFreeRideTarget] moves it to until the rider
      * ends the ride.
      */
-    fun prepareFreeRide(ftp: Int) {
+    fun prepareFreeRide(ftp: Int) = lock.withLock {
         prepareWorkout(workout = freeRideWorkout(), ftp = ftp)
         _freeRideTargetWatts.value = freeRideStartWatts(ftp)
     }
@@ -368,7 +439,7 @@ class WorkoutSessionManager(
         startDistanceMeters: Double = 0.0,
         /** Climbing already done, so a resumed ride's total covers the whole route. */
         startElevationGainMeters: Double = 0.0,
-    ) {
+    ) = lock.withLock {
         val engine = simulationEngine ?: return
         prepareWorkout(
             workout = simulationWorkout(routeId = route.id, routeName = route.name),
@@ -379,7 +450,7 @@ class WorkoutSessionManager(
             startDistanceMeters = startDistanceMeters,
             elevationGainMeters = startElevationGainMeters,
         )
-        engine.onRouteFinished = { completeWorkout() }
+        engine.onRouteFinished = { lock.withLock { completeWorkout() } }
     }
 
     /**
@@ -396,7 +467,7 @@ class WorkoutSessionManager(
      * sends `finish` or the rider stops, both of which arrive through
      * [endWorkoutEarly].
      */
-    fun prepareCompanion(ftp: Int) {
+    fun prepareCompanion(ftp: Int) = lock.withLock {
         val engine = companionEngine ?: return
         prepareWorkout(workout = companionWorkout(), ftp = ftp)
         engine.load()
@@ -424,11 +495,12 @@ class WorkoutSessionManager(
          * hills rather than refusing to resume at all.
          */
         route: RouteTrack? = null,
-    ) {
+    ) = lock.withLock {
         if (snapshot.workoutId != workout.id) return
         // Tear down any active timing without clearing the snapshot we're restoring.
         timerJob?.cancel()
         pedalingDetectionJob?.cancel()
+        countdownJob?.cancel()
         trainerManager.setTargetPower(0)
 
         _activeWorkout.value = workout
@@ -462,7 +534,7 @@ class WorkoutSessionManager(
                 startedAtElevationGainMeters = snapshot.simulationStartElevationGainMeters
                     ?: snapshot.simulationElevationGainMeters ?: 0.0,
             )
-            simulationEngine?.onRouteFinished = { completeWorkout() }
+            simulationEngine?.onRouteFinished = { lock.withLock { completeWorkout() } }
             companionEngine?.clear()
         } else if (workout.isCompanion) {
             // The gear survives a crash; the road does not, and should not. A
@@ -489,6 +561,7 @@ class WorkoutSessionManager(
         }
         _telemetry.clear()
         _telemetry.addAll(recoveredTelemetry)
+        telemetryPowerSum = recoveredTelemetry.sumOf { it.power }
         // Rebuilt from the recovered samples rather than carried in the
         // snapshot, so a ride resumed after a crash reports the same distance
         // it would have had the app never died. A simulated ride's distance is
@@ -498,9 +571,17 @@ class WorkoutSessionManager(
         } else {
             VirtualSpeed.distanceMeters(_telemetry.map { it.power }, riderMassKg())
         }
-        // Already on disk — the next flush must only append what comes after.
+        // Already on disk - the next flush must only append what comes after.
         flushedTelemetryCount = _telemetry.size
         sessionStartTimeEpoch = snapshot.sessionStartTimeEpochMs
+        clock.set(
+            elapsedMs = snapshot.elapsedSeconds * 1000L,
+            segmentMs = snapshot.elapsedInSegment * 1000L,
+            rideMs = snapshot.actualRideSeconds * 1000L,
+        )
+        rideId = snapshot.rideId
+        segmentMarks.clear()
+        segmentMarks.addAll(snapshot.segmentMarks)
         _state.value = WorkoutState.Standby
         startPedalingDetection()
     }
@@ -534,46 +615,62 @@ class WorkoutSessionManager(
     private fun startPedalingDetection() {
         pedalingDetectionJob?.cancel()
         pedalingDetectionJob = scope.launch {
-            var lastPedalingEpochMs = getCurrentEpochMillis()
+            // Monotonic, so a wall-clock step forward cannot read as three
+            // seconds of not pedalling and auto-pause a rider who is.
+            var lastPedalingMs = monotonicMs()
             while (isActive) {
-                val state = _state.value
-                if (state == WorkoutState.Idle || state == WorkoutState.Completed) break
-
-                val cadence = trainerManager.cadence.value
-                val power = trainerManager.power.value
-                // Coasting down a hill is riding. Only meaningful while a
-                // route is loaded and moving; every other mode has no ground
-                // under it and this term is always false.
-                val isRolling = when {
-                    _activeWorkout.value?.isSimulation == true ->
-                        (simulationEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
-                    // The companion owns speed in its mode, so the same rule
-                    // reads it from there. A rider freewheeling down the game's
-                    // descent is riding, exactly as they are on a route.
-                    _activeWorkout.value?.isCompanion == true ->
-                        (companionEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
-                    else -> false
-                }
-                val isPedaling = cadence > 5 || power > 10 || isRolling
-                val now = getCurrentEpochMillis()
-                if (isPedaling) lastPedalingEpochMs = now
-
-                when (state) {
-                    WorkoutState.Standby -> if (isPedaling) startStandbyExit()
-                    WorkoutState.Active -> {
-                        if (now - lastPedalingEpochMs >= AUTO_PAUSE_AFTER_MS) {
-                            autoPauseToStandby()
-                            // Reset so we don't immediately re-fire if the rider
-                            // bumps the pedal a moment later — the Standby branch
-                            // above will pick up the resume.
-                            lastPedalingEpochMs = now
-                        }
-                    }
-                    else -> { /* Countdown / Paused — leave alone */ }
-                }
+                // One look at the state and the action on it, under the lock:
+                // read outside it, a companion's pause could land in between
+                // and be overridden by a countdown started on the stale read.
+                val carryOn = lock.withLock { detectOnce(lastPedalingMs).also { lastPedalingMs = it.second } }.first
+                if (!carryOn) break
                 delay(DETECTION_TICK_MS)
             }
         }
+    }
+
+    /**
+     * One pass of the pedalling detector. Returns whether to keep watching, and
+     * when the rider was last seen pedalling.
+     */
+    private fun detectOnce(lastPedalingIn: Long): Pair<Boolean, Long> {
+        var lastPedalingMs = lastPedalingIn
+        val state = _state.value
+        if (state == WorkoutState.Idle || state == WorkoutState.Completed) return false to lastPedalingMs
+
+        val cadence = trainerManager.cadence.value
+        val power = trainerManager.power.value
+        // Coasting down a hill is riding. Only meaningful while a route is
+        // loaded and moving; every other mode has no ground under it and this
+        // term is always false.
+        val isRolling = when {
+            _activeWorkout.value?.isSimulation == true ->
+                (simulationEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
+            // The companion owns speed in its mode, so the same rule reads it
+            // from there. A rider freewheeling down the game's descent is
+            // riding, exactly as they are on a route.
+            _activeWorkout.value?.isCompanion == true ->
+                (companionEngine?.speedMps?.value ?: 0.0) > COASTING_MPS
+            else -> false
+        }
+        val isPedaling = cadence > 5 || power > 10 || isRolling
+        val now = monotonicMs()
+        if (isPedaling) lastPedalingMs = now
+
+        when (state) {
+            WorkoutState.Standby -> if (isPedaling) startStandbyExit()
+            WorkoutState.Active -> {
+                if (now - lastPedalingMs >= AUTO_PAUSE_AFTER_MS) {
+                    autoPauseToStandby()
+                    // Reset so we don't immediately re-fire if the rider bumps
+                    // the pedal a moment later - the Standby branch above will
+                    // pick up the resume.
+                    lastPedalingMs = now
+                }
+            }
+            else -> { /* Countdown / Paused - leave alone */ }
+        }
+        return true to lastPedalingMs
     }
 
     /**
@@ -584,16 +681,19 @@ class WorkoutSessionManager(
     private fun autoPauseToStandby() {
         if (_state.value != WorkoutState.Active) return
         timerJob?.cancel()
+        stopClock()
         // Order matters: the engine stops driving the trainer before the zero
         // target lands, so the two can't race over the control point.
         simulationEngine?.stop()
         companionEngine?.stop()
         trainerManager.setTargetPower(0)
         _state.value = WorkoutState.Standby
-        // The timer's exit handler flushes the tail to the durable log.
+        // Where the ride stopped, written now rather than up to five seconds
+        // stale: a paused ride is the one most likely to be killed.
+        persistSnapshotNow(WorkoutState.Standby)
     }
 
-    fun adjustDifficulty(deltaPercent: Int) {
+    fun adjustDifficulty(deltaPercent: Int) = lock.withLock {
         val newBias = (_targetBiasPercent.value + deltaPercent).coerceIn(-30, 30)
         _targetBiasPercent.value = newBias
         if (_state.value == WorkoutState.Active) updateTrainerTarget()
@@ -609,13 +709,13 @@ class WorkoutSessionManager(
      * is still in "pedal to start" standby, and the trainer picks it up when
      * the ride goes active.
      */
-    fun adjustFreeRideTarget(deltaWatts: Int) {
+    fun adjustFreeRideTarget(deltaWatts: Int) = lock.withLock {
         if (_activeWorkout.value?.isFreeRide != true) return
         _freeRideTargetWatts.value = clampFreeRideWatts(_freeRideTargetWatts.value + deltaWatts)
         if (_state.value == WorkoutState.Active) updateTrainerTarget()
     }
 
-    fun skipSegment() {
+    fun skipSegment() = lock.withLock {
         val workout = _activeWorkout.value ?: return
         // A companion ride is one synthetic segment standing in for a road the
         // game owns. There is no next interval to move to, and rolling past the
@@ -627,14 +727,12 @@ class WorkoutSessionManager(
         val idx = _currentSegmentIndex.value
         if (idx >= workout.segments.size) return
 
-        val skippedSegLength = workout.segments[idx].lengthInSeconds
-        // Roll elapsed forward to segment boundary so the timeline stays consistent.
-        val rollForward = (skippedSegLength - _elapsedInSegment.value).coerceAtLeast(0)
-        _elapsedSeconds.value += rollForward
-        _elapsedInSegment.value = 0
+        // The planned timeline jumps to the segment's end; the ride clock,
+        // which is what the saved duration comes from, does not.
+        clock.skipSegment(workout.segments[idx].lengthInSeconds * 1000L)
         _currentSegmentIndex.value = idx + 1
-        // Re-anchor wall-clock so the resumed timer doesn't double-count the skip.
-        if (_state.value == WorkoutState.Active) anchorActivePhase()
+        publishClock()
+        markSegment(idx + 1)
 
         if (_currentSegmentIndex.value >= workout.segments.size) {
             completeWorkout()
@@ -643,21 +741,33 @@ class WorkoutSessionManager(
         }
     }
 
-    fun pauseWorkout() {
+    fun pauseWorkout() = lock.withLock {
         val from = _state.value
+        // A countdown is paused too. It is where a ride stood when the
+        // foreground service failed to start and asked for exactly this, and
+        // ignoring it let the ride start seconds later with nothing keeping
+        // the app alive. It resumes straight into riding: see [resumeWorkout].
+        if (from == WorkoutState.Countdown) {
+            countdownJob?.cancel()
+            pausedFromUntracked = false
+            _state.value = WorkoutState.Paused
+            return
+        }
         if (from != WorkoutState.Active && from != WorkoutState.Untracked) return
         // Remembered before the state moves, so a rider who paused a walk up a
         // climb is put back on the walk rather than into a recorded ride.
         pausedFromUntracked = from == WorkoutState.Untracked
         _untrackedLabel.value = null
+        stopClock()
         _state.value = WorkoutState.Paused
         simulationEngine?.stop()
         companionEngine?.stop()
         trainerManager.setTargetPower(0)
-        // Cancelling the loop runs its exit handler, which flushes the tail —
+        // Cancelling the loop runs its exit handler, which flushes the tail -
         // a paused ride can sit backgrounded for a long time and is a prime
-        // candidate for being killed.
+        // candidate for being killed. The position goes down now too.
         timerJob?.cancel()
+        persistSnapshotNow(WorkoutState.Paused)
     }
 
     /**
@@ -671,7 +781,7 @@ class WorkoutSessionManager(
      * rider is on the workout-list screen, there's nothing to pause and the
      * snapshot doesn't need writing.
      */
-    fun notifyForegroundServiceFailure(message: String) {
+    fun notifyForegroundServiceFailure(message: String) = lock.withLock {
         _foregroundServiceFailure.value = message
         val state = _state.value
         if (state == WorkoutState.Active || state == WorkoutState.Countdown ||
@@ -686,7 +796,7 @@ class WorkoutSessionManager(
         _foregroundServiceFailure.value = null
     }
 
-    fun resumeWorkout() {
+    fun resumeWorkout() = lock.withLock {
         if (_state.value != WorkoutState.Paused) return
         // A pause that interrupted untracked riding resumes into untracked
         // riding. The companion is told, and asks for its power target again if
@@ -695,8 +805,13 @@ class WorkoutSessionManager(
             startUntracked()
             return
         }
+        // A countdown that was paused never started the ride: this does.
+        if (sessionStartTimeEpoch == 0L) {
+            startActiveWorkout()
+            return
+        }
         _state.value = WorkoutState.Active
-        anchorActivePhase()
+        clock.start()
         startModeControl()
         startTimerLoop()
     }
@@ -714,7 +829,7 @@ class WorkoutSessionManager(
      * when the ride actually moved into the state, which is what the caller
      * announces; asking again only replaces [label].
      */
-    fun startUntracked(label: String? = null): Boolean {
+    fun startUntracked(label: String? = null): Boolean = lock.withLock {
         if (_activeWorkout.value?.isCompanion != true) return false
         _untrackedLabel.value = label?.takeIf { it.isNotBlank() }
         if (_state.value == WorkoutState.Untracked) return false
@@ -725,6 +840,7 @@ class WorkoutSessionManager(
         // The timer stops exactly as a pause stops it, and its exit handler
         // flushes the last samples of whatever was recorded up to here.
         timerJob?.cancel()
+        stopClock()
         pausedFromUntracked = false
         _state.value = WorkoutState.Untracked
         // The engine keeps the trainer: an untracked rider is still on a road,
@@ -743,7 +859,24 @@ class WorkoutSessionManager(
      * the app putting the trainer down, because the thing describing the road
      * has gone and the lease would only flatten the road, never stop it.
      */
-    fun standDownUntracked() {
+    /**
+     * The rider took control back from the companion.
+     *
+     * Whatever the companion was holding goes: its power target, and an
+     * untracked stretch, which is paused rather than left running. That pause
+     * resumes into a recorded ride. Resuming back into untracked, as a pause
+     * of it otherwise would, left the rider in a state only the companion they
+     * had just thrown out could end.
+     */
+    fun takeBackFromCompanion() = lock.withLock {
+        companionEngine?.setPowerTarget(null)
+        if (_state.value == WorkoutState.Untracked) {
+            pauseWorkout()
+            pausedFromUntracked = false
+        }
+    }
+
+    fun standDownUntracked() = lock.withLock {
         if (_state.value != WorkoutState.Untracked) return
         pausedFromUntracked = false
         _untrackedLabel.value = null
@@ -757,13 +890,28 @@ class WorkoutSessionManager(
      * snapshot intact** so the user can resume from the workout list banner.
      * Use [abandonUnfinishedRide] to also discard the snapshot.
      */
-    fun stopWorkout() {
+    fun stopWorkout() = lock.withLock {
         // Before the engine is stopped and its distance is gone. Backing out of
         // a ride does not save it to history, but the rider still rode the
         // road, and being asked to ride it again from the start is the thing
         // this exists to prevent.
         recordRouteProgress()
+        countdownJob?.cancel()
+        val from = _state.value
         timerJob?.cancel()
+        stopClock()
+        if (sessionStartTimeEpoch != 0L && from != WorkoutState.Idle && from != WorkoutState.Completed) {
+            // The banner offers this ride back, and Continue restores from the
+            // recovered samples. In a fresh process those come off disk; here
+            // they are the ones in memory, handed over so Continue picks them
+            // up. Continue used to replace the buffer with whatever was
+            // recovered at app start, which for a ride backed out of in this
+            // process was nothing, and the saved ride lost everything before
+            // the back-out.
+            flushTelemetry()
+            recoveredTelemetry = _telemetry.toList()
+            persistSnapshotNow(from)
+        }
         pedalingDetectionJob?.cancel()
         simulationEngine?.stop()
         companionEngine?.stop()
@@ -800,7 +948,7 @@ class WorkoutSessionManager(
      *
      * A no-op in every other mode, and while a ride is already running.
      */
-    fun startOrResumeCompanionRide() {
+    fun startOrResumeCompanionRide() = lock.withLock {
         if (_activeWorkout.value?.isCompanion != true) return
         when (_state.value) {
             WorkoutState.Standby -> startActiveWorkout()
@@ -820,9 +968,9 @@ class WorkoutSessionManager(
                     startActiveWorkout()
                 } else {
                     _state.value = WorkoutState.Active
-                    // Anchored, so the untracked stretch is not billed to the
-                    // clock the way a pause is not.
-                    anchorActivePhase()
+                    // The clock stood still through the untracked stretch, so
+                    // it is not billed to the ride the way a pause is not.
+                    clock.start()
                     startModeControl()
                     startTimerLoop()
                 }
@@ -845,7 +993,7 @@ class WorkoutSessionManager(
      * when there was nothing to hold: no ride started yet, or one the game had
      * already paused itself, which stays paused on its return.
      */
-    fun holdCompanionRide(): Boolean {
+    fun holdCompanionRide(): Boolean = lock.withLock {
         if (_activeWorkout.value?.isCompanion != true) return false
         if (sessionStartTimeEpoch == 0L) {
             // Nothing to hold, but a warm-up is still turning the trainer over
@@ -873,7 +1021,7 @@ class WorkoutSessionManager(
         }
     }
 
-    fun endWorkoutEarly() {
+    fun endWorkoutEarly() = lock.withLock {
         val state = _state.value
         if (state == WorkoutState.Idle || state == WorkoutState.Completed) return
         // Never got past the initial "pedal to start" standby — no ride to save.
@@ -920,7 +1068,7 @@ class WorkoutSessionManager(
      * Discard the persisted snapshot — invoked when the user explicitly taps
      * "Abandon" on the unfinished-ride banner.
      */
-    fun abandonUnfinishedRide() {
+    fun abandonUnfinishedRide() = lock.withLock {
         if (_state.value != WorkoutState.Idle) stopWorkout()
         simulationEngine?.clear()
         companionEngine?.clear()
@@ -935,20 +1083,45 @@ class WorkoutSessionManager(
      */
     suspend fun loadPersistedSnapshot() {
         val store = activeSessionStore ?: return
-        val snapshot = store.read()
-        recoveredTelemetry = if (snapshot != null) {
-            activeTelemetryStore?.readAll().orEmpty()
-        } else {
-            // No unfinished ride to resume, so any log left on disk belongs to a
-            // session that already ended. Reap it now rather than let it bleed
-            // into the next ride that gets resumed.
-            activeTelemetryStore?.clear()
-            emptyList()
+        val stored = store.read()
+        val log = activeTelemetryStore?.readAll().orEmpty()
+        // A log with no snapshot is a ride whose position could not be read
+        // back: a snapshot lost to a crash mid-write, or one an update can no
+        // longer decode. The samples are the ride, so a real one is offered to
+        // save rather than deleted along with the snapshot that described it.
+        // A short one is the tail of something already dealt with.
+        val snapshot = stored ?: orphanedRide(log)
+        if (snapshot == null && log.isNotEmpty()) activeTelemetryStore?.clear()
+        lock.withLock {
+            recoveredTelemetry = if (snapshot != null) log else emptyList()
+            // Published last, once the samples are in place: the banner reads
+            // them via [pendingRideTelemetry] the moment a snapshot appears,
+            // and uses whether they exist to decide what to offer.
+            _persistedSnapshot.value = snapshot
         }
-        // Published last, once the samples are in place: the banner reads them
-        // via [pendingRideTelemetry] the moment a snapshot appears, and uses
-        // whether they exist to decide what to offer.
-        _persistedSnapshot.value = snapshot
+    }
+
+    /**
+     * A finished ride standing in for the snapshot [log] lost, or null when
+     * the log is too short to be one. Offered as a "Just ride", since which
+     * workout it was went with the snapshot, and keyed on its first sample so
+     * offering it again after another restart is the same ride, not a second.
+     */
+    private fun orphanedRide(log: List<TelemetryPoint>): ActiveSessionSnapshot? {
+        if (log.size < MIN_ORPHANED_SAMPLES) return null
+        val first = log.first().timestampEpoch
+        return ActiveSessionSnapshot(
+            workoutId = freeRideWorkout().id,
+            sessionStartTimeEpochMs = first,
+            ftp = 0,
+            targetBiasPercent = 0,
+            elapsedSeconds = log.size,
+            currentSegmentIndex = 0,
+            elapsedInSegment = 0,
+            state = WorkoutState.Completed,
+            actualRideSeconds = log.size,
+            rideId = "recovered-$first",
+        )
     }
 
     fun dispose() {
@@ -988,19 +1161,23 @@ class WorkoutSessionManager(
     }
 
     private fun startCountdown() {
-        // The detection loop keeps running — it's already a no-op while in
+        // The detection loop keeps running - it's already a no-op while in
         // Countdown / Active and we need it alive for the auto-pause path.
         _state.value = WorkoutState.Countdown
         _countdownSeconds.value = 3
 
-        scope.launch {
+        countdownJob?.cancel()
+        countdownJob = scope.launch {
             while (_countdownSeconds.value > 0) {
                 delay(1000)
                 _countdownSeconds.value -= 1
             }
             // Hold "GO!" on screen so the impact lands before the ride UI takes over.
             delay(2000)
-            startActiveWorkout()
+            // Only a countdown still counting starts anything. See [countdownJob].
+            lock.withLock {
+                if (_state.value == WorkoutState.Countdown) startActiveWorkout()
+            }
         }
     }
 
@@ -1008,8 +1185,11 @@ class WorkoutSessionManager(
         _state.value = WorkoutState.Active
         if (sessionStartTimeEpoch == 0L) {
             sessionStartTimeEpoch = getCurrentEpochMillis()
+            rideId = uuid4().toString()
+            segmentMarks.clear()
+            segmentMarks.add(SegmentMark(segment = _currentSegmentIndex.value, sample = _telemetry.size))
         }
-        anchorActivePhase()
+        clock.start()
         startModeControl()
         startTimerLoop()
     }
@@ -1023,24 +1203,46 @@ class WorkoutSessionManager(
         val workout = _activeWorkout.value
         when {
             workout?.isSimulation == true -> simulationEngine?.start()
-            workout?.isCompanion == true -> companionEngine?.start()
+            workout?.isCompanion == true -> {
+                // A power target belongs to untracked riding and nothing else.
+                // One set in the instant between a companion's request being
+                // checked and applied could otherwise survive into a recorded
+                // ride and hold it in ERG, which is the one thing the protocol
+                // promises cannot happen.
+                if (_state.value != WorkoutState.Untracked) companionEngine?.setPowerTarget(null)
+                companionEngine?.start()
+            }
             else -> updateTrainerTarget()
         }
     }
 
-    private fun anchorActivePhase() {
-        activePhaseStartEpochMs = getCurrentEpochMillis()
-        elapsedAtPhaseStart = _elapsedSeconds.value
-        elapsedInSegAtPhaseStart = _elapsedInSegment.value
-        actualRideAtPhaseStart = _actualRideSeconds.value
+    /** Stop the ride clock and show where it stopped. */
+    private fun stopClock() {
+        clock.stop()
+        publishClock()
+    }
+
+    private fun publishClock() {
+        _elapsedSeconds.value = (clock.elapsedMs / 1000L).toInt()
+        _elapsedInSegment.value = (clock.segmentMs / 1000L).toInt()
+        _actualRideSeconds.value = (clock.rideMs / 1000L).toInt()
+    }
+
+    /** Segment [segment] begins with the next sample. */
+    private fun markSegment(segment: Int) {
+        if (sessionStartTimeEpoch == 0L) return
+        segmentMarks.add(SegmentMark(segment = segment, sample = _telemetry.size))
     }
 
     private fun startTimerLoop() {
         timerJob?.cancel()
         timerJob = scope.launch {
             try {
-                while (_state.value == WorkoutState.Active) {
-                    tick()
+                while (true) {
+                    val stillActive = lock.withLock {
+                        (_state.value == WorkoutState.Active).also { if (it) tick() }
+                    }
+                    if (!stillActive) break
                     delay(1000)
                 }
             } finally {
@@ -1054,12 +1256,12 @@ class WorkoutSessionManager(
                 // Safe under cancellation: flushTelemetry only copies the slice
                 // and hands it to the manager's own scope, which is a sibling of
                 // this job rather than a child, so it isn't cancelled with us.
-                flushTelemetry()
+                lock.withLock { flushTelemetry() }
             }
         }
     }
 
-    private var lastSnapshotEpoch: Long = 0
+    private var lastSnapshotMs: Long = Long.MIN_VALUE / 2
 
     /**
      * Hand every not-yet-written sample to the durable log.
@@ -1083,23 +1285,47 @@ class WorkoutSessionManager(
         }
     }
 
-    private fun maybePersistSnapshot(now: Long) {
-        if (now - lastSnapshotEpoch < SNAPSHOT_INTERVAL_MS) return
+    private fun maybePersistSnapshot(nowMs: Long) {
+        if (nowMs - lastSnapshotMs < SNAPSHOT_INTERVAL_MS) return
         // Don't persist for finished or not-yet-started states. Without this
         // guard, a final tick could write a snapshot for a ride that's already
         // marked Completed, racing against the completion clear.
         val state = _state.value
         if (state == WorkoutState.Idle || state == WorkoutState.Completed) return
-        lastSnapshotEpoch = now
+        lastSnapshotMs = nowMs
+        persistSnapshotNow(state)
+    }
+
+    /**
+     * Write where the ride is now, as [state], without waiting for the next
+     * periodic write. For the moments a ride stops: a pause, an auto-pause and
+     * a back-out each used to leave the position up to five seconds behind
+     * the samples.
+     */
+    private fun persistSnapshotNow(state: WorkoutState) {
         // Telemetry first, position second, both FIFO on snapshotDispatcher. A
         // crash between the two therefore leaves samples slightly *ahead* of the
         // restored position rather than behind it, which loses nothing: the
         // extra samples are real riding, and the snapshot only decides which
         // interval we drop the rider back into.
         flushTelemetry()
+        if (sessionStartTimeEpoch == 0L) return
+        val snapshot = currentSnapshot(state) ?: return
+        _persistedSnapshot.value = snapshot
         val store = activeSessionStore ?: return
-        val workout = _activeWorkout.value ?: return
-        val snapshot = ActiveSessionSnapshot(
+        val generation = persistGeneration
+        scope.launch(snapshotDispatcher) {
+            // Checked where the write happens: a clear or a completion queued
+            // after this one has bumped the generation, and this write is then
+            // older than what it would overwrite.
+            if (lock.withLock { persistGeneration } != generation) return@launch
+            store.write(snapshot)
+        }
+    }
+
+    private fun currentSnapshot(state: WorkoutState): ActiveSessionSnapshot? {
+        val workout = _activeWorkout.value ?: return null
+        return ActiveSessionSnapshot(
             workoutId = workout.id,
             sessionStartTimeEpochMs = sessionStartTimeEpoch,
             ftp = ftpWatts,
@@ -1116,16 +1342,9 @@ class WorkoutSessionManager(
             simulationStartMeters = engineStartMeters(workout),
             simulationStartElevationGainMeters = engineStartElevationGainMeters(workout),
             companionCourse = engineCourse(workout),
+            rideId = rideId,
+            segmentMarks = segmentMarks.toList(),
         )
-        _persistedSnapshot.value = snapshot
-        scope.launch(snapshotDispatcher) {
-            // Re-check inside the dispatcher: by the time this lambda runs the
-            // workout may have completed, in which case we'd be writing a
-            // snapshot that the upcoming clear is supposed to delete.
-            val now2 = _state.value
-            if (now2 == WorkoutState.Idle || now2 == WorkoutState.Completed) return@launch
-            store.write(snapshot)
-        }
     }
 
     /**
@@ -1137,14 +1356,15 @@ class WorkoutSessionManager(
      * through here; see [persistCompletedRide].
      */
     private fun clearPersistedRide() {
+        persistGeneration += 1
         _persistedSnapshot.value = null
         recoveredTelemetry = emptyList()
-        // FIFO with the writes above — any still queued are skipped by the
-        // state guard inside their lambda, then these clears run and remove
-        // whatever's on disk.
-        activeSessionStore?.let { store ->
-            scope.launch(snapshotDispatcher) { store.clear() }
-        }
+        // FIFO with the writes above - any still queued stand down on the
+        // generation bumped above, then these clears run and remove whatever's
+        // on disk. The log goes first: a kill between the two then leaves a
+        // snapshot with no samples, which the banner discards, rather than
+        // samples with no snapshot, which it would offer back as a ride that
+        // has in fact already been saved.
         activeTelemetryStore?.let { store ->
             scope.launch(snapshotDispatcher) {
                 try {
@@ -1154,23 +1374,19 @@ class WorkoutSessionManager(
                 }
             }
         }
+        activeSessionStore?.let { store ->
+            scope.launch(snapshotDispatcher) { store.clear() }
+        }
     }
 
     /**
-     * Compute elapsed from wall-clock so we don't drift; sample telemetry
-     * once per second; advance segments when the wall-clock crosses a
-     * boundary.
+     * Read the clocks, sample telemetry once per second, and advance segments
+     * when the clock crosses a boundary.
      */
     private fun tick() {
         val workout = _activeWorkout.value ?: return
-        val now = getCurrentEpochMillis()
-        val deltaSeconds = ((now - activePhaseStartEpochMs) / 1000).toInt().coerceAtLeast(0)
-        _elapsedSeconds.value = elapsedAtPhaseStart + deltaSeconds
-        _elapsedInSegment.value = elapsedInSegAtPhaseStart + deltaSeconds
-        // actualRideSeconds shares the same wall-clock anchor as elapsedSeconds
-        // during a single Active phase, but skipSegment never bumps its phase
-        // anchor — so skipped time is never added.
-        _actualRideSeconds.value = actualRideAtPhaseStart + deltaSeconds
+        val now = clock.wallNow()
+        publishClock()
 
         val sample = TelemetryPoint(
             timestampEpoch = now,
@@ -1179,6 +1395,7 @@ class WorkoutSessionManager(
             heartRate = effectiveHeartRate().toLong(),
         )
         _telemetry.add(sample)
+        telemetryPowerSum += sample.power
         val engineDistance = engineDistanceMeters(workout)
         if (engineDistance != null) {
             // On a route the distance isn't an estimate at all: it's where the
@@ -1195,7 +1412,7 @@ class WorkoutSessionManager(
             _virtualDistanceMeters.value +=
                 VirtualSpeed.speedMps(sample.power.toDouble(), riderMassKg())
         }
-        maybePersistSnapshot(now)
+        maybePersistSnapshot(monotonicMs())
 
         val idx = _currentSegmentIndex.value
         if (idx >= workout.segments.size) {
@@ -1203,13 +1420,13 @@ class WorkoutSessionManager(
             return
         }
         val currentSeg = workout.segments[idx]
-        if (_elapsedInSegment.value >= currentSeg.lengthInSeconds) {
+        if (clock.segmentMs >= currentSeg.lengthInSeconds * 1000L) {
+            // The next segment starts with whatever overran this one, so no
+            // fraction of a second falls between them.
+            clock.nextSegment(currentSeg.lengthInSeconds * 1000L)
             _currentSegmentIndex.value = idx + 1
-            _elapsedInSegment.value = 0
-            elapsedInSegAtPhaseStart = 0
-            elapsedAtPhaseStart = _elapsedSeconds.value
-            actualRideAtPhaseStart = _actualRideSeconds.value
-            activePhaseStartEpochMs = now
+            publishClock()
+            markSegment(idx + 1)
 
             if (_currentSegmentIndex.value >= workout.segments.size) {
                 completeWorkout()
@@ -1286,7 +1503,7 @@ class WorkoutSessionManager(
      * [snapshot] is the one the caller is saving, or null when there is no
      * recovery involved.
      */
-    fun pendingRideRoad(snapshot: ActiveSessionSnapshot? = null): RideRoad {
+    fun pendingRideRoad(snapshot: ActiveSessionSnapshot? = null): RideRoad = lock.withLock {
         val workout = _activeWorkout.value
         val live = workout != null &&
             (snapshot == null || workout.id == snapshot.workoutId)
@@ -1332,12 +1549,15 @@ class WorkoutSessionManager(
 
     private fun completeWorkout() {
         recordRouteProgress()
+        countdownJob?.cancel()
         _untrackedLabel.value = null
         pausedFromUntracked = false
+        stopClock()
         // Flip state first so the timer loop's while-condition fails and it
         // unwinds through its exit handler, flushing the ride's last samples.
         _state.value = WorkoutState.Completed
         timerJob?.cancel()
+        flushTelemetry()
         pedalingDetectionJob?.cancel()
         simulationEngine?.stop()
         companionEngine?.stop()
@@ -1365,44 +1585,42 @@ class WorkoutSessionManager(
             clearPersistedRide()
             return
         }
-        val workout = _activeWorkout.value ?: return
-        val snapshot = ActiveSessionSnapshot(
-            workoutId = workout.id,
-            sessionStartTimeEpochMs = sessionStartTimeEpoch,
-            ftp = ftpWatts,
-            targetBiasPercent = _targetBiasPercent.value,
-            elapsedSeconds = _elapsedSeconds.value,
-            currentSegmentIndex = _currentSegmentIndex.value,
-            elapsedInSegment = _elapsedInSegment.value,
-            state = WorkoutState.Completed,
-            actualRideSeconds = _actualRideSeconds.value,
-            freeRideTargetWatts = _freeRideTargetWatts.value.takeIf { workout.isFreeRide },
-            simulationDistanceMeters = engineDistanceMeters(workout),
-            simulationGearIndex = engineGearIndex(workout),
-            simulationElevationGainMeters = engineElevationGainMeters(workout),
-            simulationStartMeters = engineStartMeters(workout),
-            simulationStartElevationGainMeters = engineStartElevationGainMeters(workout),
-            companionCourse = engineCourse(workout),
-        )
+        val snapshot = currentSnapshot(WorkoutState.Completed) ?: return
+        // Every write queued before this one is now older than it and stands
+        // down, so this Completed snapshot is what ends up on disk.
+        persistGeneration += 1
+        val generation = persistGeneration
         _persistedSnapshot.value = snapshot
         val store = activeSessionStore ?: return
-        // FIFO behind any periodic write still queued from the final ticks, so
-        // this Completed snapshot is what ends up on disk.
-        scope.launch(snapshotDispatcher) { store.write(snapshot) }
+        scope.launch(snapshotDispatcher) {
+            if (lock.withLock { persistGeneration } != generation) return@launch
+            store.write(snapshot)
+        }
     }
 
     /**
-     * The finished ride is now in history, so the crash-recovery copies can go.
-     * Called by the UI once the insert has returned, which is the first moment
-     * the ride is durable somewhere other than these two files.
+     * The ride that began at [sessionStartTimeEpochMs] is now in history, so
+     * its crash-recovery copies can go. Called once the insert has returned,
+     * which is the first moment the ride is durable somewhere other than
+     * these two files.
+     *
+     * Names the ride because the save and the next ride can overlap: a rider
+     * who starts another ride while the last one's insert is still running
+     * used to have the new ride's recovery copies deleted by the old one's
+     * save.
      */
-    fun markRideSaved() {
+    fun markRideSaved(sessionStartTimeEpochMs: Long) = lock.withLock {
+        val persisted = _persistedSnapshot.value
+        if (persisted != null && persisted.sessionStartTimeEpochMs != sessionStartTimeEpochMs) return
         clearPersistedRide()
     }
 
     companion object {
         private const val TAG = "WorkoutSessionManager"
         private const val SNAPSHOT_INTERVAL_MS = 5_000L
+
+        /** A minute of samples: less than this with no snapshot is not a ride worth offering back. */
+        private const val MIN_ORPHANED_SAMPLES = 60
         /** Detection-loop cadence — small enough to catch the 3-second gap with sub-second slack. */
         private const val DETECTION_TICK_MS = 500L
         /** Stop-pedaling threshold before the active ride auto-pauses to Standby. */

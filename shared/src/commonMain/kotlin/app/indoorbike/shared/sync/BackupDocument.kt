@@ -89,7 +89,17 @@ data class BackupSettings(
     val intervalsAutoUpload: Boolean? = null,
     /** `null` = absent; empty list = explicitly cleared. */
     val favouriteWorkoutIds: List<String>? = null,
-)
+    /**
+     * When each field last changed, by name ([LocalChanges.FIELDS]). The merge
+     * is field by field on these, so a change to one setting on one device and
+     * to another on a second both survive. Empty in slices written before it
+     * existed, whose fields all count as changed at [epoch].
+     */
+    val fieldEpochs: Map<String, Long> = emptyMap(),
+) {
+    /** When [field] last changed, as far as this slice knows. */
+    fun epochOf(field: String): Long = fieldEpochs[field] ?: epoch
+}
 
 /**
  * Session metadata only — no per-second telemetry. See class doc on

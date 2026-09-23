@@ -18,12 +18,14 @@ package app.indoorbike.route
 import android.content.Context
 import android.net.Uri
 import app.indoorbike.library.HttpFetcher
+import app.indoorbike.library.readAtMost
 import app.indoorbike.shared.repo.RouteAttribution
 import app.indoorbike.shared.repo.RouteEntry
 import app.indoorbike.shared.route.GpxParser
 import app.indoorbike.shared.route.RouteTrack
 import app.indoorbike.shared.util.Log
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -65,8 +67,39 @@ class RouteImporter(private val context: Context) {
     private val userRoutesDir: File
         get() = File(context.filesDir, "user_routes").apply { mkdirs() }
 
-    /** True when this route id already exists locally, so a browser can show it as added. */
-    fun hasRoute(routeId: String): Boolean = gpxFile(routeId).exists()
+    /**
+     * The ids of the routes that ship with the app. An added route never takes
+     * one: the catalogue lets an added route stand in for a bundled one of the
+     * same id, so taking it would replace the bundled road.
+     */
+    private val bundledIds: Set<String> by lazy {
+        try {
+            context.assets.list(RouteCatalog.ROUTES_DIR).orEmpty()
+                .filter { it.endsWith(GPX_SUFFIX, ignoreCase = true) }
+                .map { it.removeSuffix(GPX_SUFFIX).removeSuffix(".GPX") }
+                .toSet()
+        } catch (t: Throwable) {
+            emptySet()
+        }
+    }
+
+    /**
+     * The id [entryId] from repository [repoId] is kept under.
+     *
+     * Its own id when that is free, or already this repository's copy of it.
+     * Repository ids are only unique within a repository, and two used to
+     * overwrite each other's route (and licence credit) when they shared one;
+     * the second is now kept under the repository's name as well.
+     */
+    private fun localIdFor(entryId: String, repoId: String?): String {
+        val plain = sanitise(entryId)
+        val existing = gpxFile(plain).exists()
+        if (existing && repoId != null && loadMeta(plain)?.let { it.sourceRepoId == repoId && (it.sourceEntryId ?: plain) == entryId } == true) {
+            return plain
+        }
+        if (!existing && plain !in bundledIds) return plain
+        return sanitise("${repoId ?: "local"}.$entryId")
+    }
 
     /**
      * Download the GPX behind [entry] and add it to the rider's routes.
@@ -84,7 +117,8 @@ class RouteImporter(private val context: Context) {
         addedEpoch: Long = System.currentTimeMillis(),
     ): RouteImportResult = withContext(Dispatchers.IO) {
         if (!entry.isUsable) return@withContext RouteImportResult.Failure("That route listing is incomplete.")
-        val staging = File(userRoutesDir, sanitise(entry.id) + ".gpx.new")
+        val id = localIdFor(entry.id, repoId)
+        val staging = File(userRoutesDir, id + ".gpx.new")
         try {
             val download = HttpFetcher.downloadTo(entry.gpxUrl, staging)
 
@@ -99,16 +133,16 @@ class RouteImporter(private val context: Context) {
                 )
             }
 
-            val track = parseFile(staging, entry.id, entry.name)
+            val track = parseFile(staging, id, entry.name)
                 ?: return@withContext RouteImportResult.Failure(
                     "That file could not be read as a rideable route."
                 )
 
-            if (!staging.renameTo(gpxFile(entry.id))) {
-                staging.copyTo(gpxFile(entry.id), overwrite = true)
+            if (!staging.renameTo(gpxFile(id))) {
+                staging.copyTo(gpxFile(id), overwrite = true)
             }
             writeMeta(
-                entry.id,
+                id,
                 RouteImportMeta(
                     name = entry.name,
                     description = entry.description,
@@ -117,10 +151,13 @@ class RouteImporter(private val context: Context) {
                     attribution = entry.attribution,
                     sourceRepoId = repoId,
                     sourceRepoName = repoName,
+                    sourceEntryId = entry.id,
                     addedEpoch = addedEpoch,
                 ),
             )
             RouteImportResult.Added(track)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Route add failed for ${entry.id}: ${t.message}")
             RouteImportResult.Failure(t.message ?: "Couldn't add that route")
@@ -133,30 +170,54 @@ class RouteImporter(private val context: Context) {
      * Add a GPX the rider picked from their own device: an export from a head
      * unit, or a file someone sent them.
      *
-     * The id is derived from the file name because a bare GPX carries no
-     * stable identifier of its own, and re-importing the same file should
-     * update the route rather than accumulate copies of it.
+     * The id is derived from the file name, because a bare GPX carries no
+     * stable identifier of its own. Re-importing the same file changes
+     * nothing; a different file under a name already in use is added beside
+     * it. Exports share names ("Morning_Ride.gpx") often enough that the
+     * second used to replace the first, credit and all.
      */
     suspend fun importFromUri(uri: Uri): RouteImportResult = withContext(Dispatchers.IO) {
         try {
-            val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            // Read no further than a route could be: the size used to be
+            // checked only after the whole file was in memory.
+            val bytes = context.contentResolver.openInputStream(uri)
+                ?.use { it.readAtMost(HttpFetcher.MAX_ROUTE_BYTES, "That route file is too large.") }
                 ?: return@withContext RouteImportResult.Failure("Couldn't open that file.")
-            if (bytes.size > HttpFetcher.MAX_ROUTE_BYTES) {
-                return@withContext RouteImportResult.Failure("That route file is too large.")
-            }
             val name = displayName(uri) ?: "route"
-            val id = sanitise(name.removeSuffix(".gpx").removeSuffix(".GPX"))
+            val base = sanitise(name.removeSuffix(".gpx").removeSuffix(".GPX"))
             val xml = String(bytes, Charsets.UTF_8)
-            val track = GpxParser.parseGpx(xml = xml, id = id, fallbackName = id)
+
+            var id = base
+            var n = 2
+            while (true) {
+                val file = gpxFile(id)
+                if (file.exists() && file.readBytes().contentEquals(bytes)) {
+                    val same = parseFile(file, id, loadMeta(id)?.name ?: id)
+                    if (same != null) return@withContext RouteImportResult.Added(same)
+                }
+                if (!file.exists() && id !in bundledIds) break
+                id = "$base-${n++}"
+            }
+
+            val track = GpxParser.parseGpx(xml = xml, id = id, fallbackName = base)
                 ?: return@withContext RouteImportResult.Failure(
                     "That file could not be read as a rideable route."
                 )
-            gpxFile(id).writeText(xml, Charsets.UTF_8)
+            // Staged and renamed into place, as addFromRepo does.
+            val staging = File(userRoutesDir, id + ".gpx.new")
+            try {
+                staging.writeBytes(bytes)
+                if (!staging.renameTo(gpxFile(id))) staging.copyTo(gpxFile(id), overwrite = true)
+            } finally {
+                if (staging.exists()) staging.delete()
+            }
             writeMeta(
                 id,
                 RouteImportMeta(name = track.name, addedEpoch = System.currentTimeMillis()),
             )
             RouteImportResult.Added(track)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Route file import failed: ${t.message}")
             RouteImportResult.Failure(t.message ?: "Couldn't read that file")
@@ -266,6 +327,12 @@ data class RouteImportMeta(
     val attribution: RouteAttribution? = null,
     val sourceRepoId: String? = null,
     val sourceRepoName: String? = null,
+    /**
+     * The id the repository gave the route, when it is kept under another:
+     * see RouteImporter.localIdFor. Null for routes added before that, whose
+     * local id is the repository's.
+     */
+    val sourceEntryId: String? = null,
     val addedEpoch: Long? = null,
 )
 

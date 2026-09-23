@@ -18,6 +18,8 @@ package app.indoorbike.shared.simulation
 import app.indoorbike.shared.ble.SimulationParameters
 import app.indoorbike.shared.physics.RideDynamics
 import app.indoorbike.shared.physics.VirtualSpeed
+import app.indoorbike.shared.util.ReentrantLock
+import app.indoorbike.shared.util.withLock
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,10 +87,12 @@ import kotlin.math.tanh
  * behind it, as integrated by the owner or reported by a game.
  *
  * Called from the owner's loop and from whichever thread a shift or a road
- * frame arrives on. The gear changes atomically, so two shifters reached for at
- * once cannot lose a shift; the writes reach the trainer in the order they were
- * made through its single control-point queue, so a shift cannot be overtaken by
- * an older road.
+ * frame arrives on. Every entry point holds one lock, so two shifters reached
+ * for at once cannot lose a shift or a release, and a road is computed and
+ * handed to the trainer's single control-point queue in one step: a shift
+ * cannot be overtaken by an older road, because no older road can still be
+ * being computed when the shift's is queued. The lock is a leaf: nothing
+ * under it calls anything that takes another.
  */
 class VirtualDrivetrain(
     private val riderMassKg: () -> Float,
@@ -103,6 +107,8 @@ class VirtualDrivetrain(
      */
     val pacer: TrainerWritePacer = TrainerWritePacer(),
 ) {
+    private val lock = ReentrantLock()
+
     private val _drivetrain = MutableStateFlow(Drivetrain.DEFAULT)
     val drivetrain: StateFlow<Drivetrain> = _drivetrain.asStateFlow()
 
@@ -156,7 +162,7 @@ class VirtualDrivetrain(
     private var shiftRelease = 1.0
 
     /** Put the rider on [drivetrain] in [gearIndex], with nothing measured yet. */
-    fun load(drivetrain: Drivetrain, gearIndex: Int) {
+    fun load(drivetrain: Drivetrain, gearIndex: Int) = lock.withLock {
         _drivetrain.value = drivetrain
         _gearIndex.value = drivetrain.clampIndex(gearIndex)
         gradient = 0.0
@@ -182,11 +188,10 @@ class VirtualDrivetrain(
      * resuming from a standstill is pulling away like any other, so the launch
      * assist is re-armed.
      */
-    fun onStart() {
+    fun onStart() = lock.withLock {
         roadAcceleration.reset()
         launchAssist.reset()
         forgetLastRoad()
-        pacer.reset()
     }
 
     /**
@@ -194,14 +199,16 @@ class VirtualDrivetrain(
      * rather than repeating whatever the last tick saw, and the first crank
      * after a resume is adopted whole rather than filtered up from the pause.
      */
-    fun onStop() {
+    fun onStop() = lock.withLock {
         roadAcceleration.reset()
         shiftRelease = 1.0
         driveSpeed.reset()
         _driveSpeedMps.value = 0.0
         _driveSpeedKnown.value = false
         forgetLastRoad()
-        pacer.reset()
+        // The pacer is left alone. Resetting it here and in onStart let a
+        // companion toggling pause and resume in a loop write to the trainer
+        // on every toggle, each one past the floor that exists to stop that.
     }
 
     /**
@@ -212,7 +219,7 @@ class VirtualDrivetrain(
      * rider in the eleventh of twenty gears is not asking to be in the
      * eleventh of twelve.
      */
-    fun setDrivetrain(drivetrain: Drivetrain) {
+    fun setDrivetrain(drivetrain: Drivetrain) = lock.withLock {
         if (drivetrain.gears.isEmpty()) return
         val wanted = _drivetrain.value.developmentMeters(_gearIndex.value)
         _drivetrain.value = drivetrain
@@ -230,11 +237,15 @@ class VirtualDrivetrain(
      * Atomic on the gear itself, so two shifters reached for at once - the
      * screen and a handlebar remote - cannot lose a shift between them.
      */
-    fun shiftBy(steps: Int): Int {
+    fun shiftBy(steps: Int): Int = lock.withLock {
+        // Bounded before it is added: no shift can need more steps than there
+        // are gears, and Int.MAX_VALUE added to a gear index wrapped round and
+        // landed in the easiest gear.
+        val bounded = steps.coerceIn(-_drivetrain.value.gearCount, _drivetrain.value.gearCount)
         var from = 0
         val to = _gearIndex.updateAndGet {
             from = it
-            _drivetrain.value.clampIndex(it + steps)
+            _drivetrain.value.clampIndex(it + bounded)
         }
         when {
             to < from -> {
@@ -248,11 +259,11 @@ class VirtualDrivetrain(
             // middle of one is a rider who wants the road back, not half of it.
             to > from -> shiftRelease = 1.0
         }
-        return to
+        to
     }
 
     /** The road under the rider, as the world now describes it. */
-    fun setRoad(gradient: Double, worldSpeedMps: Double, crr: Double = VirtualSpeed.CRR) {
+    fun setRoad(gradient: Double, worldSpeedMps: Double, crr: Double = VirtualSpeed.CRR) = lock.withLock {
         this.gradient = gradient
         this.worldSpeedMps = worldSpeedMps
         this.crr = crr
@@ -263,7 +274,7 @@ class VirtualDrivetrain(
      * force is built from - the cadence, the bike's acceleration and the launch
      * assist - from the road last described.
      */
-    fun update(dtSeconds: Double) {
+    fun update(dtSeconds: Double) = lock.withLock {
         if (shiftRelease < 1.0 && dtSeconds > 0.0) {
             shiftRelease = 1.0 - (1.0 - shiftRelease) * exp(-dtSeconds / SHIFT_RELEASE_SECONDS)
             if (shiftRelease > RELEASE_DONE) shiftRelease = 1.0
@@ -305,7 +316,7 @@ class VirtualDrivetrain(
      *
      * Returns whether a write went out.
      */
-    fun writeRoad(forced: Boolean, nowMs: Long): Boolean {
+    fun writeRoad(forced: Boolean, nowMs: Long): Boolean = lock.withLock {
         if (!pacer.mayWrite(nowMs, forced)) return false
         val gear = _gearIndex.value
         val targetForce = trainerForceNewtons(gear)
@@ -332,7 +343,7 @@ class VirtualDrivetrain(
                 windResistanceKgPerM = 0.0,
             )
         )
-        return true
+        true
     }
 
     /**
@@ -340,13 +351,13 @@ class VirtualDrivetrain(
      * Called when something other than a road took the control point, such as
      * a power target, and on every start and stop.
      */
-    fun forgetLastRoad() {
+    fun forgetLastRoad() = lock.withLock {
         lastSentForceNewtons = null
         lastSentGearIndex = -1
     }
 
     /** Clear the published command, when a power target has taken over. */
-    fun clearCommand() {
+    fun clearCommand() = lock.withLock {
         _commandedForceN.value = 0.0
         _commandedGradePercent.value = 0.0
     }
@@ -355,7 +366,7 @@ class VirtualDrivetrain(
      * The force the trainer should apply in gear [gearIndex], in newtons at its
      * wheel: the road's own resistance scaled by the virtual gear.
      */
-    fun trainerForceNewtons(gearIndex: Int): Double {
+    fun trainerForceNewtons(gearIndex: Int): Double = lock.withLock {
         val rider = riderMassKg()
         if (rider <= 0f) return 0.0
         val drivetrain = _drivetrain.value

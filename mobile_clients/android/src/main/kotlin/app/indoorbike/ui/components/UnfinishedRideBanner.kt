@@ -30,7 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +54,7 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Persistent banner shown on every top-level tab while a ride is stored on disk
@@ -89,13 +89,13 @@ fun UnfinishedRideBanner(
     val container = LocalAppContainer.current
     val workouts = LocalWorkouts.current
     val resumer = LocalRideResumer.current
-    val snapshot by container.sessionManager.persistedSnapshot.collectAsState()
+    val snapshot by container.sessionManager.persistedSnapshot.collectAsStateWithLifecycle()
 
     val current = snapshot ?: return
 
     // Dismissal is per ride and per session: see
     // AppContainer.dismissedUnfinishedRideStart.
-    val dismissedStart by container.dismissedUnfinishedRideStart.collectAsState()
+    val dismissedStart by container.dismissedUnfinishedRideStart.collectAsStateWithLifecycle()
     if (dismissable && dismissedStart == current.sessionStartTimeEpochMs) return
     // Route names come from the catalog so a recovered simulated ride is
     // labelled with the road it was on rather than with its route id.

@@ -49,7 +49,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
@@ -61,7 +60,14 @@ class AndroidUserSettings(
     private val appContext: Context,
 ) : UserSettings {
 
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    /**
+     * Where every write to the store runs, one at a time and in the order the
+     * setters were called. Each write used to be launched on the shared IO
+     * pool, where two close together could land in either order: the older
+     * value won, and the next read-modify-write started from it.
+     */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 
     private val store = appContext.userPrefs
 
@@ -74,6 +80,40 @@ class AndroidUserSettings(
      * the one we pay for.
      */
     private val initialPrefs: Preferences = runBlocking { store.data.first() }
+
+    /** The credentials are kept sealed: see [SecretBox]. */
+    private val secrets = SecretBox()
+
+    /** A credential as stored at start-up, opened. */
+    private fun secret(key: Preferences.Key<String>): String? = secrets.open(initialPrefs[key])
+
+    /** [value] as it is written under [key]: sealed if [key] is a credential. */
+    private fun stored(key: Preferences.Key<String>, value: String): String {
+        if (key !in SECRET_KEYS) return value
+        return try {
+            secrets.seal(value)
+        } catch (t: Throwable) {
+            // A device whose Keystore is broken still gets a working
+            // connection, kept as it always was before sealing.
+            app.indoorbike.shared.util.Log.w("AndroidUserSettings", "Keystore unavailable, credential kept unsealed: ${t.javaClass.simpleName}")
+            value
+        }
+    }
+
+    init {
+        // Credentials written before they were sealed are sealed now, once.
+        val unsealed = SECRET_KEYS.filter { key -> initialPrefs[key]?.let { !SecretBox.isSealed(it) } == true }
+        if (unsealed.isNotEmpty()) {
+            scope.launch {
+                store.edit { prefs ->
+                    for (key in unsealed) {
+                        val value = prefs[key] ?: continue
+                        if (!SecretBox.isSealed(value)) prefs[key] = stored(key, value)
+                    }
+                }
+            }
+        }
+    }
 
     private val _ftp = MutableStateFlow(initialPrefs[KEY_FTP] ?: DEFAULT_FTP)
     override val ftp: StateFlow<Int> = _ftp.asStateFlow()
@@ -110,7 +150,7 @@ class AndroidUserSettings(
     private val _intervalsAthleteId = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ATHLETE])
     override val intervalsAthleteId: StateFlow<String?> = _intervalsAthleteId.asStateFlow()
 
-    private val _intervalsApiKey = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_API_KEY])
+    private val _intervalsApiKey = MutableStateFlow<String?>(secret(KEY_INTERVALS_API_KEY))
     override val intervalsApiKey: StateFlow<String?> = _intervalsApiKey.asStateFlow()
 
     private val _intervalsAutoUpload = MutableStateFlow(initialPrefs[KEY_INTERVALS_AUTO] ?: false)
@@ -119,7 +159,7 @@ class AndroidUserSettings(
     private val _companionShowAllData = MutableStateFlow(initialPrefs[KEY_COMPANION_ALL_DATA] ?: false)
     override val companionShowAllData: StateFlow<Boolean> = _companionShowAllData.asStateFlow()
 
-    private val _intervalsAccessToken = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ACCESS])
+    private val _intervalsAccessToken = MutableStateFlow<String?>(secret(KEY_INTERVALS_ACCESS))
     override val intervalsAccessToken: StateFlow<String?> = _intervalsAccessToken.asStateFlow()
 
     private val _intervalsAthleteName = MutableStateFlow<String?>(initialPrefs[KEY_INTERVALS_ATHLETE_NAME])
@@ -131,13 +171,13 @@ class AndroidUserSettings(
     private val _fitTrackeeClientId = MutableStateFlow<String?>(initialPrefs[KEY_FT_CLIENT_ID])
     override val fitTrackeeClientId: StateFlow<String?> = _fitTrackeeClientId.asStateFlow()
 
-    private val _fitTrackeeClientSecret = MutableStateFlow<String?>(initialPrefs[KEY_FT_CLIENT_SECRET])
+    private val _fitTrackeeClientSecret = MutableStateFlow<String?>(secret(KEY_FT_CLIENT_SECRET))
     override val fitTrackeeClientSecret: StateFlow<String?> = _fitTrackeeClientSecret.asStateFlow()
 
-    private val _fitTrackeeAccessToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_ACCESS])
+    private val _fitTrackeeAccessToken = MutableStateFlow<String?>(secret(KEY_FT_ACCESS))
     override val fitTrackeeAccessToken: StateFlow<String?> = _fitTrackeeAccessToken.asStateFlow()
 
-    private val _fitTrackeeRefreshToken = MutableStateFlow<String?>(initialPrefs[KEY_FT_REFRESH])
+    private val _fitTrackeeRefreshToken = MutableStateFlow<String?>(secret(KEY_FT_REFRESH))
     override val fitTrackeeRefreshToken: StateFlow<String?> = _fitTrackeeRefreshToken.asStateFlow()
 
     private val _fitTrackeeSportId =
@@ -176,147 +216,12 @@ class AndroidUserSettings(
     private val _syncPaused = MutableStateFlow(initialPrefs[KEY_SYNC_PAUSED] ?: false)
     override val syncPaused: StateFlow<Boolean> = _syncPaused.asStateFlow()
 
-    init {
-        scope.launch {
-            store.data.map { it[KEY_FTP] ?: DEFAULT_FTP }.collect { value ->
-                if (value != _ftp.value) _ftp.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_WEIGHT] ?: DEFAULT_WEIGHT_KG }.collect { value ->
-                if (value != _weightKg.value) _weightKg.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_MAX_HR] ?: DEFAULT_MAX_HR }.collect { value ->
-                if (value != _maxHr.value) _maxHr.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_BIKE_WEIGHT] ?: DEFAULT_BIKE_WEIGHT_KG }.collect { value ->
-                if (value != _bikeWeightKg.value) _bikeWeightKg.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_DRIVETRAIN] ?: Drivetrain.DEFAULT.id }.collect { value ->
-                if (value != _drivetrainId.value) _drivetrainId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_TRAINER] }.collect { value ->
-                if (value != _pairedTrainerId.value) _pairedTrainerId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_HRM] }.collect { value ->
-                if (value != _pairedHrmId.value) _pairedHrmId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_CONTROLLER] }.collect { value ->
-                if (value != _pairedControllerId.value) _pairedControllerId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_ONBOARDED] ?: false }.collect { value ->
-                if (value != _hasCompletedOnboarding.value) _hasCompletedOnboarding.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_DISMISSED_STARTER] ?: false }.collect { value ->
-                if (value != _hasDismissedStarterCard.value) _hasDismissedStarterCard.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_INTERVALS_ATHLETE] }.collect { value ->
-                if (value != _intervalsAthleteId.value) _intervalsAthleteId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_INTERVALS_API_KEY] }.collect { value ->
-                if (value != _intervalsApiKey.value) _intervalsApiKey.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_INTERVALS_AUTO] ?: false }.collect { value ->
-                if (value != _intervalsAutoUpload.value) _intervalsAutoUpload.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_COMPANION_ALL_DATA] ?: false }.collect { value ->
-                if (value != _companionShowAllData.value) _companionShowAllData.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_INTERVALS_ACCESS] }.collect { value ->
-                if (value != _intervalsAccessToken.value) _intervalsAccessToken.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_INTERVALS_ATHLETE_NAME] }.collect { value ->
-                if (value != _intervalsAthleteName.value) _intervalsAthleteName.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_URL] }.collect { value ->
-                if (value != _fitTrackeeUrl.value) _fitTrackeeUrl.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_CLIENT_ID] }.collect { value ->
-                if (value != _fitTrackeeClientId.value) _fitTrackeeClientId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_CLIENT_SECRET] }.collect { value ->
-                if (value != _fitTrackeeClientSecret.value) _fitTrackeeClientSecret.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_ACCESS] }.collect { value ->
-                if (value != _fitTrackeeAccessToken.value) _fitTrackeeAccessToken.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_REFRESH] }.collect { value ->
-                if (value != _fitTrackeeRefreshToken.value) _fitTrackeeRefreshToken.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_SPORT] ?: FitTrackeeUploader.DEFAULT_SPORT_ID }
-                .collect { value ->
-                if (value != _fitTrackeeSportId.value) _fitTrackeeSportId.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FT_AUTO] ?: false }.collect { value ->
-                if (value != _fitTrackeeAutoUpload.value) _fitTrackeeAutoUpload.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_FAVOURITES] ?: emptySet() }.collect { value ->
-                if (value != _favouriteWorkoutIds.value) _favouriteWorkoutIds.value = value
-            }
-        }
-        scope.launch {
-            // deviceId is intentionally NOT collected — once written it never
-            // changes for the lifetime of the install, so a per-key flow
-            // collector would be pure overhead. See [deviceId] for why.
-            store.data.map { it[KEY_DEVICE_LABEL] ?: defaultDeviceLabel() }.collect { value ->
-                if (value != _deviceLabel.value) _deviceLabel.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_SYNC_FOLDER_URI] }.collect { value ->
-                if (value != _syncFolderUri.value) _syncFolderUri.value = value
-            }
-        }
-        scope.launch {
-            store.data.map { it[KEY_SYNC_PAUSED] ?: false }.collect { value ->
-                if (value != _syncPaused.value) _syncPaused.value = value
-            }
-        }
-    }
+    // No collectors copying the store back into the flows. This class is the
+    // store's only writer, and the flows already hold what it wrote, so all a
+    // collector ever did was deliver an older write after a newer one: a text
+    // field that saves on every keystroke lost characters as its earlier
+    // values came back, and a set of favourites rebuilt from a stale copy lost
+    // entries.
 
     override fun setFtp(newFtp: Int) {
         if (newFtp !in MIN_FTP..MAX_FTP) return
@@ -405,7 +310,7 @@ class AndroidUserSettings(
         scope.launch {
             store.edit {
                 if (cleaned == null) it.remove(KEY_INTERVALS_API_KEY)
-                else it[KEY_INTERVALS_API_KEY] = cleaned
+                else it[KEY_INTERVALS_API_KEY] = stored(KEY_INTERVALS_API_KEY, cleaned)
             }
         }
     }
@@ -426,7 +331,7 @@ class AndroidUserSettings(
         scope.launch {
             store.edit {
                 if (cleaned == null) it.remove(KEY_INTERVALS_ACCESS)
-                else it[KEY_INTERVALS_ACCESS] = cleaned
+                else it[KEY_INTERVALS_ACCESS] = stored(KEY_INTERVALS_ACCESS, cleaned)
             }
         }
     }
@@ -474,7 +379,7 @@ class AndroidUserSettings(
         val cleaned = raw?.trim()?.takeIf { it.isNotEmpty() }
         flow.value = cleaned
         scope.launch {
-            store.edit { if (cleaned == null) it.remove(key) else it[key] = cleaned }
+            store.edit { if (cleaned == null) it.remove(key) else it[key] = stored(key, cleaned) }
         }
     }
 
@@ -511,6 +416,12 @@ class AndroidUserSettings(
         if (cleaned == _deviceLabel.value) return
         _deviceLabel.value = cleaned
         scope.launch { store.edit { it[KEY_DEVICE_LABEL] = cleaned } }
+    }
+
+    override fun setFavouriteWorkoutIds(ids: Set<String>) {
+        if (ids == _favouriteWorkoutIds.value) return
+        _favouriteWorkoutIds.value = ids
+        scope.launch { store.edit { it[KEY_FAVOURITES] = ids } }
     }
 
     override fun setWorkoutFavourite(workoutId: String, favourite: Boolean) {
@@ -555,6 +466,12 @@ class AndroidUserSettings(
         private val KEY_FT_ACCESS = stringPreferencesKey("fittrackee_access_token")
         private val KEY_FT_REFRESH = stringPreferencesKey("fittrackee_refresh_token")
         private val KEY_FT_SPORT = intPreferencesKey("fittrackee_sport_id")
+
+        /** What [SecretBox] seals. The FitTrackee client id and server address are not secret. */
+        private val SECRET_KEYS = setOf(
+            KEY_INTERVALS_API_KEY, KEY_INTERVALS_ACCESS,
+            KEY_FT_CLIENT_SECRET, KEY_FT_ACCESS, KEY_FT_REFRESH,
+        )
         private val KEY_FT_AUTO = booleanPreferencesKey("fittrackee_auto_upload")
         private val KEY_FAVOURITES = stringSetPreferencesKey("favourite_workout_ids")
         private val KEY_DEVICE_ID = stringPreferencesKey("device_id")

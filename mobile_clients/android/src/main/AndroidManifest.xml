@@ -1,12 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <!-- Android 11 and earlier: the old Bluetooth permissions, and location,
+         which scanning needed until Android 12. Capped so the app does not
+         declare location where it never uses it: from Android 12 it scans
+         with BLUETOOTH_SCAN, flagged neverForLocation. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+                     android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+                     android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
                      android:usesPermissionFlags="neverForLocation" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- osmdroid checks connectivity before reaching for a map tile, and
          serves the route from its own cache when there is none. Simulation
@@ -50,13 +57,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Open a workout JSON file from another app (Gmail, Files, …). -->
+            <!-- Open a workout JSON file from another app (Gmail, Files, ...).
+                 content:// only: a file:// URI names a path in the sender's
+                 storage, which this app should not be asked to read, and no
+                 current app sends one. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="content" />
-                <data android:scheme="file" />
                 <data android:mimeType="application/json" />
             </intent-filter>
 

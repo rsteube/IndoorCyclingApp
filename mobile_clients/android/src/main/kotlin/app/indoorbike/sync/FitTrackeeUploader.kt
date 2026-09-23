@@ -15,6 +15,7 @@
  */
 package app.indoorbike.sync
 
+import kotlinx.coroutines.CancellationException
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
@@ -125,9 +126,10 @@ class FitTrackeeUploader(
         val verifier = pending.getString(KEY_VERIFIER, null)
             ?: return SignIn.Failure("This sign-in wasn't started here. Try again.")
         // A mismatched state means the redirect didn't come from the request we
-        // made, so the code is not ours to spend.
+        // made, so the code is not ours to spend. The sign-in under way is
+        // kept: clearing it here let any app cancel one by sending
+        // indoorbike://oauth?state=x, as the Intervals.icu flow already knew.
         if (expectedState == null || state != expectedState) {
-            clearPending()
             return SignIn.Failure("Sign-in couldn't be verified. Try again.")
         }
         clearPending()
@@ -146,6 +148,8 @@ class FitTrackeeUploader(
         )
         val result = try {
             HttpFetcher.postForm("$base/api/oauth/token", form)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Token exchange network error", t)
             return SignIn.Failure(t.message ?: "Could not reach that address.")
@@ -160,10 +164,25 @@ class FitTrackeeUploader(
         return SignIn.Success
     }
 
-    /** Renew the access token silently. Returns the new token, or null. */
-    private suspend fun refreshAccessToken(): String? {
+    /** How renewing the access token went. */
+    private sealed interface Renewal {
+        data class Renewed(val token: String) : Renewal
+
+        /** The server said no: the sign-in is over, and only signing in again helps. */
+        data object Refused : Renewal
+
+        /**
+         * The server could not be asked, or failed to answer. Not the same as
+         * [Refused]: it was reported as an expired sign-in, and sent riders
+         * to reconnect an account that was fine.
+         */
+        data class Unreachable(val message: String) : Renewal
+    }
+
+    /** Renew the access token silently. */
+    private suspend fun refreshAccessToken(): Renewal {
         val base = userSettings.fitTrackeeUrl.value?.trimEnd('/').orEmpty()
-        val refresh = userSettings.fitTrackeeRefreshToken.value ?: return null
+        val refresh = userSettings.fitTrackeeRefreshToken.value ?: return Renewal.Refused
         val result = try {
             HttpFetcher.postForm(
                 "$base/api/oauth/token",
@@ -174,15 +193,20 @@ class FitTrackeeUploader(
                     "client_secret" to userSettings.fitTrackeeClientSecret.value.orEmpty(),
                 )
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Token refresh failed", t)
-            return null
+            return Renewal.Unreachable(t.message ?: "Network error")
         }
-        if (!result.isSuccess) return null
-        val access = firstMatch(result.body, "access_token") ?: return null
+        // A server error says nothing about the sign-in; a 4xx is the server
+        // turning the refresh token down.
+        if (result.code >= 500) return Renewal.Unreachable("HTTP ${result.code}")
+        if (!result.isSuccess) return Renewal.Refused
+        val access = firstMatch(result.body, "access_token") ?: return Renewal.Refused
         userSettings.setFitTrackeeAccessToken(access)
         firstMatch(result.body, "refresh_token")?.let { userSettings.setFitTrackeeRefreshToken(it) }
-        return access
+        return Renewal.Renewed(access)
     }
 
     /** Drop the tokens. The client id and secret survive, so reconnecting is one tap. */
@@ -205,6 +229,8 @@ class FitTrackeeUploader(
         val token = userSettings.fitTrackeeAccessToken.value ?: return emptyList()
         val body = try {
             HttpFetcher.getString("$base/api/sports", mapOf("Authorization" to "Bearer $token"))
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Sport list fetch failed", t)
             return emptyList()
@@ -254,6 +280,8 @@ class FitTrackeeUploader(
 
         val fitBytes = try {
             RideFitBuilder.build(session, telemetry, workout, ftp, userSettings.weightKg.value)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "FIT encode failed", t)
             return Outcome.Failure("Couldn't encode ride: ${t.message}")
@@ -278,15 +306,24 @@ class FitTrackeeUploader(
 
         var result = try {
             post(token)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "Upload network error", t)
             return Outcome.Failure(t.message ?: "Network error")
         }
 
         if (result.code == 401) {
-            token = refreshAccessToken() ?: return Outcome.Unauthorized
+            token = when (val renewal = refreshAccessToken()) {
+                is Renewal.Renewed -> renewal.token
+                Renewal.Refused -> return Outcome.Unauthorized
+                is Renewal.Unreachable ->
+                    return Outcome.Failure("Couldn't reach FitTrackee to renew the sign-in (${renewal.message}). Try again later.")
+            }
             result = try {
                 post(token)
+            } catch (e: CancellationException) {
+                throw e
             } catch (t: Throwable) {
                 return Outcome.Failure(t.message ?: "Network error")
             }
@@ -358,6 +395,8 @@ class FitTrackeeUploader(
                 "$base/api/workouts/no_gpx", body,
                 headers = mapOf("Authorization" to "Bearer $token"),
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "Summary upload network error", t)
             return Outcome.Failure(t.message ?: "Network error")

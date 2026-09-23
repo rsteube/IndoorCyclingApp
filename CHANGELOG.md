@@ -36,7 +36,125 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   gravel 1x is now SRAM's XPLR 10-44 and the mountain 1x SRAM's Eagle 10-52,
   sprocket for sprocket.
 
+- **Smart bikes and spin bikes recorded one wattage for the whole ride.** On a
+  machine that reports through FTMS alone, with no separate power service, the
+  first real reading was also the last: power and cadence froze on it until the
+  bike disconnected, in history, in exports and on screen, and the ride never
+  auto-paused. Every reading is now taken, and heart rate from the grips or a
+  strap paired to the bike is used when nothing better is connected.
+
+- **Continuing a ride after backing out of it lost everything before the
+  back-out.** Pausing, pressing back and tapping Continue on the unfinished-ride
+  banner replaced the ride's samples with an empty list, so the saved ride, its
+  averages, its chart and its uploads covered only the part after continuing.
+  The whole ride is kept now.
+
+- **A ride could be saved twice, or opened twice.** A double tap on Save in the
+  unfinished-ride banner wrote two rides, both of which synced; a double tap on
+  Start opened two ride screens, and backing out of one left a blank one behind.
+  Each now happens once.
+
+- **After the app was closed in the background mid-ride, the ride screen came
+  back empty,** with the system bars hidden and no way out but the back
+  gesture. It now goes back to where the unfinished-ride banner is.
+
+- **Rides ran long, and a clock change could pause one.** Every interval change
+  and every pause dropped the fraction of a second in progress, so a forty-
+  interval workout ran about twenty seconds past its plan and was saved shorter
+  than it was ridden. And the ride clock was the phone's wall clock: a network
+  time correction could run it backwards, or auto-pause a rider who was
+  pedalling. The clock is now a stopwatch that carries milliseconds through.
+
+- **An unfinished ride could be lost to a crash at the wrong moment.** The copy
+  kept for recovery, the route progress and the paired companions are now each
+  written to a new file that replaces the old one whole, so a crash mid-write
+  leaves the previous version rather than half of the new one.
+
+- **Exported rides said a missing heart rate was 0 bpm,** which dragged averages
+  down in whatever read them. A second without a reading is now marked as
+  having none, and the ride's FTP and interval boundaries are kept with it so an
+  export made later matches the ride.
+
+- **Losing and regaining a trainer went wrong in several ways.** Its last
+  readings stayed on screen and in the ride after it went; a trainer that came
+  back mid-interval stayed out of ERG until the next interval; one that failed
+  with a Bluetooth error was retried every few seconds for ever; tapping a
+  trainer while another was still connecting left the app connected to both;
+  and backing out of the pairing screen left automatic reconnection off until
+  the app restarted. The heart-rate strap and the handlebar controller had the
+  same connection faults and have the same fixes.
+
+- **A recorded Zwift Click press could be played back.** Every press is now
+  accepted once.
+
+- **Rides longer than four hours could lose their hold on the phone.** The wake
+  lock that keeps the timer and the trainer running with the screen off expired
+  after four hours; it is now renewed while the ride goes on. And a stop meant
+  for one ride can no longer end the next one's service, which on a companion
+  session could close the app.
+
+- **Changes made on this phone were undone by the next sync.** A setting changed
+  since the last sync, or an imported workout renamed, went back to the old
+  value at the next launch. Each setting now keeps the time it was changed, and
+  the newest change wins field by field, so two devices changing two different
+  settings both keep theirs.
+
+- **Settings could lose what was typed into them.** Two quick changes could be
+  saved in either order, and a text field saving as you typed could drop
+  characters. Changes are now saved one at a time, in order.
+
+- **A backup file that could not be read once was taken for no backup at all,**
+  which brought back rides deleted on this phone and passed them on to the other
+  devices. The sync now stops and tries again, or uses the copy kept beside it.
+  Deletes arriving from another device are checked like deletes made here: when
+  one would remove most of the library, backup pauses and asks.
+
+- **Companion rides were never uploaded automatically, and leaving the summary
+  could upload a ride twice.** Automatic upload ran on the summary screen, which
+  a companion ride never passes through; and tapping Done during an upload
+  cancelled it on the phone after the server had it, so the ride still offered
+  Upload. Uploads now run in the background from the moment a ride is saved, and
+  leaving the screen does not stop them.
+
+- **FitTrackee said a sign-in had expired when the server was only unreachable.**
+  It now says it could not reach the server. And a stray `indoorbike://oauth`
+  link can no longer cancel a sign-in in progress.
+
+- **Adding two GPX files with the same name kept only the second,** and two
+  repositories using the same route id overwrote each other's route and credit.
+  Both are now kept.
+
+- **A repository's new workouts could go unannounced.** When a bundle failed to
+  download during a check it was still marked as checked, and its new workouts
+  were not counted until the maintainer changed it again. It is now tried again
+  at the next check.
+
+- **Leaving Settings could interrupt a sync or a restore part way,** and report
+  it as failed; pressing back while Intervals.icu or FitTrackee was finishing a
+  sign-in could lose the sign-in. These now finish wherever the rider goes.
+
+- **Reopening the app from Recents could import a shared file again,** undoing a
+  rename since, or replay an old sign-in and report it as failed.
+
+- **On a first ride, the Bluetooth permission request could be dropped** when
+  the notification one was asked at the same moment. They are now asked in
+  turn.
+
+- **Saving or sharing a share card froze the sheet** while the image was encoded.
+  It is encoded in the background now, and so is an exported ride file.
+
 ### Added
+
+- **Every ride mode works on every machine that can be told anything.** The app
+  now asks a trainer which commands it accepts, and fills each gap from what it
+  has. A trainer with ERG but no road simulation rides routes and companion
+  worlds as the wattage the road asks for at your cadence, so hills still bite
+  and spinning faster still costs more. A bike that only takes a resistance
+  level is held on a workout's wattage, and on a road's, by measuring your power
+  and moving the level until they agree; it takes a few seconds to settle after
+  each change. A machine that accepts none of them is ridden by hand in every
+  mode, and says so once. The trainer's settings sheet says which of these your
+  machine gets.
 
 - **A share card credits the game the ride was ridden with.** A companion that
   sends a name and an icon now has both kept with the ride, and the card's
@@ -47,6 +165,39 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   the rider makes a card and shares it.
 
 ### Changed
+
+- **Companion mode is harder to misuse from the network.** A connection must
+  finish its handshake within 10 seconds and keep it small, repeated wrong codes
+  cost a growing wait and eventually a new code, and the number of connections
+  is capped. A game that stops reading its socket no longer holds up the ride,
+  one that freezes is noticed within seconds, and `setState` is limited to two a
+  second. A connection naming a paired game can no longer take the ride before
+  it has proved it is that game. None of this affects a game that behaves; the
+  limits are in the Companion API documentation.
+
+- **Take control is on the companion HUD,** next to the game's name and the
+  address it connected from, and it lets go of everything the game was holding
+  at once: the hill, a power target, an untracked stretch.
+
+- **A workout link can no longer replace a workout silently.** Importing one that
+  shares an id with a workout you have now asks whether to replace it or keep
+  both, and a starter workout is never replaced. Importing one you already have,
+  unchanged, does nothing. Link payloads and shared files are also held to a
+  sensible size, and read in the background.
+
+- **Connection credentials are encrypted on the phone.** The Intervals.icu token
+  and API key and the FitTrackee secret and tokens are sealed with a key held in
+  Android's keystore. Nothing to do: existing connections are sealed on the first
+  start.
+
+- **Android 12 and later no longer see a location permission.** It was only ever
+  needed for Bluetooth scanning on Android 11 and earlier, and is now declared
+  only there.
+
+- **The ride screen does less work.** It redrew itself for most of every second
+  to animate cadence and heart rate, and for a second at every interval change;
+  now only the readouts that change redraw. It also stops listening for updates
+  while the app is in the background.
 
 - **The download is about 400 KB smaller.** R8's optimized resource shrinking is
   on, which removes the parts of AppCompat and Material this app never draws,

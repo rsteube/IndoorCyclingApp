@@ -33,6 +33,7 @@ import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.sync.FitTrackeeUploader
 import app.indoorbike.sync.IntervalsIcuUploader
 import app.indoorbike.sync.SafSyncStorage
+import app.indoorbike.sync.RideUploads
 import app.indoorbike.sync.SyncEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -114,6 +115,25 @@ class AppContainer(
     val syncEngine: SyncEngine,
 ) {
     private val containerScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * For work a screen starts but must not end: saving a ride, syncing,
+     * uploading, finishing a sign-in. A screen's own coroutine scope is
+     * cancelled the moment the rider navigates away or the activity is
+     * recreated, and work launched there used to die half done with it: a
+     * restore cut off by a tab switch, an upload whose success was never
+     * recorded, a sign-in code that could then never be redeemed.
+     */
+    val appScope: CoroutineScope get() = containerScope
+
+    /** Uploads to Intervals.icu and FitTrackee, run and recorded on the app's scope. */
+    val rideUploads = RideUploads(
+        scope = containerScope,
+        history = historyRepository,
+        settings = userSettings,
+        intervals = intervalsIcuUploader,
+        fitTrackee = fitTrackeeUploader,
+    )
 
     /**
      * The unfinished ride the rider has waved away this session, identified by
@@ -365,6 +385,11 @@ class IndoorBikeApp : Application() {
     // screen off mid-workout and we still want to recover a dropped trainer).
     // Established connections are never dropped by this gate — only scanning is
     // paused — so a backgrounded idle app isn't draining the BLE radio.
+    //
+    // Both fields, and the gate, belong to the main thread: the activity
+    // callbacks run there, and so does the ride-state collector below. It used
+    // to collect on the IO pool, and a stale read of one field from another
+    // thread could pause scanning mid-ride or leave it on while idle.
     private var startedActivityCount = 0
     private var rideActive = false
 
@@ -450,7 +475,7 @@ class IndoorBikeApp : Application() {
         // etc.) tore down RideScreen → ran its `onDispose { stop }` → killed
         // the FGS mid-ride. Now the service mirrors whether a workout is in
         // flight, regardless of which UI happens to be on screen.
-        initScope.launch {
+        initScope.launch(Dispatchers.Main.immediate) {
             // StateFlow is already conflated, so a bare collect is enough:
             // distinctUntilChanged on StateFlow is a no-op and the compiler
             // flags it.

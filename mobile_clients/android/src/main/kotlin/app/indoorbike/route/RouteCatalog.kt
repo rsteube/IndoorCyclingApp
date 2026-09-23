@@ -96,6 +96,15 @@ class RouteCatalog(
     fun sourceOf(routeId: String): RouteSource = _sources.value[routeId] ?: RouteSource.Bundled
 
     /**
+     * [sourceOf] for every route, as it changes. A route browser reads which
+     * of a repository's routes are added from here, by
+     * [RouteSource.Imported.sourceEntryId]: a repository's route can be kept
+     * under another id when its own was taken (see RouteImporter), and a
+     * bundled route or another repository's with the same id is not this one.
+     */
+    val sources: StateFlow<Map<String, RouteSource>> get() = _sources
+
+    /**
      * Re-read both sources. Called after a route is added or removed, so the
      * rides list reflects it without waiting for the next app start.
      */
@@ -122,6 +131,7 @@ class RouteCatalog(
                     sourceRepoId = meta?.sourceRepoId,
                     sourceRepoName = meta?.sourceRepoName,
                     attribution = meta?.attribution,
+                    sourceEntryId = meta?.sourceEntryId ?: track.id,
                 )
             }
 
@@ -164,9 +174,11 @@ class RouteCatalog(
         }
     }
 
-    private companion object {
-        const val TAG = "RouteCatalog"
+    companion object {
+        private const val TAG = "RouteCatalog"
+
+        /** Where the bundled routes are, under the APK's assets. */
         const val ROUTES_DIR = "routes"
-        const val GPX_SUFFIX = ".gpx"
+        private const val GPX_SUFFIX = ".gpx"
     }
 }

@@ -43,7 +43,6 @@ import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -77,12 +76,13 @@ import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /** A ride's screenshots, read again whenever one is added or removed. */
 @Composable
 fun rememberRideScreenshots(rideStartEpochMs: Long): List<RideScreenshot> {
     val store = LocalAppContainer.current.rideScreenshots
-    val revision by store.revision.collectAsState()
+    val revision by store.revision.collectAsStateWithLifecycle()
     val shots by produceState(emptyList<RideScreenshot>(), rideStartEpochMs, revision) {
         value = withContext(Dispatchers.IO) { store.list(rideStartEpochMs) }
     }

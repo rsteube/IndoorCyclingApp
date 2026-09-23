@@ -37,7 +37,23 @@ import kotlinx.coroutines.withContext
 object HttpFetcher {
 
     private const val TIMEOUT_MS = 12_000
-    private const val MAX_BODY_BYTES = 2 * 1024 * 1024 // 2 MB cap on remote JSON
+
+    /**
+     * Cap on remote JSON, and on a workout payload however it arrives: a
+     * shared file or a link's decompressed data is held to the same size.
+     */
+    const val MAX_BODY_BYTES = 2 * 1024 * 1024
+
+    /**
+     * How much of a POST or DELETE reply is kept: enough for a token, an id
+     * or an error message. Only this much is read, so a server that answers
+     * with something enormous (the FitTrackee server is the rider's own
+     * choice) costs no more than this.
+     */
+    private const val RESPONSE_CHARS = 4096
+
+    /** [RESPONSE_CHARS] in bytes, at UTF-8's widest, so the kept text is always whole. */
+    private const val RESPONSE_BYTES = RESPONSE_CHARS * 4
 
     /**
      * Read timeout for [downloadTo]. Longer than [TIMEOUT_MS] because a route
@@ -147,8 +163,8 @@ object HttpFetcher {
             connection.outputStream.use { it.write(body) }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
-            PostResult(code = code, body = text.take(4096))
+            val text = stream?.use { String(it.readPrefix(RESPONSE_BYTES), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(RESPONSE_CHARS))
         } finally {
             connection.disconnect()
         }
@@ -189,8 +205,8 @@ object HttpFetcher {
             connection.outputStream.use { it.write(body) }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
-            PostResult(code = code, body = text.take(4096))
+            val text = stream?.use { String(it.readPrefix(RESPONSE_BYTES), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(RESPONSE_CHARS))
         } finally {
             connection.disconnect()
         }
@@ -223,8 +239,8 @@ object HttpFetcher {
         try {
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
-            PostResult(code = code, body = text.take(4096))
+            val text = stream?.use { String(it.readPrefix(RESPONSE_BYTES), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(RESPONSE_CHARS))
         } finally {
             connection.disconnect()
         }
@@ -269,8 +285,8 @@ object HttpFetcher {
             val code = connection.responseCode
             // Read whichever stream actually has bytes (success vs error).
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
-            val text = stream?.use { String(it.readBytes(), StandardCharsets.UTF_8) } ?: ""
-            PostResult(code = code, body = text.take(4096))
+            val text = stream?.use { String(it.readPrefix(RESPONSE_BYTES), StandardCharsets.UTF_8) } ?: ""
+            PostResult(code = code, body = text.take(RESPONSE_CHARS))
         } finally {
             connection.disconnect()
         }

@@ -97,6 +97,7 @@ import app.indoorbike.ui.components.hrmStatusColor
 import app.indoorbike.ui.components.hrmStatusLine
 import app.indoorbike.ui.components.hrmTitle
 import app.indoorbike.ui.components.trainerStatusColor
+import app.indoorbike.ui.components.trainerHelper
 import app.indoorbike.ui.components.trainerStatusLine
 import app.indoorbike.ui.components.trainerTitle
 import app.indoorbike.ui.components.PrimaryBtn
@@ -113,6 +114,9 @@ import app.indoorbike.ui.theme.SlateMotion
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 private enum class DeviceSheetTarget { Trainer, Hrm, Controller }
 
@@ -227,8 +231,8 @@ fun SettingsTab(
 @Composable
 private fun simulationSummary(): String {
     val settings = LocalAppContainer.current.userSettings
-    val bikeWeight by settings.bikeWeightKg.collectAsState()
-    val drivetrainId by settings.drivetrainId.collectAsState()
+    val bikeWeight by settings.bikeWeightKg.collectAsStateWithLifecycle()
+    val drivetrainId by settings.drivetrainId.collectAsStateWithLifecycle()
     val drivetrain = Drivetrain.byId(drivetrainId)
     return "${drivetrain.name} · ${app.indoorbike.ui.screens.simulation.formatOneDecimal(bikeWeight.toDouble())} kg bike"
 }
@@ -237,10 +241,10 @@ private fun simulationSummary(): String {
 @Composable
 private fun connectionsSummary(): String {
     val settings = LocalAppContainer.current.userSettings
-    val athlete by settings.intervalsAthleteId.collectAsState()
-    val key by settings.intervalsApiKey.collectAsState()
-    val intervalsToken by settings.intervalsAccessToken.collectAsState()
-    val ftToken by settings.fitTrackeeAccessToken.collectAsState()
+    val athlete by settings.intervalsAthleteId.collectAsStateWithLifecycle()
+    val key by settings.intervalsApiKey.collectAsStateWithLifecycle()
+    val intervalsToken by settings.intervalsAccessToken.collectAsStateWithLifecycle()
+    val ftToken by settings.fitTrackeeAccessToken.collectAsStateWithLifecycle()
     val names = buildList {
         if (!intervalsToken.isNullOrBlank() || (!athlete.isNullOrBlank() && !key.isNullOrBlank())) {
             add("Intervals.icu")
@@ -375,10 +379,11 @@ private fun TrainerSheetContent(
 ) {
     val container = LocalAppContainer.current
     val trainerManager = container.trainerManager
-    val state by trainerManager.connectionState.collectAsState()
-    val name by trainerManager.connectedTrainerName.collectAsState()
-    val pairedId by trainerManager.pairedTrainerId.collectAsState()
-    val isMock by trainerManager.isMockTrainer.collectAsState()
+    val state by trainerManager.connectionState.collectAsStateWithLifecycle()
+    val name by trainerManager.connectedTrainerName.collectAsStateWithLifecycle()
+    val pairedId by trainerManager.pairedTrainerId.collectAsStateWithLifecycle()
+    val isMock by trainerManager.isMockTrainer.collectAsStateWithLifecycle()
+    val control by trainerManager.control.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     SheetBody(
@@ -386,8 +391,7 @@ private fun TrainerSheetContent(
         iconTint = CadenceColors.Fg1,
         title = trainerTitle(state, name, isMock),
         statusLine = trainerStatusLine(state, isMock),
-        helper = "Smart trainers using FTMS or Cycling Power Service. " +
-                "Wahoo Kickr, Tacx Neo, Saris, Elite, etc.",
+        helper = trainerHelper(state, isMock, control),
     ) {
         when (state) {
             TrainerConnectionState.Connected,
@@ -433,11 +437,11 @@ private fun HrmSheetContent(
 ) {
     val container = LocalAppContainer.current
     val hrm = container.heartRateMonitor
-    val state by hrm.connectionState.collectAsState()
-    val name by hrm.connectedDeviceName.collectAsState()
-    val pairedId by hrm.pairedDeviceId.collectAsState()
-    val heartRate by hrm.heartRate.collectAsState()
-    val sensorSilent by hrm.sensorSilent.collectAsState()
+    val state by hrm.connectionState.collectAsStateWithLifecycle()
+    val name by hrm.connectedDeviceName.collectAsStateWithLifecycle()
+    val pairedId by hrm.pairedDeviceId.collectAsStateWithLifecycle()
+    val heartRate by hrm.heartRate.collectAsStateWithLifecycle()
+    val sensorSilent by hrm.sensorSilent.collectAsStateWithLifecycle()
 
     SheetBody(
         icon = Icons.Outlined.MonitorHeart,
@@ -496,10 +500,10 @@ private fun ControllerSheetContent(
 ) {
     val container = LocalAppContainer.current
     val controller = container.controllerManager
-    val state by controller.connectionState.collectAsState()
-    val name by controller.connectedDeviceName.collectAsState()
-    val pairedId by controller.pairedDeviceId.collectAsState()
-    val keypadSilent by controller.keypadSilent.collectAsState()
+    val state by controller.connectionState.collectAsStateWithLifecycle()
+    val name by controller.connectedDeviceName.collectAsStateWithLifecycle()
+    val pairedId by controller.pairedDeviceId.collectAsStateWithLifecycle()
+    val keypadSilent by controller.keypadSilent.collectAsStateWithLifecycle()
 
     SheetBody(
         icon = Icons.Outlined.SettingsRemote,
@@ -609,7 +613,7 @@ private fun SheetBody(
 private fun WeightRow() {
     val container = LocalAppContainer.current
     val userSettings = container.userSettings
-    val weight by userSettings.weightKg.collectAsState()
+    val weight by userSettings.weightKg.collectAsStateWithLifecycle()
 
     // Unkeyed on purpose. Keying the buffer on the stored value re-created it
     // every time we wrote through, which yanks the cursor to the end mid-edit.
@@ -774,7 +778,7 @@ private fun formatWeightForInput(kg: Float): String {
 private fun FtpRow() {
     val container = LocalAppContainer.current
     val userSettings = container.userSettings
-    val ftp by userSettings.ftp.collectAsState()
+    val ftp by userSettings.ftp.collectAsStateWithLifecycle()
 
     // Unkeyed on purpose. Keying the buffer on the stored value re-created it
     // every time we wrote through, which yanks the cursor to the end mid-edit.
@@ -903,7 +907,7 @@ private fun FtpRow() {
 private fun MaxHrRow() {
     val container = LocalAppContainer.current
     val userSettings = container.userSettings
-    val maxHr by userSettings.maxHr.collectAsState()
+    val maxHr by userSettings.maxHr.collectAsStateWithLifecycle()
 
     // Unkeyed on purpose. Keying the buffer on the stored value re-created it
     // every time we wrote through, which yanks the cursor to the end mid-edit.
@@ -1149,13 +1153,12 @@ internal fun IntervalsIcuCard() {
     val settings = container.userSettings
     val uploader = container.intervalsIcuUploader
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    val athleteId by settings.intervalsAthleteId.collectAsState()
-    val apiKey by settings.intervalsApiKey.collectAsState()
-    val autoUpload by settings.intervalsAutoUpload.collectAsState()
-    val token by settings.intervalsAccessToken.collectAsState()
-    val athleteName by settings.intervalsAthleteName.collectAsState()
+    val athleteId by settings.intervalsAthleteId.collectAsStateWithLifecycle()
+    val apiKey by settings.intervalsApiKey.collectAsStateWithLifecycle()
+    val autoUpload by settings.intervalsAutoUpload.collectAsStateWithLifecycle()
+    val token by settings.intervalsAccessToken.collectAsStateWithLifecycle()
+    val athleteName by settings.intervalsAthleteName.collectAsStateWithLifecycle()
     val signedIn = !token.isNullOrBlank()
     val keyConfigured = !athleteId.isNullOrBlank() && !apiKey.isNullOrBlank()
     val configured = signedIn || keyConfigured
@@ -1311,15 +1314,20 @@ internal fun IntervalsIcuCard() {
             SecondaryBtn(
                 text = "Disconnect",
                 onClick = {
-                    scope.launch {
+                    // On the app's scope: leaving the screen must not stop
+                    // the revoke half way.
+                    val appContext = context.applicationContext
+                    container.appScope.launch {
                         val revoked = uploader.disconnect()
-                        Toast.makeText(
-                            context,
-                            if (revoked) "Disconnected from Intervals.icu"
-                            else "Disconnected on this phone. Intervals.icu couldn't be reached, so " +
-                                "remove Indoor Bike in your Intervals.icu settings as well.",
-                            Toast.LENGTH_LONG
-                        ).show()
+                        withContext(Dispatchers.Main) {
+                            Toast.makeText(
+                                appContext,
+                                if (revoked) "Disconnected from Intervals.icu"
+                                else "Disconnected on this phone. Intervals.icu couldn't be reached, so " +
+                                    "remove Indoor Bike in your Intervals.icu settings as well.",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 },
                 modifier = Modifier.fillMaxWidth()
@@ -1393,12 +1401,11 @@ private fun BackupSyncCard() {
     val settings = container.userSettings
     val engine = container.syncEngine
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    val syncFolderUri by settings.syncFolderUri.collectAsState()
-    val deviceLabel by settings.deviceLabel.collectAsState()
-    val status by engine.status.collectAsState()
-    val paused by settings.syncPaused.collectAsState()
+    val syncFolderUri by settings.syncFolderUri.collectAsStateWithLifecycle()
+    val deviceLabel by settings.deviceLabel.collectAsStateWithLifecycle()
+    val status by engine.status.collectAsStateWithLifecycle()
+    val paused by settings.syncPaused.collectAsStateWithLifecycle()
     val configured = !syncFolderUri.isNullOrBlank()
 
     val pickFolderLauncher = rememberLauncherForActivityResult(
@@ -1419,7 +1426,12 @@ private fun BackupSyncCard() {
         settings.setSyncFolderUri(uri.toString())
         // Auto-fire a first sync so the rider sees something happen rather
         // than tapping Sync now after picking the folder.
-        scope.launch { engine.syncNow() }
+        //
+        // Sync, restore and keep-local all run on the app's scope. Only the
+        // start tab and the current one are composed, so on this screen's
+        // scope a tab switch cancelled a sync part way, left a restore half
+        // applied, and reported "Couldn't sync".
+        container.appScope.launch { engine.syncNow() }
     }
 
     var expanded by rememberSaveable { mutableStateOf(false) }
@@ -1495,8 +1507,8 @@ private fun BackupSyncCard() {
                 SyncReviewBlock(
                     review = review,
                     busy = status is SyncStatus.Syncing,
-                    onRestore = { scope.launch { engine.resolveRestoreFromBackup() } },
-                    onKeepLocal = { scope.launch { engine.resolveKeepLocal() } }
+                    onRestore = { container.appScope.launch { engine.resolveRestoreFromBackup() } },
+                    onKeepLocal = { container.appScope.launch { engine.resolveKeepLocal() } }
                 )
             } else {
                 // "Sync now" is the action a rider reaches for 99% of the time;
@@ -1505,7 +1517,7 @@ private fun BackupSyncCard() {
                     text = if (status is SyncStatus.Syncing) "Syncing…" else "Sync now",
                     leadingIcon = null,
                     enabled = status !is SyncStatus.Syncing,
-                    onClick = { scope.launch { engine.syncNow() } },
+                    onClick = { container.appScope.launch { engine.syncNow() } },
                     modifier = Modifier.fillMaxWidth()
                 )
                 // Pull the folder's backup onto this device (additive - never
@@ -1516,7 +1528,7 @@ private fun BackupSyncCard() {
                     color = CadenceColors.Fg1,
                     modifier = Modifier
                         .clickable(enabled = status !is SyncStatus.Syncing) {
-                            scope.launch { engine.resolveRestoreFromBackup() }
+                            container.appScope.launch { engine.resolveRestoreFromBackup() }
                         }
                         .padding(top = 8.dp, bottom = 4.dp)
                 )
@@ -1585,14 +1597,17 @@ private fun SyncReviewBlock(
             style = CadenceType.bodyStrong,
             color = CadenceColors.Warning
         )
+        // Either side can be the one that lost data: this device, reset, or
+        // another device whose deletes would remove most of the rides here.
         val detail = if (review != null) {
             "This device has ${review.localSessions} ride(s) and ${review.localImports} " +
-                "workout(s), but the backup has ${review.backupSessions} ride(s) and " +
-                "${review.backupImports} workout(s). That looks like the app's data was reset. " +
-                "Automatic backup is paused so it can't overwrite the folder. Choose what to do:"
+                "workout(s); the backup has ${review.backupSessions} ride(s) and " +
+                "${review.backupImports} workout(s). They disagree about too many at once, which " +
+                "usually means one device's data was reset. Backup is paused so nothing is deleted " +
+                "by mistake. Choose what to do:"
         } else {
-            "Your local data looks reset compared to the backup. Automatic backup is paused " +
-                "so it can't overwrite the folder. Choose what to do:"
+            "This device and the backup disagree about too many rides at once. Backup is paused " +
+                "so nothing is deleted by mistake. Choose what to do:"
         }
         Text(text = detail, style = CadenceType.small, color = CadenceColors.Fg2)
 
@@ -1604,8 +1619,9 @@ private fun SyncReviewBlock(
             modifier = Modifier.fillMaxWidth()
         )
         Text(
-            text = "Brings the folder's rides, workouts, and settings back onto this device. " +
-                "Recommended if the data loss was accidental.",
+            text = "Makes this device match the backup: rides, workouts and settings missing here " +
+                "come back, and anything the backup has removed is removed here too. Recommended " +
+                "if this device's data was lost by accident.",
             style = CadenceType.tick,
             color = CadenceColors.Fg3
         )
@@ -1616,8 +1632,12 @@ private fun SyncReviewBlock(
             modifier = Modifier.fillMaxWidth()
         )
         Text(
-            text = "Use only if you meant to clear these rides - the backup will be updated to " +
-                "match this device, discarding the extras it holds.",
+            // It used to say only that the backup would change. It also
+            // reaches every other device: rides this one does not have are
+            // removed from them at their next sync.
+            text = "Keeps every ride and workout on this device as it is and updates the backup to " +
+                "match. Rides this device doesn't have are removed from the backup, and from your " +
+                "other devices when they next sync. Use only if that is what you want.",
             style = CadenceType.tick,
             color = CadenceColors.Fg3
         )

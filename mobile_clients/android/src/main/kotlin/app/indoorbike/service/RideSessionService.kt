@@ -57,6 +57,14 @@ class RideSessionService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var stateObserver: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var wakeAcquiredAtMs = 0L
+
+    /**
+     * The newest start command this service has been handed. Every stop names
+     * it, so a stop can never take down a start that arrived after it: see
+     * [stopRide].
+     */
+    private var latestStartId = 0
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -66,6 +74,7 @@ class RideSessionService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        latestStartId = startId
         // Before the branch, not inside it. Every one of these commands may have
         // arrived through `startForegroundService`, and that call is a promise
         // that this service will show a notification within a few seconds. Break
@@ -78,13 +87,19 @@ class RideSessionService : Service() {
         // stop that raced ahead of a start (one ride ending as the next begins,
         // which is every lap of a companion session) would otherwise return
         // without ever having shown anything.
-        val action = intent?.action ?: ACTION_START
+        //
+        // A null intent is Android restarting the service after its process
+        // was killed, not anybody asking for a ride, so it goes to the recovery
+        // branch below. It used to be read as a start, which put "Ride
+        // starting" up for a ride that no longer existed.
+        val action = intent?.action ?: ACTION_RESTARTED
         // A stop that cannot show a notification has nothing to tell the rider:
         // it is on its way out either way, and the banner that offers to fix
         // the permission would be announcing a ride that is already over.
         startForegroundCompat(
             notification = buildNotification("Ride starting…", null),
-            announceFailure = action != ACTION_STOP,
+            startId = startId,
+            announceFailure = action == ACTION_START,
         )
 
         when (action) {
@@ -94,9 +109,11 @@ class RideSessionService : Service() {
                 return START_NOT_STICKY
             }
             else -> {
-                // System-redelivered start (process kill recovery). Only stay
-                // alive if the session actually has an active workout, otherwise
-                // bail so we don't keep an orphan service running.
+                // A restart after the process was killed. The ride died with the
+                // process (it is continued from the banner, never resumed here),
+                // so this almost always stops. Only stay alive if the session
+                // somehow has a ride running, otherwise bail so we don't keep an
+                // orphan service running.
                 val container = (applicationContext as IndoorBikeApp).container
                 val state = container.sessionManager.state.value
                 if (state == WorkoutState.Active || state == WorkoutState.Paused ||
@@ -108,11 +125,12 @@ class RideSessionService : Service() {
                     startRide()
                 } else {
                     stopRide(startId)
-                    return START_NOT_STICKY
                 }
             }
         }
-        return START_STICKY
+        // Not sticky: a ride does not survive its process, so there is nothing
+        // for a restart to come back to.
+        return START_NOT_STICKY
     }
 
     private fun startRide() {
@@ -130,17 +148,21 @@ class RideSessionService : Service() {
         ) { state, elapsed, target -> Triple(state, elapsed, target) }
             .onEach { (state, elapsed, target) ->
                 if (state == WorkoutState.Completed || state == WorkoutState.Idle) {
-                    stopRide()
+                    // By id, like every other stop. A bare stopSelf here was the
+                    // one left: on a companion lap the next ride's start could
+                    // already be waiting, and it was dropped with its
+                    // foreground promise unkept, which is fatal.
+                    stopRide(latestStartId)
                     return@onEach
                 }
+                renewWakeIfDue()
                 updateNotification(buildNotification("$target W · ${formatHHMM(elapsed)}", state.name))
             }
             .launchIn(scope)
     }
 
     /**
-     * @param startId the command that asked for this, or null when the ride
-     *   itself ended and no command is waiting on the answer.
+     * @param startId the newest command this stop answers.
      *
      * Stopping by id rather than outright is the difference between ending a
      * ride and ending the app. A bare `stopSelf` tears the service down even
@@ -149,7 +171,7 @@ class RideSessionService : Service() {
      * seconds later. `stopSelf(startId)` declines to stop if anything newer has
      * arrived, so a ride that ends as the next one begins hands straight over.
      */
-    private fun stopRide(startId: Int? = null) {
+    private fun stopRide(startId: Int) {
         stateObserver?.cancel()
         stateObserver = null
         releaseWake()
@@ -159,7 +181,7 @@ class RideSessionService : Service() {
             @Suppress("DEPRECATION")
             stopForeground(true)
         }
-        if (startId != null) stopSelf(startId) else stopSelf()
+        stopSelf(startId)
     }
 
     override fun onDestroy() {
@@ -213,7 +235,7 @@ class RideSessionService : Service() {
         }
     }
 
-    private fun startForegroundCompat(notification: Notification, announceFailure: Boolean = true) {
+    private fun startForegroundCompat(notification: Notification, startId: Int, announceFailure: Boolean) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(
@@ -242,7 +264,7 @@ class RideSessionService : Service() {
                 (applicationContext as? IndoorBikeApp)?.container
                     ?.sessionManager?.notifyForegroundServiceFailure(msg)
             }
-            stopSelf()
+            stopSelf(startId)
         } catch (e: IllegalStateException) {
             // Android 12+ throws ForegroundServiceStartNotAllowedException
             // (an IllegalStateException) when the service is started from
@@ -255,7 +277,7 @@ class RideSessionService : Service() {
                 (applicationContext as? IndoorBikeApp)?.container
                     ?.sessionManager?.notifyForegroundServiceFailure(msg)
             }
-            stopSelf()
+            stopSelf(startId)
         }
     }
 
@@ -266,6 +288,24 @@ class RideSessionService : Service() {
             PowerManager.PARTIAL_WAKE_LOCK,
             "IndoorBike::RideSession"
         ).apply { setReferenceCounted(false); acquire(MAX_WAKE_DURATION_MS) }
+        wakeAcquiredAtMs = System.currentTimeMillis()
+    }
+
+    /**
+     * Push the wake lock's timeout back while the ride goes on.
+     *
+     * The timeout is a backstop against a lock that is never released, not a
+     * limit on rides, but it was set once and never moved: a ride past four
+     * hours silently lost it, and with it the guarantee that the timer and the
+     * trainer link keep running with the screen off. A non-counted lock
+     * acquired again restarts its timeout.
+     */
+    private fun renewWakeIfDue() {
+        val lock = wakeLock ?: return
+        val now = System.currentTimeMillis()
+        if (now - wakeAcquiredAtMs < WAKE_RENEW_MS) return
+        lock.acquire(MAX_WAKE_DURATION_MS)
+        wakeAcquiredAtMs = now
     }
 
     private fun releaseWake() {
@@ -291,6 +331,12 @@ class RideSessionService : Service() {
         private const val NOTIFICATION_ID = 1001
         private const val MAX_WAKE_DURATION_MS = 4 * 60 * 60 * 1000L // 4 hours hard cap
 
+        /** How often a running ride renews its wake lock's timeout. */
+        private const val WAKE_RENEW_MS = 60 * 60 * 1000L
+
+        /** What a start command with no intent means: Android restarting us. */
+        private const val ACTION_RESTARTED = "app.indoorbike.action.RESTARTED"
+
         const val ACTION_START = "app.indoorbike.action.START_RIDE"
         const val ACTION_STOP = "app.indoorbike.action.STOP_RIDE"
 
@@ -300,8 +346,8 @@ class RideSessionService : Service() {
          * the *caller*, and both are called from a bare `launch` on the
          * application scope, so an uncaught one takes the process down.
          *
-         * The path that matters is a restart after a kill: the service is
-         * START_STICKY, so Android brings the process back in the background,
+         * The path that matters is a process brought back in the background
+         * (the service is no longer sticky, but other things can do it):
          * `Application.onCreate` collects the session StateFlow, and its current
          * value (Idle, before the snapshot has loaded) routes straight to
          * [stop] - a background service start, moments after the app died.

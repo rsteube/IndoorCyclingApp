@@ -22,6 +22,7 @@ import app.indoorbike.shared.repo.RegistryEntry
 import app.indoorbike.shared.repo.BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.util.Log
 import java.io.File
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -214,25 +215,37 @@ class FollowedRepositories(
             val knownWorkouts = seen.knownWorkoutIds.toMutableSet()
             val knownRoutes = seen.knownRouteIds.toMutableSet()
 
+            // A bundle's version is recorded only once its contents have been
+            // read. Recording every version in the manifest, as this did, meant
+            // a bundle that failed to download once was taken as checked, and
+            // its new workouts were never counted until its next version.
+            val workoutVersions = seen.bundleVersions.toMutableMap()
+            val routeVersions = seen.routeBundleVersions.toMutableMap()
+
             for (bundle in changedWorkoutBundles) {
                 val url = repositoryManager.resolveUrl(bundle.url, repo.manifestUrl) ?: continue
-                runCatching { ManifestParser.parseWorkoutBundle(HttpFetcher.getString(url)) }
-                    .onSuccess { workouts -> knownWorkouts += workouts.map { it.id } }
-                    .onFailure { Log.w(TAG, "Bundle ${bundle.id} of ${repo.id}: ${it.message}") }
+                val workouts = fetchOrNull("Bundle ${bundle.id} of ${repo.id}") {
+                    ManifestParser.parseWorkoutBundle(HttpFetcher.getString(url))
+                } ?: continue
+                knownWorkouts += workouts.map { it.id }
+                workoutVersions[bundle.id] = bundle.version
             }
             for (bundle in changedRouteBundles) {
                 val url = repositoryManager.resolveUrl(bundle.url, repo.manifestUrl) ?: continue
-                runCatching { ManifestParser.parseRouteBundle(HttpFetcher.getString(url)) }
-                    .onSuccess { routes -> knownRoutes += routes.map { it.id } }
-                    .onFailure { Log.w(TAG, "Route bundle ${bundle.id} of ${repo.id}: ${it.message}") }
+                val routes = fetchOrNull("Route bundle ${bundle.id} of ${repo.id}") {
+                    ManifestParser.parseRouteBundle(HttpFetcher.getString(url))
+                } ?: continue
+                knownRoutes += routes.map { it.id }
+                routeVersions[bundle.id] = bundle.version
             }
 
             // A repository the rider has never browsed starts with nothing
             // seen, so its whole catalogue counts as new. That is deliberate:
             // they followed it to find out what is in it.
             val updated = seen.copy(
-                bundleVersions = workoutBundles.associate { it.id to it.version },
-                routeBundleVersions = routeBundles.associate { it.id to it.version },
+                // Bundles the manifest no longer lists are forgotten.
+                bundleVersions = workoutVersions.filterKeys { id -> workoutBundles.any { it.id == id } },
+                routeBundleVersions = routeVersions.filterKeys { id -> routeBundles.any { it.id == id } },
                 knownWorkoutIds = knownWorkouts,
                 knownRouteIds = knownRoutes,
                 lastCheckedEpoch = System.currentTimeMillis(),
@@ -244,6 +257,10 @@ class FollowedRepositories(
                 newRoutes = (updated.knownRouteIds - updated.seenRouteIds).size,
                 checkedEpoch = updated.lastCheckedEpoch,
             )
+        } catch (e: CancellationException) {
+            // Leaving the home screen mid-check is not a failure of the
+            // repository, and must not be shown as one.
+            throw e
         } catch (t: Throwable) {
             Log.w(TAG, "Check failed for ${repo.id}: ${t.message}")
             val seen = loadSeen(repo.id)
@@ -256,6 +273,17 @@ class FollowedRepositories(
         }
         _status.value = _status.value + (repo.id to result)
     }
+
+    /** [block]'s result, or null if it failed: logged, and never a cancellation. */
+    private inline fun <T> fetchOrNull(what: String, block: () -> T): T? =
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (t: Throwable) {
+            Log.w(TAG, "$what: ${t.message}")
+            null
+        }
 
     // ── Persistence ──────────────────────────────────────────────────────
 

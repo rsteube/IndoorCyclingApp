@@ -99,8 +99,11 @@ object WorkoutLinkParser {
     private fun decodeBase64GzipUtf8(encoded: String): String? {
         val bytes = decodeBase64Bytes(encoded) ?: return null
         return try {
+            // Capped: a link of a megabyte or two can inflate to hundreds, and
+            // was read whole before anything looked at its size.
             GZIPInputStream(ByteArrayInputStream(bytes)).use { gz ->
-                gz.readBytes().toString(StandardCharsets.UTF_8)
+                gz.readAtMost(HttpFetcher.MAX_BODY_BYTES.toLong(), "Workout link too large")
+                    .toString(StandardCharsets.UTF_8)
             }
         } catch (t: Throwable) {
             null

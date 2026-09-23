@@ -42,6 +42,8 @@ sealed class RouteSource {
         val sourceRepoId: String? = null,
         val sourceRepoName: String? = null,
         val attribution: RouteAttribution? = null,
+        /** The id the repository lists it under, which the local id need not be. */
+        val sourceEntryId: String? = null,
     ) : RouteSource()
 
     /** Short label for the route card, matching how workout cards are tagged. */

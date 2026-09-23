@@ -45,7 +45,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -82,6 +81,7 @@ import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlin.math.roundToInt
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * The route selector: every road the rider has, with what each one will cost
@@ -112,18 +112,18 @@ fun RouteLibraryScreen(
     onPairTrainer: () -> Unit = {},
 ) {
     val container = LocalAppContainer.current
-    val routes by container.routeCatalog.routes.collectAsState()
-    val initialised by container.routeCatalog.initialised.collectAsState()
-    val ftp by container.userSettings.ftp.collectAsState()
-    val riderKg by container.userSettings.weightKg.collectAsState()
-    val bikeKg by container.userSettings.bikeWeightKg.collectAsState()
+    val routes by container.routeCatalog.routes.collectAsStateWithLifecycle()
+    val initialised by container.routeCatalog.initialised.collectAsStateWithLifecycle()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
+    val riderKg by container.userSettings.weightKg.collectAsStateWithLifecycle()
+    val bikeKg by container.userSettings.bikeWeightKg.collectAsStateWithLifecycle()
 
     // Simulation is trainer-gated for the same reason the rides list gates it:
     // with nothing to feel the gradient through, the mode is a map that
     // scrolls on its own. Tapping a route without a trainer goes to pairing
     // rather than into a ride that cannot do anything.
-    val connectionState by container.trainerManager.connectionState.collectAsState()
-    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
+    val connectionState by container.trainerManager.connectionState.collectAsStateWithLifecycle()
+    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsStateWithLifecycle()
     val isTrainerLive = connectionState == TrainerConnectionState.Connected || isMockTrainer
 
     // Deriving a listing entry per route is a walk of the gradient profile, so

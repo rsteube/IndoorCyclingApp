@@ -121,6 +121,13 @@ object CompanionCodec {
      * all-or-nothing.
      */
     fun decodeClientFrame(text: String): Decoded {
+        // Measured on the raw text, before anything recursive sees it. No
+        // frame nests more than a few levels, and a twenty-kilobyte run of
+        // '[' used to take the tree walk below past the end of the stack: an
+        // Error, not an Exception, which nothing on the socket caught.
+        if (nestingDepth(text) > MAX_NESTING) {
+            return Decoded.Malformed("frame nests deeper than " + MAX_NESTING + " levels")
+        }
         val parsed = try {
             json.parseToJsonElement(text)
         } catch (e: Exception) {
@@ -165,6 +172,33 @@ object CompanionCodec {
 
     /** The largest magnitude at which every whole double is exactly a long. */
     private const val EXACT_WHOLE_LIMIT = 9_007_199_254_740_992.0
+
+    /** Far past any frame the protocol defines, and far short of any stack. */
+    private const val MAX_NESTING = 32
+
+    /** The deepest `[` / `{` nesting in [text], strings skipped. */
+    private fun nestingDepth(text: String): Int {
+        var depth = 0
+        var deepest = 0
+        var inString = false
+        var escaped = false
+        for (c in text) {
+            if (inString) {
+                when {
+                    escaped -> escaped = false
+                    c == '\\' -> escaped = true
+                    c == '"' -> inString = false
+                }
+                continue
+            }
+            when (c) {
+                '"' -> inString = true
+                '[', '{' -> { depth += 1; if (depth > deepest) deepest = depth }
+                ']', '}' -> depth -= 1
+            }
+        }
+        return deepest
+    }
 
     /**
      * Every whole number spelled with a fraction or an exponent, respelled as

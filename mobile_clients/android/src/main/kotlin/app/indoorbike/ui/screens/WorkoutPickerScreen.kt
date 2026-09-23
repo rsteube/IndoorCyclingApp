@@ -68,7 +68,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -131,6 +130,7 @@ import java.util.Date
 import java.util.Locale
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import app.indoorbike.ui.components.IconBtn
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Single-select library filter. Duration buckets come before tags because
@@ -200,8 +200,8 @@ fun WorkoutPickerScreen(
     detailPane: (@Composable (Workout, onClose: () -> Unit) -> Unit)? = null,
 ) {
     val container = LocalAppContainer.current
-    val ftp by container.userSettings.ftp.collectAsState()
-    val favouriteIds by container.userSettings.favouriteWorkoutIds.collectAsState()
+    val ftp by container.userSettings.ftp.collectAsStateWithLifecycle()
+    val favouriteIds by container.userSettings.favouriteWorkoutIds.collectAsStateWithLifecycle()
 
     val workouts = remember(entries) { entries.map { it.workout } }
     val summaries = remember(workouts, ftp) { workouts.map { it.toSummary(ftp) } }

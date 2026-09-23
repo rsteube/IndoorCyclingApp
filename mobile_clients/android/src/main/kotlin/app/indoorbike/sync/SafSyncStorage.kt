@@ -52,6 +52,18 @@ class SafSyncStorage(
             .toList()
     }
 
+    override suspend fun readOwnSlice(deviceId: String): OwnSlice = withContext(Dispatchers.IO) {
+        val tree = DocumentFile.fromTreeUri(context, treeUri)
+        if (tree == null || !tree.isDirectory) return@withContext OwnSlice.Unreadable("the sync folder can't be opened")
+        val name = sliceFileName(deviceId)
+        val current = tree.findFile(name)
+        val previous = tree.findFile(name + PREV_SUFFIX)
+        if (current == null && previous == null) return@withContext OwnSlice.Missing
+        val texts = listOfNotNull(current, previous).mapNotNull { readSliceText(it) }
+        // Present but unreadable is never "missing": see OwnSlice.Unreadable.
+        if (texts.isEmpty()) OwnSlice.Unreadable("$name couldn't be read") else OwnSlice.Found(texts)
+    }
+
     override suspend fun writeOwnSlice(deviceId: String, json: String) = withContext(Dispatchers.IO) {
         val tree = DocumentFile.fromTreeUri(context, treeUri)
             ?: throw IllegalStateException("Sync folder unreachable")

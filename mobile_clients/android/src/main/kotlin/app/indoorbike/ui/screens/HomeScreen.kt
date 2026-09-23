@@ -51,7 +51,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,6 +88,7 @@ import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.theme.enterReveal
 import app.indoorbike.ui.theme.pressScale
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Home. The question it answers is "what am I riding today?", and nothing else.
@@ -125,20 +125,20 @@ fun HomeScreen(
     onStartFirstRide: () -> Unit,
 ) {
     val container = LocalAppContainer.current
-    val followed by container.followedRepositories.repos.collectAsState()
-    val repoStatus by container.followedRepositories.status.collectAsState()
-    val refreshing by container.followedRepositories.refreshing.collectAsState()
-    val hasCompletedOnboarding by container.userSettings.hasCompletedOnboarding.collectAsState()
-    val dismissedStarter by container.userSettings.hasDismissedStarterCard.collectAsState()
-    val sessions by container.sessions.collectAsState()
-    val unfinished by container.sessionManager.persistedSnapshot.collectAsState()
+    val followed by container.followedRepositories.repos.collectAsStateWithLifecycle()
+    val repoStatus by container.followedRepositories.status.collectAsStateWithLifecycle()
+    val refreshing by container.followedRepositories.refreshing.collectAsStateWithLifecycle()
+    val hasCompletedOnboarding by container.userSettings.hasCompletedOnboarding.collectAsStateWithLifecycle()
+    val dismissedStarter by container.userSettings.hasDismissedStarterCard.collectAsStateWithLifecycle()
+    val sessions by container.sessions.collectAsStateWithLifecycle()
+    val unfinished by container.sessionManager.persistedSnapshot.collectAsStateWithLifecycle()
 
     // Riding is trainer-gated throughout the app: without one there is nothing
     // to hold a wattage or feel a gradient. The two pickers can be browsed
     // regardless, because choosing is not riding, but Just ride starts
     // immediately and so has to check here.
-    val trainerState by container.trainerManager.connectionState.collectAsState()
-    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
+    val trainerState by container.trainerManager.connectionState.collectAsStateWithLifecycle()
+    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsStateWithLifecycle()
     val isTrainerLive = trainerState == TrainerConnectionState.Connected || isMockTrainer
 
     // Throttled inside FollowedRepositories, so landing here repeatedly before

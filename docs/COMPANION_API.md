@@ -125,7 +125,9 @@ implicit:
 - A companion the rider has *permanently paired* skips the code and proves itself with a key
   instead. See [permanent pairing](#permanent-pairing) below.
 - The connected companion's self-declared name and address are always visible on the HUD, with
-  a one-tap **Take back control** that drops to a flat road without ending the recording.
+  a one-tap **Take control** that drops to a flat road without ending the recording. It lets go
+  of everything the companion was holding at once: the hill, a `setPower` target, an untracked
+  stretch. The companion is told with `4004`.
 
 **What is authenticated and what is not.** Pairing establishes who is on the other end. It does
 not encrypt anything: traffic is plaintext on the LAN, so anything on the network can read a
@@ -134,6 +136,43 @@ an oversight. Encrypting the stream would mean every companion needing TLS with 
 which is awkward in a game engine and would price out exactly the people this API exists for.
 
 Do not run this on a network you do not trust.
+
+### Limits a companion has to live within
+
+None of these get in the way of a companion that behaves. They exist because the phone is
+driving a trainer somebody is riding, and a socket on the local network is open to more than
+the game it was opened for.
+
+- **Finish the handshake within 10 seconds.** A connection that has not completed its `hello`
+  (and, for a paired companion, its `pairProof`) 10 s after it opened is sent `unauthorized` and
+  closed with `4002`. One that never said anything used to stay open for good.
+- **Say `hello` first.** Before the handshake, a frame of a type this build does not know is not
+  a later protocol version talking, since every version's first frame is a `hello`: it is
+  answered with `unauthorized` and `4002`. After the handshake, unknown frames are ignored, as
+  they always were.
+- **Keep the handshake small.** Until the handshake is done, only text frames of at most 16 KB
+  are read; anything else closes the connection with `4002`. A `hello` is a few hundred bytes.
+  After it, a frame may be up to 8 MB, which is what a `screenshot` needs.
+- **Nest no deeper than 32 levels.** A frame whose JSON nests deeper is `malformed` (`4008`).
+- **Answer pings.** The app pings every 5 s and closes a connection that has not answered for
+  10 s. Every WebSocket library answers pings on its own; a companion only has to keep reading
+  its socket. This is also how a game that froze or lost its network is noticed in seconds
+  rather than when the operating system gives up on the TCP connection.
+- **Keep reading.** Frames to each companion go through their own queue. Telemetry that finds 4
+  frames already waiting is skipped rather than queued, so a slow reader gets fewer, fresher
+  frames instead of an ever-older backlog; any frame that cannot be written within 5 s closes
+  the connection. A companion that stops reading no longer holds up the others, or the ride.
+- **Wrong codes cost time.** The third failed handshake from an address makes it wait 1 s before
+  it may try again, doubling with each further failure to at most 60 s. After 10 failed
+  attempts in all, the pairing code is replaced with a new one and the phone shows it. Paired
+  companions never use a code and are unaffected.
+- **At most 8 connections at once, 4 of them still in their handshake.** One more is closed
+  straight away with `1013` ("try again later").
+- **`setState` at most twice a second.** Every state change writes to the trainer. A third
+  request within a second is dropped with a `rateLimited` warning; follow `stateChanged` as
+  always.
+- **Names are cleaned.** Control characters and bidirectional-text overrides are removed from a
+  client's name before the rider sees it, so a name cannot pose as another by reordering itself.
 
 ### Discovery
 
@@ -481,6 +520,9 @@ as a start or a continuation.
 
 A game that has its own pause - a menu, a loading screen, a rider who stopped - should use
 `"paused"`, or the ride record quietly accumulates minutes of zeroes nobody rode.
+
+At most two `setState` frames a second are acted on; a third within the second is dropped with a
+`rateLimited` warning. See [the limits](#limits-a-companion-has-to-live-within).
 
 **This is a request, and it can legitimately do nothing.** A ride that has not started cannot be
 paused, and one already paused cannot be paused again. The `stateChanged` event is the answer,

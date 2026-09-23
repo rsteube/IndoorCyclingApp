@@ -17,6 +17,7 @@ package app.indoorbike.ride
 
 import app.indoorbike.AppContainer
 import app.indoorbike.shared.companion.CompanionCourse
+import app.indoorbike.shared.session.RideRoad
 import app.indoorbike.shared.workout.isCompanion
 
 /**
@@ -70,14 +71,23 @@ class CompanionRideRecorder(private val container: AppContainer) {
      * never actually started, and a session with no elapsed time and no samples
      * in it is not a ride, it is an intention.
      */
-    suspend fun save(): SavedCompanionRide? {
+    suspend fun save(
+        /**
+         * The road as it stood when the game said the ride was over, captured
+         * then rather than read now: frames that arrive between the finish and
+         * this save belong to the next ride, and reading the engine here gave
+         * them to this one. Null reads the engine, for an ending the game did
+         * not ask for.
+         */
+        roadAtFinish: RideRoad? = null,
+    ): SavedCompanionRide? {
         val sessions = container.sessionManager
         val workout = sessions.activeWorkout.value ?: return null
         if (!workout.isCompanion) return null
         val startedAt = sessions.sessionStartTimeEpoch
         if (startedAt == 0L) return null
 
-        val road = sessions.pendingRideRoad()
+        val road = roadAtFinish ?: sessions.pendingRideRoad()
         // Read before the insert: `saveRideToHistory` clears the pending-ride
         // snapshot on its way out, and the name is the course's if the game
         // named one, which is the same rule the list at the end of the session
@@ -93,6 +103,7 @@ class CompanionRideRecorder(private val container: AppContainer) {
             durationSeconds = duration,
             telemetry = telemetry,
             road = road,
+            record = sessions.pendingRideRecord(),
         )
         return SavedCompanionRide(
             sessionId = sessionId,

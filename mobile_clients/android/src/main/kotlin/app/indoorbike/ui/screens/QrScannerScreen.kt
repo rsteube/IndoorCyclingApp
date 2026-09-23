@@ -368,5 +368,6 @@ private suspend fun handleScannedUrl(
             Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
             null
         }
+        ImportResult.Cancelled -> null
     }
 }

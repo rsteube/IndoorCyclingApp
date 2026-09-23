@@ -41,7 +41,6 @@ import androidx.compose.material.icons.outlined.SettingsRemote
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,14 +51,17 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
+import app.indoorbike.shared.ble.ControlPath
 import app.indoorbike.shared.ble.ControllerConnectionState
 import app.indoorbike.shared.ble.HrmConnectionState
 import app.indoorbike.shared.ble.TrainerConnectionState
+import app.indoorbike.shared.ble.TrainerControl
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.Spacing
 import app.indoorbike.ui.theme.rememberReducedMotion
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * The trainer, heart rate monitor and controller, with what each one is
@@ -84,16 +86,16 @@ fun DeviceStatusCard(
     showChevrons: Boolean = false,
 ) {
     val container = LocalAppContainer.current
-    val trainerState by container.trainerManager.connectionState.collectAsState()
-    val trainerName by container.trainerManager.connectedTrainerName.collectAsState()
-    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsState()
-    val hrmState by container.heartRateMonitor.connectionState.collectAsState()
-    val hrmName by container.heartRateMonitor.connectedDeviceName.collectAsState()
-    val hrmHeartRate by container.heartRateMonitor.heartRate.collectAsState()
-    val hrmSilent by container.heartRateMonitor.sensorSilent.collectAsState()
-    val controllerState by container.controllerManager.connectionState.collectAsState()
-    val controllerName by container.controllerManager.connectedDeviceName.collectAsState()
-    val controllerSilent by container.controllerManager.keypadSilent.collectAsState()
+    val trainerState by container.trainerManager.connectionState.collectAsStateWithLifecycle()
+    val trainerName by container.trainerManager.connectedTrainerName.collectAsStateWithLifecycle()
+    val isMockTrainer by container.trainerManager.isMockTrainer.collectAsStateWithLifecycle()
+    val hrmState by container.heartRateMonitor.connectionState.collectAsStateWithLifecycle()
+    val hrmName by container.heartRateMonitor.connectedDeviceName.collectAsStateWithLifecycle()
+    val hrmHeartRate by container.heartRateMonitor.heartRate.collectAsStateWithLifecycle()
+    val hrmSilent by container.heartRateMonitor.sensorSilent.collectAsStateWithLifecycle()
+    val controllerState by container.controllerManager.connectionState.collectAsStateWithLifecycle()
+    val controllerName by container.controllerManager.connectedDeviceName.collectAsStateWithLifecycle()
+    val controllerSilent by container.controllerManager.keypadSilent.collectAsStateWithLifecycle()
 
     ListCard {
         DeviceRow(
@@ -235,6 +237,38 @@ internal fun trainerStatusLine(state: TrainerConnectionState, isMock: Boolean): 
     TrainerConnectionState.Disconnecting -> "Disconnecting…"
     TrainerConnectionState.Disconnected -> "Not paired"
     TrainerConnectionState.Error -> "Connection error · tap to retry"
+}
+
+/**
+ * The trainer sheet's explanation: what kinds of machine pair, until one has,
+ * and then how the app is driving the one that did.
+ *
+ * Worth saying because the machines differ in ways a rider feels. A bike that
+ * only takes a resistance level is steered onto a wattage by measuring it,
+ * which takes a few seconds after each change, and a rider who does not know
+ * that reads it as the app being slow.
+ */
+internal fun trainerHelper(state: TrainerConnectionState, isMock: Boolean, control: TrainerControl): String {
+    if (state != TrainerConnectionState.Connected || isMock) {
+        return "Smart trainers and smart bikes using FTMS or Cycling Power Service. " +
+            "Wahoo Kickr, Tacx Neo, Saris, Elite, etc."
+    }
+    return when {
+        control.power == ControlPath.NATIVE && control.road == ControlPath.NATIVE ->
+            "Workouts hold you at their target wattage, and routes set the resistance of the road."
+        control.power == ControlPath.NATIVE && control.road == ControlPath.VIA_POWER ->
+            "This trainer can't simulate a road, so routes hold you at the wattage the road " +
+                "asks for at your cadence. Workouts use its own ERG."
+        control.power == ControlPath.VIA_RESISTANCE ->
+            "This machine only takes a resistance level, so the app sets it by measuring your " +
+                "power. Allow a few seconds for it to settle after each change."
+        control.power == ControlPath.MANUAL && control.road == ControlPath.NATIVE ->
+            "Routes set the resistance of the road. This trainer can't hold a wattage, so in " +
+                "workouts set the effort yourself."
+        else ->
+            "This machine's resistance can't be set from the app, so set it yourself. Your " +
+                "power, speed and progress are still recorded as you ride."
+    }
 }
 
 internal fun trainerStatusColor(state: TrainerConnectionState): Color = when (state) {

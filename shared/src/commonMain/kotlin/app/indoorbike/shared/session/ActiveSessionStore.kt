@@ -87,7 +87,63 @@ data class ActiveSessionSnapshot(
      * shape while the same ride finished normally saved with one.
      */
     val companionCourse: CompanionCourse? = null,
+    /**
+     * This ride's own id, fixed when it first went active. History keys the
+     * saved ride on it, so saving the same ride twice - a double tap on the
+     * banner, or a save that landed just before the app died and is offered
+     * again - finds the first copy instead of making a second. Null in
+     * snapshots written before it existed.
+     */
+    val rideId: String? = null,
+    /**
+     * Where each segment of the ride actually began, in samples. See
+     * [SegmentMark]. Empty in snapshots written before it existed, and the
+     * exports then fall back to the planned segment lengths.
+     */
+    val segmentMarks: List<SegmentMark> = emptyList(),
 )
+
+/**
+ * A segment of a ride beginning: segment [segment] of the workout, from sample
+ * [sample] of the ride's telemetry onwards.
+ *
+ * Recorded as the ride happens because the plan cannot reconstruct it. A
+ * skipped segment, a ride ended early, or a pause that straddles a boundary
+ * all move where the segments really fell, and exports cut on the planned
+ * lengths put one interval's riding under the next one's target.
+ */
+@Serializable
+data class SegmentMark(val segment: Int, val sample: Int) {
+    companion object {
+        /** `segment@sample` pairs joined by `;`, the form history stores. */
+        fun encode(marks: List<SegmentMark>): String =
+            marks.joinToString(";") { "${it.segment}@${it.sample}" }
+
+        /** The inverse of [encode]; anything malformed is skipped rather than guessed at. */
+        fun decode(text: String): List<SegmentMark> =
+            text.split(';').mapNotNull { part ->
+                val at = part.indexOf('@')
+                if (at <= 0) return@mapNotNull null
+                val segment = part.substring(0, at).toIntOrNull() ?: return@mapNotNull null
+                val sample = part.substring(at + 1).toIntOrNull() ?: return@mapNotNull null
+                if (segment < 0 || sample < 0) null else SegmentMark(segment, sample)
+            }
+    }
+}
+
+/**
+ * What history needs to know about a ride beyond its samples and its road:
+ * its own id, the FTP it was ridden at, and where its segments fell.
+ */
+data class RideRecord(
+    val rideId: String?,
+    val ftp: Int,
+    val segmentMarks: List<SegmentMark>,
+) {
+    companion object {
+        val NONE = RideRecord(rideId = null, ftp = 0, segmentMarks = emptyList())
+    }
+}
 
 /**
  * Per-platform persistence for the active session snapshot. Implementations

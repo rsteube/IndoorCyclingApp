@@ -19,11 +19,13 @@ import android.content.Context
 import android.net.Uri
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.repo.ImportKind
+import app.indoorbike.shared.repo.ImportPlan
 import app.indoorbike.shared.repo.ManifestParser
 import app.indoorbike.shared.repo.RepositoryManifest
 import app.indoorbike.shared.util.Log
 import java.io.File
 import java.nio.charset.StandardCharsets
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -35,11 +37,19 @@ import kotlinx.serialization.json.Json
  * Persistence layout under `filesDir`:
  *   user_workouts/<sanitised-id>.json
  *
- * Uses the workout's own `id` as the filename so re-importing the same workout
- * overwrites cleanly (idempotent). Sanitisation strips path separators and
- * keeps the filename predictable for hand-debugging.
+ * Uses the workout's own `id` as the filename. Sanitisation strips path
+ * separators and keeps the filename predictable for hand-debugging.
+ *
+ * Importing never replaces a workout the rider has without asking them
+ * through [questions], and never replaces a starter workout at all: see
+ * [ImportPlan]. Re-importing a workout that is already there, unchanged, does
+ * nothing.
  */
-class WorkoutImporter(private val context: Context) {
+class WorkoutImporter(
+    private val context: Context,
+    /** Where an import asks before it replaces something. The app shows these. */
+    val questions: ImportQuestions = ImportQuestions(),
+) {
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -49,6 +59,11 @@ class WorkoutImporter(private val context: Context) {
     private val userWorkoutsDir: File
         get() = File(context.filesDir, "user_workouts").apply { mkdirs() }
 
+    /** The starter workouts by id, read once: an import may not replace one. */
+    private val bundledById: Map<String, Workout> by lazy {
+        WorkoutLibrary.loadBundled(context).associateBy { it.id }
+    }
+
     /**
      * Imports JSON text. Auto-detects whether it's a single workout, a list of
      * workouts, or a repository manifest, and routes accordingly.
@@ -56,16 +71,8 @@ class WorkoutImporter(private val context: Context) {
     suspend fun importJsonText(text: String): ImportResult = withContext(Dispatchers.IO) {
         try {
             when (ManifestParser.classify(text)) {
-                ImportKind.SingleWorkout -> {
-                    val workout = ManifestParser.parseSingleWorkout(text)
-                    saveUserWorkout(workout)
-                    ImportResult.Workouts(listOf(workout))
-                }
-                ImportKind.WorkoutList -> {
-                    val workouts = json.decodeFromString<List<Workout>>(text)
-                    workouts.forEach { saveUserWorkout(it) }
-                    ImportResult.Workouts(workouts)
-                }
+                ImportKind.SingleWorkout -> saveIncoming(listOf(ManifestParser.parseSingleWorkout(text)))
+                ImportKind.WorkoutList -> saveIncoming(json.decodeFromString<List<Workout>>(text))
                 ImportKind.RepositoryManifest -> {
                     val manifest = ManifestParser.parseRepositoryManifest(text)
                     ImportResult.Manifest(manifest)
@@ -83,19 +90,72 @@ class WorkoutImporter(private val context: Context) {
                     "Couldn't recognise this file. Expected a workout JSON or a repository manifest."
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "Import failed", t)
             ImportResult.Failure(t.message ?: "Import failed")
         }
     }
 
-    /** Reads bytes from a content:// or file:// URI then routes through importJsonText. */
+    /**
+     * Write [incoming] as [ImportPlan] says, first asking the rider if any of
+     * it would replace a workout of theirs.
+     */
+    private suspend fun saveIncoming(incoming: List<Workout>): ImportResult {
+        val replaced = ImportPlan.replaced(incoming, ::readUserWorkout)
+        val replace = if (replaced.isEmpty()) {
+            false
+        } else {
+            when (questions.ask(replaced.map { it.name })) {
+                ImportQuestions.Answer.REPLACE -> true
+                ImportQuestions.Answer.KEEP_BOTH -> false
+                ImportQuestions.Answer.CANCEL -> return ImportResult.Cancelled
+            }
+        }
+        val steps = ImportPlan.plan(
+            incoming = incoming,
+            imported = ::readUserWorkout,
+            bundled = bundledById,
+            isTaken = { id -> File(userWorkoutsDir, sanitise(id) + ".json").exists() },
+            replace = replace,
+        )
+        for (step in steps) {
+            if (step !is ImportPlan.Write) continue
+            val id = step.workout.id
+            // A replaced workout is no longer the one its source provided,
+            // so the source's credit goes with it.
+            if (readUserWorkout(id) != null) File(userWorkoutsDir, sanitise(id) + ".meta.json").delete()
+            saveUserWorkout(step.workout)
+        }
+        return ImportResult.Workouts(steps.map { it.workout })
+    }
+
+    /** The rider's imported workout stored under [id], or null. */
+    private fun readUserWorkout(id: String): Workout? {
+        val file = File(userWorkoutsDir, sanitise(id) + ".json")
+        if (!file.exists()) return null
+        return try {
+            json.decodeFromString<Workout>(file.readText(Charsets.UTF_8))
+        } catch (t: Throwable) {
+            null
+        }
+    }
+
+    /**
+     * Reads a content:// URI then routes through importJsonText. Read no
+     * further than a workout could be: a shared file is whatever the sender
+     * says it is.
+     */
     suspend fun importFromUri(uri: Uri): ImportResult = withContext(Dispatchers.IO) {
         try {
             val text = context.contentResolver.openInputStream(uri)?.use { stream ->
-                stream.readBytes().toString(StandardCharsets.UTF_8)
+                stream.readAtMost(HttpFetcher.MAX_BODY_BYTES.toLong(), "That file is too large to be a workout.")
+                    .toString(StandardCharsets.UTF_8)
             } ?: return@withContext ImportResult.Failure("Couldn't open $uri")
             importJsonText(text)
+        } catch (e: CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Log.e(TAG, "URI import failed", t)
             ImportResult.Failure(t.message ?: "Couldn't read file")
@@ -301,4 +361,7 @@ sealed class ImportResult {
     data class Manifest(val manifest: RepositoryManifest) : ImportResult()
 
     data class Failure(val message: String) : ImportResult()
+
+    /** The rider was asked whether to replace a workout, and chose to import nothing. */
+    data object Cancelled : ImportResult()
 }

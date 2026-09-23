@@ -41,7 +41,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,6 +62,7 @@ import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
 import app.indoorbike.ui.theme.Spacing
 import kotlin.math.roundToInt
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Settings that only a simulated route ride reads.
@@ -82,8 +82,8 @@ import kotlin.math.roundToInt
 @Composable
 fun SimulationSettingsScreen(onBack: () -> Unit) {
     val settings = LocalAppContainer.current.userSettings
-    val bikeWeight by settings.bikeWeightKg.collectAsState()
-    val drivetrainId by settings.drivetrainId.collectAsState()
+    val bikeWeight by settings.bikeWeightKg.collectAsStateWithLifecycle()
+    val drivetrainId by settings.drivetrainId.collectAsStateWithLifecycle()
     val selected = Drivetrain.byId(drivetrainId)
 
     val header = rememberCollapsingHeaderState()

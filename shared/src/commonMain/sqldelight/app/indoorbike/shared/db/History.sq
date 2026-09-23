@@ -46,7 +46,14 @@ CREATE TABLE WorkoutSession (
     -- the formats the app's own route listings already use, so the post-ride
     -- card and the share image render them with no new drawing code.
     routeShape TEXT NOT NULL DEFAULT '',
-    routeProfile TEXT NOT NULL DEFAULT ''
+    routeProfile TEXT NOT NULL DEFAULT '',
+    -- The FTP the ride was ridden at, so an export made later uses it rather
+    -- than whatever FTP is set that day. 0 = not recorded (rides before v8).
+    ftp INTEGER NOT NULL DEFAULT 0,
+    -- Where each segment actually began, as `segment@sample` pairs joined by
+    -- `;` (SegmentMark). The exports cut laps on these. Empty = not recorded,
+    -- and they fall back to the planned segment lengths.
+    segmentMarks TEXT NOT NULL DEFAULT ''
 );
 
 -- Non-unique because the v1 → v2 migration leaves multiple rows with the
@@ -66,9 +73,13 @@ CREATE TABLE WorkoutTelemetry (
     FOREIGN KEY (sessionId) REFERENCES WorkoutSession(id) ON DELETE CASCADE
 );
 
+-- Every ride screen, export, upload and delete reads one ride's samples in
+-- time order; without this each scanned and sorted the whole table.
+CREATE INDEX ix_workout_telemetry_session ON WorkoutTelemetry(sessionId, timestampEpoch);
+
 insertSession:
-INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters, routeShape, routeProfile)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters, routeShape, routeProfile, ftp, segmentMarks)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();

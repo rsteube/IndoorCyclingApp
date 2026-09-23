@@ -61,6 +61,7 @@ import app.indoorbike.ui.theme.SlateMotion
 import app.indoorbike.ui.theme.enterReveal
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun TrainerPairingScreen(
@@ -68,8 +69,8 @@ fun TrainerPairingScreen(
 ) {
     val container = LocalAppContainer.current
     val trainerManager = container.trainerManager
-    val connectionState by trainerManager.connectionState.collectAsState()
-    val discoveredDevices by trainerManager.discoveredDevices.collectAsState()
+    val connectionState by trainerManager.connectionState.collectAsStateWithLifecycle()
+    val discoveredDevices by trainerManager.discoveredDevices.collectAsStateWithLifecycle()
 
     LaunchedEffect(connectionState) {
         if (connectionState == TrainerConnectionState.Connected) {

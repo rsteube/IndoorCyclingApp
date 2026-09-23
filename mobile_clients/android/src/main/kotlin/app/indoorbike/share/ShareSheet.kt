@@ -38,7 +38,6 @@ import androidx.compose.ui.window.Dialog
 import app.indoorbike.ride.RideScreenshot
 import app.indoorbike.ride.RideBrand
 import androidx.compose.runtime.produceState
-import androidx.compose.runtime.collectAsState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import app.indoorbike.LocalAppContainer
@@ -105,6 +104,7 @@ import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Spacing
 import kotlinx.coroutines.launch
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Bottom sheet that previews the [RideShareCard] thumbnail and offers
@@ -332,7 +332,7 @@ private enum class PendingAction { Save, Share }
 @Composable
 private fun rememberRideCredit(rideStartEpochMs: Long): RideCredit? {
     val store = LocalAppContainer.current.rideBrands
-    val revision by store.revision.collectAsState()
+    val revision by store.revision.collectAsStateWithLifecycle()
     val brand by produceState<RideBrand?>(null, rideStartEpochMs, revision) {
         value = withContext(Dispatchers.IO) { store.find(rideStartEpochMs) }
     }
@@ -635,13 +635,19 @@ private fun performSave(
     scope.launch {
         try {
             val bitmap = ShareImageGenerator.captureLayer(graphicsLayer)
-            val uri = ShareImageGenerator.saveToGallery(
-                context = context,
-                bitmap = bitmap,
-                displayName = displayNameFor(session)
-            )
+            // Encoding a 1080 px PNG and writing it to MediaStore is IO, and
+            // ran on the main thread, freezing the sheet for as long as it took.
+            val uri = withContext(Dispatchers.IO) {
+                ShareImageGenerator.saveToGallery(
+                    context = context,
+                    bitmap = bitmap,
+                    displayName = displayNameFor(session)
+                )
+            }
             val msg = if (uri != null) "Saved to Photos · Indoor Bike" else "Couldn't save image"
             Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Toast.makeText(context, "Save failed: ${t.message}", Toast.LENGTH_SHORT).show()
         } finally {
@@ -661,12 +667,16 @@ private fun performShare(
     scope.launch {
         try {
             val bitmap = ShareImageGenerator.captureLayer(graphicsLayer)
-            val uri = ShareImageGenerator.stageForShare(
-                context = context,
-                bitmap = bitmap,
-                displayName = displayNameFor(session)
-            )
+            val uri = withContext(Dispatchers.IO) {
+                ShareImageGenerator.stageForShare(
+                    context = context,
+                    bitmap = bitmap,
+                    displayName = displayNameFor(session)
+                )
+            }
             ShareImageGenerator.launchShareChooser(context, uri)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (t: Throwable) {
             Toast.makeText(context, "Share failed: ${t.message}", Toast.LENGTH_SHORT).show()
         } finally {

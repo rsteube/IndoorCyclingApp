@@ -90,39 +90,48 @@ object BackupMerger {
     private fun Map<String, Long>.toBackupList(): List<BackupTombstone> =
         map { (id, t) -> BackupTombstone(id, t) }.sortedBy { it.id }
 
+    /**
+     * Field by field, the value with the latest change wins; a tie goes to the
+     * earlier slice, which is why the engine puts this device's own first.
+     *
+     * It used to take each field from the newest slice as a whole, and a
+     * slice's date was when its device last synced, not when anything in it
+     * changed. So a device that synced later won every field, whether or not
+     * it had touched them - and this device's own current settings were not in
+     * the merge at all, only what it had published last time, so an FTP set
+     * since the last sync was put back at the next launch.
+     */
     private fun mergeSettings(slices: List<BackupSettings>): BackupSettings? {
         if (slices.isEmpty()) return null
-        val ordered = slices.sortedByDescending { it.epoch }
-        var ftp: Int? = null
-        var weightKg: Float? = null
-        var maxHr: Int? = null
-        var hasCompletedOnboarding: Boolean? = null
-        var hasDismissedStarterCard: Boolean? = null
-        var intervalsAthleteId: String? = null
-        var intervalsAutoUpload: Boolean? = null
-        var favouriteWorkoutIds: List<String>? = null
+        val epochs = HashMap<String, Long>()
 
-        for (s in ordered) {
-            if (ftp == null) ftp = s.ftp
-            if (weightKg == null) weightKg = s.weightKg
-            if (maxHr == null) maxHr = s.maxHr
-            if (hasCompletedOnboarding == null) hasCompletedOnboarding = s.hasCompletedOnboarding
-            if (hasDismissedStarterCard == null) hasDismissedStarterCard = s.hasDismissedStarterCard
-            if (intervalsAthleteId == null) intervalsAthleteId = s.intervalsAthleteId
-            if (intervalsAutoUpload == null) intervalsAutoUpload = s.intervalsAutoUpload
-            if (favouriteWorkoutIds == null) favouriteWorkoutIds = s.favouriteWorkoutIds
+        fun <T> pick(field: String, value: (BackupSettings) -> T?): T? {
+            var best: T? = null
+            var bestEpoch = Long.MIN_VALUE
+            for (s in slices) {
+                val v = value(s) ?: continue
+                val e = s.epochOf(field)
+                if (best == null || e > bestEpoch) {
+                    best = v
+                    bestEpoch = e
+                }
+            }
+            if (best != null) epochs[field] = bestEpoch
+            return best
         }
-        return BackupSettings(
-            epoch = ordered.first().epoch,
-            ftp = ftp,
-            weightKg = weightKg,
-            maxHr = maxHr,
-            hasCompletedOnboarding = hasCompletedOnboarding,
-            hasDismissedStarterCard = hasDismissedStarterCard,
-            intervalsAthleteId = intervalsAthleteId,
-            intervalsAutoUpload = intervalsAutoUpload,
-            favouriteWorkoutIds = favouriteWorkoutIds,
+
+        val merged = BackupSettings(
+            epoch = 0L,
+            ftp = pick(LocalChanges.FTP) { it.ftp },
+            weightKg = pick(LocalChanges.WEIGHT) { it.weightKg },
+            maxHr = pick(LocalChanges.MAX_HR) { it.maxHr },
+            hasCompletedOnboarding = pick(LocalChanges.ONBOARDED) { it.hasCompletedOnboarding },
+            hasDismissedStarterCard = pick(LocalChanges.STARTER_DISMISSED) { it.hasDismissedStarterCard },
+            intervalsAthleteId = pick(LocalChanges.INTERVALS_ATHLETE) { it.intervalsAthleteId },
+            intervalsAutoUpload = pick(LocalChanges.INTERVALS_AUTO_UPLOAD) { it.intervalsAutoUpload },
+            favouriteWorkoutIds = pick(LocalChanges.FAVOURITES) { it.favouriteWorkoutIds },
         )
+        return merged.copy(epoch = epochs.values.maxOrNull() ?: slices.maxOf { it.epoch }, fieldEpochs = epochs)
     }
 }
 

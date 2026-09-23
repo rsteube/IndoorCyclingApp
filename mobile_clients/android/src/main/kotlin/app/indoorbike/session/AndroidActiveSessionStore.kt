@@ -19,6 +19,7 @@ import android.content.Context
 import app.indoorbike.shared.session.ActiveSessionSnapshot
 import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.util.Log
+import app.indoorbike.util.AtomicFiles
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,13 +30,23 @@ class AndroidActiveSessionStore(appContext: Context) : ActiveSessionStore {
     private val file = File(appContext.filesDir, "active_session.json")
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+    /**
+     * The snapshot, or null when there is none or it cannot be read. An
+     * unreadable one is set aside rather than deleted: the session manager
+     * then offers the ride back from its telemetry log instead.
+     */
     override suspend fun read(): ActiveSessionSnapshot? = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext null
-        try {
-            json.decodeFromString<ActiveSessionSnapshot>(file.readText())
+        val text = try {
+            AtomicFiles.readText(file)
         } catch (e: Exception) {
-            Log.w(TAG, "Active session file corrupt, ignoring", e)
-            file.delete()
+            Log.w(TAG, "Active session file unreadable", e)
+            null
+        } ?: return@withContext null
+        try {
+            json.decodeFromString<ActiveSessionSnapshot>(text)
+        } catch (e: Exception) {
+            Log.w(TAG, "Active session file corrupt, setting it aside", e)
+            AtomicFiles.setAside(file)
             null
         }
     }
@@ -43,10 +54,7 @@ class AndroidActiveSessionStore(appContext: Context) : ActiveSessionStore {
     override suspend fun write(snapshot: ActiveSessionSnapshot) {
         withContext(Dispatchers.IO) {
             try {
-                val tmp = File(file.parentFile, file.name + ".tmp")
-                tmp.writeText(json.encodeToString(ActiveSessionSnapshot.serializer(), snapshot))
-                if (file.exists()) file.delete()
-                tmp.renameTo(file)
+                AtomicFiles.writeText(file, json.encodeToString(ActiveSessionSnapshot.serializer(), snapshot))
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to persist active session", e)
             }
@@ -56,7 +64,7 @@ class AndroidActiveSessionStore(appContext: Context) : ActiveSessionStore {
     override suspend fun clear() {
         withContext(Dispatchers.IO) {
             try {
-                if (file.exists()) file.delete()
+                AtomicFiles.delete(file)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to clear active session", e)
             }

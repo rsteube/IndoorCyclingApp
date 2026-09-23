@@ -74,7 +74,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -149,26 +148,13 @@ import app.indoorbike.ui.theme.CadenceType
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.widget.Toast
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 class MainActivity : ComponentActivity() {
-
-    // Activity-scoped — cancelled in onDestroy. Previously a member with no
-    // teardown, which leaked the Activity reference on rotation while imports
-    // were in flight (the coroutine outlived the dead Activity, posted Toasts
-    // against it, and the next onCreate created a fresh leaking scope).
-    private val intentScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-
-    override fun onDestroy() {
-        intentScope.cancel()
-        super.onDestroy()
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -192,9 +178,16 @@ class MainActivity : ComponentActivity() {
 
         val container = (application as IndoorBikeApp).container
 
-        // Workouts from any external app — file open, share-sheet, deep link —
+        // Workouts from any external app (file open, share-sheet, deep link)
         // route through the same import pipeline as the in-app file picker.
-        handleImportIntent(intent)
+        //
+        // Only for a new activity, and not when it was opened from Recents:
+        // Android hands a recreated activity its original intent again, so a
+        // shared file was imported a second time after process death (undoing
+        // any rename since), and an old OAuth redirect was replayed and
+        // reported "couldn't be verified" after a sign-in that had worked.
+        val fromHistory = (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY) != 0
+        if (savedInstanceState == null && !fromHistory) handleImportIntent(intent)
 
         setContent {
             CadenceTheme {
@@ -202,8 +195,8 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = CadenceColors.Bg0
                 ) {
-                    val initialised by container.workoutLibrary.initialised.collectAsState()
-                    val entries by container.workoutLibrary.entries.collectAsState()
+                    val initialised by container.workoutLibrary.initialised.collectAsStateWithLifecycle()
+                    val entries by container.workoutLibrary.entries.collectAsStateWithLifecycle()
                     val workouts = remember(entries) { entries.map { it.workout } }
 
                     CompositionLocalProvider(
@@ -215,6 +208,8 @@ class MainActivity : ComponentActivity() {
                         } else {
                             AppNavigator(entries = entries)
                         }
+                        // Over every screen: an import can arrive on any of them.
+                        app.indoorbike.ui.components.ImportQuestionDialog(container.workoutImporter.questions)
                     }
                 }
             }
@@ -228,18 +223,27 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Reacts to:
-     *  - ACTION_VIEW with content:// or file:// URI of application/json
+     *  - ACTION_VIEW with a content:// URI of application/json
      *  - ACTION_SEND with EXTRA_STREAM
-     *  - ACTION_VIEW with `indoorbike://import?url=…` deep link
+     *  - ACTION_VIEW with `indoorbike://import?url=...` or `?data=...` deep link
+     *  - the two OAuth redirects
      *
      * On success surfaces a Toast; on failure the user keeps the app open and
      * sees a Toast with the error reason. We deliberately don't auto-route to
-     * the Library screen — the app's just been launched/foregrounded and the
+     * the Library screen: the app's just been launched/foregrounded and the
      * user can find the new workout via its name in the regular Rides list.
+     *
+     * Everything here runs on the app's scope. It used to run on a scope this
+     * activity cancelled in onDestroy, so pressing back while an OAuth code was
+     * being exchanged cancelled the exchange after the pending sign-in had been
+     * used up, and the code could never be redeemed; a rotation mid-import
+     * dropped the import. Toasts go through the application context for the
+     * same reason.
      */
     private fun handleImportIntent(intent: Intent?) {
         intent ?: return
         val container = (application as IndoorBikeApp).container
+        val appContext = applicationContext
 
         val uri: Uri? = when (intent.action) {
             Intent.ACTION_VIEW -> intent.data
@@ -253,12 +257,13 @@ class MainActivity : ComponentActivity() {
             }
             else -> null
         }
-        // Clear so a config change / process recreation doesn't re-trigger.
-        intent.data = null
-
         if (uri == null) return
+        // Handled once. What getIntent() returns from here on no longer
+        // carries it; recreation is kept from replaying it by onCreate, which
+        // only hands a launch intent here when the activity is new.
+        setIntent(Intent(this, MainActivity::class.java).setAction(Intent.ACTION_MAIN))
 
-        // indoorbike://oauth — the browser handing back a FitTrackee
+        // indoorbike://oauth: the browser handing back a FitTrackee
         // authorization code. Handled here rather than in the Connections
         // screen because the browser may well have outlived it: the app can be
         // killed while the consent page is in front of it, and the code has to
@@ -266,13 +271,13 @@ class MainActivity : ComponentActivity() {
         if (uri.scheme.equals("indoorbike", ignoreCase = true) &&
             uri.host.equals("oauth", ignoreCase = true)
         ) {
-            intentScope.launch {
+            container.appScope.launch {
                 val outcome = container.fitTrackeeUploader.completeAuthorization(uri)
                 val msg = when (outcome) {
                     is FitTrackeeUploader.SignIn.Success -> "Connected to FitTrackee"
                     is FitTrackeeUploader.SignIn.Failure -> outcome.message
                 }
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                toast(appContext, msg, Toast.LENGTH_LONG)
             }
             return
         }
@@ -282,7 +287,7 @@ class MainActivity : ComponentActivity() {
         // cold-start footing as the FitTrackee one above, and with less time:
         // Intervals.icu wants the code exchanged within two minutes.
         if (IntervalsIcuOAuth.isRedirect(uri.scheme, uri.host, uri.path)) {
-            intentScope.launch {
+            container.appScope.launch {
                 val outcome = container.intervalsIcuUploader.completeAuthorization(uri)
                 val msg = when (outcome) {
                     is IntervalsIcuUploader.SignIn.Success ->
@@ -290,7 +295,7 @@ class MainActivity : ComponentActivity() {
                             ?: "Connected to Intervals.icu"
                     is IntervalsIcuUploader.SignIn.Failure -> outcome.message
                 }
-                Toast.makeText(this@MainActivity, msg, Toast.LENGTH_LONG).show()
+                toast(appContext, msg, Toast.LENGTH_LONG)
             }
             return
         }
@@ -299,77 +304,75 @@ class MainActivity : ComponentActivity() {
         if (uri.scheme.equals("indoorbike", ignoreCase = true) &&
             uri.host.equals("import", ignoreCase = true)
         ) {
-            // First try to decode an embedded payload (?data=… form, or `#w=…`
-            // tucked inside the URI).
-            val embedded = app.indoorbike.library.WorkoutLinkParser
-                .extractEmbeddedJson(uri.toString())
-            if (embedded != null) {
-                intentScope.launch {
-                    val result = container.workoutImporter.importJsonText(embedded)
-                    onImportResolved(result)
-                }
-                return
-            }
-
-            // Fall back to ?url=… HTTP fetch.
+            val link = uri.toString()
             val remoteUrl = uri.getQueryParameter("url")
-            if (remoteUrl.isNullOrBlank()) {
-                Toast.makeText(this, "Missing ?url= or ?data= in indoorbike://import link", Toast.LENGTH_SHORT).show()
-                return
-            }
-            intentScope.launch {
+            container.appScope.launch {
                 try {
-                    // The fetched URL itself may be a share-page URL with the
-                    // workout in its hash — try the embedded parser on it too
-                    // before doing an actual GET. This makes the editor's QR
-                    // and "Show link" outputs work even if a user pastes the
-                    // whole share-URL into ?url=…
-                    val maybeEmbedded = app.indoorbike.library.WorkoutLinkParser
-                        .extractEmbeddedJson(remoteUrl)
-                    val text = maybeEmbedded
-                        ?: app.indoorbike.library.HttpFetcher.getString(remoteUrl)
-                    val result = container.workoutImporter.importJsonText(text)
-                    onImportResolved(result)
+                    // An embedded payload first (?data=... form, or `#w=...`
+                    // tucked inside the URI). Decoded here, off the main
+                    // thread: a compressed payload is inflated to find out
+                    // what it is.
+                    val text = app.indoorbike.library.WorkoutLinkParser.extractEmbeddedJson(link)
+                        ?: when {
+                            remoteUrl.isNullOrBlank() -> {
+                                toast(appContext, "Missing ?url= or ?data= in indoorbike://import link", Toast.LENGTH_SHORT)
+                                return@launch
+                            }
+                            // The fetched URL itself may be a share-page URL
+                            // with the workout in its hash, so try the embedded
+                            // parser on it too before doing an actual GET. This
+                            // makes the editor's QR and "Show link" outputs work
+                            // even if a user pastes the whole share URL into
+                            // ?url=...
+                            else -> app.indoorbike.library.WorkoutLinkParser.extractEmbeddedJson(remoteUrl)
+                                ?: app.indoorbike.library.HttpFetcher.getString(remoteUrl)
+                        }
+                    onImportResolved(appContext, container.workoutImporter.importJsonText(text))
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
                 } catch (t: Throwable) {
-                    Toast.makeText(this@MainActivity, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG).show()
+                    toast(appContext, "Couldn't fetch: ${t.message}", Toast.LENGTH_LONG)
                 }
             }
             return
         }
 
-        // Local content:// or file:// URI from a share-sheet or file open.
-        intentScope.launch {
-            val result = container.workoutImporter.importFromUri(uri)
-            onImportResolved(result)
+        // Local content:// URI from a share-sheet or file open.
+        container.appScope.launch {
+            onImportResolved(appContext, container.workoutImporter.importFromUri(uri))
         }
     }
 
-    private suspend fun onImportResolved(result: app.indoorbike.library.ImportResult) {
-        val container = (application as IndoorBikeApp).container
+    private suspend fun toast(context: Context, text: String, length: Int) = withContext(Dispatchers.Main) {
+        Toast.makeText(context, text, length).show()
+    }
+
+    private suspend fun onImportResolved(context: Context, result: app.indoorbike.library.ImportResult) {
+        val container = (context.applicationContext as IndoorBikeApp).container
         when (result) {
             is app.indoorbike.library.ImportResult.Workouts -> {
                 container.workoutLibrary.refreshImports()
                 val n = result.workouts.size
-                Toast.makeText(
-                    this,
+                toast(
+                    context,
                     if (n == 1) "Imported \"${result.workouts.first().name}\"" else "Imported $n workouts",
-                    Toast.LENGTH_SHORT
-                ).show()
+                    Toast.LENGTH_SHORT,
+                )
             }
             is app.indoorbike.library.ImportResult.Manifest -> {
                 // Repos aren't auto-added under the explicit-add model. Point
-                // the user at More workouts → Browse so they can pick what
+                // the user at More workouts, Browse so they can pick what
                 // they want from the repo's content.
-                Toast.makeText(
-                    this,
+                toast(
+                    context,
                     "\"${result.manifest.name}\" is a community repository. " +
                         "Open More workouts and browse it to add individual workouts.",
-                    Toast.LENGTH_LONG
-                ).show()
+                    Toast.LENGTH_LONG,
+                )
             }
-            is app.indoorbike.library.ImportResult.Failure -> Toast.makeText(
-                this, result.message, Toast.LENGTH_LONG
-            ).show()
+            is app.indoorbike.library.ImportResult.Failure -> toast(context, result.message, Toast.LENGTH_LONG)
+            // The rider chose it in the dialog; nothing to add.
+            app.indoorbike.library.ImportResult.Cancelled -> Unit
         }
     }
 }
@@ -474,6 +477,9 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
     val navigator = remember { Navigator(navigationState) }
 
     val resumerScope = rememberCoroutineScope()
+    // One banner save at a time: a double tap used to run two, which inserted
+    // the ride twice and opened its summary twice.
+    val savingRide = remember { java.util.concurrent.atomic.AtomicBoolean(false) }
     val resumer = remember(navigator, resumerScope) {
         RideResumer(
             continueRide = { workout, snapshot ->
@@ -488,9 +494,14 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 navigator.continueRide(workout.id)
             },
             abandonRide = { container.abandonUnfinishedRide() },
-            saveFinishedRide = { workout, snapshot ->
-                resumerScope.launch {
-                    val sessionId = saveRideToHistory(
+            saveFinishedRide = saveFinishedRide@{ workout, snapshot ->
+                if (!savingRide.compareAndSet(false, true)) return@saveFinishedRide
+                // On the app's scope, not the screen's: a rotation or a tab
+                // switch mid-save must not cancel the insert. Only opening the
+                // summary afterwards belongs to this screen.
+                container.appScope.launch {
+                    val sessionId = try {
+                        saveRideToHistory(
                         container = container,
                         workout = workout,
                         startTimeEpoch = snapshot.sessionStartTimeEpochMs,
@@ -503,8 +514,14 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                         // which on this path is the usual case: the app has
                         // just started and the engines are empty.
                         road = container.sessionManager.pendingRideRoad(snapshot),
-                    )
-                    navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = true))
+                        record = container.sessionManager.pendingRideRecord(snapshot),
+                        )
+                    } finally {
+                        savingRide.set(false)
+                    }
+                    resumerScope.launch {
+                        navigator.navigate(RouteWorkoutOverview(sessionId, fromRide = true))
+                    }
                 }
             },
         )
