@@ -15,6 +15,13 @@
  */
 package app.indoorbike
 
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asImageBitmap
+import app.indoorbike.companion.NsdCompanionAdvertiser
+import app.indoorbike.companion.UdpCompanionBeacon
+import app.indoorbike.shared.companion.BrandSink
+import app.indoorbike.shared.companion.ScreenshotSink
+import app.indoorbike.ride.saveRideToHistory
 import app.indoorbike.sync.AndroidHttpClient
 import app.indoorbike.sync.AndroidSyncLibrary
 import app.indoorbike.sync.SharedPreferencesStore
@@ -61,8 +68,8 @@ import app.indoorbike.shared.session.ActiveSessionStore
 import app.indoorbike.shared.simulation.RouteProgressStore
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.companion.AndroidPairedCompanionStore
-import app.indoorbike.companion.CompanionHost
-import app.indoorbike.ride.CompanionRideRecorder
+import app.indoorbike.shared.companion.CompanionHost
+import app.indoorbike.shared.companion.CompanionRideRecorder
 import app.indoorbike.ride.RideScreenshotStore
 import app.indoorbike.ride.RideBrandStore
 import app.indoorbike.shared.ble.TrainerConnectionState
@@ -275,7 +282,6 @@ class AppContainer(
             val rideScreenshots = RideScreenshotStore(application.filesDir)
             val rideBrands = RideBrandStore(application.filesDir)
             val companionHost = CompanionHost(
-                context = application,
                 engine = companionEngine,
                 sessionManager = sessionManager,
                 appVersion = BuildConfig.VERSION_NAME,
@@ -293,8 +299,14 @@ class AppContainer(
                 // the companion actually knows it.
                 deviceId = { userSettings.deviceId },
                 pairedStore = AndroidPairedCompanionStore(application),
-                screenshots = rideScreenshots,
-                brands = rideBrands,
+                screenshots = ScreenshotSink { rideStart, image, takenAt, rideSeconds ->
+                    rideScreenshots.save(rideStart, image, takenAt, rideSeconds)
+                },
+                brands = BrandSink { rideStart, name, iconPng -> rideBrands.save(rideStart, name, iconPng) },
+                advertiser = NsdCompanionAdvertiser(application),
+                beacon = UdpCompanionBeacon(CoroutineScope(SupervisorJob() + Dispatchers.IO)),
+                isDebug = BuildConfig.DEBUG,
+                decodeIcon = { png -> BitmapFactory.decodeByteArray(png, 0, png.size)?.asImageBitmap() },
                 trainerName = { trainerManager.connectedTrainerName.value },
                 trainerConnected = {
                     trainerManager.connectionState.value == TrainerConnectionState.Connected ||
@@ -377,7 +389,12 @@ class AppContainer(
             // repository and the host is built before it. A companion ride is
             // saved when its game says the ride is over rather than when a
             // rider taps through a summary, since in this mode nobody does.
-            companionHost.rideRecorder = CompanionRideRecorder(container)
+            companionHost.rideRecorder = CompanionRideRecorder(
+                history = historyRepository,
+                sessions = sessionManager,
+            ) { workout, startTimeEpoch, durationSeconds, telemetry, road, record ->
+                saveRideToHistory(container, workout, startTimeEpoch, durationSeconds, telemetry, road, record)
+            }
             return container
         }
     }

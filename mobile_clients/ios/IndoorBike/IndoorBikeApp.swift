@@ -38,6 +38,9 @@ final class AppModel {
     let simulation: SimulationModel
     let library: LibraryModel
     let sync: SyncModel
+    let companion: CompanionModel
+    /// The Companion screen is up, so its socket belongs to it.
+    var keepCompanionOpen = false
 
     var workouts: [Workout] { library.workouts }
     /// A short line about something that just happened, shown for a moment.
@@ -56,7 +59,12 @@ final class AppModel {
     var riding = false
 
     init() {
-        let container = IosAppContainer(bundledWorkoutJson: Self.bundledWorkoutFiles(), secrets: KeychainStore())
+        let container = IosAppContainer(
+            bundledWorkoutJson: Self.bundledWorkoutFiles(),
+            secrets: KeychainStore(),
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0",
+            isDebug: AppInfo.isDebug
+        )
         self.container = container
         let library = LibraryModel(container: container)
         self.library = library
@@ -74,6 +82,7 @@ final class AppModel {
         routes = RouteLibraryModel(container: container)
         simulation = SimulationModel(engine: container.simulationEngine)
         sync = SyncModel(container: container)
+        companion = CompanionModel(container: container)
         container.start()
     }
 
@@ -97,6 +106,14 @@ final class AppModel {
     /// Leave the ride screen; a saved ride opens in History.
     func finishRide() {
         let saved = ride.savedSessionId
+        if ride.isCompanion {
+            // The host saved each lap as it finished; leaving ends the session.
+            if companion.phase != .ended { companion.host.endSession() }
+            if !keepCompanionOpen { companion.host.stop() }
+            riding = false
+            UIApplication.shared.isIdleTimerDisabled = false
+            return
+        }
         ride.close()
         riding = false
         routes.reloadProgress()
@@ -192,7 +209,7 @@ final class AppModel {
             }
         }
         if let i = arguments.firstIndex(of: "-demo-section"), let name = arguments[safe: i + 1] {
-            rideSection = name == "routes" ? .routes : .workouts
+            rideSection = ["routes": .routes, "companion": .companion][name] ?? .workouts
         }
         guard wantsRide || arguments.contains("-demo-trainer"), !trainer.isConnected else { return }
         trainer.connectMock()
@@ -271,7 +288,7 @@ struct RootView: View {
         }
         .onOpenURL { app.open($0) }
         .fullScreenCover(isPresented: $app.riding) {
-            RideView(ride: app.ride, trainer: app.trainer, simulation: app.simulation, ftp: app.settings.ftp, maxHr: app.settings.maxHr) {
+            RideView(app: app, ride: app.ride, trainer: app.trainer, simulation: app.simulation, ftp: app.settings.ftp, maxHr: app.settings.maxHr) {
                 app.finishRide()
             }
         }

@@ -15,6 +15,7 @@
  */
 package app.indoorbike.companion
 
+import app.indoorbike.shared.companion.CompanionAdvertiser
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
@@ -40,7 +41,7 @@ import app.indoorbike.shared.util.Log
  * for the duration of a companion ride, and an announcement outliving it would
  * point a game at a phone that is no longer listening.
  */
-class CompanionAdvertiser(context: Context) {
+class NsdCompanionAdvertiser(context: Context) : CompanionAdvertiser {
 
     private val nsd: NsdManager? =
         context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
@@ -58,7 +59,7 @@ class CompanionAdvertiser(context: Context) {
      * [onResult] reports whether the network accepted it, so the pairing screen
      * can say "discoverable" or fall back to telling the rider to scan.
      */
-    fun start(
+    override fun start(
         port: Int,
         sessionId: String,
         appVersion: String,
@@ -117,7 +118,7 @@ class CompanionAdvertiser(context: Context) {
     }
 
     /** Withdraw the advertisement. Safe to call when nothing is registered. */
-    fun stop() {
+    override fun stop() {
         val manager = nsd ?: return
         val current = listener ?: return
         listener = null

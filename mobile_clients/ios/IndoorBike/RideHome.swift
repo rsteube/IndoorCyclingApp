@@ -2,7 +2,7 @@ import SwiftUI
 import shared
 
 enum RideSection: Hashable {
-    case workouts, routes
+    case workouts, routes, companion
 }
 
 /// "What are you riding?": the kinds of ride, then the list of the chosen
@@ -48,6 +48,13 @@ struct RideHome: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    ModeRow(
+                        systemImage: "dot.radiowaves.left.and.right", title: "Companion",
+                        detail: app.trainer.isConnected ? "Hand the trainer to a game or app on another device. Needs one running."
+                            : "Pair a trainer, and a companion app on another device.",
+                        stage: "Alpha"
+                    )
+                    .tag(RideSection.companion)
                 }
 
                 Section {
@@ -91,6 +98,8 @@ struct RideHome: View {
                 WorkoutListView(app: app)
             case .routes:
                 RouteListView(app: app)
+            case .companion:
+                CompanionScreen(app: app)
             case nil:
                 ContentUnavailableView("What are you riding?", systemImage: "bicycle", description: Text("Pick a workout or a route."))
             }

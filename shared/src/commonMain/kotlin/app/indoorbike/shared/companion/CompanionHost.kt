@@ -13,50 +13,19 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
-package app.indoorbike.companion
+package app.indoorbike.shared.companion
 
-import android.content.Context
-import android.graphics.BitmapFactory
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import app.indoorbike.shared.companion.BrandPalette
-import app.indoorbike.shared.companion.CompanionBrand
-import app.indoorbike.shared.companion.CompanionWarning
-import app.indoorbike.shared.companion.WarningFrame
-import app.indoorbike.shared.companion.BikeInfo
-import app.indoorbike.shared.companion.CompanionAnnouncement
-import app.indoorbike.shared.companion.CompanionCodec
-import app.indoorbike.shared.companion.CompanionConfig
-import app.indoorbike.shared.companion.CompanionCourse
-import app.indoorbike.shared.companion.CompanionControl
-import app.indoorbike.shared.companion.CompanionEffect
-import app.indoorbike.shared.companion.CompanionEngine
-import app.indoorbike.shared.companion.CompanionClose
-import app.indoorbike.shared.companion.CompanionError
-import app.indoorbike.shared.companion.CompanionProtocol
-import app.indoorbike.shared.companion.CompanionSecurity
-import app.indoorbike.shared.companion.CompanionSession
-import app.indoorbike.shared.companion.CompanionSnapshot
-import app.indoorbike.shared.companion.CompanionState
-import app.indoorbike.shared.companion.ErrorFrame
-import app.indoorbike.shared.companion.EventFrame
-import app.indoorbike.shared.companion.GearInfo
-import app.indoorbike.shared.companion.HelloFrame
-import app.indoorbike.shared.companion.PairedCompanion
-import app.indoorbike.shared.companion.PairedCompanionStore
-import app.indoorbike.shared.companion.RemoteControls
-import app.indoorbike.shared.companion.RiderInfo
-import app.indoorbike.shared.companion.ServerFrame
-import app.indoorbike.shared.companion.TelemetryFrame
-import app.indoorbike.shared.companion.TrainerInfo
-import app.indoorbike.ride.CompanionRideRecorder
-import app.indoorbike.ride.SavedCompanionRide
 import app.indoorbike.shared.session.RideEndWatch
 import app.indoorbike.shared.session.RideRoad
-import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.session.WorkoutState
+import app.indoorbike.shared.simulation.Drivetrain
+import app.indoorbike.shared.util.CopyOnWriteList
+import app.indoorbike.shared.util.LockedMap
 import app.indoorbike.shared.util.Log
+import app.indoorbike.shared.util.ReentrantLock
+import app.indoorbike.shared.util.getCurrentEpochMillis
+import app.indoorbike.shared.util.withLock
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -71,31 +40,31 @@ import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
 import io.ktor.websocket.send
+import kotlin.concurrent.Volatile
+import kotlin.concurrent.atomics.AtomicInt
+import kotlin.concurrent.atomics.AtomicLong
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
-import app.indoorbike.ride.RideScreenshotStore
-import app.indoorbike.ride.RideBrandStore
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
+
 
 /**
  * Everything the pairing screen and the HUD need to know about the socket.
@@ -160,13 +129,13 @@ data class CompanionStatus(
  * rate limiter are all tested with no device attached, and why the only thing
  * left to get wrong here is plumbing.
  *
- * ## Why the transport is Android-only for now
+ * ## Shared by both apps
  *
- * `Ktor` CIO would run under KMP, and the day iOS happens this becomes a
- * transport swap rather than a rewrite. But discovery is [android.net.nsd]
- * either way, and the service whose lifetime the socket matches is an Android
- * foreground service, so an `expect`/`actual` seam here would be speculation.
- * The real reuse boundary is [CompanionSession], and that is already shared.
+ * The socket is Ktor CIO, which runs on Android and iOS alike, so the whole
+ * host is shared. What differs by platform comes in through the constructor:
+ * how the phone tells the network it is there ([CompanionAdvertiser],
+ * [CompanionBeacon]), where screenshots and brands are kept, and how an icon
+ * is turned into something the platform can draw.
  *
  * ## Lifetime
  *
@@ -176,8 +145,8 @@ data class CompanionStatus(
  * single most valuable security property in the design, and it costs nothing
  * because it falls out of tying [start] and [stop] to the screen.
  */
+@OptIn(ExperimentalAtomicApi::class)
 class CompanionHost(
-    context: Context,
     private val engine: CompanionEngine,
     private val sessionManager: WorkoutSessionManager,
     private val appVersion: String,
@@ -204,15 +173,25 @@ class CompanionHost(
     /** Companions the rider has trusted. Null disables pairing entirely. */
     private val pairedStore: PairedCompanionStore? = null,
     /** Where screenshots are kept. Null offers the rider no screenshot button. */
-    private val screenshots: RideScreenshotStore? = null,
+    private val screenshots: ScreenshotSink? = null,
     /**
      * Where a ride's companion is remembered. Null forgets one the moment it
      * disconnects, which is all this app did before the share card could credit
      * the game a ride was ridden with.
      */
-    private val brands: RideBrandStore? = null,
+    private val brands: BrandSink? = null,
+    /** DNS-SD, or null where the platform has none to offer. */
+    private val advertiser: CompanionAdvertiser? = null,
+    /** The UDP beacon, or null where the platform may not broadcast. */
+    private val beacon: CompanionBeacon? = null,
+    /** A debug build: the pairing code is always [CompanionPairing.DEBUG_TOKEN] and never rotates. */
+    private val isDebug: Boolean = false,
+    /**
+     * Turn a companion's PNG icon into something the platform draws, or null
+     * when it will not decode. Whatever comes back is only carried in [Look].
+     */
+    private val decodeIcon: (ByteArray) -> Any? = { null },
 ) {
-    private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
@@ -221,14 +200,13 @@ class CompanionHost(
      * for, which used to leave the socket listening after the host was gone.
      */
     private val teardownScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val advertiser = CompanionAdvertiser(appContext)
 
     /**
      * Guards the lifecycle fields - [server], the jobs, [generation] - which a
      * screen's start and another screen's stop reach from different threads,
      * in either order.
      */
-    private val lifecycle = Any()
+    private val lifecycle = ReentrantLock()
 
     /**
      * Bumped by every start and every stop. A start that is still opening
@@ -243,7 +221,7 @@ class CompanionHost(
     private var currentToken = ""
 
     /** Guards the controller slot, so two handshakes finishing at once cannot both take it. */
-    private val slot = Any()
+    private val slot = ReentrantLock()
 
     /**
      * Each pairing write reads the stored list, changes it and writes it back,
@@ -255,11 +233,13 @@ class CompanionHost(
     private val pairingMutex = Mutex()
 
     /** Failed handshakes by address, for the backoff. */
-    private class Failures(var count: Int = 0, var blockedUntilMs: Long = 0L)
-    private val failuresByHost = ConcurrentHashMap<String, Failures>()
+    private class Failures(var count: Int = 0, var blockedUntilMs: Long = 0L) {
+        val lock = ReentrantLock()
+    }
+    private val failuresByHost = LockedMap<String, Failures>()
 
     /** Failed handshakes since the pairing code was last issued. */
-    private val codeFailures = AtomicInteger(0)
+    private val codeFailures = AtomicInt(0)
 
     /**
      * The ride's road as it stood when the companion said the ride was over,
@@ -284,13 +264,6 @@ class CompanionHost(
     @Volatile
     private var companionDrivetrain: Drivetrain? = null
 
-    /**
-     * The other half of discovery. mDNS is the standard answer; this is the one
-     * a client with no DNS-SD library can consume, which in practice means most
-     * game engines. Neither is load-bearing - the pairing screen always shows
-     * the address and a QR.
-     */
-    private val beacon = CompanionBeacon(scope)
 
     private val _status = MutableStateFlow(CompanionStatus())
     val status: StateFlow<CompanionStatus> = _status.asStateFlow()
@@ -395,7 +368,8 @@ class CompanionHost(
      */
     data class Look(
         val name: String?,
-        val icon: ImageBitmap?,
+        /** Whatever the platform's `decodeIcon` made of the PNG: an ImageBitmap, a UIImage. */
+        val icon: Any?,
         val palette: BrandPalette?,
     )
 
@@ -408,7 +382,7 @@ class CompanionHost(
 
     /** The last icon decoded, so a frame that only changes colours does not decode it again. */
     private var lastIconPng: ByteArray? = null
-    private var lastIcon: ImageBitmap? = null
+    private var lastIcon: Any? = null
 
     /**
      * Where the last screenshot the rider asked for has got to, for the line
@@ -430,9 +404,9 @@ class CompanionHost(
     /** A screenshot asked for: the ride it belongs to, and when on that ride the rider asked. */
     private data class PendingShot(val rideStartEpochMs: Long, val rideSeconds: Int, val requestedAtMs: Long)
 
-    private val pendingShots = ConcurrentHashMap<Long, PendingShot>()
+    private val pendingShots = LockedMap<Long, PendingShot>()
     private val nextShotId = AtomicLong(1)
-    private val screenshotSeq = AtomicInteger(0)
+    private val screenshotSeq = AtomicInt(0)
 
     /**
      * True from [start] until [stop]: this host is hosting a companion session,
@@ -478,7 +452,7 @@ class CompanionHost(
     private var rideWatchJob: Job? = null
 
     /** Every open connection, controllers and observers alike. */
-    private val connections = CopyOnWriteArrayList<Conn>()
+    private val connections = CopyOnWriteList<Conn>()
 
     /** Non-null while a controller holds the ride. One controller, many observers. */
     @Volatile
@@ -503,6 +477,9 @@ class CompanionHost(
         /** The address it connected from. */
         val remoteHost: String,
     ) {
+        /** Guards [session], whose state machine is not thread-safe on its own. */
+        val lock = ReentrantLock()
+
         /**
          * Everything bound for this socket, in order, drained by one writer.
          *
@@ -517,7 +494,7 @@ class CompanionHost(
         val outbox = Channel<Outbound>(OUTBOX_CAPACITY)
 
         /** Frames queued and not yet written. */
-        val queued = AtomicInteger(0)
+        val queued = AtomicInt(0)
 
         /**
          * The ride state this connection was last told about, in its own
@@ -543,11 +520,11 @@ class CompanionHost(
      * servers fighting over a port.
      */
     fun start() {
-        synchronized(lifecycle) {
+        lifecycle.withLock {
             if (server != null || startJob != null) return
             generation += 1
             val gen = generation
-            hostStartedAtMs = System.currentTimeMillis()
+            hostStartedAtMs = getCurrentEpochMillis()
             telemetrySeq = 0
             ridePrepared = false
             rideUnderway = false
@@ -562,9 +539,9 @@ class CompanionHost(
             nextRideCourse = null
             companionDrivetrain = null
             failuresByHost.clear()
-            codeFailures.set(0)
+            codeFailures.store(0)
 
-            currentToken = CompanionPairing.newToken()
+            currentToken = CompanionPairing.newToken(isDebug)
             val sessionId = CompanionPairing.newSessionId()
             _status.value = CompanionStatus(
                 running = false,
@@ -577,7 +554,7 @@ class CompanionHost(
         }
     }
 
-    private fun isCurrent(gen: Int): Boolean = synchronized(lifecycle) { generation == gen }
+    private fun isCurrent(gen: Int): Boolean = lifecycle.withLock { generation == gen }
 
     private suspend fun open(gen: Int, sessionId: String) {
         // A server made here and not yet handed to [server] belongs to this
@@ -621,7 +598,7 @@ class CompanionHost(
                 started.engine.resolvedConnectors().firstOrNull()?.port
             } ?: error("the server did not report a port")
 
-            synchronized(lifecycle) {
+            lifecycle.withLock {
                 if (generation != gen) throw CancellationException("stopped while opening")
                 server = started
                 orphan = null
@@ -630,10 +607,10 @@ class CompanionHost(
                 }
                 Log.i(TAG, "Companion socket listening on " + port)
 
-                advertiser.start(port, sessionId, appVersion) { advertising ->
+                advertiser?.start(port, sessionId, appVersion) { advertising ->
                     _status.update { it.copy(advertising = advertising) }
                 }
-                beacon.start {
+                beacon?.start {
                     CompanionAnnouncement(
                         port = port,
                         app = appVersion,
@@ -670,7 +647,7 @@ class CompanionHost(
         } finally {
             orphan?.let { unpublished -> teardownScope.launch { runCatching { unpublished.stop(GRACE_MS, TIMEOUT_MS) } } }
             // Only this attempt's own handle: a newer start has one of its own.
-            synchronized(lifecycle) { if (generation == gen) startJob = null }
+            lifecycle.withLock { if (generation == gen) startJob = null }
         }
     }
 
@@ -718,7 +695,7 @@ class CompanionHost(
      * and forget the session: the rider has left Companion mode.
      */
     fun stop() {
-        synchronized(lifecycle) {
+        lifecycle.withLock {
             stopListening()
             clearLook()
             _hosting.value = false
@@ -745,7 +722,7 @@ class CompanionHost(
      * summary: nothing more can connect or start a ride, and the list of what
      * the session produced stays on screen until they dismiss it.
      */
-    private fun stopListening() = synchronized(lifecycle) {
+    private fun stopListening() = lifecycle.withLock {
         // Whatever start is still opening is now out of date, and stands down
         // at its next check rather than publishing a server after this.
         generation += 1
@@ -758,14 +735,14 @@ class CompanionHost(
         engine.onGearChanged = null
         engine.onRoadStaleChanged = null
         engine.onPowerTargetChanged = null
-        advertiser.stop()
-        beacon.stop()
+        advertiser?.stop()
+        beacon?.stop()
 
         val running = server
         server = null
         val closing = connections.toList()
         connections.clear()
-        synchronized(slot) {
+        slot.withLock {
             controller = null
             ridePrepared = false
         }
@@ -781,7 +758,7 @@ class CompanionHost(
                 // companion cannot tell a finished ride from a crashed phone,
                 // and the protocol promises it a `stateChanged` and a 4005.
                 closing.forEach { conn ->
-                    runCatching { dispatch(conn, synchronized(conn.session) { conn.session.rideEnded() }) }
+                    runCatching { dispatch(conn, conn.lock.withLock { conn.session.rideEnded() }) }
                 }
                 // Long enough for each writer to put those two on the wire.
                 delay(GRACE_MS)
@@ -810,7 +787,7 @@ class CompanionHost(
         engine.setRoad(gradient = 0.0, speedMps = engine.speedMps.value)
         sessionManager.takeBackFromCompanion()
         scope.launch {
-            dispatch(holder, synchronized(holder.session) { holder.session.revoke() })
+            dispatch(holder, holder.lock.withLock { holder.session.revoke() })
         }
     }
 
@@ -853,7 +830,7 @@ class CompanionHost(
      * first underneath the rider.
      */
     private fun prepareOnce() {
-        synchronized(slot) {
+        slot.withLock {
             if (ridePrepared) return
             ridePrepared = true
         }
@@ -907,7 +884,7 @@ class CompanionHost(
         // One that never said anything at all used to stay open for good.
         val deadline = ws.launch {
             delay(HANDSHAKE_MS)
-            val effects = synchronized(session) {
+            val effects = conn.lock.withLock {
                 session.refuseUnauthenticated(
                     "No completed handshake within " + HANDSHAKE_MS / 1000 + " s. Send 'hello' first.",
                 )
@@ -930,7 +907,7 @@ class CompanionHost(
                         else -> null
                     }
                     if (refusal != null) {
-                        dispatch(conn, synchronized(session) { session.refuseUnauthenticated(refusal) })
+                        dispatch(conn, conn.lock.withLock { session.refuseUnauthenticated(refusal) })
                         break
                     }
                 }
@@ -939,7 +916,7 @@ class CompanionHost(
                 val text = frame.readText()
                 // The session is also asked for screenshots from the rider's
                 // tap, on another thread, and it is not built to be shared.
-                val effects = synchronized(session) { session.onFrame(text, System.currentTimeMillis()) }
+                val effects = conn.lock.withLock { session.onFrame(text, getCurrentEpochMillis()) }
                 val open = dispatch(conn, effects)
                 // Registering after the close check, not before it: a
                 // connection that has just been closed must not be put back as
@@ -971,7 +948,7 @@ class CompanionHost(
             deadline.cancel()
             connections.remove(conn)
             // A refused controller only counts while nobody has taken its place.
-            val wasHolding = synchronized(slot) {
+            val wasHolding = slot.withLock {
                 val holding = controller === conn || (refusedController && controller == null)
                 if (holding) controller = null
                 holding
@@ -1011,7 +988,7 @@ class CompanionHost(
     private suspend fun writeOut(conn: Conn) {
         try {
             for (item in conn.outbox) {
-                conn.queued.decrementAndGet()
+                conn.queued.addAndFetch(-1)
                 when (item) {
                     is Outbound.Send -> {
                         val sent = withTimeoutOrNull(SEND_TIMEOUT_MS) {
@@ -1078,7 +1055,7 @@ class CompanionHost(
             // could each see the slot empty and each take it, and the one
             // overwritten could still steer, since what it may do is its own
             // session's to say.
-            val claimed = synchronized(slot) {
+            val claimed = slot.withLock {
                 val holder = controller
                 if (holder == null || holder === conn) {
                     controller = conn
@@ -1089,7 +1066,7 @@ class CompanionHost(
             }
             if (!claimed) {
                 Log.w(TAG, "Refused " + conn.session.clientName + ": another companion took control first")
-                dispatch(conn, synchronized(conn.session) { conn.session.refuseControl() })
+                dispatch(conn, conn.lock.withLock { conn.session.refuseControl() })
                 return false
             }
             if (lookOwner != null && lookOwner != conn.session.clientName) clearLook()
@@ -1127,21 +1104,21 @@ class CompanionHost(
      * for a whole evening is a real chance, and nothing counted.
      */
     private fun noteAuthFailure(conn: Conn) {
-        val now = System.currentTimeMillis()
+        val now = getCurrentEpochMillis()
         val failures = failuresByHost.getOrPut(conn.remoteHost) { Failures() }
-        synchronized(failures) {
+        failures.lock.withLock {
             failures.count += 1
             if (failures.count >= FREE_FAILURES) {
                 val doublings = (failures.count - FREE_FAILURES).coerceAtMost(6)
                 failures.blockedUntilMs = now + (1_000L shl doublings).coerceAtMost(MAX_BACKOFF_MS)
             }
         }
-        if (codeFailures.incrementAndGet() >= ROTATE_CODE_AFTER) rotateCode()
+        if (codeFailures.addAndFetch(1) >= ROTATE_CODE_AFTER) rotateCode()
     }
 
     private fun refusalFor(host: String): String? {
         val failures = failuresByHost[host] ?: return null
-        val waitMs = synchronized(failures) { failures.blockedUntilMs - System.currentTimeMillis() }
+        val waitMs = failures.lock.withLock { failures.blockedUntilMs - getCurrentEpochMillis() }
         return if (waitMs > 0) "too many failed attempts; try again in " + ((waitMs + 999) / 1000) + " s" else null
     }
 
@@ -1151,9 +1128,9 @@ class CompanionHost(
      * code is fixed by design.
      */
     private fun rotateCode() {
-        if (app.indoorbike.BuildConfig.DEBUG) return
-        codeFailures.set(0)
-        val token = CompanionPairing.newToken()
+        if (isDebug) return
+        codeFailures.store(0)
+        val token = CompanionPairing.newToken(isDebug)
         currentToken = token
         _status.update { it.copy(token = token) }
         Log.w(TAG, "Pairing code replaced after repeated failed attempts")
@@ -1201,7 +1178,7 @@ class CompanionHost(
                     // be written; the companion should see the code and reason
                     // that explain why it was dropped, not a bare 1006.
                     connections.remove(conn)
-                    val wasController = synchronized(slot) {
+                    val wasController = slot.withLock {
                         (controller === conn).also { if (it) controller = null }
                     }
                     if (wasController) _remoteControls.value = null
@@ -1248,7 +1225,7 @@ class CompanionHost(
                     // A timestamp, so a stale row in the rider's list is
                     // obvious when they come to prune it.
                     pairedStore?.find(effect.deviceId)?.let {
-                        pairedStore.save(it.copy(lastSeenEpochMs = System.currentTimeMillis()))
+                        pairedStore.save(it.copy(lastSeenEpochMs = getCurrentEpochMillis()))
                         refreshPairedCompanionsLocked()
                     }
                 }
@@ -1408,7 +1385,7 @@ class CompanionHost(
             png == null -> null
             lastIconPng?.contentEquals(png) == true -> lastIcon
             else -> runCatching {
-                BitmapFactory.decodeByteArray(png, 0, png.size)?.asImageBitmap()
+                decodeIcon(png)
             }.getOrNull().also { decoded ->
                 if (decoded == null) {
                     conn.send(
@@ -1442,7 +1419,7 @@ class CompanionHost(
     private fun rememberBrand() {
         val store = brands ?: return
         val name = _look.value?.name ?: controller?.session?.clientName ?: return
-        store.save(
+        store.keep(
             rideStartEpochMs = sessionManager.sessionStartTimeEpoch,
             name = name,
             iconPng = lastIconPng,
@@ -1465,11 +1442,11 @@ class CompanionHost(
      * closed rather than waited on.
      */
     private fun Conn.send(frame: ServerFrame) {
-        if (frame is TelemetryFrame && queued.get() >= TELEMETRY_BACKLOG) return
-        queued.incrementAndGet()
+        if (frame is TelemetryFrame && queued.load() >= TELEMETRY_BACKLOG) return
+        queued.addAndFetch(1)
         val result = outbox.trySend(Outbound.Send(frame))
         if (result.isSuccess) return
-        queued.decrementAndGet()
+        queued.addAndFetch(-1)
         if (result.isClosed) return
         Log.w(TAG, "Dropping " + session.clientName + ": it has stopped reading")
         ws.cancel()
@@ -1488,7 +1465,7 @@ class CompanionHost(
         if (_pendingPairing.value == null) return
         _pendingPairing.value = null
         scope.launch {
-            dispatch(holder, synchronized(holder.session) { holder.session.acceptPairing(System.currentTimeMillis()) })
+            dispatch(holder, holder.lock.withLock { holder.session.acceptPairing(getCurrentEpochMillis()) })
         }
     }
 
@@ -1498,7 +1475,7 @@ class CompanionHost(
         if (_pendingPairing.value == null) return
         _pendingPairing.value = null
         scope.launch {
-            dispatch(holder, synchronized(holder.session) { holder.session.declinePairing("The rider declined.") })
+            dispatch(holder, holder.lock.withLock { holder.session.declinePairing("The rider declined.") })
         }
     }
 
@@ -1582,18 +1559,18 @@ class CompanionHost(
         if (rideStart == 0L) return
         if (_screenshotStatus.value?.kind == ScreenshotStatus.Kind.WAITING) return
 
-        val id = nextShotId.getAndIncrement()
+        val id = nextShotId.fetchAndAdd(1L)
         pendingShots[id] = PendingShot(
             rideStartEpochMs = rideStart,
             rideSeconds = sessionManager.actualRideSeconds.value,
-            requestedAtMs = System.currentTimeMillis(),
+            requestedAtMs = getCurrentEpochMillis(),
         )
         val waiting = showScreenshotStatus(
             ScreenshotStatus.Kind.WAITING,
             "Asking " + companionLabel(holder) + " for a screenshot",
         )
         scope.launch {
-            dispatch(holder, synchronized(holder.session) { holder.session.requestScreenshot(id) })
+            dispatch(holder, holder.lock.withLock { holder.session.requestScreenshot(id) })
             delay(SCREENSHOT_ANSWER_MS)
             // Still waiting on this one. A late picture is still kept when it
             // comes; the rider is only told it has not come yet.
@@ -1611,7 +1588,7 @@ class CompanionHost(
         val store = screenshots ?: return
         scope.launch {
             runCatching {
-                store.save(
+                store.keep(
                     rideStartEpochMs = pending.rideStartEpochMs,
                     image = effect.image,
                     takenAtEpochMs = pending.requestedAtMs,
@@ -1636,7 +1613,7 @@ class CompanionHost(
 
     /** Show a status, and clear it after a while unless it is still waiting. Returns its seq. */
     private fun showScreenshotStatus(kind: ScreenshotStatus.Kind, message: String): Int {
-        val seq = screenshotSeq.incrementAndGet()
+        val seq = screenshotSeq.addAndFetch(1)
         _screenshotStatus.value = ScreenshotStatus(seq, kind, message)
         if (kind != ScreenshotStatus.Kind.WAITING) {
             scope.launch {
@@ -1729,7 +1706,7 @@ class CompanionHost(
         val holding = engine.powerTarget.value != null
         return TelemetryFrame(
             seq = telemetrySeq++,
-            tMono = System.currentTimeMillis() - started,
+            tMono = getCurrentEpochMillis() - started,
             state = rideState(),
             // Omitted rather than zeroed when there is no reading: a missing
             // heart rate means no strap, not a heart rate of zero.
@@ -1829,7 +1806,7 @@ class CompanionHost(
         // the watch above announces as `paused`, so a companion sees
         // active -> finished -> paused and knows it may start another.
         sessionManager.prepareCompanion(ftp())
-        synchronized(slot) { ridePrepared = true }
+        slot.withLock { ridePrepared = true }
         // Preparing puts the rider back on their own bike and clears the
         // course. The bike the game described stays for the session, and a
         // course the game sent for the next ride while this one was being

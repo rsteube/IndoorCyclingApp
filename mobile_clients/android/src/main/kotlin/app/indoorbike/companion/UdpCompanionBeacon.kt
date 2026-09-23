@@ -15,6 +15,7 @@
  */
 package app.indoorbike.companion
 
+import app.indoorbike.shared.companion.CompanionBeacon
 import app.indoorbike.shared.companion.CompanionAnnouncement
 import app.indoorbike.shared.companion.CompanionDiscovery
 import app.indoorbike.shared.companion.CompanionProtocol
@@ -54,7 +55,7 @@ import java.net.NetworkInterface
  * phone", pairing answers "may you drive it", and broadcasting the code to the
  * whole subnet would collapse the two and hand a trainer to anything listening.
  */
-class CompanionBeacon(private val scope: CoroutineScope) {
+class UdpCompanionBeacon(private val scope: CoroutineScope) : CompanionBeacon {
 
     private var job: Job? = null
 
@@ -66,7 +67,7 @@ class CompanionBeacon(private val scope: CoroutineScope) {
      * lets a picker on the other end grey out a phone that is already busy.
      * Returning null pauses the beacon without tearing the socket down.
      */
-    fun start(payload: () -> CompanionAnnouncement?) {
+    override fun start(payload: () -> CompanionAnnouncement?) {
         stop()
         job = scope.launch {
             runCatching {
@@ -110,7 +111,7 @@ class CompanionBeacon(private val scope: CoroutineScope) {
         }
     }
 
-    fun stop() {
+    override fun stop() {
         job?.cancel()
         job = null
     }

@@ -32,6 +32,7 @@ The Simulator has no Bluetooth. **Use the demo trainer** connects the shared moc
 - `-demo-trainer` connects the demo trainer and starts it pedalling.
 - `-demo-ride [workout id]` does the same and opens the ride on that workout, or on the first workout if no id follows. `-demo-ride sample-test` runs a 30-second ride, which is the quickest way to reach the completion and save path.
 - `-demo-ride route` rides the first route in the library, and `-demo-ride free` starts a free ride.
+- `-demo-section companion` opens the Companion screen and its socket; the port is in the diagnostics log ("Companion socket listening on …").
 - `-demo-sync-folder` points sync at a folder in the app's own Documents (`sync-test`) and runs a round.
 - `-demo-open <link>` opens a link or `indoorbike://` URL as if the system had, without iOS's confirmation.
 - `-demo-tab history|progress|settings` opens on that tab, `-demo-section workouts|routes` opens that part of the Ride tab, and `-demo-latest-ride` opens the newest saved ride in History.
@@ -151,7 +152,27 @@ Each milestone ends with the app working on a real device, on iPhone and iPad.
     - Their platform needs as interfaces: `HttpClient` (with the multipart builder and form encoding), `KeyValueStore`, `SyncWorkoutLibrary`, and `sha256` and `formatLocalMinute` as `expect` functions.
   - Android keeps only `SafSyncStorage` and a small plumbing file (`AndroidSyncPlumbing.kt`).
   - **Not on iOS yet: Intervals.icu sign-in.** Its redirect is `https://indoorbike.app/oauth/intervals`. An iOS app receives that only through Universal Links, which need the Associated Domains entitlement and an `apple-app-site-association` file on indoorbike.app. The OAuth client is also compiled only into Android release builds. Until both are set up, iOS uses the API-key mode, as a build from source does on Android.
-- [ ] **8. Companion mode.** Companion server on the local network, Bonjour advertising, and the Local Network permission. The UDP beacon needs Apple's multicast entitlement, which Apple has to approve. Without it, companions find the phone through Bonjour only.
+- [x] **8. Companion mode.**
+  - **Screens:**
+    - The Companion screen: address, port, pairing code, whether the phone is discoverable, remembered companions, and "show every reading".
+    - The companion ride HUD: the game's name, icon and colours, the road it describes, power and power target, gradient, gear with big Easier and Harder paddles, every reading on request, the game's remote-control pad, a screenshot button, and "Take back control".
+    - The between-rides session panel.
+    - The pairing prompt.
+  - **Moved into `shared` for both apps:** `CompanionHost` itself, as Ktor CIO, which runs on both platforms. Its platform needs came out as seams:
+    - `CompanionAdvertiser` and `CompanionBeacon`;
+    - `ScreenshotSink` and `BrandSink`;
+    - an icon decoder;
+    - `localIPv4Addresses()` (`NetworkInterface` on Android, `getifaddrs` on iOS);
+    - the common `LockedMap`, `CopyOnWriteList` and Kotlin atomics in place of the JVM's.
+  - **Also shared now:** `CompanionPairing`, `CompanionRideRecorder` and `JsonPairedCompanionStore`.
+  - **Android keeps:** the NSD advertiser, the UDP beacon, and its file stores.
+  - **iOS provides:**
+    - Bonjour through `NSNetService`, with Android's TXT records.
+    - Stores laid out as Android's.
+    - `NSLocalNetworkUsageDescription` and `NSBonjourServices`.
+  - **Verified in the Simulator:** a test game, a plain WebSocket client, connected with the pairing code and negotiated 0.10, then started the ride with `setState`. It streamed telemetry, shifted a gear and finished, and the host saved the ride.
+  - **Not on iOS: the UDP beacon.** It needs Apple's multicast entitlement (`com.apple.developer.networking.multicast`), which Apple grants on request. Until then, companions find an iPhone through Bonjour or its address and port.
+  - **Background:** iOS closes listening sockets in the background, so a companion ride keeps the app in front with the screen awake.
 - [ ] **9. Zwift controllers.** The ECDH (P-256) key exchange and AES block encryption on iOS (Security and CommonCrypto). Until then those calls throw on iOS, and their 5 tests fail there.
 - [ ] **10. Release.** App icon, launch screen, App Store metadata, TestFlight through the Snapp Mobile team.
 

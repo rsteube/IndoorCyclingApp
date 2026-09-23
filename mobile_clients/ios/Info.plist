@@ -37,6 +37,13 @@
 			</array>
 		</dict>
 	</array>
+	<!-- Companion mode: a game on this network connects to the phone's socket. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Companion mode lets a game or app on another device on your network drive the trainer through Indoor Bike.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_indoorbike._tcp</string>
+	</array>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
 </dict>

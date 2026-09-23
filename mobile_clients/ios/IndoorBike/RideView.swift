@@ -7,6 +7,7 @@ import shared
 /// Laid out for a phone on the bars and an iPad on a stand: side by side
 /// wherever the screen is wider than tall, stacked where it is not.
 struct RideView: View {
+    let app: AppModel
     let ride: RideModel
     let trainer: TrainerModel
     let simulation: SimulationModel
@@ -26,7 +27,10 @@ struct RideView: View {
             let _ = updateScale(geometry.size)
             VStack(spacing: 0) {
                 header
-                if ride.isSimulation {
+                if ride.isCompanion {
+                    CompanionHUD(app: app, scale: scale, wide: wide, zoneColor: liveZone.color, heartColor: heartColor)
+                        .frame(maxHeight: .infinity)
+                } else if ride.isSimulation {
                     RouteHUD(
                         simulation: simulation,
                         trainer: trainer,
@@ -198,8 +202,8 @@ struct RideView: View {
 
     private var controls: some View {
         HStack(spacing: 12) {
-            if !ride.isSimulation {
-                // A route's ± is the gear shifter in its HUD.
+            if !ride.isSimulation && !ride.isCompanion {
+                // A route's and a companion's ± is the gear shifter in its HUD.
                 ControlButton(systemImage: "minus", label: "Easier", action: ride.easier)
                 if !ride.isFreeRide {
                     Text(ride.biasPercent == 0 ? "±0%" : String(format: "%+d%%", ride.biasPercent))
@@ -230,10 +234,14 @@ struct RideView: View {
     private var stateOverlay: some View {
         switch ride.state {
         case .standby:
-            Banner(
-                title: ride.hasStarted ? "Paused" : "Start pedalling",
-                message: ride.hasStarted ? "Pedal to carry on." : "The workout starts when you do."
-            )
+            if ride.isCompanion && !ride.hasStarted {
+                Banner(title: "Ready", message: "Start the ride in the game.")
+            } else {
+                Banner(
+                    title: ride.hasStarted ? "Paused" : "Start pedalling",
+                    message: ride.hasStarted ? "Pedal to carry on." : "The workout starts when you do."
+                )
+            }
         case .countdown:
             Text("\(ride.countdown)")
                 .font(.system(size: 160, weight: .bold, design: .rounded).monospacedDigit())

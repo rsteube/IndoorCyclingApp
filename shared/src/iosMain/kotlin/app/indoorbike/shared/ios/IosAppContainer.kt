@@ -42,6 +42,11 @@ import app.indoorbike.shared.sync.SyncEngine
 import app.indoorbike.shared.sync.SyncWorkoutLibrary
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
+import app.indoorbike.shared.companion.CompanionEngine
+import app.indoorbike.shared.companion.CompanionHost
+import app.indoorbike.shared.companion.CompanionRideRecorder
+import app.indoorbike.shared.companion.JsonPairedCompanionStore
+import platform.UIKit.UIImage
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.activity.exportFileName
@@ -105,6 +110,10 @@ class IosAppContainer(
     bundledWorkoutJson: List<String>,
     /** The Keychain, for the upload services' credentials. */
     secrets: SecretStore,
+    /** The app's version, as a companion is told it. */
+    appVersion: String,
+    /** A debug build: the companion pairing code is always the same. */
+    isDebug: Boolean,
 ) {
     val userSettings = IosUserSettings(secrets)
     val trainerManager = TrainerManager()
@@ -123,6 +132,17 @@ class IosAppContainer(
         drivetrainProvider = { Drivetrain.byId(userSettings.drivetrainId.value) },
     )
 
+    /** Drives the trainer from a companion's road, as the simulation engine does from a route's. */
+    val companionEngine = CompanionEngine(
+        powerWatts = { trainerManager.power.value },
+        cadenceRpm = { trainerManager.cadence.value },
+        applyRoad = trainerManager::setSimulationParameters,
+        applyPower = trainerManager::setTargetPower,
+        riderMassKg = { userSettings.weightKg.value },
+        bikeMassKg = { userSettings.bikeWeightKg.value },
+        drivetrainProvider = { Drivetrain.byId(userSettings.drivetrainId.value) },
+    )
+
     val sessionManager = WorkoutSessionManager(
         trainerManager = trainerManager,
         activeSessionStore = IosActiveSessionStore(),
@@ -136,7 +156,11 @@ class IosAppContainer(
         },
         riderMassKg = { userSettings.weightKg.value },
         simulationEngine = simulationEngine,
+        companionEngine = companionEngine,
     )
+
+    val screenshots = IosScreenshotStore()
+    val brands = IosBrandStore()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -188,6 +212,44 @@ class IosAppContainer(
         },
         storageProvider = { userSettings.syncFolderUri.value?.let { IosSyncStorage(it) } },
     )
+
+    /**
+     * The companion socket: the same host the Android app runs. Bonjour only:
+     * the UDP beacon needs Apple's multicast entitlement, which Apple grants
+     * on request, so companions find an iPhone by Bonjour or its address.
+     */
+    val companionHost = CompanionHost(
+        engine = companionEngine,
+        sessionManager = sessionManager,
+        appVersion = appVersion,
+        ftp = { userSettings.ftp.value },
+        riderMassKg = { userSettings.weightKg.value },
+        bikeMassKg = { userSettings.bikeWeightKg.value },
+        powerWatts = { trainerManager.power.value },
+        cadenceRpm = { trainerManager.cadence.value },
+        heartRateBpm = {
+            val hrm = heartRateMonitor.heartRate.value
+            if (hrm > 0) hrm else trainerManager.heartRate.value
+        },
+        trainerName = { trainerManager.connectedTrainerName.value },
+        trainerConnected = {
+            trainerManager.connectionState.value == TrainerConnectionState.Connected || trainerManager.isMockTrainer.value
+        },
+        trainerAcceptsPower = { trainerManager.acceptsTargetPower },
+        deviceId = { userSettings.deviceId },
+        pairedStore = JsonPairedCompanionStore(IosTextFile("paired_companions.json")),
+        screenshots = screenshots,
+        brands = brands,
+        advertiser = NetServiceAdvertiser(),
+        beacon = null,
+        isDebug = isDebug,
+        decodeIcon = { png -> UIImage.imageWithData(png.toNSData()) },
+    ).also { host ->
+        host.rideRecorder = CompanionRideRecorder(historyRepository, sessionManager) { workout, start, duration, telemetry, road, record ->
+            saveNow(workout, start, duration, telemetry, road, record)
+                ?: throw IllegalStateException("The companion ride couldn't be saved")
+        }
+    }
 
     /** The community repositories the rider follows, and what each has that they haven't seen. */
     val followedRepositories = FollowedRepositories(IosFolder("followed").asTextStore(), IosHttp.textFetcher)
@@ -244,7 +306,7 @@ class IosAppContainer(
             .onEach { event ->
                 if (!rideActive) return@onEach
                 val direction = if (event == ControllerEvent.Plus) 1 else -1
-                adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, null)
+                adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, companionEngine)
             }
             .launchIn(scope)
         // A ride keeps its devices even with the app in the background.
@@ -294,7 +356,7 @@ class IosAppContainer(
 
     /** One step harder (+1) or easier (-1), as the ride in progress understands it. */
     fun stepEffort(direction: Int) {
-        adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, null)
+        adjustEffort(direction, sessionManager.activeWorkout.value, sessionManager, simulationEngine, companionEngine)
     }
 
     // ─── Other ways to ride ──────────────────────────────────────────────
@@ -613,7 +675,19 @@ class IosAppContainer(
         record: RideRecord,
         onSaved: (Long?) -> Unit,
     ) {
-        scope.launch {
+        scope.launch { onSaved(saveNow(workout, startTimeEpoch, durationSeconds, telemetry, road, record)) }
+    }
+
+    /** Write a ride to history under the save lock and start its uploads; null if it failed. */
+    private suspend fun saveNow(
+        workout: Workout,
+        startTimeEpoch: Long,
+        durationSeconds: Int,
+        telemetry: List<TelemetryPoint>,
+        road: RideRoad,
+        record: RideRecord,
+    ): Long? {
+        run {
             val id = try {
                 saveLock.withLock {
                     writeRideToHistory(
@@ -637,7 +711,7 @@ class IosAppContainer(
             if (id != null) {
                 rideUploads.autoUpload(id, workout, record.ftp.takeIf { it > 0 } ?: userSettings.ftp.value)
             }
-            onSaved(id)
+            return id
         }
     }
 

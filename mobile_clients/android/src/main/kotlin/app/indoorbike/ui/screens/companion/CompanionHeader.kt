@@ -192,7 +192,7 @@ fun rememberCompanionNotice(
      */
     panelShowing: Boolean = false,
     /** The screenshot the rider last asked for, while there is something to say about it. */
-    screenshot: app.indoorbike.companion.CompanionHost.ScreenshotStatus? = null,
+    screenshot: app.indoorbike.shared.companion.CompanionHost.ScreenshotStatus? = null,
 ): CompanionNotice? {
     // Keyed on the count rather than the name, so two laps of the same course
     // still announce twice.
@@ -212,9 +212,9 @@ fun rememberCompanionNotice(
         screenshot != null -> CompanionNotice(
             text = screenshot.message,
             color = when (screenshot.kind) {
-                app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.WAITING -> CadenceColors.Fg2
-                app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.SAVED -> CadenceColors.Success
-                app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.FAILED -> CadenceColors.Warning
+                app.indoorbike.shared.companion.CompanionHost.ScreenshotStatus.Kind.WAITING -> CadenceColors.Fg2
+                app.indoorbike.shared.companion.CompanionHost.ScreenshotStatus.Kind.SAVED -> CadenceColors.Success
+                app.indoorbike.shared.companion.CompanionHost.ScreenshotStatus.Kind.FAILED -> CadenceColors.Warning
             },
         )
         connectedName == null -> CompanionNotice("No companion connected - flat road", CadenceColors.Warning)

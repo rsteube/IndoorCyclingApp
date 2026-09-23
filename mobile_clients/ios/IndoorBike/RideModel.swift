@@ -74,8 +74,9 @@ final class RideModel {
 
     var isSimulation: Bool { workout?.isSimulation ?? false }
     var isFreeRide: Bool { workout?.isFreeRide ?? false }
+    var isCompanion: Bool { workout?.isCompanion ?? false }
     /// No plan to count down: a free ride or a route.
-    var isOpenEnded: Bool { isSimulation || isFreeRide }
+    var isOpenEnded: Bool { isSimulation || isFreeRide || isCompanion }
 
     func pause() { session.pauseWorkout() }
     func resume() { session.resumeWorkout() }
@@ -100,6 +101,9 @@ final class RideModel {
     }
 
     private func saveIfCompleted() {
+        // A companion ride the host is hosting is written by the host, the
+        // moment the game says it is over; saving it here too would save it twice.
+        if isCompanion && container.companionHost.hosting.value as? Bool == true { return }
         guard !saving, savedSessionId == nil else { return }
         saving = true
         container.saveCompletedRide { [weak self] id in

@@ -78,6 +78,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import app.indoorbike.ui.leavingForGood
@@ -529,7 +530,7 @@ fun RideScreen(
     // once the session has ended; only a session a companion actually drove has
     // anything to say.
     val showSessionPanel = hostSavesRide && companionSessionName != null &&
-        companionPhase != app.indoorbike.companion.CompanionHost.SessionPhase.LIVE
+        companionPhase != app.indoorbike.shared.companion.CompanionHost.SessionPhase.LIVE
 
     val handleBack = {
         when {
@@ -538,7 +539,7 @@ fun RideScreen(
             // underway, and let the panel show what the session produced.
             // Discarding it here is how a five-minute ride used to vanish.
             hostSavesRide && companionSessionName != null &&
-                companionPhase != app.indoorbike.companion.CompanionHost.SessionPhase.ENDED ->
+                companionPhase != app.indoorbike.shared.companion.CompanionHost.SessionPhase.ENDED ->
                 companionHost.endSession()
             isCompanion -> {
                 // An ended session, a HUD no companion ever drove, or a ride
@@ -760,7 +761,7 @@ fun RideScreen(
                         // rider can check against the machine in front of them.
                         companionStatus.controllerAddress?.let { "from $it" },
                     ).joinToString(" \u00b7 ").ifBlank { null },
-                    icon = companionLook?.icon,
+                    icon = companionLook?.icon as? ImageBitmap,
                     palette = companionLook?.palette,
                     notice = companionNotice,
                 )
@@ -817,7 +818,7 @@ fun RideScreen(
                     ) {
                         ScreenshotButton(
                             busy = screenshotStatus?.kind ==
-                                app.indoorbike.companion.CompanionHost.ScreenshotStatus.Kind.WAITING,
+                                app.indoorbike.shared.companion.CompanionHost.ScreenshotStatus.Kind.WAITING,
                             onClick = companionHost::requestScreenshot,
                         )
                     } else {
@@ -911,7 +912,7 @@ fun RideScreen(
                     if (showSessionPanel) {
                         // Underway, which while the companion is away means paused.
                         val rideRunning = companionPhase ==
-                            app.indoorbike.companion.CompanionHost.SessionPhase.COMPANION_AWAY &&
+                            app.indoorbike.shared.companion.CompanionHost.SessionPhase.COMPANION_AWAY &&
                             sessionManager.sessionStartTimeEpoch != 0L &&
                             state != WorkoutState.Completed && state != WorkoutState.Idle
                         Isolated {
@@ -930,7 +931,7 @@ fun RideScreen(
                                 } else {
                                     null
                                 },
-                                icon = companionLook?.icon,
+                                icon = companionLook?.icon as? ImageBitmap,
                                 palette = companionLook?.palette,
                                 onEndSession = companionHost::endSession,
                                 onDone = onCompanionSessionDone,

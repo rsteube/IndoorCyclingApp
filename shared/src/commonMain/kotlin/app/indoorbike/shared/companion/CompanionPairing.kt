@@ -12,13 +12,15 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
- */
-package app.indoorbike.companion
+ */package app.indoorbike.shared.companion
 
-import app.indoorbike.shared.companion.CompanionProtocol
-import java.net.Inet4Address
-import java.net.NetworkInterface
-import java.security.SecureRandom
+import app.indoorbike.shared.util.secureRandomBytes
+
+/**
+ * The device's IPv4 addresses a companion on the same network could reach:
+ * up, not loopback, not link-local. Each platform lists its interfaces.
+ */
+expect fun localIPv4Addresses(): List<String>
 
 /**
  * The pairing code, the addresses to reach the phone on, and the QR payload
@@ -62,8 +64,6 @@ object CompanionPairing {
      * `kotlin.random`, whose output is predictable from enough of what it has
      * already produced.
      */
-    private val random = SecureRandom()
-
     /**
      * A fresh pairing code, for a session. It is not stored, and it is
      * replaced early if too many wrong ones are tried against it: see
@@ -71,14 +71,25 @@ object CompanionPairing {
      *
      * Except in a debug build, where it is always [DEBUG_TOKEN].
      */
-    fun newToken(): String {
-        if (app.indoorbike.BuildConfig.DEBUG) return DEBUG_TOKEN
-        return (1..CODE_LENGTH).map { ALPHABET[random.nextInt(ALPHABET.length)] }.joinToString("")
+    /** A fresh pairing code; always [DEBUG_TOKEN] in a debug build, so a test rig can hard-code it. */
+    fun newToken(debug: Boolean): String {
+        if (debug) return DEBUG_TOKEN
+        // Rejection sampling: a byte is only used below the largest multiple of
+        // the alphabet's size, so every letter is equally likely.
+        val limit = 256 - 256 % ALPHABET.length
+        val code = StringBuilder()
+        while (code.length < CODE_LENGTH) {
+            for (byte in secureRandomBytes(CODE_LENGTH * 2)) {
+                val b = byte.toInt() and 0xFF
+                if (b < limit && code.length < CODE_LENGTH) code.append(ALPHABET[b % ALPHABET.length])
+            }
+        }
+        return code.toString()
     }
 
     /** A short id for this session, so a reconnecting companion can tell it is the same one. */
     fun newSessionId(): String =
-        (1..6).map { "0123456789abcdef"[random.nextInt(16)] }.joinToString("")
+        secureRandomBytes(6).map { "0123456789abcdef"[(it.toInt() and 0xFF) % 16] }.joinToString("")
 
     /**
      * Every IPv4 address this phone can plausibly be reached on.
@@ -91,17 +102,7 @@ object CompanionPairing {
      * Loopback and link-local are dropped: neither is reachable from the other
      * device, so offering them would only waste a rider's time.
      */
-    fun localAddresses(): List<String> = runCatching {
-        NetworkInterface.getNetworkInterfaces()
-            .asSequence()
-            .filter { runCatching { it.isUp && !it.isLoopback }.getOrDefault(false) }
-            .flatMap { it.inetAddresses.asSequence() }
-            .filterIsInstance<Inet4Address>()
-            .filterNot { it.isLoopbackAddress || it.isLinkLocalAddress }
-            .mapNotNull { it.hostAddress }
-            .distinct()
-            .toList()
-    }.getOrDefault(emptyList())
+    fun localAddresses(): List<String> = localIPv4Addresses()
 
     /**
      * The deep link a companion scans.
