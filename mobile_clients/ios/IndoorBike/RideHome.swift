@@ -75,6 +75,9 @@ struct RideHome: View {
                             .foregroundStyle(.tint)
                             .accessibilityHidden(true)
                     }
+                    // A plain button answers taps only on what it draws; the
+                    // gap between the text and the icon is part of the row.
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint(app.trainer.isLive ? "Starts a free ride" : "Pair a trainer first")

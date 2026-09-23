@@ -132,6 +132,10 @@ struct DeviceRow: View {
                     .foregroundStyle(status.tone.color)
             }
         }
+        // The whole row, not only its text, answers a tap: it sits in a
+        // plain button, which hit-tests only what it draws.
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
