@@ -31,6 +31,11 @@
 .PARAMETER SkipInstall
     Reuse the install already on the device.
 
+.PARAMETER OutDir
+    Where to write the screenshots instead of the Play listing's folder for
+    -Kind. For captures that are not meant for the store (the README's, say),
+    so the next fastlane upload does not send them to Play.
+
 .EXAMPLE
     .\scripts\capture_store_screenshots.ps1 -Serial emulator-5554 -Kind phone
 #>
@@ -38,7 +43,8 @@
 param(
     [Parameter(Mandatory = $true)][string] $Serial,
     [Parameter(Mandatory = $true)][ValidateSet('phone', 'sevenInch', 'tenInch')][string] $Kind,
-    [switch] $SkipInstall
+    [switch] $SkipInstall,
+    [string] $OutDir
 )
 
 # adb writes routine chatter to stderr, and `uiautomator dump` fails outright
@@ -54,7 +60,9 @@ $Pkg      = 'app.indoorbike.debug'
 $Activity = "$Pkg/app.indoorbike.MainActivity"
 $Apk      = Join-Path $RepoRoot 'mobile_clients\android\build\outputs\apk\debug\android-debug.apk'
 $SeedSql  = Join-Path $PSScriptRoot 'store-screenshots\seed-history.sql'
-$OutDir   = Join-Path $RepoRoot "mobile_clients\android\fastlane\metadata\android\en-US\images\${Kind}Screenshots"
+if (-not $OutDir) {
+    $OutDir = Join-Path $RepoRoot "mobile_clients\android\fastlane\metadata\android\en-US\images\${Kind}Screenshots"
+}
 
 function Adb { & adb.exe -s $Serial @args 2>$null }
 

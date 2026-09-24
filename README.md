@@ -5,9 +5,10 @@ A local-first, open-source indoor cycling app for Android. Connects to your smar
 The companion website lives at [indoorbike.app](https://indoorbike.app), with an in-browser workout editor.
 
 <p align="center">
-  <img src="docs/screenshots/rides.png" alt="Workout list" width="240">
-  <img src="docs/screenshots/ride-hud.png" alt="Live ride HUD" width="240">
-  <img src="docs/screenshots/progress.png" alt="Progression" width="240">
+  <img src="docs/screenshots/app-home.png" alt="Home: pick a workout, a route, just ride, or a companion game" width="200">
+  <img src="docs/screenshots/app-workout-ride.png" alt="A structured workout in ERG mode, on target at 200 W" width="200">
+  <img src="docs/screenshots/app-route-ride.png" alt="A route ride with the map, live gradient, virtual gears and elevation profile" width="200">
+  <img src="docs/screenshots/app-progress.png" alt="Progress: rider level, weekly streak and badges" width="200">
 </p>
 
 ## Features
