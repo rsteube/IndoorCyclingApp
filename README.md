@@ -41,7 +41,11 @@ read the compressed `#wz=` workout links.
 
 ## Deployment to CodeFloe Pages
 
-The website is hosted using CodeFloe Pages. The content of this directory is pushed to the `pages` branch of the CodeFloe repository by [scripts/deploy_website.ps1](../scripts/deploy_website.ps1).
+The website is hosted on CodeFloe Pages, which since 2026-09-20 runs on
+CodeFloe's own servers (git-pages) instead of statichost.eu. This directory is
+plain HTML with no build step: it is pushed to the `pages` branch of the
+CodeFloe repository by [scripts/deploy_website.ps1](../scripts/deploy_website.ps1),
+and CodeFloe publishes whatever that branch holds.
 
 **To deploy an update:**
 1. Make your changes and commit them to the `main` branch.
@@ -53,5 +57,40 @@ The website is hosted using CodeFloe Pages. The content of this directory is pus
    ```powershell
    git subtree push --prefix website origin pages
    ```
+3. Check it arrived. The branch is published within seconds at
+   `https://snapptechnology.codefloe.page/indoorcyclingapp/` (lowercase) and the
+   older `https://snapptechnology-indoorcyclingapp.codefloe.page/`, before and
+   regardless of the custom domain. Then check the domain itself, e.g.
+   `curl -s https://indoorbike.app/.well-known/assetlinks.json`.
 
-The `.domains` file inside this directory ensures the site is served from `indoorbike.app`.
+**Where the setup lives.** Two places outside this directory, both needed:
+
+- **Repository Pages settings on CodeFloe**: the branch to publish (`pages`),
+  and the Domains section, with `indoorbike.app` as the primary domain and
+  `www.indoorbike.app` beside it. The Domains section is what tells CodeFloe
+  which repository a domain belongs to. The `.domains` file here was
+  statichost.eu's way of saying the same thing and is kept only as a record.
+- **DNS at GoDaddy** (`ns21/ns22.domaincontrol.com`). GoDaddy has no ALIAS
+  record for the bare domain, so the apex gets A and AAAA records for CodeFloe's
+  Pages servers, and `www` a CNAME:
+
+  ```
+  indoorbike.app.      A     142.132.154.74
+  indoorbike.app.      A     142.132.154.75
+  indoorbike.app.      A     142.132.154.80
+  indoorbike.app.      AAAA  2a01:4f8:261:2a16::2
+  indoorbike.app.      AAAA  2a01:4f8:261:2a14::2
+  indoorbike.app.      AAAA  2a01:4f8:261:2a0b::2
+  www.indoorbike.app.  CNAME snapptechnology.codefloe.page.
+  ```
+
+  Those addresses can change: `nslookup snapptechnology.codefloe.page` gives the
+  current ones, and [CodeFloe's Pages docs](https://docs.codefloe.com/pages/configuration/#custom-domains)
+  list them. CodeFloe issues and renews the certificate itself once the records
+  resolve.
+
+**Load-bearing paths.** Every shipped APK fetches `/registry.json`, Android
+verifies the Intervals.icu sign-in link against `/.well-known/assetlinks.json`
+(served as `application/json`, no redirect), and QR codes in the wild point at
+`/editor/` and `/share/`. All of them must keep answering at the root of
+`indoorbike.app`, which a custom domain on CodeFloe Pages does.
