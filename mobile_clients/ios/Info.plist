@@ -2,26 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Keeps the trainer link, and with it the ride, alive with the screen
-	     locked or another app in front. Everything else in Info.plist is
-	     generated from the INFOPLIST_KEY_ build settings. -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>bluetooth-central</string>
-	</array>
-	<!-- indoorbike://import links, which the web editor and share page produce. -->
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>app.indoorbike.import</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>indoorbike</string>
-			</array>
-		</dict>
-	</array>
-	<!-- A workout .json file opened from Files, Mail or the share page. -->
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -37,15 +17,25 @@
 			</array>
 		</dict>
 	</array>
-	<!-- Companion mode: a game on this network connects to the phone's socket. -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Companion mode lets a game or app on another device on your network drive the trainer through Indoor Bike.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.indoorbike.import</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>indoorbike</string>
+			</array>
+		</dict>
+	</array>
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_indoorbike._tcp</string>
 	</array>
-	<!-- The launch screen: the icon's slate with the rider on it, so opening
-	     the app reads as the icon growing to fill the screen. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>
@@ -53,7 +43,5 @@
 		<key>UIImageName</key>
 		<string>LaunchMark</string>
 	</dict>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<false/>
 </dict>
 </plist>
