@@ -6,6 +6,21 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A flatter road at speed could turn the pedals into a wall.** Down a fast
+  descent in the hardest gear, a road easing from steep to gentle made the
+  pedals go heavy at once: at 70 km/h on the gravel 1x the trainer was asked
+  for the equivalent of a 20 % climb. On a bike the legs are not connected to
+  a wheel they cannot keep up with, and a flatter road only slows the bike
+  down. Now, while the legs are turning slower than the wheel, a road getting
+  harder reaches them through the bike's momentum rather than at the pedals:
+  the bike slows, and the resistance comes back as the legs catch up with it.
+  Legs turning with the wheel meet a climb exactly as before. How a rider's
+  cadence maps onto the road depends on the gear their own bike sits in on the
+  trainer, so it is measured from the first stretch of steady riding in each
+  ride, and nothing is held back until it has been.
+
 ## [2.8] (25) - 2026-09-23
 
 ### Fixed

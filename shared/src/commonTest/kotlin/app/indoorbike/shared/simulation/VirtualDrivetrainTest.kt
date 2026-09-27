@@ -16,8 +16,10 @@
 package app.indoorbike.shared.simulation
 
 import app.indoorbike.shared.ble.SimulationParameters
+import app.indoorbike.shared.physics.RideDynamics
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -56,6 +58,48 @@ class VirtualDrivetrainTest {
         }
 
         fun forceNow(): Double = gearing.trainerForceNewtons(gear)
+
+        private var nowMs = 1_000_000L
+
+        /** One quarter-second tick, in the order the engines run it. */
+        fun tick(gradient: Double, speedMps: Double) {
+            gearing.setRoad(gradient = gradient, worldSpeedMps = speedMps)
+            gearing.update(0.25)
+            nowMs += 250
+            gearing.writeRoad(forced = false, nowMs = nowMs)
+        }
+
+        fun ride(gradient: Double, speedMps: Double, seconds: Double) {
+            repeat((seconds / 0.25).toInt()) { tick(gradient, speedMps) }
+        }
+    }
+
+    /** Gravity and rolling for the rig's 84 kg: the part of a road that a gradient changes. */
+    private fun gradeForce(gradient: Double): Double =
+        RideDynamics.roadForceNewtons(gradient = gradient, speedMps = 0.0, totalMassKg = 84.0)
+
+    /**
+     * A rider whose gear the freewheel has measured: 28 km/h on the flat in
+     * the 40x17 at 90 rpm, long enough for the launch assist to finish and the
+     * coupling to be learned. Their legs are turning exactly with the wheel.
+     */
+    private fun calibrated(): Rig {
+        val r = Rig(cadence = 90, sprocket = 17)
+        r.ride(gradient = 0.0, speedMps = CRUISE, seconds = 30.0)
+        assertTrue(r.gearing.freewheelCalibrated)
+        return r
+    }
+
+    /**
+     * The same rider in the hardest gear at 70 km/h on a -10 % descent,
+     * turning [cadence]. The 40x10 needs 132 rpm to reach the wheel there.
+     */
+    private fun descending(cadence: Int): Rig {
+        val r = calibrated()
+        r.gearing.shiftBy(+20)
+        r.cadence = cadence
+        r.ride(gradient = -0.10, speedMps = FAST, seconds = 8.0)
+        return r
     }
 
     /**
@@ -193,5 +237,94 @@ class VirtualDrivetrainTest {
 
         assertTrue(r.gearing.writeRoad(forced = true, nowMs = 1_000_000))
         assertEquals(expected, r.gearing.commandedForceN.value, absoluteTolerance = 1e-9)
+    }
+
+    // The freewheel ─────────────────────────────────────────────────────────
+
+    /**
+     * The report: down a descent at 70 km/h on the gravel 1x in the hardest
+     * gear, the road eased to about -2 % and the pedals went heavy at once, a
+     * 22 % wall. At 100 rpm the 40x10 turns the wheel at 53 km/h. The legs
+     * were never connected to a bike doing 70, and on a bicycle a flatter road
+     * can only slow it down.
+     */
+    @Test
+    fun `a flatter road at 70 km per h slows the bike and asks nothing of legs behind the wheel`() {
+        val r = descending(cadence = 100)
+        assertEquals(0.0, r.gearing.freewheelAbsorbedNewtons, "a steady road was held back")
+        val before = r.forceNow()
+
+        r.gearing.setRoad(gradient = -0.02, worldSpeedMps = FAST)
+        assertEquals(before, r.forceNow(), absoluteTolerance = 0.5)
+
+        // The bike slows, which is all a flatter road can do, and the inertia
+        // term takes the change over from the freewheel without the legs
+        // meeting any of it.
+        var v = FAST
+        var heaviest = 0.0
+        repeat(32) { // eight seconds
+            v -= RideDynamics.roadForceNewtons(-0.02, v, 84.0) / RideDynamics.effectiveMassKg(84.0) * 0.25
+            r.tick(gradient = -0.02, speedMps = v)
+            heaviest = maxOf(heaviest, r.forceNow())
+        }
+        assertTrue(heaviest <= before + 0.5, "the pedals went to $heaviest N from $before N")
+        assertEquals(0.0, r.gearing.freewheelAbsorbedNewtons, absoluteTolerance = 0.1)
+    }
+
+    /** What the same moment asked for before the freewheel, for the record. */
+    @Test
+    fun `legs turning with the wheel at 70 km per h are connected to it, and meet the change`() {
+        val r = descending(cadence = 132)
+        val before = r.forceNow()
+        r.gearing.setRoad(gradient = -0.02, worldSpeedMps = FAST)
+        assertEquals(0.0, r.gearing.freewheelAbsorbedNewtons)
+        assertTrue(r.forceNow() > before + 100.0)
+    }
+
+    @Test
+    fun `legs keeping up with the wheel meet a climb exactly as before`() {
+        val r = calibrated()
+        val before = r.forceNow()
+        r.gearing.setRoad(gradient = 0.08, worldSpeedMps = CRUISE)
+        val step = (gradeForce(0.08) - gradeForce(0.0)) * r.drivetrain.loadFactor(r.gear)
+        assertEquals(before + step, r.forceNow(), absoluteTolerance = 1e-6)
+    }
+
+    /**
+     * One sprocket down leaves 90 rpm turning the wheel at 90 % of the bike's
+     * speed until the legs spin up, and riders change down as a climb starts.
+     */
+    @Test
+    fun `a downshift at the foot of a climb does not hide the climb`() {
+        val r = calibrated()
+        r.gearing.shiftBy(-1)
+        r.gearing.setRoad(gradient = 0.08, worldSpeedMps = CRUISE)
+        assertEquals(0.0, r.gearing.freewheelAbsorbedNewtons)
+    }
+
+    @Test
+    fun `before the rider's gear has been measured nothing is held`() {
+        val r = Rig(cadence = 100, sprocket = 10)
+        // The launch assist is still fading, so nothing has been learned yet.
+        r.ride(gradient = -0.10, speedMps = FAST, seconds = 8.0)
+        assertFalse(r.gearing.freewheelCalibrated)
+
+        r.gearing.setRoad(gradient = -0.02, worldSpeedMps = FAST)
+        assertEquals(0.0, r.gearing.freewheelAbsorbedNewtons)
+    }
+
+    @Test
+    fun `a new ride measures the rider's gear again`() {
+        val r = calibrated()
+        r.gearing.load(Drivetrain.GRAVEL, r.indexOf(17))
+        assertFalse(r.gearing.freewheelCalibrated)
+    }
+
+    private companion object {
+        /** 90 rpm in the gravel 40x17: about 28 km/h. */
+        val CRUISE = 90 / 60.0 * Drivetrain.GRAVEL.gears.first { it.sprocket == 17 }.developmentMeters
+
+        /** 70 km/h. */
+        const val FAST = 70 / 3.6
     }
 }

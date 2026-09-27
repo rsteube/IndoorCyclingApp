@@ -79,6 +79,17 @@ import kotlin.math.tanh
  * An upshift gets no such overshoot: the pedals firming by the ratio is exactly
  * what a bicycle does, and anything more is a wall.
  *
+ * ## What a freewheel does
+ *
+ * A rider whose legs are turning slower than the wheel is not connected to it,
+ * and a change in the road can only slow the bike down or speed it up. So while
+ * the legs are behind, [Freewheel] holds a road getting harder back from the
+ * pedals and lets the inertia term deliver it through the bike's momentum
+ * instead: 70 km/h in the top gear onto a flatter road slows the bike, and
+ * asks nothing of legs that cannot turn fast enough to reach the wheel.
+ * Legs keeping up with the wheel meet a changing road as before, and a steady
+ * road is never held back at all.
+ *
  * ## The contract
  *
  * The owner describes the road with [setRoad] as it changes, calls [update]
@@ -146,10 +157,19 @@ class VirtualDrivetrain(
     /** A hand off the line, fading to nothing once the rider is moving. */
     private val launchAssist = LaunchAssist()
 
+    /** A change in the road, held back from legs that are behind the wheel. */
+    private val freewheel = Freewheel()
+
     // The road as its owner last described it.
     private var gradient = 0.0
     private var crr = VirtualSpeed.CRR
     private var worldSpeedMps = 0.0
+
+    /**
+     * Gravity and rolling at the road last described, so the next description
+     * can say what changed. Null until there is one.
+     */
+    private var lastGradeForceNewtons: Double? = null
 
     // What was last actually written, so an unchanged road is not written again.
     private var lastSentForceNewtons: Double? = null
@@ -168,9 +188,12 @@ class VirtualDrivetrain(
         gradient = 0.0
         crr = VirtualSpeed.CRR
         worldSpeedMps = 0.0
+        lastGradeForceNewtons = null
         driveSpeed.reset()
         roadAcceleration.reset()
         launchAssist.reset()
+        // A new ride may be a different bike on the trainer: measure it again.
+        freewheel.reset()
         _driveSpeedMps.value = 0.0
         _driveSpeedKnown.value = false
         _commandedForceN.value = 0.0
@@ -228,6 +251,8 @@ class VirtualDrivetrain(
         } ?: drivetrain.startIndex
         // A different bike is not a shift, and nothing is owed to the old one.
         shiftRelease = 1.0
+        // But it moves the legs' speed like one, and they get the same grace.
+        freewheel.onShift()
     }
 
     /**
@@ -259,6 +284,7 @@ class VirtualDrivetrain(
             // middle of one is a rider who wants the road back, not half of it.
             to > from -> shiftRelease = 1.0
         }
+        if (to != from) freewheel.onShift()
         to
     }
 
@@ -267,12 +293,22 @@ class VirtualDrivetrain(
         this.gradient = gradient
         this.worldSpeedMps = worldSpeedMps
         this.crr = crr
+        // What changed of the road's speed-independent part is what legs
+        // behind the wheel should meet through the bike's momentum rather than
+        // at the pedals. Nothing is held while no road is in force on the
+        // trainer: the next one is stated in full anyway.
+        val gradeForce = gradeForceNewtons()
+        val previous = lastGradeForceNewtons
+        lastGradeForceNewtons = gradeForce
+        if (previous != null && lastSentForceNewtons != null) {
+            freewheel.absorb(gradeForce - previous, freewheel.slack(legsSpeedMps(), worldSpeedMps))
+        }
     }
 
     /**
-     * One tick: [dtSeconds] since the last. Refreshes the three filters the
-     * force is built from - the cadence, the bike's acceleration and the launch
-     * assist - from the road last described.
+     * One tick: [dtSeconds] since the last. Refreshes the four filters the
+     * force is built from - the cadence, the bike's acceleration, the launch
+     * assist and the freewheel - from the road last described.
      */
     fun update(dtSeconds: Double) = lock.withLock {
         if (shiftRelease < 1.0 && dtSeconds > 0.0) {
@@ -287,6 +323,20 @@ class VirtualDrivetrain(
             fallbackMps = worldSpeedMps,
         )
         _driveSpeedKnown.value = driveSpeed.available
+
+        val rider = riderMassKg()
+        val totalMass = if (rider > 0f) (rider + bikeMassKg()).toDouble() else 0.0
+        freewheel.update(
+            dtSeconds = dtSeconds,
+            driveSpeedMps = legsSpeedMps(),
+            cadenceRpm = driveSpeed.cadenceRpm,
+            worldSpeedMps = worldSpeedMps,
+            roadNewtons = RideDynamics.roadForceNewtons(gradient, worldSpeedMps, totalMass, crr),
+            inertiaNewtons = RideDynamics.inertiaForceNewtons(roadAcceleration.mps2, totalMass),
+            // Only a road the trainer is actually riding, at full strength,
+            // says anything about how this rider's legs map onto the world.
+            settled = lastSentForceNewtons != null && launchAssist.factor >= 1.0 && shiftRelease >= 1.0,
+        )
     }
 
     /**
@@ -347,13 +397,14 @@ class VirtualDrivetrain(
     }
 
     /**
-     * Forget what was last written, so the next road restates itself in full.
-     * Called when something other than a road took the control point, such as
-     * a power target, and on every start and stop.
+     * Forget what was last written, so the next road restates itself in full,
+     * nothing held back. Called when something other than a road took the
+     * control point, such as a power target, and on every start and stop.
      */
     fun forgetLastRoad() = lock.withLock {
         lastSentForceNewtons = null
         lastSentGearIndex = -1
+        freewheel.release()
     }
 
     /** Clear the published command, when a power target has taken over. */
@@ -386,7 +437,7 @@ class VirtualDrivetrain(
             // it changes speed.
             accelerationMps2 = roadAcceleration.mps2,
             totalMassKg = totalMass,
-        )
+        ) - freewheel.absorbedNewtons // A change legs behind the wheel meet as momentum, not force.
         // A descent can pull harder than the road resists, which is a negative
         // force the trainer has no way to apply. What is left is the
         // drivetrain's own drag, which a real bike has too. It scales with the
@@ -400,6 +451,33 @@ class VirtualDrivetrain(
         val commanded = road * gearFactor * launchAssist.factor * release
         return softCeiling(commanded.coerceAtLeast(floor))
     }
+
+    /** Gravity and rolling on the road last described: the part that does not depend on speed. */
+    private fun gradeForceNewtons(): Double {
+        val rider = riderMassKg()
+        if (rider <= 0f) return 0.0
+        return RideDynamics.roadForceNewtons(
+            gradient = gradient,
+            speedMps = 0.0,
+            totalMassKg = (rider + bikeMassKg()).toDouble(),
+            crr = crr,
+        )
+    }
+
+    /** `cadence x development` in the current gear, or null while no crank has turned. */
+    private fun legsSpeedMps(): Double? {
+        if (!driveSpeed.available) return null
+        return driveSpeed.speedMps(
+            developmentMeters = _drivetrain.value.developmentMeters(_gearIndex.value),
+            fallbackMps = worldSpeedMps,
+        )
+    }
+
+    /** See [Freewheel.calibrated]. Exposed for tests. */
+    internal val freewheelCalibrated: Boolean get() = lock.withLock { freewheel.calibrated }
+
+    /** See [Freewheel.absorbedNewtons]. Exposed for tests. */
+    internal val freewheelAbsorbedNewtons: Double get() = lock.withLock { freewheel.absorbedNewtons }
 
     companion object {
         /**

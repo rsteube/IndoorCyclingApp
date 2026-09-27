@@ -30,6 +30,11 @@ import kotlin.math.exp
  * companion's telemetry show. It tracks the world's speed wherever the rider has
  * settled, and diverges when they are in the wrong gear, coasting or spun out.
  *
+ * The one thing it decides is whether a *change* in the road reaches the pedals
+ * at all. Legs turning well behind the wheel are freewheeling, and [Freewheel]
+ * lets the bike's momentum carry the change instead. The road itself is still
+ * never evaluated at this speed.
+ *
  * ## Why the road is not evaluated at it
  *
  * It was, once, and it was wrong in the seconds that matter most. Right after

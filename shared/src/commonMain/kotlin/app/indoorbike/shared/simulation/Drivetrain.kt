@@ -168,6 +168,11 @@ data class Drivetrain(
          * mass the trainer applies a grade against as well. Until that lands,
          * a rider whose real gear is taller than this simply rides further
          * down the virtual ladder than the numbers suggest.
+         *
+         * [Freewheel] already measures the same ratio for itself, from cadence
+         * and the world's speed while the rider rides steadily, because it has
+         * to know when legs are really behind the wheel. It is not fed back
+         * into the gears.
          */
         const val ASSUMED_REAL_DEVELOPMENT_M = 3.35
 
