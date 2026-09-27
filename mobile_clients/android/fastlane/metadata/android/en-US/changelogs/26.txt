@@ -1,0 +1,1 @@
+Fixed: down a fast descent in the hardest gear, a road easing off could make the pedals go heavy at once, like a 20 % climb. While your legs turn slower than the wheel, a road getting harder now arrives as the bike slowing down, and the resistance returns as your legs catch up. Climbs feel exactly as before.

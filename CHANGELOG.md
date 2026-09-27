@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.8.1] (26) - 2026-09-27
+
 ### Fixed
 
 - **A flatter road at speed could turn the pedals into a wall.** Down a fast
