@@ -1,0 +1,1 @@
+Fixed: rides shared to Intervals.icu and other services showed the device as "1". Files and uploads now name Indoor Bike and its version. Added: a ride ridden in a companion game names the game and its course, is marked as a virtual ride, and is titled like "Col de Berg: Stage 3" on Intervals.icu.

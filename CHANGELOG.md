@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.8.2] (27) - 2026-10-01
+
 ### Fixed
 
 - **Rides showed up elsewhere as recorded with "1".** A ride's FIT file named
