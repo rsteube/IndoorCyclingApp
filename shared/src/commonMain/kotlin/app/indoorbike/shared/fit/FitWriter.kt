@@ -81,6 +81,21 @@ class FitWriter {
         }
     }
 
+    /**
+     * Fixed-length UTF-8 string field for text that comes from somewhere else,
+     * such as a game's course name. Cut on a character boundary rather than
+     * mid-character, and always leaving room for the terminator, so a long
+     * name arrives shortened rather than as a byte sequence no reader decodes.
+     */
+    fun utf8(s: String, len: Int) {
+        val room = len - 1
+        val bytes = s.encodeToByteArray()
+        var keep = minOf(bytes.size, room)
+        // A UTF-8 continuation byte is 10xxxxxx: never stop just before one.
+        while (keep in 1 until bytes.size && (bytes[keep].toInt() and 0xC0) == 0x80) keep -= 1
+        for (i in 0 until len) out.add(if (i < keep) bytes[i] else 0)
+    }
+
     // ── Definition message ───────────────────────────────────────────────
     /**
      * Writes a definition message for a global FIT message. `localType` is the
@@ -218,6 +233,8 @@ object FitBaseType {
 object FitMessage {
     const val FILE_ID      = 0
     const val FILE_CREATOR = 49
+    /** A device that took part; device index 0 is the one that wrote the file. */
+    const val DEVICE_INFO  = 23
     const val EVENT        = 21
     const val RECORD       = 20
     const val LAP          = 19

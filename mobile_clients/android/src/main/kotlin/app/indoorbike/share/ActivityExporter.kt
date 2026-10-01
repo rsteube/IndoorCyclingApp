@@ -19,11 +19,13 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
+import app.indoorbike.BuildConfig
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
 import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.fit.VirtualWorld
 import java.io.File
 
 /**
@@ -75,9 +77,15 @@ object ActivityExporter {
         ftp: Int,
         /** Rider body mass, for the ride's estimated speed and distance. */
         riderKg: Float = 0f,
+        /** The game that drove the ride, or null. Written into a FIT file only. */
+        world: VirtualWorld? = null,
     ): Export {
         val bytes = when (format) {
-            Format.FIT -> RideFitBuilder.build(session, telemetry, workout, ftp, riderKg)
+            Format.FIT -> RideFitBuilder.build(
+                session, telemetry, workout, ftp, riderKg,
+                appVersion = BuildConfig.VERSION_NAME,
+                world = world,
+            )
             Format.TCX -> TcxBuilder.build(session, telemetry, workout, ftp, riderKg)
                 .toByteArray(Charsets.UTF_8)
         }

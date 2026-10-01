@@ -24,9 +24,12 @@ import app.indoorbike.library.HttpFetcher
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
+import app.indoorbike.ride.RideBrandStore
 import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.fit.VirtualWorld
 import app.indoorbike.shared.settings.UserSettings
 import app.indoorbike.shared.sync.IntervalsIcuOAuth
+import app.indoorbike.shared.sync.IntervalsIcuUpload
 import app.indoorbike.shared.util.Log
 import java.security.SecureRandom
 
@@ -70,6 +73,8 @@ class IntervalsIcuUploader(
     context: Context,
     private val historyRepository: HistoryRepository,
     private val userSettings: UserSettings,
+    /** Which game drove a ride, so the upload can say where it was ridden. */
+    private val rideBrands: RideBrandStore,
 ) {
     private val appContext = context.applicationContext
 
@@ -212,8 +217,13 @@ class IntervalsIcuUploader(
             return Outcome.Failure("No telemetry recorded for this ride.")
         }
 
+        val world = VirtualWorld.of(session, rideBrands.find(session.startTimeEpoch)?.name)
         val fitBytes = try {
-            RideFitBuilder.build(session, telemetry, workout, ftp, userSettings.weightKg.value)
+            RideFitBuilder.build(
+                session, telemetry, workout, ftp, userSettings.weightKg.value,
+                appVersion = BuildConfig.VERSION_NAME,
+                world = world,
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
@@ -241,10 +251,15 @@ class IntervalsIcuUploader(
             .trim('-')
             .ifEmpty { "ride" }
         val filename = "indoorbike-$safeName-${session.id}.fit"
-        // The ride's own id, kept by Intervals.icu with the activity, so the
-        // activity there can always be traced back to this ride.
-        val url = if (session.externalId.isBlank()) base
-        else base + "?external_id=" + java.net.URLEncoder.encode(session.externalId, "UTF-8")
+        // The device, the ride's name and, for a ride a game drove, where it was
+        // ridden; and the ride's own id, so the activity can always be traced
+        // back to this ride. See [IntervalsIcuUpload].
+        val url = base + "?" + IntervalsIcuUpload.parameters(session.workoutName, session.externalId, world)
+            .joinToString("&") { (key, value) ->
+                // URLEncoder writes a space as '+', which a query string reads
+                // as a space too, but %20 is unambiguous everywhere.
+                key + "=" + java.net.URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+            }
 
         val result = try {
             HttpFetcher.postMultipartFile(

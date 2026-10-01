@@ -468,7 +468,7 @@ it.
 
 | Field | Type | Notes |
 |---|---|---|
-| `name` | string | What to call the ride. Becomes the saved session's name |
+| `name` | string | What to call the ride. Becomes the saved session's name, and the ride's `virtual_route` in its FIT file |
 | `world` | string | The game or world it was in, shown beside the name |
 | `distanceM` | number | The **course's** length. Not how far the rider got - that is `world.distanceM` |
 | `ascentM` | number | The course's own total climb, on the same footing |
@@ -693,7 +693,7 @@ handshake between the two ends.
 
 | Field | Type | Notes |
 |---|---|---|
-| `name` | string | Shown on the header in place of `hello.client.name`. Trimmed to 40 characters |
+| `name` | string | Shown on the header in place of `hello.client.name`, and credited with the ride in its exported file (below). Trimmed to 40 characters |
 | `icon` | string | A **PNG**, base64. Square, 48 to 512 px, at most 96 000 characters. 256 px with transparency is a good choice |
 | `colors.accent` | `#RRGGBB` | Required whenever `colors` is sent. Your main brand colour |
 | `colors.onAccent` | `#RRGGBB` | Text and glyphs drawn on the accent. Absent picks light or dark, whichever reads |
@@ -749,6 +749,14 @@ looks different on the phone is never a mystery:
 { "t": "warning", "code": "adjusted", "field": "colors.accent",
   "message": "#1B2A5A was too dark to see on the app's dark surface; lightened to reach 2.5:1. The phone is using #828AA4." }
 ```
+
+**Your name credits the ride, too.** The phone keeps it with every ride you drive, and writes
+it into the ride's FIT file as the session developer field `virtual_platform`, beside the
+course's `name` as `virtual_route`, with `sub_sport` set to `virtual_activity`. An upload to
+Intervals.icu is named `"<name>: <course>"` and described as "Ridden in <name> on Indoor Bike".
+Services that read rides, VertMatch among them, credit the game by this exact string, so keep
+it the same from one version to the next. A companion that sends no `brand` is credited by
+`hello.client.name`.
 
 **A bad field costs that field, not the frame.** An icon that is not a PNG, not square, out of
 range or not valid base64 is refused with a `rejected` warning that says which, and the name and

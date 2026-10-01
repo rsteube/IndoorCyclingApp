@@ -52,9 +52,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
+import app.indoorbike.shared.fit.VirtualWorld
 import app.indoorbike.ui.components.SheetHandle
 import app.indoorbike.ui.components.SheetScrim
 import app.indoorbike.ui.components.SheetShape
@@ -83,6 +85,7 @@ fun ExportSheet(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val rideBrands = LocalAppContainer.current.rideBrands
     val scope = rememberCoroutineScope()
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var busy by remember { mutableStateOf(false) }
@@ -129,7 +132,11 @@ fun ExportSheet(
                                 // Built and written to the cache off the main
                                 // thread; only the chooser needs it.
                                 val (export, uri) = withContext(Dispatchers.IO) {
-                                    val export = ActivityExporter.build(format, session, telemetry, workout, ftp, riderKg)
+                                    // The game that drove the ride, if any, so a
+                                    // file uploaded by hand still says where it
+                                    // was ridden.
+                                    val world = VirtualWorld.of(session, rideBrands.find(session.startTimeEpoch)?.name)
+                                    val export = ActivityExporter.build(format, session, telemetry, workout, ftp, riderKg, world)
                                     export to ActivityExporter.stageForShare(context, export)
                                 }
                                 ActivityExporter.launchShareChooser(context, uri, export.mime)

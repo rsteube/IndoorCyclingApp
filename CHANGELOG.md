@@ -6,6 +6,23 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Rides showed up elsewhere as recorded with "1".** A ride's FIT file named
+  its maker only as manufacturer 255, product 1, so Intervals.icu listed the
+  device as "1" and so did every service reading rides from it. Files now name
+  Indoor Bike and its version where readers look (the file's product name and
+  its creator device), and uploads to Intervals.icu set the device to Indoor
+  Bike as well.
+
+### Added
+
+- **A ride ridden in a companion game says which one.** The game's name and the
+  course it named go into the ride's FIT file, so any service can credit the
+  game, and the ride is marked as a virtual ride. On Intervals.icu it is named
+  like "Col de Berg: Stage 3" and described as ridden in Col de Berg on Indoor
+  Bike.
+
 ## [2.8.1] (26) - 2026-09-27
 
 ### Fixed

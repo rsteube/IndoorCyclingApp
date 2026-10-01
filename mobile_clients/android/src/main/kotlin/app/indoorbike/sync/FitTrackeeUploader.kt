@@ -19,11 +19,14 @@ import kotlinx.coroutines.CancellationException
 import android.content.Context
 import android.net.Uri
 import android.util.Base64
+import app.indoorbike.BuildConfig
 import app.indoorbike.library.HttpFetcher
+import app.indoorbike.ride.RideBrandStore
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.fit.RideFitBuilder
+import app.indoorbike.shared.fit.VirtualWorld
 import app.indoorbike.shared.progression.computeRideStats
 import app.indoorbike.shared.settings.UserSettings
 import app.indoorbike.shared.util.Log
@@ -66,6 +69,8 @@ class FitTrackeeUploader(
     context: Context,
     private val historyRepository: HistoryRepository,
     private val userSettings: UserSettings,
+    /** Which game drove a ride, so the file can say where it was ridden. */
+    private val rideBrands: RideBrandStore,
 ) {
     private val appContext = context.applicationContext
 
@@ -279,7 +284,11 @@ class FitTrackeeUploader(
         if (telemetry.isEmpty()) return Outcome.Failure("No telemetry recorded for this ride.")
 
         val fitBytes = try {
-            RideFitBuilder.build(session, telemetry, workout, ftp, userSettings.weightKg.value)
+            RideFitBuilder.build(
+                session, telemetry, workout, ftp, userSettings.weightKg.value,
+                appVersion = BuildConfig.VERSION_NAME,
+                world = VirtualWorld.of(session, rideBrands.find(session.startTimeEpoch)?.name),
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {

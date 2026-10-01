@@ -313,11 +313,13 @@ class AppContainer(
                 context = application,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
+                rideBrands = rideBrands,
             )
             val intervalsIcuUploader = IntervalsIcuUploader(
                 context = application,
                 historyRepository = historyRepository,
                 userSettings = userSettings,
+                rideBrands = rideBrands,
             )
             val syncEngine = SyncEngine(
                 userSettings = userSettings,

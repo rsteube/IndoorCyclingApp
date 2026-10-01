@@ -517,7 +517,7 @@ GPX. Your course exists nowhere the app can reach, so it travels with the ride.
 
 | Field | Type | Notes |
 |---|---|---|
-| `name` | string | What to call the ride. Becomes the saved session's name. Trimmed to 120 chars |
+| `name` | string | What to call the ride. Becomes the saved session's name, and the ride's `virtual_route` in its FIT file. Trimmed to 120 chars |
 | `world` | string | The game or world, shown beside the name. Trimmed to 120 chars |
 | `distanceM` | number | The **course's** length. Not how far the rider got - that is `world.distanceM` |
 | `ascentM` | number | The course's own total climb |
@@ -794,6 +794,13 @@ Requires the `brand` capability. Added in protocol 0.8. Controller only.
 | `colors.accent` | `#RRGGBB` | Required when `colors` is present |
 | `colors.onAccent` | `#RRGGBB` | Optional. Text on the accent |
 | `colors.header` | `#RRGGBB` | Optional. Header band; derived from the accent when absent |
+
+**It also credits the ride.** The name is kept with every ride you drive, and written into the
+ride's FIT file as the session developer field `virtual_platform` (and the course's `name` as
+`virtual_route`), with `sub_sport` set to `virtual_activity`. Uploads to Intervals.icu are named
+`"<name>: <course>"` and described as "Ridden in <name> on Indoor Bike". Services such as
+VertMatch key their credit, link and logo on this exact string, so keep it stable across
+versions. Without a `brand` frame the ride is credited to `hello.client.name`.
 
 **Merge semantics.** Absent field: unchanged. Field sent as `null`: cleared. The merged result
 is kept for the session, including while the companion is disconnected; a different companion

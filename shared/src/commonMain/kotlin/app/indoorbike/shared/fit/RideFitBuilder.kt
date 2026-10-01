@@ -31,10 +31,14 @@ import kotlin.math.min
  * Encodes a completed indoor cycling ride as a FIT activity file.
  *
  * Output layout:
- *   - file_id            (file type = activity, manufacturer = development)
+ *   - file_id            (file type = activity, manufacturer = development,
+ *                         product name "Indoor Bike")
  *   - file_creator       (Indoor Bike app version)
- *   - developer_data_id  (namespace for the custom target fields)
- *   - field_description × 4  (names/types for those fields)
+ *   - device_info        (the creator, device index 0, named and versioned)
+ *   - developer_data_id  (namespace for the custom fields, with the app version)
+ *   - field_description × 4, or more for a ride a game drove (names/types for
+ *                         the lap targets, and the session's virtual world;
+ *                         see [RideAttribution])
  *   - event              (timer start)
  *   - record × N         (one per 1Hz telemetry sample)
  *   - event × 2P         (timer stop and start around each of P pauses)
@@ -43,7 +47,8 @@ import kotlin.math.min
  *                         and carrying the segment's power and cadence targets
  *                         as developer fields; see [ExportRide])
  *   - event              (timer stop)
- *   - session            (summary stats + sport = cycling, sub_sport = indoor)
+ *   - session            (summary stats + sport = cycling, sub_sport = indoor,
+ *                         or virtual_activity with the world's developer fields)
  *   - activity           (single-session wrapper)
  *
  * Records sit at the moment they were taken and laps are cut on ride time, so
@@ -69,6 +74,7 @@ object RideFitBuilder {
     private const val LOCAL_ACTIVITY     = 6
     private const val LOCAL_DEVELOPER_ID = 7
     private const val LOCAL_FIELD_DESC   = 8
+    private const val LOCAL_DEVICE_INFO  = 9
 
     // ── Developer (custom) fields carried on each lap ────────────────────
     // A lap is one workout segment, so these say what the segment *asked* for,
@@ -80,6 +86,21 @@ object RideFitBuilder {
     private const val DEV_FIELD_TARGET_POWER_PCT = 1
     private const val DEV_FIELD_TARGET_CAD_LOW  = 2
     private const val DEV_FIELD_TARGET_CAD_HIGH = 3
+
+    // ── Developer fields carried on the session, for a ride a game drove ──
+    // Numbered after the lap fields because a number is unique within its
+    // namespace, not within a message. Readers find these by name.
+    private const val DEV_FIELD_VIRTUAL_PLATFORM = 4
+    private const val DEV_FIELD_VIRTUAL_ROUTE    = 5
+
+    /**
+     * Width of the world's two strings, terminator included. A course name
+     * longer than this is cut on a character boundary by [FitWriter.utf8].
+     */
+    private const val WORLD_STRING_LEN = 64
+
+    /** Width of the product name in file_id and device_info, terminator included. */
+    private const val PRODUCT_NAME_LEN = 16
 
     /**
      * Width of every field_description string, null-padded. Must stay clear of
@@ -102,11 +123,15 @@ object RideFitBuilder {
     // FIT-spec "development" slot, intended for non-commercial / hobby apps.
     private const val MANUFACTURER_DEVELOPMENT = 255
     private const val PRODUCT_INDOORBIKE = 1
-    private const val SOFTWARE_VERSION = 121   // 1.21 - bumps with shipped FIT changes
+
+    /** device_info.source_type: the device that wrote the file is the local one. */
+    private const val SOURCE_TYPE_LOCAL = 5
 
     // sport / sub_sport enum values from the FIT profile.
     private const val SPORT_CYCLING = 2
     private const val SUB_SPORT_INDOOR_CYCLING = 6
+    /** Marks the ride virtual: Intervals.icu files such a ride as a VirtualRide. */
+    private const val SUB_SPORT_VIRTUAL_ACTIVITY = 58
 
     fun build(
         session: WorkoutSession,
@@ -122,7 +147,18 @@ object RideFitBuilder {
          * ride was on a road, whose own distance is used either way.
          */
         riderKg: Float = 0f,
+        /**
+         * The app's version name, e.g. "2.8.1", for the file's creator. Blank
+         * writes the version as unknown.
+         */
+        appVersion: String = "",
+        /**
+         * The game this ride was ridden in, or null for one no game drove. See
+         * [VirtualWorld.of].
+         */
+        world: VirtualWorld? = null,
     ): ByteArray {
+        val softwareVersion = RideAttribution.softwareVersion(appVersion) ?: FitInvalid.UINT16
         val ride = ExportRide(session, telemetry, workout, ftp, riderKg)
         val rideFtp = ride.ftp
         val hasDistance = ride.hasDistance
@@ -141,6 +177,7 @@ object RideFitBuilder {
             Triple(2, 2, FitBaseType.UINT16),   // product
             Triple(3, 4, FitBaseType.UINT32Z),  // serial number
             Triple(4, 4, FitBaseType.UINT32),   // time_created
+            Triple(8, PRODUCT_NAME_LEN, FitBaseType.STRING), // product_name
         ))
         w.writeDataHeader(LOCAL_FILE_ID)
         w.u8(4)                                 // file type = activity
@@ -148,6 +185,9 @@ object RideFitBuilder {
         w.u16(PRODUCT_INDOORBIKE)
         w.u32(session.id.toULong().toLong())    // serial — use session id so files are unique
         w.u32(startFit)
+        // Without a name a reader has only manufacturer 255 and product 1 to go
+        // on, and Intervals.icu showed the device as "1". See [RideAttribution].
+        w.ascii(RideAttribution.PRODUCT_NAME, PRODUCT_NAME_LEN)
 
         // ── file_creator ─────────────────────────────────────────────────
         w.writeDefinition(LOCAL_FILE_CREATOR, FitMessage.FILE_CREATOR, listOf(
@@ -155,13 +195,35 @@ object RideFitBuilder {
             Triple(1, 1, FitBaseType.UINT8),    // hardware_version
         ))
         w.writeDataHeader(LOCAL_FILE_CREATOR)
-        w.u16(SOFTWARE_VERSION)
+        w.u16(softwareVersion)
         w.u8(0)
+
+        // ── device_info: the creator ─────────────────────────────────────
+        // Device index 0 is, by the profile's own definition, the creator of
+        // the file. Named here as well as in file_id because some readers look
+        // only at the device list.
+        w.writeDefinition(LOCAL_DEVICE_INFO, FitMessage.DEVICE_INFO, listOf(
+            Triple(253, 4, FitBaseType.UINT32),  // timestamp
+            Triple(0, 1, FitBaseType.UINT8),     // device_index
+            Triple(2, 2, FitBaseType.UINT16),    // manufacturer
+            Triple(4, 2, FitBaseType.UINT16),    // product
+            Triple(5, 2, FitBaseType.UINT16),    // software_version (/100)
+            Triple(25, 1, FitBaseType.ENUM),     // source_type
+            Triple(27, PRODUCT_NAME_LEN, FitBaseType.STRING), // product_name
+        ))
+        w.writeDataHeader(LOCAL_DEVICE_INFO)
+        w.u32(startFit)
+        w.u8(0)                                 // device_index = creator
+        w.u16(MANUFACTURER_DEVELOPMENT)
+        w.u16(PRODUCT_INDOORBIKE)
+        w.u16(softwareVersion)
+        w.u8(SOURCE_TYPE_LOCAL)
+        w.ascii(RideAttribution.PRODUCT_NAME, PRODUCT_NAME_LEN)
 
         // ── developer field declarations ─────────────────────────────────
         // Must precede the lap definition that references them: a reader
         // hitting an undeclared developer field has no type or name for it.
-        writeDeveloperFieldDeclarations(w)
+        writeDeveloperFieldDeclarations(w, softwareVersion, world)
 
         // ── event: timer START ───────────────────────────────────────────
         w.writeDefinition(LOCAL_EVENT, FitMessage.EVENT, listOf(
@@ -328,7 +390,15 @@ object RideFitBuilder {
         // the fix counted every reading of 0 bpm into it.
         val heartRates = telemetry.map { it.heartRate }
 
-        w.writeDefinition(LOCAL_SESSION, FitMessage.SESSION, listOf(
+        // The world, when a game drove the ride: on the session because it is
+        // a fact about the whole ride. The route only when the game named one.
+        val worldFields = buildList {
+            if (world != null) {
+                add(Triple(DEV_FIELD_VIRTUAL_PLATFORM, WORLD_STRING_LEN, DEV_DATA_INDEX))
+                if (world.route != null) add(Triple(DEV_FIELD_VIRTUAL_ROUTE, WORLD_STRING_LEN, DEV_DATA_INDEX))
+            }
+        }
+        w.writeDefinition(LOCAL_SESSION, FitMessage.SESSION, developerFields = worldFields, fields = listOf(
             Triple(253, 4, FitBaseType.UINT32), // timestamp
             Triple(2, 4, FitBaseType.UINT32),   // start_time
             Triple(7, 4, FitBaseType.UINT32),   // total_elapsed_time (1/1000 s)
@@ -375,12 +445,16 @@ object RideFitBuilder {
         w.u16((rideStats.intensityFactor * 1000).toInt().coerceIn(0, 65534))
         w.u16(rideFtp.coerceIn(0, 65534))
         w.u8(SPORT_CYCLING)
-        w.u8(SUB_SPORT_INDOOR_CYCLING)
+        w.u8(if (world != null) SUB_SPORT_VIRTUAL_ACTIVITY else SUB_SPORT_INDOOR_CYCLING)
         w.u8(8)                                 // event = session
         w.u8(1)                                 // event_type = stop
         // The laps actually written. A ride ended before its last segments
         // has fewer laps than the workout has segments.
         w.u16(lapsWritten)
+        if (world != null) {
+            w.utf8(world.platform, WORLD_STRING_LEN)
+            world.route?.let { w.utf8(it, WORLD_STRING_LEN) }
+        }
 
         // ── activity ─────────────────────────────────────────────────────
         w.writeDefinition(LOCAL_ACTIVITY, FitMessage.ACTIVITY, listOf(
@@ -405,19 +479,23 @@ object RideFitBuilder {
 
     /**
      * Declares the developer-data namespace and names each custom field, so a
-     * reader can label them instead of showing four anonymous numbers.
+     * reader can label them instead of showing anonymous numbers.
      *
-     * `native_mesg_num` points at `lap`, which tells a reader these belong on
-     * lap messages even though they have no native field number there.
+     * `native_mesg_num` points at the message each field rides on, `lap` for
+     * the targets and `session` for the world, which tells a reader where they
+     * belong even though they have no native field number there. The world's
+     * fields are declared only for a ride a game drove.
      */
-    private fun writeDeveloperFieldDeclarations(w: FitWriter) {
+    private fun writeDeveloperFieldDeclarations(w: FitWriter, softwareVersion: Int, world: VirtualWorld?) {
         w.writeDefinition(LOCAL_DEVELOPER_ID, FitMessage.DEVELOPER_DATA_ID, listOf(
             Triple(1, APPLICATION_ID.size, FitBaseType.BYTE),  // application_id
             Triple(3, 1, FitBaseType.UINT8),                   // developer_data_index
+            Triple(4, 4, FitBaseType.UINT32),                  // application_version
         ))
         w.writeDataHeader(LOCAL_DEVELOPER_ID)
         for (b in APPLICATION_ID) w.u8(b.toInt())
         w.u8(DEV_DATA_INDEX)
+        w.u32(if (softwareVersion == FitInvalid.UINT16) FitInvalid.UINT32 else softwareVersion.toLong())
 
         w.writeDefinition(LOCAL_FIELD_DESC, FitMessage.FIELD_DESCRIPTION, listOf(
             Triple(0, 1, FitBaseType.UINT8),                 // developer_data_index
@@ -427,19 +505,25 @@ object RideFitBuilder {
             Triple(8, DEV_STRING_LEN, FitBaseType.STRING),   // units
             Triple(14, 2, FitBaseType.UINT16),               // native_mesg_num
         ))
-        fun describe(fieldNum: Int, baseType: Int, name: String, units: String) {
+        fun describe(fieldNum: Int, baseType: Int, name: String, units: String, onMessage: Int) {
             w.writeDataHeader(LOCAL_FIELD_DESC)
             w.u8(DEV_DATA_INDEX)
             w.u8(fieldNum)
             w.u8(baseType)
             w.ascii(name, DEV_STRING_LEN)
             w.ascii(units, DEV_STRING_LEN)
-            w.u16(FitMessage.LAP)
+            w.u16(onMessage)
         }
-        describe(DEV_FIELD_TARGET_POWER, FitBaseType.UINT16, "target_power", "watts")
-        describe(DEV_FIELD_TARGET_POWER_PCT, FitBaseType.UINT16, "target_power_pct", "%FTP")
-        describe(DEV_FIELD_TARGET_CAD_LOW, FitBaseType.UINT8, "target_cadence_low", "rpm")
-        describe(DEV_FIELD_TARGET_CAD_HIGH, FitBaseType.UINT8, "target_cadence_high", "rpm")
+        describe(DEV_FIELD_TARGET_POWER, FitBaseType.UINT16, "target_power", "watts", FitMessage.LAP)
+        describe(DEV_FIELD_TARGET_POWER_PCT, FitBaseType.UINT16, "target_power_pct", "%FTP", FitMessage.LAP)
+        describe(DEV_FIELD_TARGET_CAD_LOW, FitBaseType.UINT8, "target_cadence_low", "rpm", FitMessage.LAP)
+        describe(DEV_FIELD_TARGET_CAD_HIGH, FitBaseType.UINT8, "target_cadence_high", "rpm", FitMessage.LAP)
+        if (world != null) {
+            describe(DEV_FIELD_VIRTUAL_PLATFORM, FitBaseType.STRING, "virtual_platform", "", FitMessage.SESSION)
+            if (world.route != null) {
+                describe(DEV_FIELD_VIRTUAL_ROUTE, FitBaseType.STRING, "virtual_route", "", FitMessage.SESSION)
+            }
+        }
     }
 
     private class LapAccum {
