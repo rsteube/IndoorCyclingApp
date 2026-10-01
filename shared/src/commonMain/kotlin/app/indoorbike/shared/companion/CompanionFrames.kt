@@ -98,8 +98,13 @@ data class ClientInfo(
  * [distanceM] and [ascentM] are cumulative rather than per-frame deltas, so a
  * dropped frame costs nothing and a reconnecting companion resynchronises by
  * stating the total. They are how a game ride gets a real distance and
- * elevation profile into the ride record instead of a flat-road estimate, and
- * they are not a position: how far and how much up, never where.
+ * elevation profile into the ride record instead of a flat-road estimate.
+ *
+ * [lat], [lon] and [altM] are where (0.11): the rider's position on the
+ * companion's course, as the companion knows it. They are recorded second by
+ * second and written into the ride's exported files, so a shared ride shows
+ * the road it was ridden on. Optional, and only ever the companion's own
+ * account: the phone never works a position out for itself.
  */
 @Serializable
 data class WorldFrame(
@@ -117,6 +122,12 @@ data class WorldFrame(
      * `welcome.limits`.
      */
     val crr: Double? = null,
+    /** Latitude in degrees, WGS 84. Only meaningful with [lon]. */
+    val lat: Double? = null,
+    /** Longitude in degrees, WGS 84. Only meaningful with [lat]. */
+    val lon: Double? = null,
+    /** Altitude in metres above sea level. May be sent with or without [lat] and [lon]. */
+    val altM: Double? = null,
     val t: String = "world",
 ) : ClientFrame
 
@@ -151,7 +162,8 @@ data class RequestShiftFrame(
  * companion that sends none of this saves exactly as it did before.
  *
  * Nothing here is a position. It describes the course, never where on the
- * course the rider is, which is the same line the live protocol draws.
+ * course the rider is: that travels on the [WorldFrame] as `lat`, `lon` and
+ * `altM` (0.11), second by second, and only if the companion sends it.
  *
  * @param name what to call the ride, e.g. "Watopia Volcano Circuit". Becomes
  *   the saved session's name, so it is also what [LabelFrame] sets - send

@@ -45,9 +45,13 @@ lives in the companion.
 | **Phone** | The BLE link and FTMS quirks. Virtual gears and shifting logic. The force actually commanded to the trainer. The safety envelope. The session state machine, the ride record and the FIT/TCX export. |
 | **Companion** | The world. Where the rider is. Virtual speed. The gradient under the wheels. Rolling resistance, aerodynamics, wind, draft, surfaces. When the ride ends. |
 
-**The phone never learns the rider's position.** It is told how fast they are going, what the
-road is doing under them, and how far they have come in total. Those are enough to command a
-trainer and write a ride file, and they are not a location.
+**The phone knows where the rider is only when the companion says.** It is told how fast they
+are going, what the road is doing under them, and how far they have come in total, which is
+enough to command a trainer. From 0.11 a companion may also say where on its course the rider
+is (`lat`, `lon` and `altM` on the [`world`](#world) frame), and the phone records exactly that,
+second by second, into the ride's FIT and TCX files, so a ride shared from a game shows the road
+it was ridden on. That is a place in the game's world, not where the rider's trainer stands. The
+phone never works a position out for itself, and a companion that sends none rides as before.
 
 ### Why the phone still commands a force rather than passing the grade through
 
@@ -180,7 +184,7 @@ mDNS / DNS-SD, service type `_indoorbike._tcp.local.`, via Android's `NsdManager
 
 | TXT key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.10` | Supported protocol range, `min-max` |
+| `proto` | `0.1-0.11` | Supported protocol range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.1.0` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride, for reconnection |
@@ -211,7 +215,14 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.10, and this build accepts everything back to 0.1.**
+**Current version: 0.11, and this build accepts everything back to 0.1.**
+
+0.11 added where the rider is: optional `lat`, `lon` and `altM` on the [`world`](#world)
+frame. The phone records them second by second beside power, with the cumulative `distanceM` it
+already took, and writes them into the ride's FIT and TCX files: position, altitude, and each
+second's distance as the companion counted it. Nothing is worked out on the phone. Additive in
+both directions: the three fields are listed in `welcome.honours`, an older app answers them with
+`fieldNotHonoured`, and a companion that sends none rides exactly as before.
 
 0.10 added [untracked riding](#untracked-riding-and-setpower) and the
 [`setPower`](#setpower) frame: a ride state where the rider works and none of it is written
@@ -394,6 +405,9 @@ the newest frame on its next 250 ms tick and rate-limits its own BLE writes, so 
 | `distanceM` | float | no | Cumulative along-road distance this ride. For the ride record |
 | `ascentM` | float | no | Cumulative metres climbed this ride. For the ride record |
 | `crr` | float | no | Rolling resistance under the tyres, clamped to [0.002, 0.030]. Absent means tarmac, 0.005 |
+| `lat` | float | no | 0.11. The rider's latitude on your course, WGS 84 degrees. Only with `lon` |
+| `lon` | float | no | 0.11. The rider's longitude on your course, WGS 84 degrees. Only with `lat` |
+| `altM` | float | no | 0.11. The rider's altitude, metres above sea level, -500 to 9000. May be sent without `lat`/`lon` |
 
 **The surface, and why it is the one road parameter the phone takes.** Drafting and wind change
 how fast the rider goes, and a companion that owns speed can put them into the speed it reports.
@@ -410,8 +424,29 @@ gradient flattens over.
 `distanceM` and `ascentM` are cumulative rather than per-frame deltas so that a dropped frame
 costs nothing and a reconnecting companion resynchronises by stating the total. They must be
 monotonically non-decreasing. **They are how a game ride gets a real distance and elevation
-profile into the FIT export instead of a flat-road estimate**, and they are not position: how
-far and how much up, never where.
+profile into the FIT export instead of a flat-road estimate.** From 0.11 the phone also records
+`distanceM` every second, so each second of the export covers the ground you said it did.
+
+**`lat`, `lon` and `altM` are where (0.11), and they are how a game ride gets its track.** The
+phone keeps the newest of them and, once a second while a ride is recorded, writes it beside
+power, cadence and heart rate. The ride's FIT file carries them as each record's
+`position_lat`, `position_long`, `altitude` and `enhanced_altitude`, and its TCX file as each
+trackpoint's `Position` and `AltitudeMeters`, so Intervals.icu, Strava and the rest draw the
+road the ride was on. Nothing is worked out on the phone:
+
+- A position is recorded only inside the same 1500 ms lease the road is ridden on. Go quiet and
+  the seconds after are recorded with no position, a gap in the track, never a rider standing
+  at the last place you mentioned or one placed between two reports.
+- `lat` and `lon` are one value. Send both or neither; one without the other is refused.
+- Out of range (latitude beyond ±90, longitude beyond ±180, altitude outside -500 to 9000 m,
+  or not a number) is **refused, not clamped**: a coordinate pulled back inside the range is a
+  place the rider never was. Each is a `rejected` warning, once per field per connection, and
+  the rest of the frame still lands, an altitude included when only the place was wrong.
+- Nothing is recorded while the ride is [untracked](#untracked-riding-and-setpower).
+
+Send them on every `world` frame at your frame rate, from the same simulation tick as `speedMps`
+and `distanceM`, so all three describe the same instant. Precision is yours to choose: six
+decimals of a degree is about ten centimetres, more than any map draws.
 
 `gradient` is clamped to ±0.30 on arrival, matching route mode. `speedMps` is clamped to
 0 to 30. A clamp raises a `warning`, not an error.
@@ -475,8 +510,9 @@ it.
 | `shape` | string | Precision-5 encoded polyline, the same encoding as `RoutePolyline`. Max 32 768 characters |
 | `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. A sample with a fraction is rounded to the metre. 64 samples is plenty. Max 1 024 |
 
-`shape` and `profile` describe the course, never a position on it, and nothing in the protocol
-ever asks where on that road the rider is. A companion that would rather disclose nothing sends
+`shape` and `profile` describe the course, never a position on it. Where on that road the rider
+is travels separately, second by second, as the `world` frame's `lat`, `lon` and `altM` (0.11),
+and only if you send them. A companion that would rather disclose nothing sends
 none of this and the ride saves exactly as before: real numbers, no shape.
 
 An over-long `shape` or `profile` is **refused whole, not truncated**, with a `rejected`

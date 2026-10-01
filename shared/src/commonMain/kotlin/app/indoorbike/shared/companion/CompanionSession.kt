@@ -101,8 +101,14 @@ sealed interface CompanionEffect {
      */
     data class SetControls(val controls: RemoteControls?) : CompanionEffect
 
-    /** Cumulative totals for the ride record. Never a position. */
+    /** Cumulative totals for the ride record. */
     data class ReportProgress(val distanceM: Double?, val ascentM: Double?) : CompanionEffect
+
+    /**
+     * Where the companion says the rider is, for the ride record. Latitude and
+     * longitude arrive together or not at all; altitude may come alone.
+     */
+    data class ReportPosition(val position: CompanionPosition) : CompanionEffect
 
     data class Finish(val summary: RideSummary?) : CompanionEffect
 
@@ -247,6 +253,9 @@ class CompanionSession(
 
     /** Fields already complained about, so a warning is once per connection, not once per frame. */
     private val warnedFields = mutableSetOf<String>()
+
+    /** Position fields already refused on this connection, so a bad one is said once. */
+    private val warnedPositionFields = mutableSetOf<String>()
 
     /** Timestamps of recent shift requests, for the rate limiter. */
     private val shiftRequests = ArrayDeque<Long>()
@@ -642,7 +651,61 @@ class CompanionSession(
         if (!untracked && (frame.distanceM != null || frame.ascentM != null)) {
             effects += CompanionEffect.ReportProgress(road.distanceM, road.ascentM)
         }
+        // Where the rider is, for the record, so not while untracked either.
+        if (!untracked) reportedPosition(frame, effects)?.let { effects += CompanionEffect.ReportPosition(it) }
         return effects
+    }
+
+    /**
+     * The position [frame] reports, with anything that is not a position left
+     * out and said so, once per field per connection rather than at frame rate.
+     *
+     * Refused rather than clamped: a latitude pulled back inside the range is a
+     * place the rider never was, and the whole point of taking a position from
+     * the companion is that nothing in it was made up.
+     */
+    private fun reportedPosition(frame: WorldFrame, effects: MutableList<CompanionEffect>): CompanionPosition? {
+        fun refuse(field: String, message: String) {
+            if (!warnedPositionFields.add(field)) return
+            effects += CompanionEffect.Send(
+                WarningFrame(code = CompanionWarning.REJECTED, field = field, frame = "world", message = message)
+            )
+        }
+
+        val lat = frame.lat
+        val lon = frame.lon
+        var latitude: Double? = null
+        var longitude: Double? = null
+        when {
+            lat == null && lon == null -> Unit
+            lat == null || lon == null ->
+                refuse(if (lat == null) "lon" else "lat", "lat and lon are one position and must be sent together; ignored.")
+            !lat.isFinite() || lat < -90.0 || lat > 90.0 ->
+                refuse("lat", "lat must be degrees between -90 and 90; this position was ignored.")
+            !lon.isFinite() || lon < -180.0 || lon > 180.0 ->
+                refuse("lon", "lon must be degrees between -180 and 180; this position was ignored.")
+            else -> {
+                latitude = lat
+                longitude = lon
+            }
+        }
+
+        val alt = frame.altM
+        val altitude = when {
+            alt == null -> null
+            !alt.isFinite() || alt < CompanionProtocol.MIN_ALTITUDE_M || alt > CompanionProtocol.MAX_ALTITUDE_M -> {
+                refuse(
+                    "altM",
+                    "altM must be metres above sea level between " + CompanionProtocol.MIN_ALTITUDE_M.toInt() +
+                        " and " + CompanionProtocol.MAX_ALTITUDE_M.toInt() + "; ignored.",
+                )
+                null
+            }
+            else -> alt
+        }
+
+        if (latitude == null && altitude == null) return null
+        return CompanionPosition(latitude = latitude, longitude = longitude, altitudeM = altitude)
     }
 
     /**

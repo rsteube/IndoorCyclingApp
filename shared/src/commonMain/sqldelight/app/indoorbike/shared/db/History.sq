@@ -70,6 +70,15 @@ CREATE TABLE WorkoutTelemetry (
     power INTEGER NOT NULL,
     cadence INTEGER NOT NULL,
     heartRate INTEGER NOT NULL,
+    -- Where the rider was that second, as a companion game reported it: its
+    -- cumulative along-road distance, and its position on the course in WGS 84
+    -- degrees and metres above sea level. NULL for every sample nothing
+    -- reported, which is every sample of every other kind of ride. Never
+    -- worked out on the phone. Exported as the ride's track and distance.
+    distanceMeters REAL,
+    latitude REAL,
+    longitude REAL,
+    altitudeMeters REAL,
     FOREIGN KEY (sessionId) REFERENCES WorkoutSession(id) ON DELETE CASCADE
 );
 
@@ -85,8 +94,11 @@ lastInsertRowId:
 SELECT last_insert_rowid();
 
 insertTelemetry:
-INSERT INTO WorkoutTelemetry (sessionId, timestampEpoch, power, cadence, heartRate)
-VALUES (?, ?, ?, ?, ?);
+INSERT INTO WorkoutTelemetry (
+    sessionId, timestampEpoch, power, cadence, heartRate,
+    distanceMeters, latitude, longitude, altitudeMeters
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectAllSessions:
 SELECT * FROM WorkoutSession ORDER BY startTimeEpoch DESC;

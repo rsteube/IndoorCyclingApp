@@ -24,8 +24,11 @@ For Godot specifically, read [references/godot.md](references/godot.md).
 | Rolling resistance, drag, wind, draft, surfaces | The safety envelope |
 | When the ride ends | Session state, ride record, FIT/TCX export |
 
-The phone never learns the rider's position. You send a gradient, a speed, and cumulative
-totals. Nothing in the protocol carries a coordinate during a ride.
+The phone knows where the rider is only if you say. You send a gradient, a speed, and cumulative
+totals; from protocol 0.11 you may also send `lat`, `lon` and `altM` on each `world` frame, the
+rider's position on your course, and the phone records exactly that, second by second, into the
+ride's FIT and TCX files so a shared ride shows the road it was ridden on. It never works a
+position out for itself: a second you said nothing fresh about is a gap in the track.
 
 **You own speed because the phone needs it and should not compute it.** The commanded force
 contains `0.5 * rho * CdA * v^2`, so the phone must *know* a speed. Letting you supply it is

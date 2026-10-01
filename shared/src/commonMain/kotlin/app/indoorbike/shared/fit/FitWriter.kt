@@ -252,6 +252,7 @@ object FitMessage {
  * interval with no cadence ask is distinguished from one asking for 0 rpm.
  */
 object FitInvalid {
+    const val SINT32 = 0x7FFF_FFFF
     const val UINT8  = 0xFF
     const val UINT16 = 0xFFFF
     const val UINT32 = 0xFFFF_FFFFL

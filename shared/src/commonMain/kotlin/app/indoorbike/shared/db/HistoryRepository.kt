@@ -104,7 +104,11 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                         timestampEpoch = point.timestampEpoch,
                         power = point.power,
                         cadence = point.cadence,
-                        heartRate = point.heartRate
+                        heartRate = point.heartRate,
+                        distanceMeters = point.distanceMeters,
+                        latitude = point.latitude,
+                        longitude = point.longitude,
+                        altitudeMeters = point.altitudeMeters,
                     )
                 }
 
@@ -238,5 +242,13 @@ data class TelemetryPoint(
     val timestampEpoch: Long,
     val power: Long,
     val cadence: Long,
-    val heartRate: Long
+    val heartRate: Long,
+    // Where the rider was, as a companion game reported it that second; null
+    // everywhere else. See CompanionSample: none of these is ever worked out
+    // on the phone.
+    /** Cumulative along-road distance as the companion counts it. */
+    val distanceMeters: Double? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val altitudeMeters: Double? = null,
 )

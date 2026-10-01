@@ -6,6 +6,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A ride ridden in a companion game can carry its track.** A game that says
+  where the rider is on its course (Companion API 0.11) has that recorded every
+  second beside power, and the ride's FIT and TCX files carry it as position
+  and altitude, so Intervals.icu, Strava and the rest draw the road the ride
+  was on. Each second's distance is the game's own count too. Nothing is worked
+  out on the phone: a second the game said nothing about has no position. Games
+  that send no position, and every other kind of ride, export exactly as before.
+
 ## [2.8.2] (27) - 2026-10-01
 
 ### Fixed

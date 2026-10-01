@@ -48,7 +48,7 @@ class TcxBuilderTest {
                     else -> 120L
                 },
                 cadence = 90L,
-                heartRate = if (withHr) (130 + i / 60).coerceAtMost(170).toLong() else 0L,
+                heartRate = if (withHr) (130 + i / 60).coerceAtMost(170).toLong() else 0L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
         val session = WorkoutSession(
@@ -120,7 +120,7 @@ class TcxBuilderTest {
         val telemetry = stamps.mapIndexed { i, stamp ->
             WorkoutTelemetry(
                 id = i.toLong(), sessionId = 1, timestampEpoch = stamp,
-                power = 150L, cadence = 90L, heartRate = 140L,
+                power = 150L, cadence = 90L, heartRate = 140L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
         val workout = Workout(

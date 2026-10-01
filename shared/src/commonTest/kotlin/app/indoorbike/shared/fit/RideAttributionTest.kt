@@ -38,7 +38,7 @@ class RideAttributionTest {
 
     @Test
     fun `every file names the app that wrote it`() {
-        val file = read(build(appVersion = "2.8.1"))
+        val file = readFit(build(appVersion = "2.8.1"))
 
         val fileId = file.single(FitMessage.FILE_ID)
         assertEquals(255L, fileId.number(1))
@@ -60,7 +60,7 @@ class RideAttributionTest {
 
     @Test
     fun `a ride no game drove says nothing about a world`() {
-        val file = read(build())
+        val file = readFit(build())
         val names = file.all(FitMessage.FIELD_DESCRIPTION).map { it.text(3) }
         assertTrue(names.none { it.startsWith("virtual_") }, "declared $names")
 
@@ -71,7 +71,7 @@ class RideAttributionTest {
 
     @Test
     fun `a ride a game drove names the game and its course on the session`() {
-        val file = read(build(world = colDeBerg))
+        val file = readFit(build(world = colDeBerg))
 
         val worldFields = file.all(FitMessage.FIELD_DESCRIPTION)
             .filter { it.text(3).startsWith("virtual_") }
@@ -96,7 +96,7 @@ class RideAttributionTest {
 
     @Test
     fun `a game that named no course is credited without one`() {
-        val file = read(build(world = VirtualWorld(platform = "Col de Berg")))
+        val file = readFit(build(world = VirtualWorld(platform = "Col de Berg")))
         val names = file.all(FitMessage.FIELD_DESCRIPTION).map { it.text(3) }
         assertTrue("virtual_platform" in names)
         assertTrue("virtual_route" !in names)
@@ -133,7 +133,7 @@ class RideAttributionTest {
 
     @Test
     fun `an unknown version is written as unknown`() {
-        val file = read(build(appVersion = ""))
+        val file = readFit(build(appVersion = ""))
         assertEquals(0xFFFFL, file.single(FitMessage.FILE_CREATOR).number(0))
         assertEquals(0xFFFF_FFFFL, file.single(FitMessage.DEVELOPER_DATA_ID).number(4))
     }
@@ -192,7 +192,7 @@ class RideAttributionTest {
         val telemetry = (0 until 120).map { i ->
             WorkoutTelemetry(
                 id = i.toLong(), sessionId = 7, timestampEpoch = START + i * 1000L,
-                power = 150L, cadence = 90L, heartRate = 140L,
+                power = 150L, cadence = 90L, heartRate = 140L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
         return RideFitBuilder.build(
@@ -200,63 +200,6 @@ class RideAttributionTest {
             telemetry, workout = null, ftp = 200,
             appVersion = appVersion, world = world,
         )
-    }
-
-    // ── A FIT reader that keeps every field's bytes ─────────────────────────
-
-    private class Message(val global: Int, val fields: Map<Int, ByteArray>, val developer: Map<Int, ByteArray>) {
-        fun number(field: Int): Long {
-            val bytes = fields.getValue(field)
-            var value = 0L
-            for (i in bytes.indices) value = value or ((bytes[i].toLong() and 0xFF) shl (8 * i))
-            return value
-        }
-
-        fun text(field: Int): String = fields.getValue(field).decodeToString().substringBefore('\u0000')
-
-        fun developerText(field: Int): String = developer.getValue(field).decodeToString().substringBefore('\u0000')
-    }
-
-    private class File(val messages: List<Message>) {
-        fun all(global: Int) = messages.filter { it.global == global }
-        fun single(global: Int) = all(global).single()
-    }
-
-    private fun read(bytes: ByteArray): File {
-        class Def(val global: Int, val fields: List<Pair<Int, Int>>, val developer: List<Pair<Int, Int>>)
-        val definitions = HashMap<Int, Def>()
-        val out = mutableListOf<Message>()
-        fun u8At(i: Int) = bytes[i].toInt() and 0xFF
-        var pos = 14
-        val end = bytes.size - 2
-        while (pos < end) {
-            val header = u8At(pos); pos += 1
-            val localType = header and 0x0F
-            if (header and 0x40 != 0) {
-                pos += 2
-                val global = u8At(pos) or (u8At(pos + 1) shl 8); pos += 2
-                val count = u8At(pos); pos += 1
-                val fields = (0 until count).map { i -> u8At(pos + i * 3) to u8At(pos + i * 3 + 1) }
-                pos += count * 3
-                val developer = if (header and 0x20 == 0) emptyList() else {
-                    val devCount = u8At(pos); pos += 1
-                    (0 until devCount).map { i -> u8At(pos + i * 3) to u8At(pos + i * 3 + 1) }
-                        .also { pos += devCount * 3 }
-                }
-                definitions[localType] = Def(global, fields, developer)
-            } else {
-                val def = definitions[localType] ?: error("data message for undefined local type $localType")
-                val fields = def.fields.associate { (num, size) ->
-                    (num to bytes.copyOfRange(pos, pos + size)).also { pos += size }
-                }
-                val developer = def.developer.associate { (num, size) ->
-                    (num to bytes.copyOfRange(pos, pos + size)).also { pos += size }
-                }
-                out += Message(def.global, fields, developer)
-            }
-        }
-        assertEquals(end, pos, "reader must consume the body exactly")
-        return File(out)
     }
 
     private companion object {

@@ -59,7 +59,7 @@ class ExportRideTest {
     private fun samples(seconds: Int, watts: (Int) -> Long = { 150L }) = (0 until seconds).map { i ->
         WorkoutTelemetry(
             id = i.toLong(), sessionId = 1, timestampEpoch = start + i * 1000L,
-            power = watts(i), cadence = 90, heartRate = 140,
+            power = watts(i), cadence = 90, heartRate = 140, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
         )
     }
 

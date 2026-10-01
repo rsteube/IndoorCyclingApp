@@ -117,7 +117,7 @@ class FitWriterTest {
                     else -> 120L
                 },
                 cadence = 90L,
-                heartRate = (130 + i / 60).coerceAtMost(170).toLong(),
+                heartRate = (130 + i / 60).coerceAtMost(170).toLong(), distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
         val session = WorkoutSession(
@@ -167,7 +167,7 @@ class FitWriterTest {
             WorkoutTelemetry(
                 id = i.toLong(), sessionId = 1,
                 timestampEpoch = startEpoch + i * 1000L,
-                power = 150L, cadence = 90L, heartRate = 140L,
+                power = 150L, cadence = 90L, heartRate = 140L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
         val session = WorkoutSession(
@@ -220,7 +220,7 @@ class FitWriterTest {
             WorkoutTelemetry(
                 id = i.toLong(), sessionId = 7,
                 timestampEpoch = session.startTimeEpoch + i * 1000L,
-                power = 150L, cadence = 85L, heartRate = 140L,
+                power = 150L, cadence = 85L, heartRate = 140L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
 
@@ -346,7 +346,7 @@ class FitWriterTest {
     private fun telemetry(stamps: List<Long>) = stamps.mapIndexed { i, stamp ->
         WorkoutTelemetry(
             id = i.toLong(), sessionId = 3, timestampEpoch = stamp,
-            power = 150L, cadence = 90L, heartRate = 140L,
+            power = 150L, cadence = 90L, heartRate = 140L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
         )
     }
 
@@ -483,7 +483,7 @@ class FitWriterTest {
             WorkoutTelemetry(
                 id = i.toLong(), sessionId = 42,
                 timestampEpoch = session.startTimeEpoch + i * 1000L,
-                power = 150L, cadence = 85L, heartRate = 140L,
+                power = 150L, cadence = 85L, heartRate = 140L, distanceMeters = null, latitude = null, longitude = null, altitudeMeters = null,
             )
         }
         val bytes = RideFitBuilder.build(session, telemetry, workout = null, ftp = 200)

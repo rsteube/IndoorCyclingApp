@@ -49,6 +49,10 @@ object TcxBuilder {
         val power: Int,
         val hr: Int,
         val cad: Int,
+        /** Where a companion game said the rider was, or null for nowhere. */
+        val latitude: Double? = null,
+        val longitude: Double? = null,
+        val altitudeMeters: Double? = null,
     ) {
         /** Virtual speed for this sample's watts, and the ride distance at it. */
         var speedMps: Double = 0.0
@@ -89,6 +93,9 @@ object TcxBuilder {
                 power = s.power.toInt().coerceAtLeast(0),
                 hr = s.heartRate.toInt().coerceIn(0, 254),
                 cad = s.cadence.toInt().coerceIn(0, 254),
+                latitude = s.latitude?.takeIf { s.longitude != null },
+                longitude = s.longitude?.takeIf { s.latitude != null },
+                altitudeMeters = s.altitudeMeters,
             ).also {
                 it.speedMps = ride.metres[pi]
                 it.metres = running
@@ -155,6 +162,18 @@ object TcxBuilder {
                 for (p in lapPts) {
                     sb.append("          <Trackpoint>\n")
                     sb.append("            <Time>").append(isoUtc(startMs + p.wallSec * 1000L)).append("</Time>\n")
+                    // Trackpoint_t orders Position and AltitudeMeters between
+                    // Time and DistanceMeters. Written only where a companion
+                    // game reported them: a trackpoint without a Position is
+                    // valid TCX and a reader leaves a gap, never a guess.
+                    if (p.latitude != null && p.longitude != null) {
+                        sb.append("            <Position><LatitudeDegrees>").append(signedDecimals(p.latitude, 7))
+                            .append("</LatitudeDegrees><LongitudeDegrees>").append(signedDecimals(p.longitude, 7))
+                            .append("</LongitudeDegrees></Position>\n")
+                    }
+                    p.altitudeMeters?.let {
+                        sb.append("            <AltitudeMeters>").append(signedDecimals(it, 1)).append("</AltitudeMeters>\n")
+                    }
                     // Trackpoint_t orders DistanceMeters ahead of HeartRateBpm.
                     sb.append("            <DistanceMeters>").append(decimals(p.metres, 2))
                         .append("</DistanceMeters>\n")
@@ -214,6 +233,10 @@ object TcxBuilder {
      * and TCX wants plain decimals with a dot regardless of the device locale,
      * so the digits are assembled by hand.
      */
+    /** [decimals] for values that can be negative: a western longitude, a shore below sea level. */
+    private fun signedDecimals(value: Double, places: Int): String =
+        if (value < 0.0) "-" + decimals(-value, places) else decimals(value, places)
+
     private fun decimals(value: Double, places: Int): String {
         var scale = 1L
         repeat(places) { scale *= 10L }

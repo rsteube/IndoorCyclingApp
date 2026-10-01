@@ -259,11 +259,22 @@ def godot_spelling(value):
     return value
 
 
+# Where --track's test road starts (the Kesselberg pass, latitude, longitude,
+# altitude in metres) and how steeply it climbs.
+TRACK_ORIGIN = (47.6235, 11.3545, 858.0)
+TRACK_GRADIENT = 0.03
+
+
 class Probe:
-    def __init__(self, ws, verbose=True, state=None, godot_numbers=False, screenshot_reply="png"):
+    def __init__(self, ws, verbose=True, state=None, godot_numbers=False, screenshot_reply="png",
+                 track=False):
         self.ws = ws
         self.verbose = verbose
         self.godot_numbers = godot_numbers
+        # Send lat/lon/altM (0.11) on every world frame: a straight road due
+        # north from TRACK_ORIGIN, placed by distance, so a ride's exported
+        # file has a track to look at. A test road, not a course.
+        self.track = track
         # How to answer requestScreenshot: "png" sends a picture, "error" says
         # it cannot, "silent" never answers, so the phone's timeout shows.
         self.screenshot_reply = screenshot_reply
@@ -413,7 +424,7 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.10",
+            "protoMin": "0.1", "protoMax": "0.11",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
@@ -437,6 +448,11 @@ class Probe:
             frame["distanceM"] = round(distance_m, 1)
         if ascent_m is not None:
             frame["ascentM"] = round(ascent_m, 1)
+        if self.track and distance_m is not None:
+            lat, lon, alt = TRACK_ORIGIN
+            frame["lat"] = round(lat + distance_m / 111_320.0, 7)
+            frame["lon"] = lon
+            frame["altM"] = round(alt + distance_m * TRACK_GRADIENT, 1)
         if self.godot_numbers:
             frame = godot_spelling(frame)
         # Too chatty to echo at 10 Hz; the ride loop prints a summary instead.
@@ -824,6 +840,8 @@ def main():
                     help="how to answer the phone's requestScreenshot")
     ap.add_argument("--godot-numbers", action="store_true",
                     help="spell every whole number as Godot does (921.0), in every frame")
+    ap.add_argument("--track", action="store_true",
+                    help="send lat/lon/altM (0.11) on every world frame, so the ride exports a track")
     args = ap.parse_args()
 
     host, port = args.host, args.port
@@ -866,7 +884,7 @@ def connect(host, port, args, state):
     print("\nconnecting to ws://%s:%d%s" % (host, port, PATH))
     ws = WebSocket(host, port)
     probe = Probe(ws, state=state, godot_numbers=args.godot_numbers,
-                  screenshot_reply=args.screenshot_reply)
+                  screenshot_reply=args.screenshot_reply, track=args.track)
     probe.start()
     if not probe.hello(args.code):
         print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")

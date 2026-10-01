@@ -156,7 +156,7 @@ class NegotiationTest {
     @Test
     fun `this build advertises what it actually honours`() {
         assertEquals(
-            setOf("gradient", "speedMps", "distanceM", "ascentM", "crr"),
+            setOf("gradient", "speedMps", "distanceM", "ascentM", "crr", "lat", "lon", "altM"),
             CompanionProtocol.HONOURED_WORLD_FIELDS,
         )
         // Reserved names must not be honoured by accident: the companion owns

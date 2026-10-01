@@ -41,7 +41,12 @@ import app.indoorbike.shared.session.SegmentMark
  *  - **Distance** on a route or companion ride was the flat-road estimate from
  *    power, not the road ridden: a 12 km climb exported as however far those
  *    watts would have gone on the flat, and nothing at all without a body
- *    weight. The road's own distance is shared out over the ride now.
+ *    weight. The road's own distance is shared out over the ride now, and on
+ *    a companion ride whose game reported its distance as it went, each
+ *    second's metres are simply what the game said they were.
+ *
+ * Where the rider was, on a companion ride whose game reported it, is read
+ * straight off the samples by the writers: see [hasPosition].
  */
 internal class ExportRide(
     session: WorkoutSession,
@@ -68,13 +73,37 @@ internal class ExportRide(
     /** Whether [metres] means anything: a road was ridden, or a body weight is known. */
     val hasDistance: Boolean
 
+    /**
+     * Whether any sample carries a position the companion reported, so the
+     * writers know to declare one. Samples without one write "no position",
+     * never a guess.
+     */
+    val hasPosition: Boolean = telemetry.any { it.latitude != null && it.longitude != null }
+
+    /** Whether any sample carries an altitude the companion reported. */
+    val hasAltitude: Boolean = telemetry.any { it.altitudeMeters != null }
+
     val laps: List<ExportLap>
 
     init {
         val points = timeline.points
         val roadMetres = (session.routeDistanceMeters - session.routeStartMeters).coerceAtLeast(0.0)
         metres = DoubleArray(points.size)
-        if (roadMetres > 0.0 && points.isNotEmpty()) {
+        if (points.any { telemetry[it.index].distanceMeters != null }) {
+            // The game counted the ride's distance as it went, and every
+            // second's share is the difference between its counts. A second it
+            // reported nothing for covered nothing as far as the record knows,
+            // and the next report carries the ground in between. Measured from
+            // where this ride began on the game's count, which a session of many
+            // rides need not have started at zero.
+            var counted = session.routeStartMeters
+            for (i in points.indices) {
+                val reported = telemetry[points[i].index].distanceMeters ?: continue
+                metres[i] = (reported - counted).coerceAtLeast(0.0)
+                if (reported > counted) counted = reported
+            }
+            hasDistance = true
+        } else if (roadMetres > 0.0 && points.isNotEmpty()) {
             // The road's distance is the fact; power only says how it was shared
             // out over the ride. Weighted by the speed each second's watts
             // would give, with a stand-in rider when no weight is set, since

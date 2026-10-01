@@ -40,7 +40,8 @@ import kotlin.math.min
  *                         the lap targets, and the session's virtual world;
  *                         see [RideAttribution])
  *   - event              (timer start)
- *   - record × N         (one per 1Hz telemetry sample)
+ *   - record × N         (one per 1Hz telemetry sample; with position and
+ *                         altitude when a companion game reported them)
  *   - event × 2P         (timer stop and start around each of P pauses)
  *   - lap × M            (one per segment the ride actually rode, cut where the
  *                         ride recorded it changing, partitioning the records
@@ -235,14 +236,28 @@ object RideFitBuilder {
         w.u32(startFit); w.u8(0); w.u8(0)       // timer / start
 
         // ── record definition (used by all telemetry samples) ───────────
-        w.writeDefinition(LOCAL_RECORD, FitMessage.RECORD, listOf(
-            Triple(253, 4, FitBaseType.UINT32),  // timestamp
-            Triple(5, 4, FitBaseType.UINT32),    // distance (1/100 m)
-            Triple(6, 2, FitBaseType.UINT16),    // speed (1/1000 m/s)
-            Triple(7, 2, FitBaseType.UINT16),    // power (W)
-            Triple(3, 1, FitBaseType.UINT8),     // heart_rate (bpm)
-            Triple(4, 1, FitBaseType.UINT8),     // cadence (rpm)
-        ))
+        // Position and altitude only for a ride a companion game placed on its
+        // course, and only as the game reported them: every other ride's
+        // records are byte for byte what they were.
+        val withPosition = ride.hasPosition
+        val withAltitude = ride.hasAltitude
+        w.writeDefinition(LOCAL_RECORD, FitMessage.RECORD, buildList {
+            add(Triple(253, 4, FitBaseType.UINT32))  // timestamp
+            add(Triple(5, 4, FitBaseType.UINT32))    // distance (1/100 m)
+            add(Triple(6, 2, FitBaseType.UINT16))    // speed (1/1000 m/s)
+            add(Triple(7, 2, FitBaseType.UINT16))    // power (W)
+            add(Triple(3, 1, FitBaseType.UINT8))     // heart_rate (bpm)
+            add(Triple(4, 1, FitBaseType.UINT8))     // cadence (rpm)
+            if (withPosition) {
+                add(Triple(0, 4, FitBaseType.SINT32))  // position_lat (semicircles)
+                add(Triple(1, 4, FitBaseType.SINT32))  // position_long (semicircles)
+            }
+            if (withAltitude) {
+                // Both, because readers differ on which they look for.
+                add(Triple(2, 2, FitBaseType.UINT16))   // altitude (1/5 m, offset 500)
+                add(Triple(78, 4, FitBaseType.UINT32))  // enhanced_altitude (1/5 m, offset 500)
+            }
+        })
 
         // ── records + interleaved laps ───────────────────────────────────
         var lapDefWritten = false
@@ -358,6 +373,24 @@ object RideFitBuilder {
                 w.u16(sample.power.toInt().coerceIn(0, 65534))
                 w.u8(fitHeartRate(sample.heartRate.toInt()))
                 w.u8(sample.cadence.toInt().coerceIn(0, 254))
+                if (withPosition) {
+                    // A second the game placed nowhere is written as no
+                    // position, which every reader skips, never as a point
+                    // drawn between its neighbours.
+                    val lat = sample.latitude
+                    val lon = sample.longitude
+                    val placed = lat != null && lon != null
+                    w.s32(if (lat != null && placed) semicircles(lat) else FitInvalid.SINT32)
+                    w.s32(if (lon != null && placed) semicircles(lon) else FitInvalid.SINT32)
+                }
+                if (withAltitude) {
+                    val altitude = sample.altitudeMeters
+                    w.u16(
+                        if (altitude == null) FitInvalid.UINT16
+                        else fitAltitude(altitude).coerceAtMost(FitInvalid.UINT16 - 1L).toInt()
+                    )
+                    w.u32(if (altitude == null) FitInvalid.UINT32 else fitAltitude(altitude))
+                }
 
                 accum.add(
                     sample.power.toInt(),
@@ -562,6 +595,14 @@ object RideFitBuilder {
      */
     private fun fitHeartRate(bpm: Int): Int =
         if (bpm <= 0) FitInvalid.UINT8 else bpm.coerceIn(1, 254)
+
+    /** Degrees in FIT's position unit: 2^31 semicircles to 180 degrees. */
+    private fun semicircles(degrees: Double): Int =
+        (degrees * (2_147_483_648.0 / 180.0)).toLong().coerceIn(-2_147_483_647L, 2_147_483_646L).toInt()
+
+    /** Metres above sea level in FIT's altitude unit: fifths of a metre, from 500 m below. */
+    private fun fitAltitude(metres: Double): Long =
+        ((metres + 500.0) * 5.0).toLong().coerceIn(0L, FitInvalid.UINT32 - 1L)
 
     /** Metres in the FIT distance unit (1/100 m); null means "no estimate". */
     private fun fitDistance(metres: Double?): Long =

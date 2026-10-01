@@ -78,6 +78,15 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.11 added where the rider is: `lat`, `lon` and `altM` on the `world`
+     * frame, the companion's own account of the rider's position on its course.
+     * The app records them second by second beside power, with the cumulative
+     * `distanceM` it already took, and writes them into the ride's files, so a
+     * ride shared from a game shows the road it was ridden on. Nothing is
+     * worked out on the phone: a second with no fresh report has no position.
+     * Additive in both directions. The fields are listed in `welcome.honours`,
+     * and a companion that sends none of them rides exactly as before.
+     *
      * 0.9 added screenshots: the phone sends `requestScreenshot` when the rider
      * asks for a picture of the game, and a companion that listed `screenshot`
      * in its `hello` answers with a `screenshot` frame carrying a PNG or JPEG.
@@ -130,7 +139,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 10)
+    val VERSION = ProtocolVersion(0, 11)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -324,7 +333,17 @@ object CompanionProtocol {
     const val DEFAULT_CRR = VirtualSpeed.CRR
 
     /** World-frame fields this build acts on. Published in `welcome.honours`. */
-    val HONOURED_WORLD_FIELDS = setOf("gradient", "speedMps", "distanceM", "ascentM", "crr")
+    val HONOURED_WORLD_FIELDS =
+        setOf("gradient", "speedMps", "distanceM", "ascentM", "crr", "lat", "lon", "altM")
+
+    /**
+     * Bounds on a reported altitude, in metres above sea level: the shore of
+     * the Dead Sea to well above any road. Outside them the value is not an
+     * altitude and is refused rather than clamped, because a clamped altitude
+     * is a made-up one.
+     */
+    const val MIN_ALTITUDE_M = -500.0
+    const val MAX_ALTITUDE_M = 9_000.0
 
     /** Structural, never warned about. */
     val WORLD_ENVELOPE_FIELDS = setOf("t", "seq")

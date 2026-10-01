@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.10** (the app also accepts everything back to 0.1)
+- Protocol version: **0.11** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -39,9 +39,10 @@ Three consequences that are easy to get wrong:
    frame without it is `malformed`.
 2. **You cannot shift.** You may *request* a shift. The app owns the drivetrain, clamps the
    index and reports the result.
-3. **The app never learns position.** `distanceM` and `ascentM` are cumulative totals for the
-   ride record. There is no latitude, longitude or altitude anywhere in the protocol during a
-   ride.
+3. **The app knows where the rider is only if you say.** `distanceM` and `ascentM` are
+   cumulative totals for the ride record. From 0.11 you may also send `lat`, `lon` and `altM` on
+   the `world` frame, the rider's position on your course; the app records exactly that, second
+   by second, into the ride's FIT and TCX files, and never works a position out for itself.
 
 ---
 
@@ -83,7 +84,7 @@ should be listening on. Bind to it and read.
 ```json
 {
   "t": "indoorbike.companion",
-  "proto": "0.1-0.10",
+  "proto": "0.1-0.11",
   "path": "/companion",
   "port": 33077,
   "app": "2.0.2",
@@ -124,7 +125,7 @@ TXT records:
 
 | Key | Example | Meaning |
 |---|---|---|
-| `proto` | `0.1-0.10` | Supported version range, `min-max` |
+| `proto` | `0.1-0.11` | Supported version range, `min-max` |
 | `path` | `/companion` | WebSocket path |
 | `app` | `2.0.2` | App version, informational |
 | `session` | `3f9a1c` | Stable id for this ride |
@@ -249,6 +250,12 @@ timeout. The same companion (same `hello.client.name`) reconnecting resumes it a
 receives `stateChanged: active` after `welcome`; a ride it had paused itself stays paused. The
 rider can end a paused ride, which saves it as completed. This is app behaviour, not a protocol
 version.
+
+**0.11** added where the rider is: optional `lat`, `lon` and `altM` on the `world` frame
+(section 7). The app records them second by second beside power, with `distanceM`, and writes
+them into the ride's FIT and TCX files as its track. Nothing is worked out on the phone: a second
+with no fresh report has no position. Additive: listed in `welcome.honours`, and a companion
+that sends none rides exactly as before.
 
 **0.10** added untracked riding (section 7b.1) and the `setPower` frame (section 7b.2): a ride
 state where the rider works and nothing is written down, and a fixed wattage to work at inside
@@ -411,6 +418,9 @@ The road. Send at 4-10 Hz. Faster buys nothing: the app applies the newest frame
 | `distanceM` | number | no | monotonic | Cumulative along-road distance this ride |
 | `ascentM` | number | no | monotonic | Cumulative metres climbed this ride |
 | `crr` | number | no | clamped to [0.002, 0.030] | Rolling resistance under the tyres. Absent means tarmac (0.005) |
+| `lat` | number | no | [-90, 90], refused outside | 0.11. Rider's latitude on your course, WGS 84 degrees. Only with `lon` |
+| `lon` | number | no | [-180, 180], refused outside | 0.11. Rider's longitude on your course, WGS 84 degrees. Only with `lat` |
+| `altM` | number | no | [-500, 9000], refused outside | 0.11. Rider's altitude in metres above sea level. May come alone |
 
 Behaviour:
 
@@ -422,6 +432,15 @@ Behaviour:
 - Omitting `distanceM` / `ascentM` leaves the previously banked totals untouched.
 - **Omitting `crr` means tarmac**, not "as you were": a companion that stops describing the
   surface has stopped modelling one. Send it on every frame if you send it at all.
+- **`lat` / `lon` / `altM` are the ride's track (0.11).** The app records the newest once a
+  second while the ride is recorded, inside the 1500 ms lease: go quiet and those seconds have
+  no position, a gap rather than a guess. Exported as FIT `position_lat`, `position_long`,
+  `altitude`, `enhanced_altitude` and TCX `Position`, `AltitudeMeters`. `lat` without `lon` (or
+  the reverse) and anything out of range is **refused, not clamped**, with a `rejected` warning
+  once per field per connection; the rest of the frame still lands. Not recorded while
+  untracked. Send them from the same tick as `speedMps` and `distanceM`.
+- **`distanceM` is recorded every second too (0.11)**, so each second of the export covers the
+  ground you counted, rather than the ride's total shared out by power.
 - Sending a field not in `honours` raises `warning` `fieldNotHonoured` **once per field per
   connection**, and the frame is still applied.
 - An observer sending `world` gets `error` `notController` and the socket **stays open**.
@@ -541,7 +560,8 @@ at the end, which is the only order a free-roaming game can manage: you do not k
 the rider took until they have taken it.
 
 **Nothing here is a position.** It describes the course, never where on it the rider is, and
-the app could not work that out from it. A companion that would rather disclose nothing sends
+the app does not work that out from it. Where the rider is travels as the `world` frame's
+`lat`, `lon` and `altM` (0.11), and only if you send them. A companion that would rather disclose nothing sends
 no `course` at all and the ride saves exactly as before: real numbers, no shape.
 
 An over-long `shape` or `profile` is **refused whole, not truncated**, with a `rejected`

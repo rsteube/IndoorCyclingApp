@@ -1220,6 +1220,9 @@ class CompanionHost(
                 is CompanionEffect.ReportProgress ->
                     engine.setProgress(effect.distanceM, effect.ascentM)
 
+                is CompanionEffect.ReportPosition ->
+                    engine.setPosition(effect.position)
+
                 is CompanionEffect.Shift ->
                     engine.shiftBy(effect.steps, CompanionEngine.SOURCE_COMPANION)
 

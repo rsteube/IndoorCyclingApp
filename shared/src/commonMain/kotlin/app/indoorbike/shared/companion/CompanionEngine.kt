@@ -207,6 +207,21 @@ class CompanionEngine(
     private val _elevationGainMeters = MutableStateFlow(0.0)
     val elevationGainMeters: StateFlow<Double> = _elevationGainMeters.asStateFlow()
 
+    /**
+     * Whether the companion has ever reported a distance on this load. The
+     * distance above starts at zero either way, and a zero the companion never
+     * said must not be recorded as one it did.
+     */
+    private val distanceReported = MutableStateFlow(false)
+
+    /**
+     * The position the companion last reported, and when it arrived. Held in
+     * flows rather than behind [lock] for the reason [sample] gives.
+     */
+    private val reportedPosition = MutableStateFlow<ReportedPosition?>(null)
+
+    private class ReportedPosition(val position: CompanionPosition, val atMs: Long)
+
     val drivetrain: StateFlow<Drivetrain> = gearing.drivetrain
 
     val gearIndex: StateFlow<Int> = gearing.gearIndex
@@ -327,6 +342,8 @@ class CompanionEngine(
         _speedMps.value = 0.0
         _distanceMeters.value = 0.0
         _elevationGainMeters.value = 0.0
+        distanceReported.value = false
+        reportedPosition.value = null
         _rideStartMeters.value = 0.0
         _rideStartElevationGainMeters.value = 0.0
         awaitingRideOrigin = false
@@ -486,8 +503,42 @@ class CompanionEngine(
             ascent?.let { _rideStartElevationGainMeters.value = it }
             awaitingRideOrigin = false
         }
-        distance?.let { if (it > _distanceMeters.value) _distanceMeters.value = it }
+        distance?.let {
+            distanceReported.value = true
+            if (it > _distanceMeters.value) _distanceMeters.value = it
+        }
         ascent?.let { if (it > _elevationGainMeters.value) _elevationGainMeters.value = it }
+    }
+
+    /** Where the companion says the rider is, already checked by the session. */
+    fun setPosition(position: CompanionPosition, nowMs: Long = getCurrentEpochMillis()) {
+        reportedPosition.value = ReportedPosition(position, nowMs)
+    }
+
+    /**
+     * What the companion has said about the road, for one second of the ride
+     * record taken at [nowMs].
+     *
+     * The distance is the companion's cumulative count whenever it has given
+     * one: it is a total, true until the next report. A position is only
+     * recorded while it is fresh, inside the same lease the road is ridden on,
+     * so a companion that stops sending leaves a gap in the track rather than a
+     * rider standing still at the last place it mentioned.
+     *
+     * Lock-free, like every other read the ride recorder makes of this engine:
+     * the recorder calls it holding its own lock, and the engine's callbacks
+     * reach out to the host while holding this one.
+     */
+    fun sample(nowMs: Long = getCurrentEpochMillis()): CompanionSample {
+        val fresh = reportedPosition.value
+            ?.takeIf { nowMs - it.atMs in 0..CompanionProtocol.WORLD_TIMEOUT_MS }
+            ?.position
+        return CompanionSample(
+            distanceMeters = if (distanceReported.value) _distanceMeters.value else null,
+            latitude = fresh?.latitude,
+            longitude = fresh?.longitude,
+            altitudeMeters = fresh?.altitudeM,
+        )
     }
 
     /**

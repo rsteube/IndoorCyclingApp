@@ -1388,11 +1388,18 @@ class WorkoutSessionManager(
         val now = clock.wallNow()
         publishClock()
 
+        // On a companion ride, where the game says the rider is this second.
+        // Its own numbers or nothing: see CompanionEngine.sample.
+        val road = if (workout.isCompanion) companionEngine?.sample() else null
         val sample = TelemetryPoint(
             timestampEpoch = now,
             power = trainerManager.power.value.toLong(),
             cadence = trainerManager.cadence.value.toLong(),
             heartRate = effectiveHeartRate().toLong(),
+            distanceMeters = road?.distanceMeters,
+            latitude = road?.latitude,
+            longitude = road?.longitude,
+            altitudeMeters = road?.altitudeMeters,
         )
         _telemetry.add(sample)
         telemetryPowerSum += sample.power

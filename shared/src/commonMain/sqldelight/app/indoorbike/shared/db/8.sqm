@@ -1,0 +1,16 @@
+-- Migrates HistoryDatabase v8 -> v9: where the rider was, second by second, on
+-- a ride a companion game drove.
+--
+-- A game that speaks Companion API 0.11 reports the rider's position on its
+-- course (latitude and longitude in WGS 84 degrees, altitude in metres above
+-- sea level) beside the cumulative along-road distance it already sent. Kept
+-- per sample so the ride's exported files carry the road it was ridden on and
+-- the distance it really covered each second, rather than a total shared out
+-- over the ride.
+--
+-- All four are NULL where nothing was reported, which is every row already
+-- here, and those rides export exactly as before.
+ALTER TABLE WorkoutTelemetry ADD COLUMN distanceMeters REAL;
+ALTER TABLE WorkoutTelemetry ADD COLUMN latitude REAL;
+ALTER TABLE WorkoutTelemetry ADD COLUMN longitude REAL;
+ALTER TABLE WorkoutTelemetry ADD COLUMN altitudeMeters REAL;
