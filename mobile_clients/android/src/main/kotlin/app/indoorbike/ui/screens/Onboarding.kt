@@ -87,7 +87,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.library.WorkoutEntry
+import app.indoorbike.shared.library.WorkoutEntry
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.db.WorkoutSession

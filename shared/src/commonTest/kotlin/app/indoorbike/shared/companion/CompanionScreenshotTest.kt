@@ -80,7 +80,7 @@ class ScreenshotImageTest {
     }
 
     @Test
-    fun `a JPEG is read from its frame header, past the segments before it`() {
+    fun `a JPEG is read from its frame header past the segments before it`() {
         val ok = assertIs<ScreenshotImage.Companion.Checked.Ok>(ScreenshotImage.check(b64(jpegHeader(1280, 720))))
         assertEquals(ScreenshotImage.JPEG, ok.image.format)
         assertEquals(1280, ok.image.widthPx)
@@ -152,7 +152,7 @@ class CompanionScreenshotSessionTest {
     }
 
     @Test
-    fun `a screenshot nobody asked for is refused, and so is a second answer`() {
+    fun `a screenshot nobody asked for is refused and so is a second answer`() {
         val s = ready()
         val unasked = s.onFrame("""{"t":"screenshot","id":9,"image":"${b64(pngHeader(64, 64))}"}""", 1_000)
         assertEquals("id", unasked.sent<WarningFrame>().field)
@@ -165,7 +165,7 @@ class CompanionScreenshotSessionTest {
     }
 
     @Test
-    fun `a companion that cannot take one says why, and the rider can be told`() {
+    fun `a companion that cannot take one says why and the rider can be told`() {
         val s = ready()
         s.requestScreenshot(5)
         val failed = assertIs<CompanionEffect.ScreenshotFailed>(

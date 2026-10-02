@@ -110,7 +110,7 @@ class VirtualDrivetrainTest {
      * out before the bike had had any chance to reach it.
      */
     @Test
-    fun `one sprocket at speed is the ratio, not its cube`() {
+    fun `one sprocket at speed is the ratio not its cube`() {
         val r = Rig(sprocket = 15)
         r.settle(gradient = 0.0, speedMps = 30 / 3.6)
         val before = r.forceNow()
@@ -143,7 +143,7 @@ class VirtualDrivetrainTest {
      * cadence reaches the telemetry and the HUD; it does not reach the force.
      */
     @Test
-    fun `the road is evaluated at the bike's speed, not at the legs'`() {
+    fun `the road is evaluated at the bike's speed not at the legs'`() {
         val r = Rig(cadence = 90, sprocket = 17)
         r.settle(gradient = 0.02, speedMps = 7.0)
         val at90 = r.forceNow()
@@ -154,7 +154,7 @@ class VirtualDrivetrainTest {
     }
 
     @Test
-    fun `an upshift lands on its ratio at once, with nothing to wait for`() {
+    fun `an upshift lands on its ratio at once with nothing to wait for`() {
         val r = Rig(sprocket = 15)
         r.settle(gradient = 0.0, speedMps = 8.0)
         val settledInThirteen = r.gearing.trainerForceNewtons(r.indexOf(13))
@@ -172,7 +172,7 @@ class VirtualDrivetrainTest {
      * catch up, and then settles on exactly the gear's own force.
      */
     @Test
-    fun `a downshift lets go of more than its ratio, then settles on it`() {
+    fun `a downshift lets go of more than its ratio then settles on it`() {
         val r = Rig(sprocket = 13)
         r.settle(gradient = 0.04, speedMps = 5.0)
         val settledInFifteen = r.gearing.trainerForceNewtons(r.indexOf(15))
@@ -273,7 +273,7 @@ class VirtualDrivetrainTest {
 
     /** What the same moment asked for before the freewheel, for the record. */
     @Test
-    fun `legs turning with the wheel at 70 km per h are connected to it, and meet the change`() {
+    fun `legs turning with the wheel at 70 km per h are connected to it - and meet the change`() {
         val r = descending(cadence = 132)
         val before = r.forceNow()
         r.gearing.setRoad(gradient = -0.02, worldSpeedMps = FAST)

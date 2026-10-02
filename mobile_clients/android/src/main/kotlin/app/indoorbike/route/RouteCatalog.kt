@@ -15,6 +15,8 @@
  */
 package app.indoorbike.route
 
+import app.indoorbike.shared.route.RouteSource
+import app.indoorbike.shared.route.mergeRouteCatalog
 import android.content.Context
 import app.indoorbike.shared.route.GpxParser
 import app.indoorbike.shared.route.RouteTrack
@@ -123,25 +125,10 @@ class RouteCatalog(
             val bundled = loadBundled()
             val imported = importer.loadUserRoutes()
 
-            val sources = HashMap<String, RouteSource>(bundled.size + imported.size)
-            for (track in bundled) sources[track.id] = RouteSource.Bundled
-            for (track in imported) {
-                val meta = importer.loadMeta(track.id)
-                sources[track.id] = RouteSource.Imported(
-                    sourceRepoId = meta?.sourceRepoId,
-                    sourceRepoName = meta?.sourceRepoName,
-                    attribution = meta?.attribution,
-                    sourceEntryId = meta?.sourceEntryId ?: track.id,
-                )
-            }
-
-            // Imported last so it replaces a bundled route of the same id, and
-            // distinct-by-id so the rides list can never show one route twice.
-            val merged = (bundled + imported)
-                .reversed()
-                .distinctBy { it.id }
-                .sortedBy { it.name.lowercase() }
-            merged to sources
+            // Imported last so it replaces a bundled route of the same id; see
+            // mergeRouteCatalog, which the iOS app's catalogue shares.
+            val contents = mergeRouteCatalog(bundled, imported, importer::loadMeta)
+            contents.routes to contents.sources
         }
         _routes.value = loaded
         _sources.value = sources

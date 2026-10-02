@@ -222,7 +222,7 @@ class RouteProgressTest {
     }
 
     @Test
-    fun `a resumed ride knows where it began, not just where it ended`() = runTest {
+    fun `a resumed ride knows where it began not just where it ended`() = runTest {
         // The summary bug: distanceMeters is a position on the route, and a
         // ride picked up at 42 km that covers 6 more ends at 48. Read as a
         // distance that says the rider rode 48 km in one sitting, and the

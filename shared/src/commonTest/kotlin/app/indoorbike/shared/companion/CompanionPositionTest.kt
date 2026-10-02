@@ -82,7 +82,7 @@ class CompanionPositionTest {
     }
 
     @Test
-    fun `a world frame without one reports nothing, as before`() {
+    fun `a world frame without one reports nothing - as before`() {
         assertNull(session().onFrame(world(1, ""), nowMs = 100).position())
     }
 
@@ -95,7 +95,7 @@ class CompanionPositionTest {
     }
 
     @Test
-    fun `half a position is refused and said so, once`() {
+    fun `half a position is refused and said so - once`() {
         val s = session()
         val first = s.onFrame(world(1, ""","lat":47.6"""), nowMs = 100)
         assertNull(first.position())
@@ -189,7 +189,7 @@ class CompanionPositionTest {
     }
 
     @Test
-    fun `a line torn inside its last number is dropped, not misread`() {
+    fun `a line torn inside its last number is dropped - not misread`() {
         val points = (0 until 3).map {
             TelemetryPoint(1_700_000_000_000L + it * 1000L, 230, 88, 150, 100.0 * it, 47.6, 11.3, 812.25)
         }

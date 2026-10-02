@@ -272,7 +272,7 @@ class ControllerManager {
                 try {
                     Scanner { logging(scannerLogging()) }.advertisements
                         .onEach { addDiscovered(it) }
-                        .firstOrNull { it.identifier == id }
+                        .firstOrNull { it.deviceId == id }
                 } catch (e: CancellationException) {
                     // Scan-window timeout or lifecycle gate close: routine, and
                     // not something a bug report should be led with. Rethrow so
@@ -420,11 +420,11 @@ class ControllerManager {
         // advertisement straight to connectInternal. A tap on a listed device
         // is the only thing that reads this map, so the unfiltered scan was
         // retaining every radio in range on behalf of no one.
-        advertisementById[ad.identifier] = ad
+        advertisementById[ad.deviceId] = ad
         val current = _discoveredDevices.value
-        if (current.none { it.id == ad.identifier }) {
+        if (current.none { it.id == ad.deviceId }) {
             _discoveredDevices.value = current + ControllerCandidate(
-                id = ad.identifier,
+                id = ad.deviceId,
                 name = ad.name,
                 rssi = ad.rssi
             )
@@ -447,11 +447,11 @@ class ControllerManager {
         link?.let { endLink(it, settle = false) }
 
         _connectionState.value = ControllerConnectionState.Connecting
-        _pairedDeviceId.value = advertisement.identifier
+        _pairedDeviceId.value = advertisement.deviceId
         _connectedDeviceName.value = advertisement.name ?: "Unknown Controller"
 
         // Stay on this controller: arm persistent reconnect for future drops.
-        targetPairedId = advertisement.identifier
+        targetPairedId = advertisement.deviceId
         wantReconnect.value = true
         reconnectBeforeScan = false
 
@@ -464,7 +464,7 @@ class ControllerManager {
         keypadStateKnown = false
 
         val newLink = BleLink.open(scope, advertisement) {
-            logging(peripheralLogging(advertisement.identifier))
+            logging(peripheralLogging(advertisement.deviceId))
             // With a handler registered, Kable sends observation
             // failures here rather than through the observe flow. Log
             // with device context, then rethrow to keep the existing
@@ -472,7 +472,7 @@ class ControllerManager {
             observationExceptionHandler { cause ->
                 Log.w(
                     TAG,
-                    "Controller observation failed on ${redactDeviceId(advertisement.identifier)}",
+                    "Controller observation failed on ${redactDeviceId(advertisement.deviceId)}",
                     cause,
                 )
                 throw cause

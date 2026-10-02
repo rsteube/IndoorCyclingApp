@@ -98,7 +98,7 @@ class CompanionHardeningTest {
     }
 
     @Test
-    fun `a handshake that never finishes can be refused, and a finished one cannot`() {
+    fun `a handshake that never finishes can be refused and a finished one cannot`() {
         val waiting = session()
         assertTrue(waiting.refuseUnauthenticated("too slow").closed())
 
@@ -119,7 +119,7 @@ class CompanionHardeningTest {
     }
 
     @Test
-    fun `a name is trimmed, capped and cleaned of control and bidi characters`() {
+    fun `a name is trimmed capped and cleaned of control and bidi characters`() {
         val s = session()
         s.onFrame(hello(name = "  Evil\\u202egame\\u0007 " + "x".repeat(200)), nowMs = 0)
 
@@ -133,7 +133,7 @@ class CompanionHardeningTest {
      * end of the stack: an Error, which nothing on the socket caught.
      */
     @Test
-    fun `a frame nested too deep is malformed, not a crash`() {
+    fun `a frame nested too deep is malformed not a crash`() {
         val deep = """{"t":"label","name":"x","world":""" + "[".repeat(20_000) + "]".repeat(20_000) + "}"
         assertIs<Decoded.Malformed>(CompanionCodec.decodeClientFrame(deep))
         // A bracket inside a string is text, not nesting.
@@ -158,7 +158,7 @@ class CompanionHardeningTest {
 
     /** Int.MAX_VALUE added to a gear index wrapped round to the easiest gear. */
     @Test
-    fun `an absurd shift lands in the hardest gear, not the easiest`() {
+    fun `an absurd shift lands in the hardest gear not the easiest`() {
         val engine = CompanionEngine(powerWatts = { 0 }, applyRoad = { }, riderMassKg = { 75f })
         try {
             engine.load()

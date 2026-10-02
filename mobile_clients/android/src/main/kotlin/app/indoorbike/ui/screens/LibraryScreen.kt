@@ -71,7 +71,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.library.ImportResult
+import app.indoorbike.shared.library.ImportResult
 import app.indoorbike.library.RegistryState
 import app.indoorbike.shared.repo.ImportKind
 import app.indoorbike.shared.repo.ManifestParser
@@ -132,7 +132,7 @@ fun LibraryScreen(
     val registry by container.repositoryManager.registry.collectAsStateWithLifecycle()
     val entries by container.workoutLibrary.entries.collectAsStateWithLifecycle()
     val importedWorkouts = remember(entries) {
-        entries.filter { it.source is app.indoorbike.library.WorkoutSource.Imported }
+        entries.filter { it.source is app.indoorbike.shared.library.WorkoutSource.Imported }
             .map { it.workout }
     }
 

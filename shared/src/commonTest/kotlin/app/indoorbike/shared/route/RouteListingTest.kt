@@ -211,7 +211,7 @@ class RouteListingTest {
     // ── Wire format ──────────────────────────────────────────────────────
 
     @Test
-    fun `unsupported and malformed route entries are dropped, not fatal`() {
+    fun `unsupported and malformed route entries are dropped not fatal`() {
         val bundle = """
             [
               {"schemaVersion":1,"id":"good","name":"Good","gpxUrl":"a.gpx","distanceMeters":1000},

@@ -15,6 +15,8 @@
  */
 package app.indoorbike.shared.ble.zwift
 
+import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
@@ -122,7 +124,7 @@ class ZwiftHandshakeTest {
     }
 
     @Test
-    fun `a bare RideOn is a plaintext ack, not a key exchange`() {
+    fun `a bare RideOn is a plaintext ack not a key exchange`() {
         assertNull(ZwiftHandshake.devicePublicKey(ZwiftHandshake.RIDE_ON))
         assertTrue(ZwiftHandshake.isPlaintextAck(ZwiftHandshake.RIDE_ON))
     }
@@ -158,5 +160,36 @@ class ZwiftSessionTest {
     fun `rejects a frame from a different counter`() {
         val frame = hex("01000000") + hex("06baeee6d3853a")
         assertNull(session.decrypt(frame))
+    }
+}
+
+class ZwiftKeyExchangeTest {
+
+    @Test
+    fun `a public key is the bare 64-byte point`() {
+        assertEquals(64, generateZwiftKeyPair().publicKey.size)
+    }
+
+    @Test
+    fun `two sides arrive at the same 32-byte secret`() {
+        val phone = generateZwiftKeyPair()
+        val controller = generateZwiftKeyPair()
+        val ours = phone.sharedSecret(controller.publicKey)
+        val theirs = controller.sharedSecret(phone.publicKey)
+        assertEquals(32, ours.size)
+        assertTrue(ours.contentEquals(theirs))
+    }
+
+    @Test
+    fun `a new key pair makes a new secret`() {
+        val controller = generateZwiftKeyPair()
+        val first = generateZwiftKeyPair().sharedSecret(controller.publicKey)
+        val second = generateZwiftKeyPair().sharedSecret(controller.publicKey)
+        assertFalse(first.contentEquals(second))
+    }
+
+    @Test
+    fun `a key of the wrong length is refused`() {
+        assertFailsWith<IllegalArgumentException> { generateZwiftKeyPair().sharedSecret(ByteArray(65)) }
     }
 }

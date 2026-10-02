@@ -46,7 +46,7 @@ object BackupMerger {
 
         val sessionTombstones = collapseTombstones(documents.flatMap { it.sessionTombstones })
         val sessionsById = LinkedHashMap<String, BackupSession>()
-        for (d in documents) for (s in d.sessions) sessionsById.putIfAbsent(s.externalId, s)
+        for (d in documents) for (s in d.sessions) sessionsById.getOrPut(s.externalId) { s }
         val sessions = sessionsById.values.filter { s ->
             val deletedAt = sessionTombstones[s.externalId] ?: return@filter true
             deletedAt < s.startTimeEpoch

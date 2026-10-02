@@ -18,32 +18,26 @@ package app.indoorbike.library
 import android.content.Context
 import android.net.Uri
 import app.indoorbike.shared.Workout
-import app.indoorbike.shared.repo.ImportKind
-import app.indoorbike.shared.repo.ImportPlan
-import app.indoorbike.shared.repo.ManifestParser
-import app.indoorbike.shared.repo.RepositoryManifest
+import app.indoorbike.shared.library.ImportMeta
+import app.indoorbike.shared.library.ImportQuestions
+import app.indoorbike.shared.library.ImportResult
+import app.indoorbike.shared.library.WorkoutFileStore
+import app.indoorbike.shared.library.WorkoutImportCore
 import app.indoorbike.shared.util.Log
 import java.io.File
 import java.nio.charset.StandardCharsets
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
 
 /**
- * Validates + persists user-supplied workout JSON.
+ * Validates + persists user-supplied workout JSON, under
+ * `filesDir/user_workouts/<sanitised-id>.json`.
  *
- * Persistence layout under `filesDir`:
- *   user_workouts/<sanitised-id>.json
- *
- * Uses the workout's own `id` as the filename. Sanitisation strips path
- * separators and keeps the filename predictable for hand-debugging.
- *
- * Importing never replaces a workout the rider has without asking them
- * through [questions], and never replaces a starter workout at all: see
- * [ImportPlan]. Re-importing a workout that is already there, unchanged, does
- * nothing.
+ * What an import does - asking before it replaces anything, never replacing a
+ * starter workout, keeping a repository's credit - is [WorkoutImportCore],
+ * shared with the iOS app. This keeps the Android side: the files, reading a
+ * shared `content://` file, and doing it all off the main thread.
  */
 class WorkoutImporter(
     private val context: Context,
@@ -51,95 +45,20 @@ class WorkoutImporter(
     val questions: ImportQuestions = ImportQuestions(),
 ) {
 
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
-
-    private val userWorkoutsDir: File
-        get() = File(context.filesDir, "user_workouts").apply { mkdirs() }
+    private val core = WorkoutImportCore(
+        store = AndroidWorkoutFileStore(File(context.filesDir, "user_workouts")),
+        bundledById = { bundledById },
+        questions = questions,
+    )
 
     /** The starter workouts by id, read once: an import may not replace one. */
     private val bundledById: Map<String, Workout> by lazy {
         WorkoutLibrary.loadBundled(context).associateBy { it.id }
     }
 
-    /**
-     * Imports JSON text. Auto-detects whether it's a single workout, a list of
-     * workouts, or a repository manifest, and routes accordingly.
-     */
+    /** Imports JSON text: a workout, a list of them, or a repository manifest. */
     suspend fun importJsonText(text: String): ImportResult = withContext(Dispatchers.IO) {
-        try {
-            when (ManifestParser.classify(text)) {
-                ImportKind.SingleWorkout -> saveIncoming(listOf(ManifestParser.parseSingleWorkout(text)))
-                ImportKind.WorkoutList -> saveIncoming(json.decodeFromString<List<Workout>>(text))
-                ImportKind.RepositoryManifest -> {
-                    val manifest = ManifestParser.parseRepositoryManifest(text)
-                    ImportResult.Manifest(manifest)
-                }
-                ImportKind.Registry -> ImportResult.Failure(
-                    "That's a registry file, not a workout or repository."
-                )
-                // Route bundles are listings, not rideable data: each entry
-                // only points at a GPX. Adding them means downloading those,
-                // which is the route browser's job, not the workout importer's.
-                ImportKind.RouteList -> ImportResult.Failure(
-                    "That's a route pack. Open it from Routes to add routes from it."
-                )
-                ImportKind.Unknown -> ImportResult.Failure(
-                    "Couldn't recognise this file. Expected a workout JSON or a repository manifest."
-                )
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (t: Throwable) {
-            Log.e(TAG, "Import failed", t)
-            ImportResult.Failure(t.message ?: "Import failed")
-        }
-    }
-
-    /**
-     * Write [incoming] as [ImportPlan] says, first asking the rider if any of
-     * it would replace a workout of theirs.
-     */
-    private suspend fun saveIncoming(incoming: List<Workout>): ImportResult {
-        val replaced = ImportPlan.replaced(incoming, ::readUserWorkout)
-        val replace = if (replaced.isEmpty()) {
-            false
-        } else {
-            when (questions.ask(replaced.map { it.name })) {
-                ImportQuestions.Answer.REPLACE -> true
-                ImportQuestions.Answer.KEEP_BOTH -> false
-                ImportQuestions.Answer.CANCEL -> return ImportResult.Cancelled
-            }
-        }
-        val steps = ImportPlan.plan(
-            incoming = incoming,
-            imported = ::readUserWorkout,
-            bundled = bundledById,
-            isTaken = { id -> File(userWorkoutsDir, sanitise(id) + ".json").exists() },
-            replace = replace,
-        )
-        for (step in steps) {
-            if (step !is ImportPlan.Write) continue
-            val id = step.workout.id
-            // A replaced workout is no longer the one its source provided,
-            // so the source's credit goes with it.
-            if (readUserWorkout(id) != null) File(userWorkoutsDir, sanitise(id) + ".meta.json").delete()
-            saveUserWorkout(step.workout)
-        }
-        return ImportResult.Workouts(steps.map { it.workout })
-    }
-
-    /** The rider's imported workout stored under [id], or null. */
-    private fun readUserWorkout(id: String): Workout? {
-        val file = File(userWorkoutsDir, sanitise(id) + ".json")
-        if (!file.exists()) return null
-        return try {
-            json.decodeFromString<Workout>(file.readText(Charsets.UTF_8))
-        } catch (t: Throwable) {
-            null
-        }
+        core.importJsonText(text)
     }
 
     /**
@@ -153,7 +72,7 @@ class WorkoutImporter(
                 stream.readAtMost(HttpFetcher.MAX_BODY_BYTES.toLong(), "That file is too large to be a workout.")
                     .toString(StandardCharsets.UTF_8)
             } ?: return@withContext ImportResult.Failure("Couldn't open $uri")
-            importJsonText(text)
+            core.importJsonText(text)
         } catch (e: CancellationException) {
             throw e
         } catch (t: Throwable) {
@@ -163,145 +82,70 @@ class WorkoutImporter(
     }
 
     /** All user-imported workouts on disk, sorted by name. */
-    fun loadUserWorkouts(): List<Workout> {
-        val dir = userWorkoutsDir
-        val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".json") && !f.name.endsWith(".meta.json") }
-            ?: return emptyList()
-        return files.mapNotNull { file ->
-            try {
-                json.decodeFromString<Workout>(file.readText(Charsets.UTF_8))
-            } catch (t: Throwable) {
-                Log.w(TAG, "Skipping corrupt user workout ${file.name}: ${t.message}")
-                null
-            }
-        }.sortedBy { it.name.lowercase() }
-    }
+    fun loadUserWorkouts(): List<Workout> = core.loadUserWorkouts()
 
-    /**
-     * Reads the import-meta sidecar for a workout, or null when the workout
-     * was imported as a bare file (no provenance tracked). The sidecar lives
-     * alongside the workout JSON as `<id>.meta.json` and isn't part of the
-     * shareable workout payload — share-to-phone and QR flows export only the
-     * workout itself, never the local provenance.
-     */
-    fun loadImportMeta(workoutId: String): ImportMeta? {
-        val file = File(userWorkoutsDir, sanitise(workoutId) + ".meta.json")
-        if (!file.exists()) return null
-        return try {
-            json.decodeFromString(ImportMeta.serializer(), file.readText(Charsets.UTF_8))
-        } catch (t: Throwable) {
-            Log.w(TAG, "Corrupt meta for $workoutId: ${t.message}")
-            null
-        }
-    }
+    /** Where an imported workout came from, or null for a plain file import. */
+    fun loadImportMeta(workoutId: String): ImportMeta? = core.loadImportMeta(workoutId)
 
-    /**
-     * Unified persist entry point used by everything that needs to drop a
-     * fully-formed [Workout] into the user's local library — community-repo
-     * adds, share-target imports, and the backup-sync layer applying remote
-     * slices. Writes the workout JSON plus, if any provenance is supplied, a
-     * sidecar `<id>.meta.json` that the rides list reads to render
-     * attribution.
-     *
-     * The local copy is the source of truth from this point on — the
-     * explicit-add model means we never auto-update it from upstream once
-     * saved.
-     *
-     * [addedEpoch] should be the wall-clock when the workout first entered
-     * the rider's library. The sync layer passes the epoch from the remote
-     * slice so cross-device LWW (highest importedEpoch wins on duplicate
-     * ids) stays stable across syncs.
-     */
+    /** Keep a fully-formed workout, with its source; see [WorkoutImportCore.saveWorkout]. */
     suspend fun saveWorkout(
         workout: Workout,
         sourceRepoId: String? = null,
         sourceRepoName: String? = null,
         addedEpoch: Long = System.currentTimeMillis(),
     ): Workout = withContext(Dispatchers.IO) {
-        saveUserWorkout(workout)
-        if (sourceRepoId != null && sourceRepoName != null) {
-            writeMeta(
-                workout.id,
-                ImportMeta(
-                    sourceRepoId = sourceRepoId,
-                    sourceRepoName = sourceRepoName,
-                    addedEpoch = addedEpoch,
-                ),
-            )
-        }
-        workout
+        core.saveWorkout(workout, sourceRepoId, sourceRepoName, addedEpoch)
     }
 
     /** Compatibility shim — preserves the existing call site in the repo browser. */
-    suspend fun saveWorkoutFromRepo(
-        workout: Workout,
-        repoId: String,
-        repoName: String,
-    ): Workout = saveWorkout(workout, repoId, repoName)
+    suspend fun saveWorkoutFromRepo(workout: Workout, repoId: String, repoName: String): Workout =
+        saveWorkout(workout, repoId, repoName)
 
-    /**
-     * Deletes the on-disk JSON for an imported workout (and its sidecar meta,
-     * if any). Suspending + IO-confined to match [renameUserWorkout]; callers
-     * that need to know whether a delete actually happened can read the
-     * return value (false = file already gone or filesystem refused to
-     * delete).
-     */
+    /** Removes an imported workout and its sidecar. False when it was already gone. */
     suspend fun deleteUserWorkout(workoutId: String): Boolean = withContext(Dispatchers.IO) {
-        val sanitised = sanitise(workoutId)
-        val file = File(userWorkoutsDir, "$sanitised.json")
-        val meta = File(userWorkoutsDir, "$sanitised.meta.json")
-        val ok = file.exists() && file.delete()
-        // Meta is best-effort; orphaning a sidecar is ugly but never breaks
-        // anything since loadImportMeta is null-tolerant.
-        if (meta.exists()) meta.delete()
-        ok
+        core.deleteUserWorkout(workoutId)
     }
 
-    /**
-     * Rewrites the on-disk JSON for an imported workout with a new name. The
-     * id (and therefore the filename) is intentionally preserved so existing
-     * ride history, deep links, and the library's dedup keep pointing at the
-     * same entry. Returns the updated workout, or null if the file is missing
-     * / unreadable / the new name is blank.
-     */
+    /** Renames an imported workout, keeping its id; see [WorkoutImportCore.renameUserWorkout]. */
     suspend fun renameUserWorkout(workoutId: String, newName: String): Workout? = withContext(Dispatchers.IO) {
-        val trimmed = newName.trim()
-        if (trimmed.isEmpty()) return@withContext null
-        val file = File(userWorkoutsDir, sanitise(workoutId) + ".json")
-        if (!file.exists()) return@withContext null
-        val current = try {
-            json.decodeFromString<Workout>(file.readText(Charsets.UTF_8))
-        } catch (t: Throwable) {
-            Log.w(TAG, "Rename failed to decode ${file.name}: ${t.message}")
-            return@withContext null
-        }
-        val updated = current.copy(name = trimmed)
-        saveUserWorkout(updated)
-        updated
+        core.renameUserWorkout(workoutId, newName)
     }
 
-    private fun saveUserWorkout(workout: Workout) {
-        val file = File(userWorkoutsDir, sanitise(workout.id) + ".json")
-        val text = json.encodeToString(Workout.serializer(), workout)
+    companion object {
+        private const val TAG = "WorkoutImporter"
+    }
+}
+
+/** `user_workouts/` on disk, each write to a temporary file renamed into place. */
+private class AndroidWorkoutFileStore(private val dir: File) : WorkoutFileStore {
+    private fun file(name: String) = File(dir.apply { mkdirs() }, name)
+
+    override fun names(): List<String> =
+        dir.apply { mkdirs() }.listFiles { f -> f.isFile }?.map { it.name }.orEmpty()
+
+    override fun read(name: String): String? = file(name).takeIf { it.exists() }?.readText(Charsets.UTF_8)
+
+    override fun exists(name: String): Boolean = file(name).exists()
+
+    override fun delete(name: String): Boolean = file(name).let { it.exists() && it.delete() }
+
+    override fun write(name: String, text: String) {
+        val target = file(name)
         // Atomic write: write to a tmp sibling, then rename onto the target.
         // The rename is atomic on the same filesystem, so a crash/kill between
         // steps either leaves the original file intact or replaces it whole.
-        val tmp = File(file.parentFile, file.name + ".tmp")
+        val tmp = File(target.parentFile, target.name + ".tmp")
         try {
             tmp.writeText(text, Charsets.UTF_8)
-            if (tmp.renameTo(file)) return
+            if (tmp.renameTo(target)) return
             // Some FUSE-mounted external dirs refuse cross-node rename. Fall
             // back to "write a fresh tmp then rename" so the destination is
-            // never half-written: if writeText throws partway, `file` keeps its
-            // previous contents.
-            val tmp2 = File(file.parentFile, file.name + ".tmp2")
+            // never half-written.
+            val tmp2 = File(target.parentFile, target.name + ".tmp2")
             try {
                 tmp2.writeText(text, Charsets.UTF_8)
-                if (!tmp2.renameTo(file)) {
-                    // Last-resort: throw rather than silently leaving a corrupt
-                    // file. The caller's importJsonText catch will surface this
-                    // as ImportResult.Failure.
-                    throw java.io.IOException("Atomic save failed: couldn't rename ${tmp2.name} → ${file.name}")
+                if (!tmp2.renameTo(target)) {
+                    throw java.io.IOException("Atomic save failed: couldn't rename ${tmp2.name} → ${target.name}")
                 }
             } finally {
                 if (tmp2.exists()) tmp2.delete()
@@ -310,58 +154,4 @@ class WorkoutImporter(
             if (tmp.exists()) tmp.delete()
         }
     }
-
-    private fun writeMeta(workoutId: String, meta: ImportMeta) {
-        val file = File(userWorkoutsDir, sanitise(workoutId) + ".meta.json")
-        val text = json.encodeToString(ImportMeta.serializer(), meta)
-        // Same atomic-write pattern as saveUserWorkout — if a partial write
-        // dies, the destination keeps its previous contents (or stays absent).
-        val tmp = File(file.parentFile, file.name + ".tmp")
-        try {
-            tmp.writeText(text, Charsets.UTF_8)
-            if (!tmp.renameTo(file)) {
-                file.writeText(text, Charsets.UTF_8)
-            }
-        } finally {
-            if (tmp.exists()) tmp.delete()
-        }
-    }
-
-    private fun sanitise(id: String): String =
-        id.replace(Regex("[^A-Za-z0-9._-]"), "_").take(120).ifEmpty { "workout" }
-
-    companion object {
-        private const val TAG = "WorkoutImporter"
-    }
-}
-
-/**
- * Sidecar metadata for an imported workout. Tracks the upstream source so
- * the rides list can attribute "From Cycling-coach pack" without reading
- * the workout file itself. Lives at `<id>.meta.json`; absent for plain
- * file-imports.
- */
-@Serializable
-data class ImportMeta(
-    val sourceRepoId: String? = null,
-    val sourceRepoName: String? = null,
-    val addedEpoch: Long = 0,
-)
-
-sealed class ImportResult {
-    /** One or more workouts were validated and added to the user library. */
-    data class Workouts(val workouts: List<Workout>) : ImportResult()
-
-    /**
-     * A repository manifest was parsed. Repos aren't auto-mirrored under the
-     * explicit-add model — callers route the user to the remote-repo browser
-     * (where they pick individual workouts to add), or surface a Toast pointing
-     * at it.
-     */
-    data class Manifest(val manifest: RepositoryManifest) : ImportResult()
-
-    data class Failure(val message: String) : ImportResult()
-
-    /** The rider was asked whether to replace a workout, and chose to import nothing. */
-    data object Cancelled : ImportResult()
 }

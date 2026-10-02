@@ -55,7 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.route.RouteSource
+import app.indoorbike.shared.route.RouteSource
 import app.indoorbike.shared.route.RouteEstimate
 import app.indoorbike.shared.route.RouteStats
 import app.indoorbike.shared.ble.TrainerConnectionState

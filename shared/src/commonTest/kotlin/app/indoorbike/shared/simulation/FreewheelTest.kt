@@ -59,7 +59,7 @@ class FreewheelTest {
     }
 
     @Test
-    fun `legs behind the wheel hold the whole change, legs keeping up hold none`() {
+    fun `legs behind the wheel hold the whole change - legs keeping up hold none`() {
         val f = Freewheel()
         f.rideSteadily(worldSpeedMps = 8.0, driveSpeedMps = 8.0)
 
@@ -141,7 +141,7 @@ class FreewheelTest {
     }
 
     @Test
-    fun `a release hands everything back and keeps the rider's gear, a reset forgets both`() {
+    fun `a release hands everything back and keeps the rider's gear - a reset forgets both`() {
         val f = Freewheel()
         f.rideSteadily(worldSpeedMps = 8.4, driveSpeedMps = 6.0)
         f.absorb(40.0, slack = 1.0)

@@ -87,7 +87,7 @@ class CompanionRideOriginTest {
     }
 
     @Test
-    fun `the first report after a start is the origin, whatever number it carries`() {
+    fun `the first report after a start is the origin whatever number it carries`() {
         // The rule, stated on its own, because it is the one thing here that
         // could reasonably have been decided the other way.
         //
@@ -108,7 +108,7 @@ class CompanionRideOriginTest {
     }
 
     @Test
-    fun `the origin is the first report after the ride starts, not the last before it`() {
+    fun `the origin is the first report after the ride starts not the last before it`() {
         val e = engine()
         // Rolling around a lobby before the game says the ride has begun. None
         // of it belongs to the ride that is about to start.

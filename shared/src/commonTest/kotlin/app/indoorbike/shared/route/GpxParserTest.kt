@@ -52,7 +52,7 @@ class GpxParserTest {
     }
 
     @Test
-    fun `accepts namespaced tags, single quotes and self-closing points`() {
+    fun `accepts namespaced tags single quotes and self-closing points`() {
         val gpx = """
             <gpx:gpx xmlns:gpx="http://www.topografix.com/GPX/1/1">
               <gpx:trk>
@@ -252,7 +252,7 @@ class GpxParserTest {
     }
 
     @Test
-    fun `cost grows with the file, not with its square`() {
+    fun `cost grows with the file not with its square`() {
         // findTag used to look for a namespace prefix with an unbounded
         // indexOf(':'), so every tag it examined scanned to the end of the
         // document. A GPX with no colon after the header - which is most of

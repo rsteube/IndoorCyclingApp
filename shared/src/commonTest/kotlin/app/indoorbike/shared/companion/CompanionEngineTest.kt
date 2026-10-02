@@ -64,7 +64,7 @@ class CompanionEngineTest {
      * work while feeling wrong, which is the failure worth a test.
      */
     @Test
-    fun `commanded force grows with gradient, speed and gear`() {
+    fun `commanded force grows with gradient speed and gear`() {
         val r = Recorder()
         val gear = Drivetrain.DEFAULT.startIndex
 
@@ -284,7 +284,7 @@ class CompanionEngineTest {
 
     /** One shift through companion mode is the ratio between the two gears, on any road. */
     @Test
-    fun `a shift moves the force by the gear ratio, at speed and on a climb alike`() {
+    fun `a shift moves the force by the gear ratio at speed and on a climb alike`() {
         val gear = Drivetrain.DEFAULT.gearCount - 8
         val ratio = Drivetrain.DEFAULT.developmentMeters(gear - 1) / Drivetrain.DEFAULT.developmentMeters(gear)
 

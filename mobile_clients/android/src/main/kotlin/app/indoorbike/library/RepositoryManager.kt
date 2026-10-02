@@ -20,6 +20,10 @@ import app.indoorbike.shared.WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.repo.BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.repo.ManifestParser
+import app.indoorbike.shared.repo.RepoClient
+import app.indoorbike.shared.repo.RepoFetchResult
+import app.indoorbike.shared.repo.RouteFetchResult
+import app.indoorbike.shared.repo.TextFetcher
 import app.indoorbike.shared.repo.ROUTE_BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED
 import app.indoorbike.shared.repo.RegistryIndex
 import app.indoorbike.shared.repo.RepositoryManifest
@@ -55,6 +59,9 @@ class RepositoryManager(
     private val context: Context,
     private val registryUrl: String,
 ) {
+
+    /** The shared repository reader fetches through Android's own HTTPS rules. */
+    val fetcher = TextFetcher { url -> HttpFetcher.getString(url) }
 
     private val baseDir: File get() = context.filesDir
     private val registryDir: File get() = File(baseDir, "registry").apply { mkdirs() }
@@ -122,36 +129,7 @@ class RepositoryManager(
      * [WorkoutImporter.saveWorkoutFromRepo].
      */
     suspend fun fetchRepoWorkouts(manifestUrl: String): RepoFetchResult = withContext(Dispatchers.IO) {
-        try {
-            val manifestText = HttpFetcher.getString(manifestUrl)
-            val manifest = ManifestParser.parseRepositoryManifest(manifestText)
-            val workouts = mutableListOf<Workout>()
-            for (entry in manifest.bundles) {
-                if (entry.schemaVersion > BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED) {
-                    Log.w(TAG, "Skipping bundle '${entry.id}' - schema v${entry.schemaVersion} > supported")
-                    continue
-                }
-                val resolved = resolveUrl(entry.url, manifestUrl) ?: run {
-                    Log.w(TAG, "Bundle '${entry.id}' has relative URL '${entry.url}' but no base - skip")
-                    continue
-                }
-                try {
-                    val bundleText = HttpFetcher.getString(resolved)
-                    val bundle = ManifestParser.parseWorkoutBundle(bundleText)
-                    for (w in bundle) {
-                        if (w.schemaVersion <= WORKOUT_SCHEMA_VERSION_MAX_SUPPORTED) {
-                            workouts += w
-                        }
-                    }
-                } catch (t: Throwable) {
-                    Log.w(TAG, "Bundle '${entry.id}' fetch/parse failed: ${t.message}")
-                }
-            }
-            RepoFetchResult.Ok(manifest, workouts)
-        } catch (t: Throwable) {
-            Log.w(TAG, "Repo fetch failed for $manifestUrl: ${t.message}")
-            RepoFetchResult.Failure(t.message ?: "Couldn't fetch repository")
-        }
+        RepoClient.fetchRepoWorkouts(manifestUrl, fetcher)
     }
 
     /**
@@ -163,9 +141,7 @@ class RepositoryManager(
      * downloading any content at all.
      */
     suspend fun fetchManifest(manifestUrl: String): RepositoryManifest =
-        withContext(Dispatchers.IO) {
-            ManifestParser.parseRepositoryManifest(HttpFetcher.getString(manifestUrl))
-        }
+        withContext(Dispatchers.IO) { RepoClient.fetchManifest(manifestUrl, fetcher) }
 
     /**
      * Fetch a single repository's routes: download its manifest, then every
@@ -186,39 +162,7 @@ class RepositoryManager(
      * nothing rather than fail.
      */
     suspend fun fetchRepoRoutes(manifestUrl: String): RouteFetchResult = withContext(Dispatchers.IO) {
-        try {
-            val manifestText = HttpFetcher.getString(manifestUrl)
-            val manifest = ManifestParser.parseRepositoryManifest(manifestText)
-            val routes = mutableListOf<RouteEntry>()
-            for (entry in manifest.routeBundles) {
-                if (entry.schemaVersion > ROUTE_BUNDLE_SCHEMA_VERSION_MAX_SUPPORTED) {
-                    Log.w(TAG, "Skipping route bundle '${entry.id}' - schema v${entry.schemaVersion} > supported")
-                    continue
-                }
-                val resolved = resolveUrl(entry.url, manifestUrl) ?: run {
-                    Log.w(TAG, "Route bundle '${entry.id}' has relative URL '${entry.url}' but no base - skip")
-                    continue
-                }
-                try {
-                    val bundleText = HttpFetcher.getString(resolved)
-                    // parseRouteBundle has already dropped entries this build
-                    // is too old for, or that are missing what a ride needs.
-                    for (route in ManifestParser.parseRouteBundle(bundleText)) {
-                        val gpxUrl = resolveUrl(route.gpxUrl, resolved) ?: run {
-                            Log.w(TAG, "Route '${route.id}' has unresolvable GPX URL '${route.gpxUrl}' - skip")
-                            continue
-                        }
-                        routes += route.copy(gpxUrl = gpxUrl)
-                    }
-                } catch (t: Throwable) {
-                    Log.w(TAG, "Route bundle '${entry.id}' fetch/parse failed: ${t.message}")
-                }
-            }
-            RouteFetchResult.Ok(manifest, routes)
-        } catch (t: Throwable) {
-            Log.w(TAG, "Route fetch failed for $manifestUrl: ${t.message}")
-            RouteFetchResult.Failure(t.message ?: "Couldn't fetch repository")
-        }
+        RepoClient.fetchRepoRoutes(manifestUrl, fetcher)
     }
 
     /**
@@ -233,15 +177,7 @@ class RepositoryManager(
      * listings and its GPX files in the same subdirectory and refer to them
      * with bare filenames.
      */
-    fun resolveUrl(entryUrl: String, baseUrl: String): String? {
-        if (entryUrl.startsWith("https://", ignoreCase = true) ||
-            entryUrl.startsWith("http://", ignoreCase = true)) {
-            return entryUrl
-        }
-        val baseEnd = baseUrl.lastIndexOf('/')
-        if (baseEnd < 0) return null
-        return baseUrl.substring(0, baseEnd + 1) + entryUrl
-    }
+    fun resolveUrl(entryUrl: String, baseUrl: String): String? = RepoClient.resolveUrl(entryUrl, baseUrl)
 
     // ── Internal ─────────────────────────────────────────────────────────────
 
@@ -262,17 +198,7 @@ class RepositoryManager(
     }
 }
 
-sealed class RepoFetchResult {
-    data class Ok(val manifest: RepositoryManifest, val workouts: List<Workout>) : RepoFetchResult()
-    data class Failure(val message: String) : RepoFetchResult()
-}
-
 /** The route-side counterpart of [RepoFetchResult]: a listing, not ride data. */
-sealed class RouteFetchResult {
-    data class Ok(val manifest: RepositoryManifest, val routes: List<RouteEntry>) : RouteFetchResult()
-    data class Failure(val message: String) : RouteFetchResult()
-}
-
 sealed class RegistryState {
     data object Initial : RegistryState()
     data class Loaded(val index: RegistryIndex, val fromCache: Boolean) : RegistryState()

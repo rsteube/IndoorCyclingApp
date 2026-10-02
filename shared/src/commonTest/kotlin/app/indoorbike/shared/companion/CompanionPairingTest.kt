@@ -106,7 +106,7 @@ class CompanionSecurityTest {
     }
 
     @Test
-    fun `comparison survives a null, a short string and a long one`() {
+    fun `comparison survives a null a short string and a long one`() {
         val tag = CompanionSecurity.proof(CompanionSecurity.newKeyHex(), "app", "aa", "bb")
         assertTrue(CompanionSecurity.proofMatches(tag, tag))
         assertFalse(CompanionSecurity.proofMatches(tag, null))
@@ -120,7 +120,7 @@ class CompanionSecurityTest {
 class CompanionPairingCeremonyTest {
 
     @Test
-    fun `a stranger is asked for the code, as before`() {
+    fun `a stranger is asked for the code as before`() {
         val s = pairSession()
         val welcome = s.onFrame(helloFrame(), nowMs = 0).frame<WelcomeFrame>()
         assertEquals(APP_DEVICE, welcome.deviceId)
@@ -147,7 +147,7 @@ class CompanionPairingCeremonyTest {
     }
 
     @Test
-    fun `accepting mints a key, writes it down, and sends it once`() {
+    fun `accepting mints a key writes it down and sends it once`() {
         val s = pairSession()
         s.onFrame(helloFrame(), nowMs = 0)
         s.onFrame("""{"t":"pairRequest"}""", nowMs = 1)
@@ -181,7 +181,7 @@ class CompanionPairingCeremonyTest {
     }
 
     @Test
-    fun `asking twice when already paired is answered, not acted on`() {
+    fun `asking twice when already paired is answered not acted on`() {
         val key = CompanionSecurity.newKeyHex()
         val s = pairSession(mapOf(PEER to key))
         // Authenticate by pairing first, so we are in a ready state.
@@ -238,7 +238,7 @@ class CompanionPairedHandshakeTest {
     }
 
     @Test
-    fun `a correct proof is welcomed, and the app proves itself back`() {
+    fun `a correct proof is welcomed and the app proves itself back`() {
         val s = paired()
         val challenge = s.onFrame(helloFrame(token = null), nowMs = 0).frame<ChallengeFrame>()
         val nonceC = CompanionSecurity.newNonceHex()

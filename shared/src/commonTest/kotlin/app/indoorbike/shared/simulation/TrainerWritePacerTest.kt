@@ -45,7 +45,7 @@ class TrainerWritePacerTest {
     }
 
     @Test
-    fun `a shift goes at once, however recently the road was written`() {
+    fun `a shift goes at once however recently the road was written`() {
         val p = pacerThatWrote(atMs = 10_000, forced = false)
         assertTrue(
             p.mayWrite(10_001, forced = true),

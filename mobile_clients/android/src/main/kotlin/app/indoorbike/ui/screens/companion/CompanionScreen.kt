@@ -52,7 +52,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.LocalAppContainer
-import app.indoorbike.companion.CompanionPairing
+import app.indoorbike.shared.companion.CompanionPairing
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.IconBtn

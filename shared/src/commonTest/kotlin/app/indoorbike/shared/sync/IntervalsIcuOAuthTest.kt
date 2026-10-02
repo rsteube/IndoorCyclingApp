@@ -25,7 +25,7 @@ import kotlin.test.assertTrue
 class IntervalsIcuOAuthTest {
 
     @Test
-    fun `the consent url carries the client, the verified redirect, the scope and the state`() {
+    fun `the consent url carries the client the verified redirect the scope and the state`() {
         val url = IntervalsIcuOAuth.authorizeUrl(clientId = "123", state = "s t/ate")
         assertEquals(
             "https://intervals.icu/oauth/authorize?client_id=123" +
@@ -53,7 +53,7 @@ class IntervalsIcuOAuthTest {
 
     /** A redirect this app did not ask for must not be able to sign the rider in to somebody else's account. */
     @Test
-    fun `a code with the wrong state, or none stored, is refused`() {
+    fun `a code with the wrong state or none stored is refused`() {
         assertIs<IntervalsIcuOAuth.Callback.Refused>(
             IntervalsIcuOAuth.readCallback(mapOf("code" to "abc", "state" to "other"), expectedState = "xyz")
         )
@@ -93,7 +93,7 @@ class IntervalsIcuOAuthTest {
     }
 
     @Test
-    fun `an error response is read for the rider, and html is not shown to them`() {
+    fun `an error response is read for the rider and html is not shown to them`() {
         assertEquals("Code expired", IntervalsIcuOAuth.errorMessage("""{"error":"invalid_grant","error_description":"Code expired"}"""))
         assertEquals("Unauthorized", IntervalsIcuOAuth.errorMessage("Unauthorized"))
         assertNull(IntervalsIcuOAuth.errorMessage("<html><body>502</body></html>"))

@@ -20,6 +20,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.content.FileProvider
 import app.indoorbike.BuildConfig
+import app.indoorbike.shared.activity.exportFileName
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.db.WorkoutSession
@@ -116,12 +117,6 @@ object ActivityExporter {
         context.startActivity(chooser)
     }
 
-    private fun fileName(session: WorkoutSession, format: Format): String {
-        val safe = session.workoutName
-            .lowercase()
-            .replace(Regex("[^a-z0-9]+"), "-")
-            .trim('-')
-            .ifEmpty { "ride" }
-        return "indoorbike-$safe-${session.id}.${format.ext}"
-    }
+    private fun fileName(session: WorkoutSession, format: Format): String =
+        exportFileName(session, format.ext)
 }

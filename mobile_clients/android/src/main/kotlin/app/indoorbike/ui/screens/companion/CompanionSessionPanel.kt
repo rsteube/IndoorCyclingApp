@@ -40,8 +40,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import app.indoorbike.companion.CompanionHost.SessionPhase
-import app.indoorbike.ride.SavedCompanionRide
+import app.indoorbike.shared.companion.CompanionHost.SessionPhase
+import app.indoorbike.shared.companion.SavedCompanionRide
 import app.indoorbike.shared.companion.BrandPalette
 import app.indoorbike.ui.components.PrimaryBtn
 import app.indoorbike.ui.components.ScreenshotStrip

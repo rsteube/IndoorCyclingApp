@@ -37,6 +37,10 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.sqldelight.coroutines)
             api(libs.kable.core) // BLE operations
+            // The companion host's WebSocket server, on both platforms.
+            implementation(libs.ktor.server.core)
+            implementation(libs.ktor.server.cio)
+            implementation(libs.ktor.server.websockets)
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android)

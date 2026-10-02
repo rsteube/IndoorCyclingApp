@@ -96,7 +96,7 @@ class RideTrackTest {
     }
 
     @Test
-    fun `the distance is the game's own count, from where the ride began`() {
+    fun `the distance is the game's own count - from where the ride began`() {
         val records = records(RideFitBuilder.build(session, telemetry, workout = null, ftp = 200))
         // 1/100 m: the game's count less the ride's origin. The second it said
         // nothing holds; the next report carries the ground in between.

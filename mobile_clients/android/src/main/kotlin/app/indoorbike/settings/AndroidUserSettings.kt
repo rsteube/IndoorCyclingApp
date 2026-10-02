@@ -40,7 +40,7 @@ import app.indoorbike.shared.settings.MIN_FTP
 import app.indoorbike.shared.settings.MIN_MAX_HR
 import app.indoorbike.shared.settings.MIN_WEIGHT_KG
 import app.indoorbike.shared.settings.UserSettings
-import app.indoorbike.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.FitTrackeeUploader
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

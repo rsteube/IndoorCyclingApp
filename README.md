@@ -25,7 +25,7 @@ The companion website lives at [indoorbike.app](https://indoorbike.app), with an
 
 ## Status
 
-Pre-release. Currently in active development. iOS is on the roadmap but not started - the shared module is already KMM, so the lift should be reasonable.
+Pre-release. Currently in active development. An iOS app (SwiftUI on the shared Kotlin module, for iPhone and iPad) is in progress: see [docs/IOS_PORT.md](docs/IOS_PORT.md) for its status and plan.
 
 ## Install
 

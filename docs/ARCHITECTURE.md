@@ -10,7 +10,7 @@ Indoor Bike connects to a smart trainer (Wahoo Kickr Core as the first-class tar
 
 - **Core logic** - the `shared` module, written in KMM, handles workout parsing, BLE interactions (via [juul/kable](https://github.com/JuulLabs/kable)), session timing, FIT export, and progression math.
 - **Android client** - the `mobile_clients/android` module is purely native, built with Jetpack Compose.
-- **iOS client** - planned (`mobile_clients/ios`, SwiftUI), not yet started.
+- **iOS client** - in progress (`mobile_clients/ios`, SwiftUI, iPhone and iPad). Status and plan in [IOS_PORT.md](IOS_PORT.md).
 
 ## Build variants & install (v1.0)
 

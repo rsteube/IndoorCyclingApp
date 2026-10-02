@@ -556,11 +556,7 @@ private fun ProgressStat(
 }
 
 /** One decimal, without pulling in a locale-aware formatter for two digits. */
-fun formatOneDecimal(value: Double): String {
-    val safe = if (value.isFinite()) abs(value) else 0.0
-    val scaled = (safe * 10).roundToInt()
-    return "${scaled / 10}.${scaled % 10}"
-}
+fun formatOneDecimal(value: Double): String = app.indoorbike.shared.route.formatOneDecimal(value)
 
 /** How much steeper the slope glyph draws than the road really is. */
 /** The road behind the rider that the gradient card shows. */

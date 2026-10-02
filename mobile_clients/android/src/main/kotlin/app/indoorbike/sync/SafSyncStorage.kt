@@ -15,6 +15,8 @@
  */
 package app.indoorbike.sync
 
+import app.indoorbike.shared.sync.SyncStorage
+import app.indoorbike.shared.sync.OwnSlice
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile

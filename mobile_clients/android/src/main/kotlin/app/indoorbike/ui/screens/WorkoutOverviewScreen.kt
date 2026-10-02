@@ -49,9 +49,9 @@ import app.indoorbike.share.ShareSheet
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.WorkoutSession
 import app.indoorbike.shared.db.WorkoutTelemetry
-import app.indoorbike.sync.FitTrackeeUploader
-import app.indoorbike.sync.IntervalsIcuUploader
-import app.indoorbike.sync.RideUploads
+import app.indoorbike.shared.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.IntervalsIcuUploader
+import app.indoorbike.shared.sync.RideUploads
 import android.widget.Toast
 import app.indoorbike.shared.progression.RideStats
 import app.indoorbike.shared.progression.computeRideStats

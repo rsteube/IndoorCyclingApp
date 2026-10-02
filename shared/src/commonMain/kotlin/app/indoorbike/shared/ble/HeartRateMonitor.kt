@@ -193,7 +193,7 @@ class HeartRateMonitor {
                 try {
                     Scanner { logging(scannerLogging()) }.advertisements
                         .onEach { addDiscovered(it) }
-                        .firstOrNull { it.identifier == id }
+                        .firstOrNull { it.deviceId == id }
                 } catch (e: CancellationException) {
                     // The scan window timing out, or the lifecycle gate closing,
                     // is routine - not a failure worth a line in a bug report.
@@ -345,11 +345,11 @@ class HeartRateMonitor {
         // advertisement straight to connectInternal. A tap on a listed device
         // is the only thing that reads this map, so the unfiltered scan was
         // retaining every radio in range on behalf of no one.
-        advertisementById[ad.identifier] = ad
+        advertisementById[ad.deviceId] = ad
         val current = _discoveredDevices.value
-        if (current.none { it.id == ad.identifier }) {
+        if (current.none { it.id == ad.deviceId }) {
             _discoveredDevices.value = current + HrmCandidate(
-                id = ad.identifier,
+                id = ad.deviceId,
                 name = ad.name,
                 rssi = ad.rssi
             )
@@ -369,16 +369,16 @@ class HeartRateMonitor {
         link?.let { endLink(it, settle = false) }
 
         _connectionState.value = HrmConnectionState.Connecting
-        _pairedDeviceId.value = advertisement.identifier
+        _pairedDeviceId.value = advertisement.deviceId
         _connectedDeviceName.value = advertisement.name ?: "Unknown HRM"
 
         // Stay on this strap: arm persistent reconnect for future drops.
-        targetPairedId = advertisement.identifier
+        targetPairedId = advertisement.deviceId
         wantReconnect.value = true
         reconnectBeforeScan = false
 
         val newLink = BleLink.open(scope, advertisement) {
-            logging(peripheralLogging(advertisement.identifier))
+            logging(peripheralLogging(advertisement.deviceId))
             // Kable normally routes observation failures through the
             // observe flow; with a handler registered they come here
             // instead. Log with device context, then rethrow so the
@@ -386,7 +386,7 @@ class HeartRateMonitor {
             observationExceptionHandler { cause ->
                 Log.w(
                     TAG,
-                    "HRM observation failed on ${redactDeviceId(advertisement.identifier)}",
+                    "HRM observation failed on ${redactDeviceId(advertisement.deviceId)}",
                     cause,
                 )
                 throw cause

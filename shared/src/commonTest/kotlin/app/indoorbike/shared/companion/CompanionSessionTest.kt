@@ -144,7 +144,7 @@ class CompanionHandshakeTest {
     }
 
     @Test
-    fun `riding before the handshake is refused, not ignored`() {
+    fun `riding before the handshake is refused not ignored`() {
         val effects = session().onFrame(world(1), nowMs = 0)
         val error = effects.sent<ErrorFrame>()
         assertEquals(CompanionError.UNAUTHORIZED, error.code)
@@ -172,7 +172,7 @@ class CompanionHandshakeTest {
      * be read as a request for control.
      */
     @Test
-    fun `an unrecognised role is granted observer, not control`() {
+    fun `an unrecognised role is granted observer not control`() {
         val s = session()
         val welcome = s.onFrame(hello(role = "supervisor"), nowMs = 0).sent<WelcomeFrame>()
         assertEquals(HelloFrame.ROLE_OBSERVER, welcome.role)
@@ -345,7 +345,7 @@ class CompanionObserverTest {
             .also { it.onFrame(hello(role = "observer"), nowMs = 0) }
 
     @Test
-    fun `an observer may not steer, and is told so rather than dropped`() {
+    fun `an observer may not steer and is told so rather than dropped`() {
         val s = observer()
         val effects = s.onFrame(world(1, gradient = 0.2), nowMs = 100)
 
@@ -356,7 +356,7 @@ class CompanionObserverTest {
     }
 
     @Test
-    fun `an observer may not shift, label or finish either`() {
+    fun `an observer may not shift label or finish either`() {
         val s = observer()
         listOf(
             """{"t":"requestShift","steps":1}""",
@@ -503,7 +503,7 @@ class CompanionCourseFrameTest {
      * spelled `921.0`, closed the socket instead of ending the ride.
      */
     @Test
-    fun `the finish a Godot game sent ends the ride, with its map`() {
+    fun `the finish a Godot game sent ends the ride with its map`() {
         val s = ready()
         val effects = s.onFrame(GODOT_FINISH_FRAME, nowMs = 1_000)
         assertTrue(effects.none { it is CompanionEffect.Close }, effects.toString())
@@ -518,7 +518,7 @@ class CompanionCourseFrameTest {
      * usual order.
      */
     @Test
-    fun `a finish with an unreadable profile still ends the ride, and says what it left out`() {
+    fun `a finish with an unreadable profile still ends the ride and says what it left out`() {
         val s = ready()
         val effects = s.onFrame(
             """{"t":"finish","summary":{"shape":"abc","profile":[null,"x"]}}""",
@@ -534,7 +534,7 @@ class CompanionCourseFrameTest {
     }
 
     @Test
-    fun `an over-long summary shape is said to be dropped, not dropped in silence`() {
+    fun `an over-long summary shape is said to be dropped not dropped in silence`() {
         val s = ready()
         val huge = "a".repeat(CompanionProtocol.MAX_COURSE_SHAPE_CHARS + 1)
         val effects = s.onFrame("""{"t":"finish","summary":{"shape":"$huge"}}""", nowMs = 1_000)
@@ -792,7 +792,7 @@ class CompanionDrivetrainTest {
      * nobody designed.
      */
     @Test
-    fun `a sprocket that cannot exist is refused, naming the number`() {
+    fun `a sprocket that cannot exist is refused naming the number`() {
         val s = ready()
         val effects = s.onFrame(
             """{"t":"drivetrain","chainrings":[50],"sprockets":[0,11]}""",
@@ -890,7 +890,7 @@ class CompanionBrandFrameTest {
     }
 
     @Test
-    fun `fields merge, so the icon survives a colour change`() {
+    fun `fields merge so the icon survives a colour change`() {
         val s = controller()
         s.onFrame("""{"t":"brand","name":"Col de Berg","icon":"$icon"}""", nowMs = 1)
         val brand = s.onFrame("""{"t":"brand","colors":{"accent":"#00A36C"}}""", nowMs = 2)

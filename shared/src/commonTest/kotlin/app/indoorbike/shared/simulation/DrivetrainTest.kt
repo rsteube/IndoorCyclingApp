@@ -91,7 +91,7 @@ class DrivetrainTest {
     }
 
     @Test
-    fun `presets are measured against each other, not each against itself`() {
+    fun `presets are measured against each other not each against itself`() {
         // A mountain bike genuinely has less at the top and more at the bottom
         // than a road bike. That only shows up because both are ratios against
         // the same assumed real gear.
