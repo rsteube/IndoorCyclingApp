@@ -1,0 +1,1 @@
+Added: a ride ridden in a companion game can carry its track. When the game says where you are on its course, the ride's files carry position and altitude every second, so Intervals.icu, Strava and others draw a map of the road you rode. Nothing is guessed: seconds the game said nothing about have no position. Other rides are unchanged.

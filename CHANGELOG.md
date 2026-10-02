@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.9] (28) - 2026-10-02
+
 ### Added
 
 - **A ride ridden in a companion game can carry its track.** A game that says
