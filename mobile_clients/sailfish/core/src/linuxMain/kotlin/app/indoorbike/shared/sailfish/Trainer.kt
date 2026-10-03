@@ -16,6 +16,10 @@
 package app.indoorbike.shared.sailfish
 
 import app.indoorbike.shared.ble.TrainerConnectionState
+import app.indoorbike.shared.ble.trainerHelper
+import app.indoorbike.shared.ble.trainerStatusLine
+import app.indoorbike.shared.ble.trainerStatusTone
+import app.indoorbike.shared.ble.trainerTitle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.serialization.json.JsonNull
@@ -69,12 +73,22 @@ internal fun SailfishCore.installTrainer() {
         }
     }
     val candidates = tm.discoveredDevices
+    // What the other apps say about the trainer, in their words: shared/ble/DeviceStatusText.
+    val wording = combine(tm.connectionState, tm.connectedTrainerName, tm.isMockTrainer, tm.control) { state, name, mock, c ->
+        buildJsonObject {
+            put("title", trainerTitle(state, name, mock))
+            put("status", trainerStatusLine(state, mock))
+            put("helper", trainerHelper(state, mock, c))
+            put("tone", trainerStatusTone(state).name)
+        }
+    }
 
-    bus.publish("trainer", combine(connection, readings, control, candidates) { a, b, c, list ->
+    bus.publish("trainer", combine(connection, readings, control, candidates, wording) { a, b, c, list, words ->
         buildJsonObject {
             a.forEach { (k, v) -> put(k, v) }
             b.forEach { (k, v) -> put(k, v) }
             c.forEach { (k, v) -> put(k, v) }
+            words.forEach { (k, v) -> put(k, v) }
             put("candidates", buildJsonArray {
                 list.forEach { candidate ->
                     add(buildJsonObject {
@@ -91,7 +105,11 @@ internal fun SailfishCore.installTrainer() {
     bus.command("trainer.stopScan") { tm.stopScan(); JsonNull }
     bus.command("trainer.connect") { args -> tm.connectToCandidate(args.requireString("id")); JsonNull }
     bus.command("trainer.disconnect") { tm.disconnect(); JsonNull }
-    bus.command("trainer.forget") { tm.forgetTrainer(); JsonNull }
+    bus.command("trainer.forget") {
+        tm.forgetTrainer()
+        userSettings.setPairedTrainerId(null)
+        JsonNull
+    }
     bus.command("trainer.clearErgError") { tm.clearErgError(); JsonNull }
     bus.command("trainer.demo") {
         tm.connectMock()

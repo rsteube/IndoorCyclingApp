@@ -15,17 +15,30 @@ Page {
     readonly property var ride: core.state.ride || ({})
     readonly property var unfinished: core.state.unfinishedRide
     readonly property var bluetooth: core.state.bluetooth || ({})
+    readonly property var settings: core.state.settings
+    readonly property var progress: core.state.progress || ({})
+    property bool welcomed
 
     function openRide() {
         pageStack.push(Qt.resolvedUrl("RideScreenPage.qml"))
     }
 
+    // The first start: once the settings have arrived and say the rider has not been welcomed.
+    function welcomeIfNew() {
+        if (welcomed || !settings || settings.onboarded || status !== PageStatus.Active)
+            return
+        welcomed = true
+        pageStack.push(Qt.resolvedUrl("OnboardingDialog.qml"))
+    }
+
     allowedOrientations: Orientation.All
+    onSettingsChanged: welcomeIfNew()
 
     // History is one swipe forward: Sailfish's attached page, where Android has a tab.
     onStatusChanged: {
         if (status === PageStatus.Active && pageStack.nextPage(page) === null)
             pageStack.pushAttached(Qt.resolvedUrl("HistoryPage.qml"))
+        welcomeIfNew()
     }
 
     SilicaFlickable {
@@ -38,8 +51,8 @@ Page {
                 onClicked: pageStack.push(Qt.resolvedUrl("ProgressPage.qml"))
             }
             MenuItem {
-                text: qsTr("You: FTP and weight")
-                onClicked: pageStack.push(Qt.resolvedUrl("RiderDialog.qml"))
+                text: qsTr("Settings")
+                onClicked: pageStack.push(Qt.resolvedUrl("SettingsPage.qml"))
             }
             MenuItem {
                 text: qsTr("Pair a heart rate monitor")
@@ -141,6 +154,43 @@ Page {
                     wrapMode: Text.Wrap
                     color: Theme.errorColor
                     font.pixelSize: Theme.fontSizeSmall
+                }
+            }
+
+            // The first ride, suggested until it is ridden or turned down, as on Android.
+            Column {
+                width: parent.width
+                visible: !!page.settings && page.settings.onboarded && !page.settings.starterDismissed
+                         && (page.progress.rides || 0) === 0 && !page.ride.active
+                spacing: Theme.paddingSmall
+
+                SectionHeader { text: qsTr("Your first ride") }
+
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: Theme.highlightColor
+                    text: {
+                        var workouts = core.list("workouts")
+                        var revision = workouts.revision
+                        var starter = workouts.get("starter-15min")
+                        return starter.name ? starter.name + ": " + (starter.description || "") : ""
+                    }
+                }
+
+                ButtonLayout {
+                    Button {
+                        text: qsTr("Ride it")
+                        onClicked: {
+                            if (core.send({ "cmd": "ride.prepareWorkout", "id": "starter-15min" }).ok)
+                                page.openRide()
+                        }
+                    }
+                    Button {
+                        text: qsTr("Not now")
+                        onClicked: core.send({ "cmd": "settings.set", "key": "starterDismissed", "value": true })
+                    }
                 }
             }
 

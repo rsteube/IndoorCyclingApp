@@ -16,6 +16,13 @@
 package app.indoorbike.shared.sailfish
 
 import app.indoorbike.shared.ble.TrainerConnectionState
+import app.indoorbike.shared.ble.controllerStatusLine
+import app.indoorbike.shared.ble.controllerStatusTone
+import app.indoorbike.shared.ble.controllerTitle
+import app.indoorbike.shared.ble.hrmHelper
+import app.indoorbike.shared.ble.hrmStatusLine
+import app.indoorbike.shared.ble.hrmStatusTone
+import app.indoorbike.shared.ble.hrmTitle
 import kotlinx.coroutines.flow.combine
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.buildJsonArray
@@ -41,6 +48,10 @@ internal fun SailfishCore.installSensors() {
                 put("pairedId", pairedId)
                 put("heartRate", bpm)
                 put("silent", silent)
+                put("title", hrmTitle(state, name))
+                put("status", hrmStatusLine(state, bpm, silent))
+                put("helper", hrmHelper(silent))
+                put("tone", hrmStatusTone(state, silent).name)
             }
         }.combine(hrm.discoveredDevices) { status, found ->
             buildJsonObject {
@@ -56,7 +67,11 @@ internal fun SailfishCore.installSensors() {
     bus.command("hrm.stopScan") { hrm.stopScan(); JsonNull }
     bus.command("hrm.connect") { args -> hrm.connectToCandidate(args.requireString("id")); JsonNull }
     bus.command("hrm.disconnect") { hrm.disconnect(); JsonNull }
-    bus.command("hrm.forget") { hrm.forgetDevice(); JsonNull }
+    bus.command("hrm.forget") {
+        hrm.forgetDevice()
+        userSettings.setPairedHrmId(null)
+        JsonNull
+    }
 
     val controller = controllerManager
     bus.publish(
@@ -71,6 +86,9 @@ internal fun SailfishCore.installSensors() {
                 put("name", name)
                 put("pairedId", pairedId)
                 put("silent", silent)
+                put("title", controllerTitle(state, name))
+                put("status", controllerStatusLine(state, silent))
+                put("tone", controllerStatusTone(state, silent).name)
                 put("candidates", buildJsonArray {
                     found.forEach { add(candidate(it.id, it.name ?: "Controller", it.rssi)) }
                 })
@@ -82,7 +100,11 @@ internal fun SailfishCore.installSensors() {
     bus.command("controller.stopScan") { controller.stopScan(); JsonNull }
     bus.command("controller.connect") { args -> controller.connectToCandidate(args.requireString("id")); JsonNull }
     bus.command("controller.disconnect") { controller.disconnect(); JsonNull }
-    bus.command("controller.forget") { controller.forgetDevice(); JsonNull }
+    bus.command("controller.forget") {
+        controller.forgetDevice()
+        userSettings.setPairedControllerId(null)
+        JsonNull
+    }
 }
 
 private fun candidate(id: String, name: String, rssi: Int?) = buildJsonObject {
