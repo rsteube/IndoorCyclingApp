@@ -24,6 +24,7 @@ CONFIG(inspectsurface) {
 DEFINES += APP_VERSION=\\\"$$APP_VERSION_SHOWN\\\"
 
 HEADERS += \
+    src/appservice.h \
     src/bluetransport.h \
     src/bluez.h \
     src/indoorbikecore.h \
@@ -33,6 +34,7 @@ HEADERS += \
     src/routeviews.h
 
 SOURCES += \
+    src/appservice.cpp \
     src/bluetransport.cpp \
     src/bluez.cpp \
     src/harbour-indoorbike.cpp \

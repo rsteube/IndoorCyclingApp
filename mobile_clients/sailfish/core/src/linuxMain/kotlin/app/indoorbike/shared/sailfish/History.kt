@@ -175,6 +175,8 @@ private fun encodeSession(session: WorkoutSession): JsonObject = buildJsonObject
     put("kilojoules", sessionKilojoules(session))
     put("intervalsUploaded", session.intervalsUploadedEpoch > 0)
     put("fitTrackeeUploaded", session.fitTrackeeUploadedEpoch > 0)
+    put("intervalsUploadedAt", session.intervalsUploadedEpoch)
+    put("fitTrackeeUploadedAt", session.fitTrackeeUploadedEpoch)
 }
 
 /** At most [points] values, each the mean of its stretch: enough for a chart a phone wide. */

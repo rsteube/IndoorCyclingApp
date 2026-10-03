@@ -5,12 +5,14 @@
 #include <QQuickView>
 #include <QScopedPointer>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 #include <QtQml>
 
 #include <keepalive/backgroundactivity.h>
 #include <sailfishapp.h>
 
+#include "appservice.h"
 #include "bluetransport.h"
 #include "indoorbikecore.h"
 #include "keyedlistmodel.h"
@@ -40,6 +42,12 @@ int main(int argc, char *argv[])
 #else
     const bool debug = false;
 #endif
+
+    // One copy at a time: a second one hands what it was asked to open to the first and goes,
+    // before it touches the trainer or the history database.
+    const QStringList toOpen = AppService::openableArguments(app->arguments());
+    if (AppService::forwardToRunning(toOpen))
+        return 0;
 
     const char *uri = "harbour.indoorbike";
     qmlRegisterUncreatableType<KeyedListModel>(uri, 1, 0, "KeyedListModel", QStringLiteral("Asked of core.list()"));
@@ -81,8 +89,10 @@ int main(int argc, char *argv[])
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     core.setEngine(view->engine());
+    AppService appService(view.data());
     QQmlContext *context = view->rootContext();
     context->setContextProperty(QStringLiteral("core"), &core);
+    context->setContextProperty(QStringLiteral("appService"), &appService);
     context->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     context->setContextProperty(QStringLiteral("devBuild"), debug);
     // A debug build pushed by sailfish-mcp keeps its QML beside the binary and names the main
@@ -97,6 +107,11 @@ int main(int argc, char *argv[])
         return 1;
     }
     view->show();
+    // After the QML, so a call that was waiting for the name finds someone listening.
+    appService.registerOnBus();
+    // What this copy was started with, once the event loop runs and the pages are up.
+    if (!toOpen.isEmpty())
+        QTimer::singleShot(0, &appService, [&appService, toOpen]() { appService.Open(toOpen, QVariantMap()); });
 
     return app->exec();
 }

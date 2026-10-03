@@ -15,6 +15,7 @@
  */
 package app.indoorbike.shared.sailfish
 
+import app.indoorbike.shared.Workout
 import app.indoorbike.shared.WorkoutRepository
 import app.indoorbike.shared.ble.ControllerEvent
 import app.indoorbike.shared.ble.ControllerManager
@@ -30,11 +31,18 @@ import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.session.adjustEffort
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.shared.simulation.SimulationEngine
+import app.indoorbike.shared.sync.FitTrackeeUploader
+import app.indoorbike.shared.sync.IntervalsIcuUploader
+import app.indoorbike.shared.sync.RideUploads
+import app.indoorbike.shared.sync.SyncEngine
+import app.indoorbike.shared.sync.SyncWorkoutLibrary
 import app.indoorbike.shared.util.DiagnosticsLog
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.PosixFiles
 import app.indoorbike.shared.util.installCrashLogging
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.IO
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.filter
@@ -42,6 +50,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlin.uuid.ExperimentalUuidApi
@@ -124,6 +133,54 @@ internal class SailfishCore(
     /** The community repositories the rider follows, and what each has that they haven't seen. */
     val followedRepositories = FollowedRepositories(LinuxFolder("followed").asTextStore(), LinuxHttp.textFetcher)
 
+    /**
+     * Intervals.icu by athlete id and API key. Signing in comes back through
+     * the verified https link indoorbike.app vouches for on Android, which a
+     * Sailfish app cannot receive, and needs a client this build doesn't carry.
+     */
+    val intervalsIcuUploader = IntervalsIcuUploader(
+        http = LinuxHttpClient,
+        historyRepository = historyRepository,
+        userSettings = userSettings,
+        appVersion = appVersion,
+        // The game's name joins with the companion (milestone 9).
+        rideBrandName = { null },
+        pending = JsonPrefs(SailfishPaths.config("intervals_oauth.json"), private = true),
+        clientId = "",
+        clientSecret = "",
+        signInAllowed = false,
+    )
+
+    /** FitTrackee, signed in through the browser and `indoorbike://oauth`. */
+    val fitTrackeeUploader = FitTrackeeUploader(
+        http = LinuxHttpClient,
+        historyRepository = historyRepository,
+        userSettings = userSettings,
+        appVersion = appVersion,
+        rideBrandName = { null },
+        pending = JsonPrefs(SailfishPaths.config("fittrackee_oauth.json"), private = true),
+    )
+
+    /** Uploads as the app's work, once per ride and service; see [RideUploads]. */
+    val rideUploads = RideUploads(scope, historyRepository, userSettings, intervalsIcuUploader, fitTrackeeUploader)
+
+    /** The backup folder: each device's slice, merged; see [SyncEngine]. */
+    val syncEngine = SyncEngine(
+        userSettings = userSettings,
+        historyRepository = historyRepository,
+        workoutLibrary = object : SyncWorkoutLibrary {
+            override fun loadUserWorkouts() = workoutLibrary.core.loadUserWorkouts()
+            override fun loadImportMeta(workoutId: String) = workoutLibrary.core.loadImportMeta(workoutId)
+            override suspend fun saveWorkout(workout: Workout, sourceRepoId: String?, sourceRepoName: String?, addedEpoch: Long) =
+                withContext(Dispatchers.IO) { workoutLibrary.core.saveWorkout(workout, sourceRepoId, sourceRepoName, addedEpoch) }
+            override suspend fun deleteUserWorkout(workoutId: String) =
+                withContext(Dispatchers.IO) { workoutLibrary.core.deleteUserWorkout(workoutId) }
+            override suspend fun refresh() = workoutLibrary.rebuild()
+        },
+        // Read on every round, so a folder just picked is used at once.
+        storageProvider = { userSettings.syncFolderUri.value?.let(::LinuxSyncStorage) },
+    )
+
     /** One save at a time: two at once could each look for the ride, find nothing, and each insert it. */
     val saveLock = Mutex()
 
@@ -152,14 +209,16 @@ internal class SailfishCore(
         installHistory()
         installRoutes()
         installLibrary()
+        installSync()
 
         workoutLibrary.start()
         routeLibrary.start()
-        // Rides from before external ids existed get one; then the folder sync,
-        // once it exists here (milestone 8).
+        // Rides from before external ids existed get one; then a sync round,
+        // which does nothing at all with no folder picked.
         scope.launch {
             val deviceId = userSettings.deviceId
             runCatching { historyRepository.backfillExternalIds { "$deviceId:${Uuid.random()}" } }
+            syncEngine.syncNow()
         }
         scope.launch { sessionManager.loadPersistedSnapshot() }
 

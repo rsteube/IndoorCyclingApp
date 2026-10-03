@@ -15,6 +15,16 @@ Page {
     property string error
 
     readonly property var zones: core.state.zones || []
+    readonly property var connections: core.state.connections || ({})
+    readonly property var uploads: core.state.uploads || []
+    readonly property bool intervalsOn: !!connections.intervals && !!connections.intervals.configured
+    readonly property bool fitTrackeeOn: !!connections.fitTrackee && !!connections.fitTrackee.connected
+
+    function upload(cmd) {
+        core.request({ "cmd": cmd, "id": rideId }, function(reply) {
+            notice.show(reply.ok ? reply.value : reply.message)
+        })
+    }
 
     function load() {
         core.request({ "cmd": "history.ride", "id": parseInt(rideId) }, function(reply) {
@@ -45,6 +55,12 @@ Page {
 
     allowedOrientations: Orientation.All
     Component.onCompleted: load()
+
+    // An upload of this ride was recorded, by a tap here or the automatic one.
+    Connections {
+        target: core
+        onEventReceived: if (topic === "uploads.recorded" && payload && payload.id === page.rideId) page.load()
+    }
 
     ShareAction {
         id: shareAction
@@ -176,6 +192,28 @@ Page {
                 powerColor: Theme.highlightColor
                 heartRateColor: Theme.errorColor
                 planColor: Theme.secondaryColor
+            }
+
+            SectionHeader {
+                visible: page.ride !== null && (page.intervalsOn || page.fitTrackeeOn)
+                text: qsTr("Uploads")
+            }
+
+            UploadItem {
+                visible: page.ride !== null && page.intervalsOn
+                title: "Intervals.icu"
+                uploadedAt: page.ride ? page.ride.intervalsUploadedAt : 0
+                autoUpload: !!page.connections.intervals && !!page.connections.intervals.autoUpload
+                uploading: page.uploads.indexOf(page.rideId + ":INTERVALS") >= 0
+                onUpload: page.upload("upload.intervals")
+            }
+            UploadItem {
+                visible: page.ride !== null && page.fitTrackeeOn
+                title: "FitTrackee"
+                uploadedAt: page.ride ? page.ride.fitTrackeeUploadedAt : 0
+                autoUpload: !!page.connections.fitTrackee && !!page.connections.fitTrackee.autoUpload
+                uploading: page.uploads.indexOf(page.rideId + ":FITTRACKEE") >= 0
+                onUpload: page.upload("upload.fitTrackee")
             }
 
             SectionHeader {

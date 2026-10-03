@@ -108,6 +108,37 @@ Page {
                 }
             }
 
+            SectionHeader { text: qsTr("Your rides elsewhere") }
+
+            ValueButton {
+                label: qsTr("Connections")
+                value: {
+                    var c = core.state.connections || {}
+                    var names = []
+                    if (c.intervals && c.intervals.configured)
+                        names.push("Intervals.icu")
+                    if (c.fitTrackee && c.fitTrackee.connected)
+                        names.push("FitTrackee")
+                    return names.length > 0 ? names.join(" · ") : qsTr("Nothing connected")
+                }
+                onClicked: pageStack.push(Qt.resolvedUrl("ConnectionsPage.qml"))
+            }
+            ValueButton {
+                label: qsTr("Backup and sync")
+                value: {
+                    var sync = core.state.sync || {}
+                    if (!sync.folder)
+                        return qsTr("Off")
+                    var kind = sync.status ? sync.status.kind : ""
+                    if (kind === "failed")
+                        return qsTr("Couldn't sync")
+                    if (kind === "needsReview" || sync.paused)
+                        return qsTr("Paused")
+                    return qsTr("On")
+                }
+                onClicked: pageStack.push(Qt.resolvedUrl("SyncPage.qml"))
+            }
+
             SectionHeader { text: qsTr("About") }
 
             DetailItem {

@@ -212,7 +212,7 @@ private fun SailfishCore.unfinishedRide(
 /**
  * Write a ride to history under the save lock; its row id, or null if it
  * failed. Every way a ride reaches history comes through here, so this is
- * where automatic upload will start (milestone 8), as on Android and iOS.
+ * where automatic upload starts, as on Android and iOS.
  */
 internal suspend fun SailfishCore.saveRide(
     workout: Workout,
@@ -221,23 +221,27 @@ internal suspend fun SailfishCore.saveRide(
     telemetry: List<TelemetryPoint>,
     road: RideRoad,
     record: RideRecord,
-): Long? = try {
-    saveLock.withLock {
-        writeRideToHistory(
-            history = historyRepository,
-            sessionManager = sessionManager,
-            deviceId = userSettings.deviceId,
-            workout = workout,
-            startTimeEpoch = startTimeEpoch,
-            durationSeconds = durationSeconds,
-            telemetry = telemetry,
-            road = road,
-            record = record,
-        )
+): Long? {
+    val id = try {
+        saveLock.withLock {
+            writeRideToHistory(
+                history = historyRepository,
+                sessionManager = sessionManager,
+                deviceId = userSettings.deviceId,
+                workout = workout,
+                startTimeEpoch = startTimeEpoch,
+                durationSeconds = durationSeconds,
+                telemetry = telemetry,
+                road = road,
+                record = record,
+            )
+        }
+    } catch (e: Exception) {
+        Log.e("Ride", "Couldn't save the ride", e)
+        null
     }
-} catch (e: Exception) {
-    Log.e("Ride", "Couldn't save the ride", e)
-    null
+    if (id != null) rideUploads.autoUpload(id, workout, record.ftp.takeIf { it > 0 } ?: userSettings.ftp.value)
+    return id
 }
 
 private fun encodeRide(

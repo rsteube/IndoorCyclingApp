@@ -4,6 +4,12 @@ X-Nemo-Application-Type=silica-qt5
 Icon=harbour-indoorbike
 Exec=harbour-indoorbike
 Name=IndoorBike
+# Offered for GPX routes in "open with", and the handler of indoorbike://, where the browser comes
+# back from a FitTrackee sign-in. Lipstick then calls org.freedesktop.Application on the app's bus
+# name (src/appservice.*) rather than starting a second copy, and sailjail starts the app through
+# ExecDBus when it is not running.
+MimeType=application/gpx+xml;x-scheme-handler/indoorbike;
+X-DBusActivatable=true
 
 [X-Sailjail]
 OrganizationName=app.indoorbike
@@ -11,6 +17,8 @@ ApplicationName=indoorbike
 # Bluetooth is BlueZ on the system bus: the trainer, the heart rate strap and the controller.
 # Internet is for the community workouts and routes, uploads to Intervals.icu and FitTrackee, and
 # the companion game's connection on the local network. Downloads is where a ride is saved as FIT
-# or TCX when the rider asks for a file rather than the share sheet, and with Documents, where a
-# GPX route or a workout file to import is found, read only when the rider picks one.
+# or TCX when the rider asks for a file rather than the share sheet. With Documents, it is where a
+# GPX route or a workout file to import is found, read only when the rider picks one, and where the
+# backup folder can be, which is written only once the rider picks it.
 Permissions=Bluetooth;Internet;Downloads;Documents
+ExecDBus=harbour-indoorbike
