@@ -15,6 +15,13 @@ Page {
         anchors.fill: parent
         model: core.list("workouts")
 
+        PullDownMenu {
+            MenuItem {
+                text: qsTr("Get workouts and routes")
+                onClicked: pageStack.push(Qt.resolvedUrl("CommunityPage.qml"))
+            }
+        }
+
         header: PageHeader { title: qsTr("Workouts") }
 
         delegate: ListItem {
@@ -30,6 +37,13 @@ Page {
                     text: item.workout.favourite ? qsTr("Remove from favourites") : qsTr("Add to favourites")
                     onClicked: core.send({ "cmd": "workouts.favourite", "id": model.key,
                                            "favourite": !item.workout.favourite })
+                }
+                MenuItem {
+                    visible: item.workout.imported
+                    text: qsTr("Delete")
+                    onClicked: item.remorseDelete(function() {
+                        core.request({ "cmd": "workouts.delete", "id": model.key }, null)
+                    })
                 }
             }
 

@@ -20,6 +20,7 @@ import app.indoorbike.shared.net.PostResult
 import app.indoorbike.shared.net.buildMultipartBody
 import app.indoorbike.shared.net.formBody
 import app.indoorbike.shared.repo.TextFetcher
+import app.indoorbike.shared.util.PosixFiles
 import app.indoorbike.shared.util.secureRandomBytes
 import app.indoorbike.shared.util.sha256
 import io.ktor.client.engine.curl.Curl
@@ -53,7 +54,32 @@ internal object LinuxHttp {
     /** Cap on remote JSON and on a workout payload, as on Android. */
     const val MAX_BODY_BYTES = 2L * 1024 * 1024
 
-    private val client = io.ktor.client.HttpClient(Curl) {
+    /**
+     * The phone's certificate authorities. The curl Ktor carries was built
+     * for a generic Linux and looks for them where Sailfish does not keep
+     * them: with nothing found, every request failed TLS verification while
+     * the phone's own curl verified the same server. Measured on a Jolla C2.
+     */
+    private val caBundle: String? = listOf(
+        "/etc/pki/tls/certs/ca-bundle.crt",
+        "/etc/ssl/certs/ca-certificates.crt",
+        "/etc/ssl/certs/ca-bundle.crt",
+    ).firstOrNull(PosixFiles::exists)
+
+    /**
+     * A client for one request, closed after it. Ktor 3.1's curl engine runs
+     * every request of a client on one loop that takes no new request until
+     * all the running ones have finished, so a slow host held up the rest of
+     * the app: a 10 s Codeberg answer delayed an indoorbike.app fetch by the
+     * same 10 s, and a timeout from one reached another's caller. Measured on
+     * a Jolla C2. Each client has its own loop, and the cost is a thread per
+     * request, which a handful of requests a minute does not notice.
+     */
+    private fun newClient() = io.ktor.client.HttpClient(Curl) {
+        engine {
+            caBundle?.let { caInfo = it }
+            caPath = "/etc/ssl/certs"
+        }
         followRedirects = false
         expectSuccess = false
         install(HttpTimeout) {
@@ -87,17 +113,19 @@ internal object LinuxHttp {
         timeoutMs: Long = TIMEOUT_MS,
     ): Response {
         requireHttps(url)
-        val response = client.request(url) {
-            this.method = HttpMethod.parse(method)
-            timeout { requestTimeoutMillis = timeoutMs }
-            header("User-Agent", USER_AGENT)
-            for ((key, value) in headers) header(key, value)
-            if (body != null) setBody(body)
+        return newClient().use { client ->
+            val response = client.request(url) {
+                this.method = HttpMethod.parse(method)
+                timeout { requestTimeoutMillis = timeoutMs }
+                header("User-Agent", USER_AGENT)
+                for ((key, value) in headers) header(key, value)
+                if (body != null) setBody(body)
+            }
+            response.contentLength()?.let { check(it <= maxBytes) { "Response too large (>${maxBytes / 1024} KB)" } }
+            val bytes = response.bodyAsBytes()
+            check(bytes.size <= maxBytes) { "Response too large (>${maxBytes / 1024} KB)" }
+            Response(response.status.value, bytes)
         }
-        response.contentLength()?.let { check(it <= maxBytes) { "Response too large (>${maxBytes / 1024} KB)" } }
-        val bytes = response.bodyAsBytes()
-        check(bytes.size <= maxBytes) { "Response too large (>${maxBytes / 1024} KB)" }
-        return Response(response.status.value, bytes)
     }
 
     /** GET a text body, failing on anything but a 2xx. */

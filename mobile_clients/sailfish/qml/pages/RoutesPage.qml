@@ -37,6 +37,10 @@ Page {
 
         PullDownMenu {
             MenuItem {
+                text: qsTr("Get workouts and routes")
+                onClicked: pageStack.push(Qt.resolvedUrl("CommunityPage.qml"))
+            }
+            MenuItem {
                 text: qsTr("Add a GPX file")
                 onClicked: pageStack.push(gpxPicker)
             }

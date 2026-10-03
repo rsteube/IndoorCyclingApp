@@ -24,6 +24,7 @@ import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.companion.CompanionEngine
 import app.indoorbike.shared.db.DatabaseDriverFactory
 import app.indoorbike.shared.db.HistoryRepository
+import app.indoorbike.shared.repo.FollowedRepositories
 import app.indoorbike.shared.session.WorkoutSessionManager
 import app.indoorbike.shared.session.WorkoutState
 import app.indoorbike.shared.session.adjustEffort
@@ -120,6 +121,9 @@ internal class SailfishCore(
     /** Every route the rider can ride here: bundled and added. */
     val routeLibrary = LinuxRouteLibrary(scope, "${packageDir.trimEnd('/')}/data/routes")
 
+    /** The community repositories the rider follows, and what each has that they haven't seen. */
+    val followedRepositories = FollowedRepositories(LinuxFolder("followed").asTextStore(), LinuxHttp.textFetcher)
+
     /** One save at a time: two at once could each look for the ride, find nothing, and each insert it. */
     val saveLock = Mutex()
 
@@ -147,6 +151,7 @@ internal class SailfishCore(
         installRide()
         installHistory()
         installRoutes()
+        installLibrary()
 
         workoutLibrary.start()
         routeLibrary.start()
