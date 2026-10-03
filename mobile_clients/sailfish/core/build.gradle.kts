@@ -52,6 +52,8 @@ kotlin {
                 // 2.41 on Sailfish OS 5.1 no longer has, and nothing in the
                 // library uses it. Without this the phone refuses to load it.
                 linkerOpts("--as-needed")
+                // A name of its own, which rpmlint asks of any shared library.
+                linkerOpts("-soname", "libindoorbikecore.so")
             }
         } else {
             logger.info("No Sailfish sysroot at $sailfishSysroot: run stage-sysroot.sh to link the library")

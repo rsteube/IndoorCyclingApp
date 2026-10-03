@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+X-Nemo-Application-Type=silica-qt5
+Icon=harbour-indoorbike
+Exec=harbour-indoorbike
+Name=IndoorBike
+
+[X-Sailjail]
+OrganizationName=app.indoorbike
+ApplicationName=indoorbike
+# Bluetooth is BlueZ on the system bus: the trainer, the heart rate strap and the controller.
+# Internet is for the community workouts and routes, uploads to Intervals.icu and FitTrackee, and
+# the companion game's connection on the local network.
+Permissions=Bluetooth;Internet

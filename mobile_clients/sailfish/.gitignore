@@ -1,0 +1,17 @@
+# Copied in by sync-core.sh: the shared Kotlin library, and the package's data.
+/lib/
+/data/
+# sfdk's in-place build output.
+/RPMS/
+/Makefile
+/.qmake.stash
+/harbour-indoorbike
+/documentation.list
+*.o
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+# sailfish-mcp's debug build and its vendored inspect surface (see the .pro for why it is not here).
+/build-dbg/
+/harbour-inspect/
+/tests/build/
