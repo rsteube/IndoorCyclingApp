@@ -117,6 +117,9 @@ internal class SailfishCore(
     /** Every workout the rider can ride here: their own, then the bundled ones. */
     val workoutLibrary = LinuxWorkoutLibrary(scope, WorkoutRepository.parseWorkouts(listOfNotNull(bundledWorkouts())))
 
+    /** Every route the rider can ride here: bundled and added. */
+    val routeLibrary = LinuxRouteLibrary(scope, "${packageDir.trimEnd('/')}/data/routes")
+
     /** One save at a time: two at once could each look for the ride, find nothing, and each insert it. */
     val saveLock = Mutex()
 
@@ -143,8 +146,10 @@ internal class SailfishCore(
         installWorkouts()
         installRide()
         installHistory()
+        installRoutes()
 
         workoutLibrary.start()
+        routeLibrary.start()
         // Rides from before external ids existed get one; then the folder sync,
         // once it exists here (milestone 8).
         scope.launch {

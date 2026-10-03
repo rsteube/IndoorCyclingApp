@@ -91,6 +91,10 @@ kotlin {
         }
         linuxMain.dependencies {
             implementation(libs.sqldelight.native)
+            // HTTPS, in the core rather than Qt: see LinuxHttp. Ktor's client is not in the
+            // catalog (the other apps use their platforms' own), so it takes the catalog's
+            // Ktor version.
+            implementation("io.ktor:ktor-client-curl:${libs.versions.ktor.get()}")
         }
     }
 }

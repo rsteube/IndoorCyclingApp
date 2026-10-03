@@ -30,6 +30,7 @@ import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.shared.workout.isSimulation
 import app.indoorbike.shared.workout.resolveRideWorkout
+import app.indoorbike.shared.workout.simulationRouteId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
@@ -158,8 +159,9 @@ internal fun SailfishCore.installRide() {
 
     bus.command("unfinished.continue") {
         val ride = currentUnfinished() ?: throw UserFacing("There is no ride to continue.")
-        // Routes come with milestone 6; until then a route ride is offered to save, not continue.
-        sm.restoreFromSnapshot(ride.snapshot, ride.workout, null)
+        // A route ride takes its road back with it, as on iOS.
+        val route = simulationRouteId(ride.workout.id)?.let { routeLibrary.find(it) }
+        sm.restoreFromSnapshot(ride.snapshot, ride.workout, route)
         JsonNull
     }
     bus.request("unfinished.save") {
@@ -198,7 +200,7 @@ private fun SailfishCore.unfinishedRide(
     snapshot: ActiveSessionSnapshot,
     library: List<Workout>,
 ): UnfinishedRide? {
-    val workout = resolveRideWorkout(snapshot.workoutId, library) ?: return null
+    val workout = resolveRideWorkout(snapshot.workoutId, library, routeLibrary.routeNames()) ?: return null
     val ride = describeUnfinishedRide(snapshot, workout)
     if (ride.isFinished && sessionManager.pendingRideTelemetry(snapshot).isEmpty()) {
         sessionManager.abandonUnfinishedRide()

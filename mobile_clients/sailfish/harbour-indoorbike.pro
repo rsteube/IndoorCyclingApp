@@ -29,7 +29,8 @@ HEADERS += \
     src/indoorbikecore.h \
     src/keyedlistmodel.h \
     src/notifypipe.h \
-    src/ridechart.h
+    src/ridechart.h \
+    src/routeviews.h
 
 SOURCES += \
     src/bluetransport.cpp \
@@ -39,7 +40,8 @@ SOURCES += \
     src/indoorbikecorestate.cpp \
     src/keyedlistmodel.cpp \
     src/notifypipe.cpp \
-    src/ridechart.cpp
+    src/ridechart.cpp \
+    src/routeviews.cpp
 
 DISTFILES += \
     qml/harbour-indoorbike.qml \

@@ -15,6 +15,7 @@
 #include "indoorbikecore.h"
 #include "keyedlistmodel.h"
 #include "ridechart.h"
+#include "routeviews.h"
 
 namespace {
 
@@ -43,6 +44,8 @@ int main(int argc, char *argv[])
     const char *uri = "harbour.indoorbike";
     qmlRegisterUncreatableType<KeyedListModel>(uri, 1, 0, "KeyedListModel", QStringLiteral("Asked of core.list()"));
     qmlRegisterType<RideChart>(uri, 1, 0, "RideChart");
+    qmlRegisterType<RouteShape>(uri, 1, 0, "RouteShape");
+    qmlRegisterType<ElevationView>(uri, 1, 0, "ElevationView");
 
     // The shared Kotlin, which holds everything the app knows. First, so the Kotlin runtime is up
     // before anything asks it something.

@@ -204,6 +204,13 @@ Page {
             }
 
             ChoiceItem {
+                title: qsTr("Route")
+                description: qsTr("A real road: the trainer gives you its hills, and you shift as you would outside.")
+                enabled: !page.ride.active
+                onClicked: pageStack.push(Qt.resolvedUrl("RoutesPage.qml"))
+            }
+
+            ChoiceItem {
                 title: qsTr("Just ride")
                 description: qsTr("No plan. The trainer holds a power you move up and down as you go.")
                 enabled: !page.ride.active

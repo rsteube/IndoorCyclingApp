@@ -1,8 +1,10 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Nemo.KeepAlive 1.2
+import harbour.indoorbike 1.0
 import "../components"
 import "../components/Format.js" as Format
+import "../components/Gradient.js" as Gradient
 
 // The ride: power against its target in the zone's colour, cadence, heart rate, the interval and
 // what comes next, the workout's shape with progress, and harder or easier. The ride itself runs
@@ -17,6 +19,8 @@ Page {
     readonly property var settings: core.state.settings || ({})
     readonly property var zones: core.state.zones || []
     readonly property var segment: ride.segment || ({})
+    readonly property var sim: core.state.simulation
+    readonly property var road: core.state.rideRoute
     readonly property var next: ride.next
     readonly property string rideState: ride.state || "Idle"
     readonly property bool structured: ride.kind === "workout"
@@ -133,6 +137,104 @@ Page {
                     width: parent.width / 3
                     label: page.structured ? qsTr("Interval left") : qsTr("Ride time")
                     value: page.structured ? Format.clock(page.segment.remaining) : Format.clock(ride.rideSeconds)
+                }
+            }
+
+            // A route: the road under the wheels and ahead, where the rider is on it, the gear.
+            Column {
+                width: parent.width
+                spacing: Theme.paddingMedium
+                visible: ride.kind === "route" && !!page.sim
+
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: page.sim ? (Gradient.colors[page.sim.band] || Theme.highlightColor) : Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeHuge
+                    text: page.sim ? page.sim.gradientText + " %" : ""
+                }
+
+                // The next 500 m, in 50 m steps.
+                Row {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    Repeater {
+                        model: page.sim ? page.sim.ahead : []
+                        Rectangle {
+                            width: (page.width - 2 * Theme.horizontalPageMargin) / 10
+                            height: Theme.paddingMedium
+                            color: Gradient.colors[modelData] || Theme.highlightColor
+                        }
+                    }
+                }
+
+                ElevationView {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    height: Theme.itemSizeLarge
+                    profile: page.road ? page.road.profile : []
+                    bands: page.road ? page.road.bands : []
+                    bandColors: Gradient.colors
+                    fraction: page.sim ? page.sim.fraction : -1
+                    color: Theme.secondaryHighlightColor
+                    markerColor: Theme.primaryColor
+                }
+
+                Row {
+                    width: parent.width
+
+                    Reading {
+                        width: parent.width / 3
+                        label: qsTr("Speed")
+                        value: page.sim ? page.sim.speedKmh.toFixed(1) : "--"
+                        unit: "km/h"
+                    }
+                    Reading {
+                        width: parent.width / 3
+                        label: qsTr("To go")
+                        value: page.sim ? (page.sim.remainingMeters / 1000).toFixed(1) : "--"
+                        unit: "km"
+                    }
+                    Reading {
+                        width: parent.width / 3
+                        label: qsTr("Climbed")
+                        value: page.sim ? Math.round(page.sim.climbedMeters) : "--"
+                        unit: "m"
+                    }
+                }
+
+                // The virtual gear, shifted here or with a controller.
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    spacing: Theme.paddingLarge
+
+                    IconButton {
+                        icon.source: "image://theme/icon-m-remove"
+                        onClicked: core.send({ "cmd": "sim.shift", "steps": -1 })
+                    }
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: Theme.itemSizeExtraLarge * 1.5
+                        horizontalAlignment: Text.AlignHCenter
+                        color: Theme.highlightColor
+                        text: page.sim ? qsTr("Gear %1 of %2").arg(page.sim.gear).arg(page.sim.gears)
+                                         + (page.sim.gearLabel ? "\n" + page.sim.gearLabel : "") : ""
+                    }
+                    IconButton {
+                        icon.source: "image://theme/icon-m-add"
+                        onClicked: core.send({ "cmd": "sim.shift", "steps": 1 })
+                    }
+                }
+
+                RouteShape {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    height: Theme.itemSizeHuge * 1.5
+                    points: page.road ? page.road.shape : []
+                    fraction: page.sim ? page.sim.fraction : -1
+                    color: Theme.secondaryHighlightColor
+                    riddenColor: Theme.highlightColor
+                    markerColor: Theme.primaryColor
+                    lineWidth: Theme.paddingSmall / 2
                 }
             }
 

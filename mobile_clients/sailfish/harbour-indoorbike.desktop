@@ -11,5 +11,6 @@ ApplicationName=indoorbike
 # Bluetooth is BlueZ on the system bus: the trainer, the heart rate strap and the controller.
 # Internet is for the community workouts and routes, uploads to Intervals.icu and FitTrackee, and
 # the companion game's connection on the local network. Downloads is where a ride is saved as FIT
-# or TCX when the rider asks for a file rather than the share sheet.
-Permissions=Bluetooth;Internet;Downloads
+# or TCX when the rider asks for a file rather than the share sheet, and with Documents, where a
+# GPX route or a workout file to import is found, read only when the rider picks one.
+Permissions=Bluetooth;Internet;Downloads;Documents
