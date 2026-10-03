@@ -51,9 +51,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import com.benasher44.uuid.uuid4
 import kotlin.math.roundToInt
 import kotlin.time.TimeSource
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 enum class WorkoutState {
     Idle,
@@ -1181,11 +1182,12 @@ class WorkoutSessionManager(
         }
     }
 
+    @OptIn(ExperimentalUuidApi::class)
     private fun startActiveWorkout() {
         _state.value = WorkoutState.Active
         if (sessionStartTimeEpoch == 0L) {
             sessionStartTimeEpoch = getCurrentEpochMillis()
-            rideId = uuid4().toString()
+            rideId = Uuid.random().toString()
             segmentMarks.clear()
             segmentMarks.add(SegmentMark(segment = _currentSegmentIndex.value, sample = _telemetry.size))
         }

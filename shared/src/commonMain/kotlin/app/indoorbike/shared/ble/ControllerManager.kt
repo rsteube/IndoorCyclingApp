@@ -21,14 +21,6 @@ import app.indoorbike.shared.ble.zwift.ZwiftSession
 import app.indoorbike.shared.ble.zwift.generateZwiftKeyPair
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.redactDeviceId
-import com.benasher44.uuid.uuidFrom
-import com.juul.kable.Advertisement
-import com.juul.kable.BluetoothDisabledException
-import com.juul.kable.Peripheral
-import com.juul.kable.Scanner
-import com.juul.kable.State
-import com.juul.kable.WriteType
-import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -105,8 +97,10 @@ sealed class ControllerEvent {
  *
  * Only press-edges (released to pressed) reach [events]; auto-repeat is left to
  * the consumer, so a long press produces one Plus or Minus today.
+ *
+ * The radio is [central], as for [TrainerManager].
  */
-class ControllerManager {
+class ControllerManager(private val central: BleCentral = platformBleCentral()) {
     private val scope = bleManagerScope()
 
     private val _connectionState = MutableStateFlow(ControllerConnectionState.Disconnected)
@@ -161,7 +155,7 @@ class ControllerManager {
      */
     private val _keypadSilent = MutableStateFlow(false)
     val keypadSilent: StateFlow<Boolean> = _keypadSilent.asStateFlow()
-    private val advertisementById = mutableMapOf<String, Advertisement>()
+    private val advertisementById = mutableMapOf<String, BleAdvertisement>()
 
     // Persistent auto-reconnect supervisor (see TrainerManager for the model).
     private val wantReconnect = MutableStateFlow(false)
@@ -261,7 +255,7 @@ class ControllerManager {
 
             // See TrainerManager: wait out a disabled radio instead of scanning
             // into it, and do not let that wait push the retry cadence back.
-            if (awaitBluetoothAvailable { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
+            if (awaitBluetoothAvailable(central.availability) { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
                 backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
                 Log.i(TAG, "Bluetooth available; resuming controller scans")
             }
@@ -270,7 +264,7 @@ class ControllerManager {
             _connectionState.value = ControllerConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
-                    Scanner { logging(scannerLogging()) }.advertisements
+                    central.scan()
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.deviceId == id }
                 } catch (e: CancellationException) {
@@ -278,7 +272,7 @@ class ControllerManager {
                     // not something a bug report should be led with. Rethrow so
                     // `withTimeoutOrNull` sees its own timeout.
                     throw e
-                } catch (e: BluetoothDisabledException) {
+                } catch (e: BleRadioOffException) {
                     // See TrainerManager: expected, and the stack adds nothing.
                     Log.i(TAG, "Controller scan stopped: Bluetooth turned off")
                     null
@@ -328,7 +322,7 @@ class ControllerManager {
         // service from the advertisement payload (it's only visible after
         // GATT connect), so a service-UUID filter would never match. Same
         // trick we use for Garmin HRM-Pro.
-        scanJob = Scanner { logging(scannerLogging()) }.advertisements
+        scanJob = central.scan()
             .onEach { ad -> addDiscovered(ad) }
             .catch { e ->
                 Log.e(TAG, "Controller scan failed", e)
@@ -411,7 +405,7 @@ class ControllerManager {
         _discoveredDevices.value = emptyList()
     }
 
-    private fun addDiscovered(ad: Advertisement) {
+    private fun addDiscovered(ad: BleAdvertisement) {
         if (!looksLikeController(ad)) return
         // Only what the list shows is worth keeping. This used to be stored
         // above the filter, on the grounds that auto-connect needed every
@@ -431,16 +425,15 @@ class ControllerManager {
         }
     }
 
-    private fun looksLikeController(ad: Advertisement): Boolean {
+    private fun looksLikeController(ad: BleAdvertisement): Boolean {
         // The Zwift custom service may or may not be in the advertisement -
         // accept both signals.
-        val zwiftService = uuidFrom(ZWIFT_CUSTOM_SERVICE)
-        if (ad.uuids.any { it == zwiftService }) return true
+        if (ad.offers(ZWIFT_CUSTOM_SERVICE)) return true
         val name = ad.name ?: ad.peripheralName ?: return false
         return CONTROLLER_NAME_KEYWORDS.any { name.contains(it, ignoreCase = true) }
     }
 
-    private fun connectInternal(advertisement: Advertisement) {
+    private fun connectInternal(advertisement: BleAdvertisement) {
         endScan()
         // See TrainerManager.connectInternal: the previous link ends here, and
         // its handshake and observers with it.
@@ -463,35 +456,21 @@ class ControllerManager {
         minusPressed = false
         keypadStateKnown = false
 
-        val newLink = BleLink.open(scope, advertisement) {
-            logging(peripheralLogging(advertisement.deviceId))
-            // With a handler registered, Kable sends observation
-            // failures here rather than through the observe flow. Log
-            // with device context, then rethrow to keep the existing
-            // behaviour of terminating the flow.
-            observationExceptionHandler { cause ->
-                Log.w(
-                    TAG,
-                    "Controller observation failed on ${redactDeviceId(advertisement.deviceId)}",
-                    cause,
-                )
-                throw cause
-            }
-        }
+        val newLink = BleLink.open(scope, central, advertisement, TAG, label = "Controller")
         link = newLink
 
         newLink.scope.launch {
             newLink.states.collect { state ->
                 if (link !== newLink) return@collect
                 when (state) {
-                    is State.Connecting -> _connectionState.value = ControllerConnectionState.Connecting
-                    is State.Connected -> {
+                    BleLinkState.Connecting -> _connectionState.value = ControllerConnectionState.Connecting
+                    BleLinkState.Connected -> {
                         _connectionState.value = ControllerConnectionState.Connected
                         _justConnected.tryEmit(_connectedDeviceName.value ?: "Controller")
                         startKeypadObserve(newLink)
                     }
-                    is State.Disconnecting -> _connectionState.value = ControllerConnectionState.Disconnecting
-                    is State.Disconnected -> endLink(newLink)
+                    BleLinkState.Disconnecting -> _connectionState.value = ControllerConnectionState.Disconnecting
+                    BleLinkState.Disconnected -> endLink(newLink)
                 }
             }
         }
@@ -536,7 +515,7 @@ class ControllerManager {
      * The UUIDs it exposes do. Cheap enough at one connect, and it turns the
      * next report of this into something answerable instead of a guess.
      */
-    private fun logGattProfile(peripheral: Peripheral) {
+    private fun logGattProfile(peripheral: BlePeripheral) {
         val services = peripheral.services
         if (services.isNullOrEmpty()) {
             Log.w(TAG, "Controller exposed no services")
@@ -544,14 +523,14 @@ class ControllerManager {
         }
         Log.i(TAG, "Controller GATT profile: ${services.size} service(s)")
         services.forEach { service ->
-            Log.i(TAG, "  service ${service.serviceUuid}")
+            Log.i(TAG, "  service ${service.uuid}")
             service.characteristics.forEach { c ->
                 // Properties are what actually assign the roles: whichever
                 // characteristic is writable is the control point, whichever
                 // notifies is the data path. Assuming that mapping from the
                 // UUID's last digit is how this ended up talking to the wrong
                 // one for however long.
-                Log.i(TAG, "    ${c.characteristicUuid} props=${describeProperties(c.properties.value)}")
+                Log.i(TAG, "    ${c.uuid} props=${describeProperties(c.properties)}")
             }
         }
     }
@@ -566,7 +545,7 @@ class ControllerManager {
      * The serial number is deliberately not read: it identifies the unit, and
      * these lines can leave the phone in a bug report.
      */
-    private suspend fun logDeviceInfo(peripheral: Peripheral) {
+    private suspend fun logDeviceInfo(peripheral: BlePeripheral) {
         suspend fun readString(label: String, uuid: String) {
             try {
                 val char = peripheral.findCharacteristic(DEVICE_INFO_SERVICE, uuid) ?: return
@@ -614,7 +593,7 @@ class ControllerManager {
         logGattProfile(peripheral)
         logDeviceInfo(peripheral)
 
-        val service = peripheral.services?.firstOrNull { it.serviceUuid == uuidFrom(ZWIFT_CUSTOM_SERVICE) }
+        val service = peripheral.findService(ZWIFT_CUSTOM_SERVICE)
         if (service == null) {
             Log.w(TAG, "Zwift service not present - not a Zwift controller?")
             return
@@ -625,12 +604,11 @@ class ControllerManager {
         // indications on them achieves nothing and is one more thing to go
         // wrong on hardware that cannot be tested here.
         val listenable = service.characteristics.filter {
-            it.characteristicUuid == uuidFrom(ZWIFT_ASYNC_CHAR) ||
-                it.characteristicUuid == uuidFrom(ZWIFT_SYNC_TX_CHAR)
+            sameUuid(it.uuid, ZWIFT_ASYNC_CHAR) || sameUuid(it.uuid, ZWIFT_SYNC_TX_CHAR)
         }
         Log.i(TAG, "Subscribing to ${listenable.size} controller channel(s)")
         listenable.forEach { char ->
-            val label = char.characteristicUuid.toString().substringBefore('-')
+            val label = char.uuid.lowercase().substringBefore('-')
             try {
                 peripheral
                     .observe(char) {
@@ -651,7 +629,7 @@ class ControllerManager {
         }
 
         val controlPoint = service.characteristics.firstOrNull {
-            it.characteristicUuid == uuidFrom(ZWIFT_SYNC_RX_CHAR)
+            sameUuid(it.uuid, ZWIFT_SYNC_RX_CHAR)
         }
         if (controlPoint == null) {
             Log.w(TAG, "No control point on the Zwift service; cannot open the pipe")
@@ -659,7 +637,7 @@ class ControllerManager {
         }
 
         l.scope.launch {
-            // Kable sets subscriptions up asynchronously, so having called
+            // Subscriptions are set up asynchronously, so having called
             // observe() first is not the same as being subscribed. Without this
             // the device can answer before the phone is listening, and the
             // answer is simply lost.
@@ -675,7 +653,7 @@ class ControllerManager {
 
             repeat(RIDE_ON_ATTEMPTS) { round ->
                 val sent = try {
-                    peripheral.write(controlPoint, ZwiftHandshake.hello(keys.publicKey), WriteType.WithResponse)
+                    peripheral.write(controlPoint, ZwiftHandshake.hello(keys.publicKey), withResponse = true)
                     true
                 } catch (e: CancellationException) {
                     throw e

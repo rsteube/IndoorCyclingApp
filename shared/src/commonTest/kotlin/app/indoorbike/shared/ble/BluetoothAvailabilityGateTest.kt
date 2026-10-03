@@ -15,7 +15,6 @@
  */
 package app.indoorbike.shared.ble
 
-import com.juul.kable.Bluetooth
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -36,12 +35,12 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class)
 class BluetoothAvailabilityGateTest {
 
-    private val available = Bluetooth.Availability.Available
-    private fun unavailable() = Bluetooth.Availability.Unavailable(reason = null)
+    private val available: BleAvailability = BleAvailability.Available
+    private fun unavailable(): BleAvailability = BleAvailability.Unavailable(reason = null)
 
     @Test
     fun anAvailableAdapterDoesNotWait() = runTest {
-        val state = MutableStateFlow<Bluetooth.Availability>(available)
+        val state = MutableStateFlow<BleAvailability>(available)
 
         val waited = awaitBluetoothAvailable(state)
 
@@ -55,7 +54,7 @@ class BluetoothAvailabilityGateTest {
      */
     @Test
     fun aDisabledAdapterSuspendsUntilItReturnsAndReportsTheWait() = runTest {
-        val state = MutableStateFlow<Bluetooth.Availability>(unavailable())
+        val state = MutableStateFlow<BleAvailability>(unavailable())
         var waited: Boolean? = null
 
         val gate = launch { waited = awaitBluetoothAvailable(state) }
@@ -78,7 +77,7 @@ class BluetoothAvailabilityGateTest {
      */
     @Test
     fun theReasonForWaitingIsReported() = runTest {
-        val state = MutableStateFlow<Bluetooth.Availability>(unavailable())
+        val state = MutableStateFlow<BleAvailability>(unavailable())
         val reasons = mutableListOf<String>()
 
         val gate = launch { awaitBluetoothAvailable(state) { reasons += it } }
@@ -91,7 +90,7 @@ class BluetoothAvailabilityGateTest {
 
     @Test
     fun anAvailableAdapterLogsNothing() = runTest {
-        val state = MutableStateFlow<Bluetooth.Availability>(available)
+        val state = MutableStateFlow<BleAvailability>(available)
         val reasons = mutableListOf<String>()
 
         awaitBluetoothAvailable(state) { reasons += it }

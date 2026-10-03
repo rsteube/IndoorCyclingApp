@@ -17,15 +17,6 @@ package app.indoorbike.shared.ble
 
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.redactDeviceId
-import com.benasher44.uuid.uuidFrom
-import com.juul.kable.Advertisement
-import com.juul.kable.BluetoothDisabledException
-import com.juul.kable.Filter
-import com.juul.kable.Peripheral
-import com.juul.kable.Scanner
-import com.juul.kable.State
-import com.juul.kable.WriteType
-import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -90,8 +81,10 @@ enum class TrainerConnectionState {
  *
  * The mock trainer path is gated explicitly via [connectMock] and is only
  * used when no real BLE connection is active.
+ *
+ * The radio is [central]: Kable on Android and iOS, BlueZ on Sailfish OS.
  */
-class TrainerManager {
+class TrainerManager(private val central: BleCentral = platformBleCentral()) {
     private val scope = bleManagerScope()
 
     private val _connectionState = MutableStateFlow(TrainerConnectionState.Disconnected)
@@ -414,7 +407,7 @@ class TrainerManager {
      * Write one command to the control point, taking control first if the grant
      * has not been confirmed yet. Returns whether both writes went out.
      *
-     * Both writes use WriteType.WithResponse, which serialises them on the GATT
+     * Both writes wait for the write response, which serialises them on the GATT
      * queue, so the trainer processes the control grant before the command that
      * follows. That is what makes strict trainers (Zwift Hub) honour it instead
      * of replying "Control Not Permitted". A trainer that rejects the command
@@ -689,7 +682,7 @@ class TrainerManager {
             // treat that time as not having looked: a backoff grown while we
             // could not scan would otherwise delay the reconnect by up to a
             // minute after the rider turns Bluetooth back on.
-            if (awaitBluetoothAvailable { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
+            if (awaitBluetoothAvailable(central.availability) { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
                 backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
                 Log.i(TAG, "Bluetooth available; resuming trainer scans")
             }
@@ -698,13 +691,7 @@ class TrainerManager {
             _connectionState.value = TrainerConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
-                    Scanner {
-                        filters = listOf(
-                            Filter.Service(uuidFrom(CYCLING_POWER_SERVICE)),
-                            Filter.Service(uuidFrom(FITNESS_MACHINE_SERVICE))
-                        )
-                        logging(scannerLogging())
-                    }.advertisements
+                    central.scan(TRAINER_SERVICES)
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.deviceId == id }
                 } catch (e: CancellationException) {
@@ -713,7 +700,7 @@ class TrainerManager {
                     // a red herring at the top of every bug report drafted after
                     // a launch. Rethrow so `withTimeoutOrNull` sees its timeout.
                     throw e
-                } catch (e: BluetoothDisabledException) {
+                } catch (e: BleRadioOffException) {
                     // The radio went off mid-window. Expected, self-explanatory,
                     // and the next pass parks on the adapter, so record the fact
                     // without the stack trace that used to bury a bug report.
@@ -773,13 +760,7 @@ class TrainerManager {
         resetDiscoveryCaches()
 
         scanJob?.cancel()
-        scanJob = Scanner {
-            filters = listOf(
-                Filter.Service(uuidFrom(CYCLING_POWER_SERVICE)),
-                Filter.Service(uuidFrom(FITNESS_MACHINE_SERVICE))
-            )
-            logging(scannerLogging())
-        }.advertisements
+        scanJob = central.scan(TRAINER_SERVICES)
             .onEach { advertisement -> addDiscovered(advertisement) }
             .catch { e ->
                 Log.e(TAG, "Scan failed", e)
@@ -804,8 +785,8 @@ class TrainerManager {
     }
 
     fun connectToCandidate(candidateId: String) = onManager {
-        // Look up the underlying advertisement; we keep it around because Kable
-        // requires the Advertisement (or the specific platform handle) to peripheral().
+        // Look up the underlying advertisement; we keep it around because the
+        // transport connects from the advertisement (its platform handle), not an id.
         val ad = lastAdvertisements[candidateId]
         if (ad == null) {
             Log.w(TAG, "connectToCandidate: unknown id=${redactDeviceId(candidateId)}")
@@ -843,7 +824,7 @@ class TrainerManager {
 
     // Internals ──────────────────────────────────────────────────────────────
 
-    private val lastAdvertisements = mutableMapOf<String, Advertisement>()
+    private val lastAdvertisements = mutableMapOf<String, BleAdvertisement>()
 
     /** Run [block] on the manager's thread. Every public entry point that touches its state does. */
     private fun onManager(block: suspend () -> Unit) {
@@ -894,7 +875,7 @@ class TrainerManager {
         _discoveredDevices.value = emptyList()
     }
 
-    private fun addDiscovered(ad: Advertisement) {
+    private fun addDiscovered(ad: BleAdvertisement) {
         lastAdvertisements[ad.deviceId] = ad
         val current = _discoveredDevices.value
         if (current.none { it.id == ad.deviceId }) {
@@ -906,7 +887,7 @@ class TrainerManager {
         }
     }
 
-    private fun connectInternal(advertisement: Advertisement) {
+    private fun connectInternal(advertisement: BleAdvertisement) {
         endScan()
         // Whatever the previous link was doing, it is over: a trainer tapped
         // while another was still connecting used to stay connected to both.
@@ -943,20 +924,7 @@ class TrainerManager {
         toldManualPower = false
         toldManualRoad = false
 
-        val newLink = BleLink.open(scope, advertisement) {
-            logging(peripheralLogging(advertisement.deviceId))
-            // With a handler registered, Kable sends observation failures here
-            // rather than through the observe flow. Log with device context,
-            // then rethrow to keep the existing behaviour of terminating the flow.
-            observationExceptionHandler { cause ->
-                Log.w(
-                    TAG,
-                    "Trainer observation failed on ${redactDeviceId(advertisement.deviceId)}",
-                    cause,
-                )
-                throw cause
-            }
-        }
+        val newLink = BleLink.open(scope, central, advertisement, TAG, label = "Trainer")
         link = newLink
 
         newLink.scope.launch {
@@ -964,15 +932,15 @@ class TrainerManager {
                 // A link that has been replaced has no say over the manager.
                 if (link !== newLink) return@collect
                 when (state) {
-                    is State.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
-                    is State.Connected -> {
+                    BleLinkState.Connecting -> _connectionState.value = TrainerConnectionState.Connecting
+                    BleLinkState.Connected -> {
                         _connectionState.value = TrainerConnectionState.Connected
                         _ergError.value = null
                         _justConnected.tryEmit(_connectedTrainerName.value ?: "Trainer")
                         startTelemetrySubscriptions(newLink)
                     }
-                    is State.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
-                    is State.Disconnected -> {
+                    BleLinkState.Disconnecting -> _connectionState.value = TrainerConnectionState.Disconnecting
+                    BleLinkState.Disconnected -> {
                         Log.i(TAG, "Trainer link dropped")
                         endLink(newLink)
                     }
@@ -1098,7 +1066,7 @@ class TrainerManager {
                 ftmsControlGranted = false
                 ftmsControlRetries = 0
                 ftmsControlPointWriter = { payload ->
-                    peripheral.write(char, payload, WriteType.WithResponse)
+                    peripheral.write(char, payload, withResponse = true)
                 }
                 // The FTMS Control Point is Write + Indicate: per spec the machine
                 // answers every command with a Response Code (0x80) indication, and
@@ -1118,7 +1086,7 @@ class TrainerManager {
                 // command pairs a fresh Request Control with itself until the
                 // grant is confirmed, and recovers from "Control Not Permitted".
                 try {
-                    peripheral.write(char, byteArrayOf(0x00), WriteType.WithResponse)
+                    peripheral.write(char, byteArrayOf(0x00), withResponse = true)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -1188,7 +1156,7 @@ class TrainerManager {
      * steered through one: a level sent without knowing the range could be
      * anything from off to a wall.
      */
-    private suspend fun readControl(peripheral: Peripheral): TrainerControl {
+    private suspend fun readControl(peripheral: BlePeripheral): TrainerControl {
         val targets = readFitnessMachine(peripheral, FITNESS_MACHINE_FEATURE)
             ?.let(FtmsTargets::parse) ?: FtmsTargets.ASSUMED
         val range = if (targets.resistance) {
@@ -1199,7 +1167,7 @@ class TrainerManager {
         return TrainerControl(targets, range, hasControlPoint = true)
     }
 
-    private suspend fun readFitnessMachine(peripheral: Peripheral, characteristic: String): ByteArray? = try {
+    private suspend fun readFitnessMachine(peripheral: BlePeripheral, characteristic: String): ByteArray? = try {
         peripheral.findCharacteristic(FITNESS_MACHINE_SERVICE, characteristic)?.let { peripheral.read(it) }
     } catch (e: CancellationException) {
         throw e
@@ -1502,6 +1470,9 @@ class TrainerManager {
         const val FTMS_CONTROL_POINT = "00002ad9-0000-1000-8000-00805f9b34fb"
         const val HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb"
         const val HEART_RATE_MEASUREMENT = "00002a37-0000-1000-8000-00805f9b34fb"
+
+        /** What a trainer scan looks for: either service makes a device a trainer. */
+        private val TRAINER_SERVICES = listOf(CYCLING_POWER_SERVICE, FITNESS_MACHINE_SERVICE)
     }
 }
 

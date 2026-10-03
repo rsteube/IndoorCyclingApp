@@ -16,11 +16,6 @@
 package app.indoorbike.shared.ble
 
 import app.indoorbike.shared.util.Log
-import com.juul.kable.Advertisement
-import com.juul.kable.Peripheral
-import com.juul.kable.PeripheralBuilder
-import com.juul.kable.State
-import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -46,25 +41,26 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * A link owns a scope of its own, a child of the manager's, and the peripheral
  * and every coroutine launched for it live there. Ending the link cancels that
- * scope, which stops every observer and has Kable close the GATT connection, so
+ * scope, which stops every observer and has the transport close the GATT connection, so
  * nothing belonging to an old link outlives it. Managers also compare a
  * callback's link against their current one before touching shared state, so
  * a link being replaced cannot write over the one replacing it.
  */
 internal class BleLink private constructor(
     val scope: CoroutineScope,
-    val peripheral: Peripheral,
+    val peripheral: BlePeripheral,
 ) {
     /**
      * The peripheral's state from its first step towards a connection on.
      *
-     * Kable starts every peripheral Disconnected. A listener that read that
+     * Kable starts every peripheral Disconnected, and so does every other
+     * transport behind [BleCentral]. A listener that read that
      * as a drop tore its own link down before the connect had begun, which
      * left the manager showing Disconnected over a live connection that
      * nothing could then disconnect.
      */
-    val states: Flow<State>
-        get() = peripheral.state.dropWhile { it is State.Disconnected }
+    val states: Flow<BleLinkState>
+        get() = peripheral.state.dropWhile { it == BleLinkState.Disconnected }
 
     /**
      * Disconnect politely, then end everything the link owns. A peripheral
@@ -87,13 +83,19 @@ internal class BleLink private constructor(
         /** How long a polite disconnect gets before the link is closed under it. */
         const val CLOSE_TIMEOUT_MS = 3_000L
 
+        /**
+         * A link to [advertisement] through [central]. An observation that
+         * fails is logged under [logTag] with [label] ("Trainer", "HRM").
+         */
         fun open(
             parent: CoroutineScope,
-            advertisement: Advertisement,
-            builder: PeripheralBuilder.() -> Unit,
+            central: BleCentral,
+            advertisement: BleAdvertisement,
+            logTag: String,
+            label: String,
         ): BleLink {
             val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]))
-            return BleLink(scope, scope.peripheral(advertisement, builder))
+            return BleLink(scope, central.peripheral(scope, advertisement, logTag, label))
         }
     }
 }

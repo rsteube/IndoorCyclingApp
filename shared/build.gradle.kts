@@ -31,16 +31,31 @@ kotlin {
         }
     }
 
+    // Kable is the BLE transport on Android and iOS, and has no Linux target.
+    // The Sailfish OS build (mobile_clients/sailfish/core) compiles commonMain
+    // on its own with a transport of its own, so everything that touches Kable
+    // lives in kableMain, between commonMain and these two. See ble/BleCentral.kt.
+    applyDefaultHierarchyTemplate {
+        common {
+            group("kable") {
+                withAndroidTarget()
+                group("ios") { withIos() }
+            }
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.sqldelight.coroutines)
-            api(libs.kable.core) // BLE operations
-            // The companion host's WebSocket server, on both platforms.
+            // The companion host's WebSocket server, on every platform.
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
             implementation(libs.ktor.server.websockets)
+        }
+        getByName("kableMain").dependencies {
+            api(libs.kable.core) // BLE operations
         }
         androidMain.dependencies {
             implementation(libs.sqldelight.android)

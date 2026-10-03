@@ -15,7 +15,6 @@
  */
 package app.indoorbike.shared.ble
 
-import com.juul.kable.Bluetooth
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
@@ -76,21 +75,21 @@ internal object BleReconnectPolicy {
  * nothing at all rather than failing, so the old behaviour was to scan forever
  * and find nothing with no explanation anywhere.
  *
- * [availability] is injectable so the decision can be unit-tested without a
- * Bluetooth adapter; production always uses Kable's platform-backed flow.
+ * [availability] is the radio's own flow ([BleCentral.availability]) in
+ * production, and a plain flow in the tests, which need no adapter.
  */
 internal suspend fun awaitBluetoothAvailable(
-    availability: Flow<Bluetooth.Availability> = Bluetooth.availability,
+    availability: Flow<BleAvailability>,
     onWait: (String) -> Unit = {},
 ): Boolean {
     var waited = false
     availability
         .onEach { state ->
-            if (state is Bluetooth.Availability.Unavailable && !waited) {
+            if (state is BleAvailability.Unavailable && !waited) {
                 waited = true
-                onWait(state.reason?.toString() ?: "unknown")
+                onWait(state.reason ?: "unknown")
             }
         }
-        .first { it is Bluetooth.Availability.Available }
+        .first { it is BleAvailability.Available }
     return waited
 }

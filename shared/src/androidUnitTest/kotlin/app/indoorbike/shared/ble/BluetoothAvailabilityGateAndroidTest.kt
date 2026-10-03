@@ -19,6 +19,7 @@ import com.juul.kable.Bluetooth
 import com.juul.kable.Reason
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -30,6 +31,7 @@ import kotlin.test.assertTrue
  * The Android half of the availability gate, where the real [Reason] values
  * exist. `Reason` is an expect enum with no shared entries, so a common test
  * cannot name one, and the sequence that matters here is Android's specifically.
+ * Kable's states reach the gate through [KableCentral]'s mapping, as in the app.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class BluetoothAvailabilityGateAndroidTest {
@@ -47,7 +49,7 @@ class BluetoothAvailabilityGateAndroidTest {
         )
         val reasons = mutableListOf<String>()
 
-        val gate = launch { awaitBluetoothAvailable(state) { reasons += it } }
+        val gate = launch { awaitBluetoothAvailable(state.map { it.toBle() }) { reasons += it } }
         runCurrent()
 
         state.value = Bluetooth.Availability.Unavailable(Reason.TurningOn)
@@ -71,7 +73,7 @@ class BluetoothAvailabilityGateAndroidTest {
         val reasons = mutableListOf<String>()
         var waited = false
 
-        val gate = launch { waited = awaitBluetoothAvailable(state) { reasons += it } }
+        val gate = launch { waited = awaitBluetoothAvailable(state.map { it.toBle() }) { reasons += it } }
         runCurrent()
         state.value = Bluetooth.Availability.Available
         gate.join()

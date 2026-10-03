@@ -18,13 +18,6 @@ package app.indoorbike.shared.ble
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.util.redactDeviceId
-import com.benasher44.uuid.uuidFrom
-import com.juul.kable.Advertisement
-import com.juul.kable.BluetoothDisabledException
-import com.juul.kable.Peripheral
-import com.juul.kable.Scanner
-import com.juul.kable.State
-import com.juul.kable.peripheral
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,8 +63,10 @@ typealias HrmCandidate = TrainerCandidate
  * ANT+-only HRMs are NOT supported — Android lacks a universal ANT+ stack
  * and the available SDKs are built on Google Play services, which the app
  * rules out so it can run on a device that has none.
+ *
+ * The radio is [central], as for [TrainerManager].
  */
-class HeartRateMonitor {
+class HeartRateMonitor(private val central: BleCentral = platformBleCentral()) {
     private val scope = bleManagerScope()
 
     private val _connectionState = MutableStateFlow(HrmConnectionState.Disconnected)
@@ -111,7 +106,7 @@ class HeartRateMonitor {
     // Touched only on the manager's own thread (see bleManagerScope).
     private var scanJob: Job? = null
     private var link: BleLink? = null
-    private val advertisementById = mutableMapOf<String, Advertisement>()
+    private val advertisementById = mutableMapOf<String, BleAdvertisement>()
 
     /** Consecutive connections that produced no sample. Reset by the first one. */
     private var silentConnects = 0
@@ -182,7 +177,7 @@ class HeartRateMonitor {
 
             // See TrainerManager: wait out a disabled radio instead of scanning
             // into it, and do not let that wait push the retry cadence back.
-            if (awaitBluetoothAvailable { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
+            if (awaitBluetoothAvailable(central.availability) { reason -> Log.i(TAG, "Waiting for Bluetooth ($reason)") }) {
                 backoff = BleReconnectPolicy.INITIAL_BACKOFF_MS
                 Log.i(TAG, "Bluetooth available; resuming HRM scans")
             }
@@ -191,7 +186,7 @@ class HeartRateMonitor {
             _connectionState.value = HrmConnectionState.Scanning
             val found = withTimeoutOrNull(BleReconnectPolicy.SCAN_WINDOW_MS) {
                 try {
-                    Scanner { logging(scannerLogging()) }.advertisements
+                    central.scan()
                         .onEach { addDiscovered(it) }
                         .firstOrNull { it.deviceId == id }
                 } catch (e: CancellationException) {
@@ -199,7 +194,7 @@ class HeartRateMonitor {
                     // is routine - not a failure worth a line in a bug report.
                     // Let it through so `withTimeoutOrNull` sees its own timeout.
                     throw e
-                } catch (e: BluetoothDisabledException) {
+                } catch (e: BleRadioOffException) {
                     // See TrainerManager: expected, and the stack adds nothing.
                     Log.i(TAG, "HRM scan stopped: Bluetooth turned off")
                     null
@@ -251,7 +246,7 @@ class HeartRateMonitor {
         resetDiscoveryCaches()
 
         scanJob?.cancel()
-        scanJob = Scanner { logging(scannerLogging()) }.advertisements
+        scanJob = central.scan()
             .onEach { ad -> addDiscovered(ad) }
             .catch { e ->
                 Log.e(TAG, "HRM scan failed", e)
@@ -336,7 +331,7 @@ class HeartRateMonitor {
         _discoveredDevices.value = emptyList()
     }
 
-    private fun addDiscovered(ad: Advertisement) {
+    private fun addDiscovered(ad: BleAdvertisement) {
         if (!looksLikeHrm(ad)) return
         // Only what the list shows is worth keeping. This used to be stored
         // above the filter, on the grounds that auto-connect needed every
@@ -356,14 +351,13 @@ class HeartRateMonitor {
         }
     }
 
-    private fun looksLikeHrm(ad: Advertisement): Boolean {
-        val hrServiceUuid = uuidFrom(HEART_RATE_SERVICE_UUID)
-        if (ad.uuids.any { it == hrServiceUuid }) return true
+    private fun looksLikeHrm(ad: BleAdvertisement): Boolean {
+        if (ad.offers(HEART_RATE_SERVICE_UUID)) return true
         val name = ad.name ?: ad.peripheralName ?: return false
         return HRM_NAME_KEYWORDS.any { name.contains(it, ignoreCase = true) }
     }
 
-    private fun connectInternal(advertisement: Advertisement) {
+    private fun connectInternal(advertisement: BleAdvertisement) {
         endScan()
         // See TrainerManager.connectInternal: the previous link ends here.
         link?.let { endLink(it, settle = false) }
@@ -377,36 +371,24 @@ class HeartRateMonitor {
         wantReconnect.value = true
         reconnectBeforeScan = false
 
-        val newLink = BleLink.open(scope, advertisement) {
-            logging(peripheralLogging(advertisement.deviceId))
-            // Kable normally routes observation failures through the
-            // observe flow; with a handler registered they come here
-            // instead. Log with device context, then rethrow so the
-            // flow still terminates and the watchdog rebuilds the link.
-            observationExceptionHandler { cause ->
-                Log.w(
-                    TAG,
-                    "HRM observation failed on ${redactDeviceId(advertisement.deviceId)}",
-                    cause,
-                )
-                throw cause
-            }
-        }
+        // An observation that fails is logged with the device and ends its
+        // flow, so the watchdog rebuilds the link.
+        val newLink = BleLink.open(scope, central, advertisement, TAG, label = "HRM")
         link = newLink
 
         newLink.scope.launch {
             newLink.states.collect { state ->
                 if (link !== newLink) return@collect
                 when (state) {
-                    is State.Connecting -> _connectionState.value = HrmConnectionState.Connecting
-                    is State.Connected -> {
+                    BleLinkState.Connecting -> _connectionState.value = HrmConnectionState.Connecting
+                    BleLinkState.Connected -> {
                         _connectionState.value = HrmConnectionState.Connected
                         _justConnected.tryEmit(_connectedDeviceName.value ?: "Heart rate monitor")
                         startHeartRateObserve(newLink)
                         armFirstSampleWatchdog(newLink)
                     }
-                    is State.Disconnecting -> _connectionState.value = HrmConnectionState.Disconnecting
-                    is State.Disconnected -> endLink(newLink)
+                    BleLinkState.Disconnecting -> _connectionState.value = HrmConnectionState.Disconnecting
+                    BleLinkState.Disconnected -> endLink(newLink)
                 }
             }
         }
@@ -505,10 +487,7 @@ class HeartRateMonitor {
      */
     private suspend fun startHeartRateObserve(l: BleLink) {
         try {
-            val sUuid = uuidFrom(HEART_RATE_SERVICE_UUID)
-            val cUuid = uuidFrom(HEART_RATE_MEASUREMENT_UUID)
-            val service = l.peripheral.services?.firstOrNull { it.serviceUuid == sUuid }
-            val char = service?.characteristics?.firstOrNull { it.characteristicUuid == cUuid }
+            val char = l.peripheral.findCharacteristic(HEART_RATE_SERVICE_UUID, HEART_RATE_MEASUREMENT_UUID)
             if (char == null) {
                 Log.w(TAG, "Heart Rate Measurement characteristic not found")
                 return
