@@ -44,4 +44,6 @@ object SailfishPaths {
     }
 
     fun data(name: String) = "$dataDir/$name"
+    fun config(name: String) = "$configDir/$name"
+    fun cache(name: String) = "$cacheDir/$name"
 }

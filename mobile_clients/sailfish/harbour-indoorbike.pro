@@ -67,6 +67,14 @@ LIBS += -L$$CORE_DIR -lindoorbikecore
 CORE_INSTALL_DIR = /usr/share/$${TARGET}/lib
 QMAKE_LFLAGS += -Wl,-rpath,$$CORE_INSTALL_DIR
 QMAKE_LFLAGS += -Wl,-rpath,\'\$\$ORIGIN/../share/$${TARGET}/lib\'
+!exists($$PWD/data/workouts_sample.json) {
+    error("The package's data is missing. Run ./sync-core.sh first; see docs/SAILFISH_PORT.md.")
+}
+# The bundled workouts, read by the core from beside the QML.
+appdata.files = $$PWD/data/*
+appdata.path = /usr/share/$${TARGET}/data
+INSTALLS += appdata
+
 corelib.files = $$CORE_LIB
 corelib.path = $$CORE_INSTALL_DIR
 INSTALLS += corelib

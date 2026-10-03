@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QtQml>
 
+#include <keepalive/backgroundactivity.h>
 #include <sailfishapp.h>
 
 #include "bluetransport.h"
@@ -52,6 +53,26 @@ int main(int argc, char *argv[])
     // The radio the core's trainer, heart rate and controller managers drive. Declared after the
     // core so it is destroyed first, while the core can still take its last reports.
     BlueTransport bluetooth(&core);
+
+    // A ride keeps the phone awake: with the screen off it would otherwise suspend, and the
+    // trainer's link and the ride's clock with it. The ride screen also keeps the display on, but
+    // a rider can still blank it, or leave the app.
+    BackgroundActivity keepAwake;
+    QObject::connect(&core, &IndoorBikeCore::eventReceived, [&](const QString &topic, const QVariant &payload) {
+        if (topic != QLatin1String("ride"))
+            return;
+        const bool riding = payload.toMap().value(QStringLiteral("active")).toBool();
+        if (riding && !keepAwake.isRunning())
+            keepAwake.run();
+        else if (!riding && !keepAwake.isStopped())
+            keepAwake.stop();
+    });
+
+    // Scanning for the paired devices follows the app being in front, or a ride, as on Android.
+    QObject::connect(app.data(), &QGuiApplication::applicationStateChanged, [&](Qt::ApplicationState state) {
+        core.send(QVariantMap{ { QStringLiteral("cmd"), QStringLiteral("app.foreground") },
+                               { QStringLiteral("active"), state == Qt::ApplicationActive } });
+    });
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     core.setEngine(view->engine());

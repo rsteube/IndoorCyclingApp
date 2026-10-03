@@ -34,3 +34,11 @@ mkdir -p "$here/lib"
 cp -f "$here/core/build/bin/linuxArm64/$out/libindoorbikecore.so" "$here/lib/"
 cp -f "$here/core/build/bin/linuxArm64/$out/libindoorbikecore_api.h" "$here/lib/"
 echo "Synced the $variant core into $here/lib"
+
+# The package's data, from the Android app's assets so there is one copy: the bundled workouts.
+# Mode 644 whatever the source: Harbour refuses an executable data file.
+android_assets="$repo/mobile_clients/android/src/main/assets"
+rm -rf "$here/data"
+mkdir -p "$here/data"
+install -m 644 "$android_assets/workouts_sample.json" "$here/data/"
+echo "Staged the bundled workouts into $here/data"
