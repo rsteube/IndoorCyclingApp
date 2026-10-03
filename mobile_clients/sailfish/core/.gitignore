@@ -1,0 +1,4 @@
+# The phone libraries stage-sysroot.sh copies out of the SDK's build engine.
+/sailfish-sysroot/
+/.gradle/
+/.kotlin/

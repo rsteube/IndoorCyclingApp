@@ -4,7 +4,19 @@ The Sailfish app is a native Silica/QML app on top of the shared Kotlin, compile
 
 Target: Sailfish OS 5.1 on **aarch64** (Jolla C2). Kotlin/Native dropped 32-bit ARM (`linuxArm32Hfp`) and the build engine cannot run i486 binaries under WSL2, so armv7hl and i486 phones are out of reach.
 
-Status as of 2026-10-03: planned, nothing built yet.
+Status as of 2026-10-04: milestone 0 is done apart from the iOS build and a real-trainer ride on Android. The shared code compiles for Linux, its common tests pass there natively, and `libindoorbikecore.so` links for the phone and loads its dependencies on a Jolla C2. There is no Sailfish app yet.
+
+## Building the core
+
+In the WSL clone, with the Sailfish SDK's build engine running:
+
+```sh
+mobile_clients/sailfish/core/stage-sysroot.sh            # once: the phone's libsqlite3, for the linker
+./gradlew -p mobile_clients/sailfish/core linuxX64Test   # the shared tests, natively in WSL
+./gradlew -p mobile_clients/sailfish/core linkReleaseSharedLinuxArm64
+```
+
+The library and its C header land in `mobile_clients/sailfish/core/build/bin/linuxArm64/releaseShared/`. Run Gradle on JDK 21 (`JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64`); Kotlin 2.2.10 predates JDK 25.
 
 ## What carries over and what does not
 
@@ -112,7 +124,19 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
 
 - [ ] **0. Groundwork.** No Sailfish UI yet.
   - [ ] `BleCentral` seam and the `kableMain` source set (decision 2). Done when Android and iOS tests pass unchanged and a ride on a real trainer works on Android.
-  - [ ] `mobile_clients/sailfish/core` with the Linux `actual`s. Done when `linkReleaseSharedLinuxArm64` produces `libindoorbikecore.so` and `linuxX64Test` passes `commonTest` in WSL. Kotlin/Native rejects commas in test names (already fixed for iOS).
+    - [x] Android: all 853 shared tests pass, and the app compiles.
+    - [ ] iOS: not built yet. This Windows machine cannot build Apple targets. `KableCentral` uses only Kable calls `commonMain` already made, so it should compile there too.
+    - [ ] A ride on a real trainer on Android.
+  - [x] `mobile_clients/sailfish/core` with the Linux `actual`s.
+    - **Common code:** compiled for Linux with no change.
+    - **Tests:** `linuxX64Test` passes 835 tests: the 843 common tests minus `ZwiftCryptoTest` (17 tests, which need AES and P-256; milestone 10), plus 9 SHA-256 and HMAC vector tests for the Linux implementations.
+    - **The library:** `libindoorbikecore.so` is 12 MB for aarch64. It needs only `libsqlite3.so.0`, `libz`, `libm`, `libpthread`, `libdl`, `libgcc_s` and `libc`, nothing newer than glibc 2.17. The phone's loader resolves all of them on a Jolla C2.
+    - **Linux `actual`s:**
+      - SHA-256 and HMAC are written in Kotlin and tested against FIPS 180-4 and RFC 4231.
+      - Randomness comes from `/dev/urandom`, the lock is a recursive pthread mutex, gzip uses zlib, and the network addresses come from `getifaddrs`.
+      - The database lives in the data folder the Qt side passes in (`SailfishPaths`).
+      - The radio reports Bluetooth unavailable (`NoRadio`) until the BlueZ bridge exists.
+      - The Zwift key pair and AES refuse until milestone 10.
   - [x] A WSL clone of this repo in `~/projects/cycling_app`. The repo's `.gitattributes` already pins LF for every file.
   - [x] sailfish-mcp for several apps. Its WSL wrapper (`~/.local/bin/sailfish-mcp`, from the `sailfish-on-windows` skill) maps the Windows project Claude Code starts it in to the WSL clone of the same name, and enters that clone's Sailfish app. Until `mobile_clients/sailfish/harbour-indoorbike.pro` exists it starts with no app; reconnect it (`/mcp`) after adding the `.pro`.
 - [ ] **1. Core on the phone.**
