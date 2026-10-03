@@ -40,7 +40,7 @@ void IndoorBikeCore::request(const QVariantMap &command, const QJSValue &callbac
 {
     const QString id = QStringLiteral("r%1").arg(++m_nextRequest);
     QVariantMap withId = command;
-    withId.insert(QStringLiteral("id"), id);
+    withId.insert(QStringLiteral("requestId"), id);
     if (callback.isCallable())
         m_pending.insert(id, callback);
     const QVariantMap started = send(withId);
@@ -91,7 +91,7 @@ void IndoorBikeCore::deliver(const QString &json)
 
     if (topic == TopicReply) {
         const QVariantMap reply = value.toMap();
-        answer(reply.value(QStringLiteral("id")).toString(), reply);
+        answer(reply.value(QStringLiteral("requestId")).toString(), reply);
         return;
     }
 

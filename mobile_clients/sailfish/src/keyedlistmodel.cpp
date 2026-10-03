@@ -29,6 +29,13 @@ QVariant KeyedListModel::data(const QModelIndex &index, int role) const
         const qint64 seconds = m_items.at(index.row()).toMap().value(m_monthField).toLongLong();
         return QDateTime::fromMSecsSinceEpoch(seconds * 1000).toString(QStringLiteral("yyyy-MM"));
     }
+    case WeekRole: {
+        if (m_weekField.isEmpty())
+            return QString();
+        const qint64 seconds = m_items.at(index.row()).toMap().value(m_weekField).toLongLong();
+        const QDate day = QDateTime::fromMSecsSinceEpoch(seconds * 1000).date();
+        return day.addDays(1 - day.dayOfWeek()).toString(Qt::ISODate);
+    }
     default:
         return QVariant();
     }
@@ -36,7 +43,7 @@ QVariant KeyedListModel::data(const QModelIndex &index, int role) const
 
 QHash<int, QByteArray> KeyedListModel::roleNames() const
 {
-    return { { ItemRole, "item" }, { KeyRole, "key" }, { MonthRole, "month" } };
+    return { { ItemRole, "item" }, { KeyRole, "key" }, { MonthRole, "month" }, { WeekRole, "week" } };
 }
 
 void KeyedListModel::setMonthField(const QString &field)
@@ -47,6 +54,16 @@ void KeyedListModel::setMonthField(const QString &field)
     emit monthFieldChanged();
     if (!m_items.isEmpty())
         emit dataChanged(index(0), index(m_items.count() - 1), { MonthRole });
+}
+
+void KeyedListModel::setWeekField(const QString &field)
+{
+    if (field == m_weekField)
+        return;
+    m_weekField = field;
+    emit weekFieldChanged();
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.count() - 1), { WeekRole });
 }
 
 QVariantMap KeyedListModel::get(const QString &key) const
@@ -117,7 +134,7 @@ void KeyedListModel::setItems(const QVariantList &items)
             if (m_items.at(row) != items.at(row)) {
                 m_items[row] = items.at(row);
                 const QModelIndex changed = index(row);
-                emit dataChanged(changed, changed, { ItemRole, MonthRole });
+                emit dataChanged(changed, changed, { ItemRole, MonthRole, WeekRole });
             }
         } else {
             beginInsertRows(QModelIndex(), row, row);

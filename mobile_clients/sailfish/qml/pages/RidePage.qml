@@ -22,11 +22,21 @@ Page {
 
     allowedOrientations: Orientation.All
 
+    // History is one swipe forward: Sailfish's attached page, where Android has a tab.
+    onStatusChanged: {
+        if (status === PageStatus.Active && pageStack.nextPage(page) === null)
+            pageStack.pushAttached(Qt.resolvedUrl("HistoryPage.qml"))
+    }
+
     SilicaFlickable {
         anchors.fill: parent
         contentHeight: column.height + Theme.paddingLarge
 
         PullDownMenu {
+            MenuItem {
+                text: qsTr("Progress")
+                onClicked: pageStack.push(Qt.resolvedUrl("ProgressPage.qml"))
+            }
             MenuItem {
                 text: qsTr("You: FTP and weight")
                 onClicked: pageStack.push(Qt.resolvedUrl("RiderDialog.qml"))

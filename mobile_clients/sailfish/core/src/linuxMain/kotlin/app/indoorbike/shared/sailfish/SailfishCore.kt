@@ -142,6 +142,7 @@ internal class SailfishCore(
         installSensors()
         installWorkouts()
         installRide()
+        installHistory()
 
         workoutLibrary.start()
         // Rides from before external ids existed get one; then the folder sync,

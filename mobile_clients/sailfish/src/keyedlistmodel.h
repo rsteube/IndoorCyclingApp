@@ -16,7 +16,8 @@
 // Delegates read `item`, the row's whole object, and `key`, its id. A list grouped by month sets
 // monthField to the name of a Unix-seconds field, and `month` is then that time's "yyyy-MM" in the
 // phone's own time zone, for a view's section.property. Done here because Qt has the phone's time
-// zone database.
+// zone database. weekField does the same for `week`: the Monday that starts the time's week, as
+// "yyyy-MM-dd", in the phone's time zone.
 //
 // Taken from the Companion for UNA's Sailfish app (unawatch/mobile/sailfish), where it was written.
 class KeyedListModel : public QAbstractListModel
@@ -26,12 +27,14 @@ class KeyedListModel : public QAbstractListModel
     // Goes up on every change, so a binding on get() can depend on it and be re-read.
     Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
     Q_PROPERTY(QString monthField READ monthField WRITE setMonthField NOTIFY monthFieldChanged)
+    Q_PROPERTY(QString weekField READ weekField WRITE setWeekField NOTIFY weekFieldChanged)
 
 public:
     enum Roles {
         ItemRole = Qt::UserRole + 1,
         KeyRole,
-        MonthRole
+        MonthRole,
+        WeekRole
     };
 
     explicit KeyedListModel(QObject *parent = nullptr);
@@ -46,6 +49,9 @@ public:
     QString monthField() const { return m_monthField; }
     void setMonthField(const QString &field);
 
+    QString weekField() const { return m_weekField; }
+    void setWeekField(const QString &field);
+
     // The row with this id, or an empty map.
     Q_INVOKABLE QVariantMap get(const QString &key) const;
 
@@ -54,6 +60,7 @@ public:
 signals:
     void countChanged();
     void monthFieldChanged();
+    void weekFieldChanged();
     void revisionChanged();
 
 private:
@@ -61,6 +68,7 @@ private:
 
     QVariantList m_items;
     QString m_monthField;
+    QString m_weekField;
     int m_revision = 0;
 };
 

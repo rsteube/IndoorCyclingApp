@@ -45,6 +45,20 @@ internal fun formatLocalClock(epochMs: Long): String {
     return strftimeLocal(epochMs, "%H:%M:%S") + "." + millis.toString().padStart(3, '0')
 }
 
+/**
+ * The phone's offset from UTC at [epochMs], in milliseconds, daylight saving
+ * included: what the streak and the badges take to count days in the rider's
+ * own calendar.
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun localUtcOffsetMs(epochMs: Long): Long = memScoped {
+    val seconds = alloc<time_tVar>()
+    seconds.value = epochMs.floorDiv(1000L).convert()
+    val fields = alloc<tm>()
+    localtime_r(seconds.ptr, fields.ptr)
+    fields.tm_gmtoff * 1000L
+}
+
 @OptIn(ExperimentalForeignApi::class)
 private fun strftimeLocal(epochMs: Long, format: String): String = memScoped {
     val seconds = alloc<time_tVar>()

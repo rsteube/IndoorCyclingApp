@@ -46,8 +46,8 @@ import kotlin.coroutines.cancellation.CancellationException
  *    answered at once: `{"ok": true, "value": ...}` or `{"ok": false,
  *    "message": ...}`. It must not wait on anything slow.
  *  - **A request** is a command whose work takes time: a save, a fetch, an
- *    export. The caller gives it an `id`, gets `{"ok": true}` at once, and the
- *    answer arrives later as a `reply` event carrying that id.
+ *    export. The caller gives it a `requestId`, gets `{"ok": true}` at once, and the
+ *    answer arrives later as a `reply` event carrying it.
  *  - **A topic** without a dot is state, sent whole whenever it changes; with
  *    a dot it is a one-off event. See IndoorBikeCore on the Qt side.
  */
@@ -102,7 +102,7 @@ internal class Bus(
             }
         }
         val request = requests[name] ?: return failure("Unknown command $name")
-        val id = args.string("id") ?: return failure("$name needs an id")
+        val id = args.string("requestId") ?: return failure("$name needs a requestId")
         scope.launch {
             val reply = try {
                 ok(request(args))
@@ -113,7 +113,7 @@ internal class Bus(
                 failure(e.message ?: e.toString())
             }
             send("reply", buildJsonObject {
-                put("id", id)
+                put("requestId", id)
                 reply.forEach { (key, value) -> put(key, value) }
             })
         }
