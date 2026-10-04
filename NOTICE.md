@@ -32,9 +32,11 @@ The SIL Open Font License is available at https://openfontlicense.org/.
 | Asset | Purpose | License | Source |
 | --- | --- | --- | --- |
 | Material Symbols Outlined (weight 300) | Icon glyphs, inlined as an SVG sprite in each website page | Apache 2.0 | https://github.com/google/material-design-icons |
+| Simple Icons: the Sailfish OS mark | The Sailfish OS card on the website's install section | CC0 1.0 (the trademark stays Jolla's) | https://simpleicons.org |
+| The Android robot | The Android card on the website's install section, from Material Symbols' `android` glyph | CC BY 3.0, attributed in the site footer | https://developer.android.com/distribute/marketing-tools/brand-guidelines |
 
 The website inlines only the glyphs it uses; nothing is fetched from a font CDN at runtime.
 
 ## Trademarks
 
-"Wahoo" and "Kickr" are trademarks of Wahoo Fitness LLC. "Zwift", "Zwift Click", "Zwift Play", and "Zwift Ride" are trademarks of Zwift Inc. "Garmin" is a trademark of Garmin Ltd. These names are used here only to describe device compatibility; the trademark holders neither sponsor nor endorse this project.
+"Wahoo" and "Kickr" are trademarks of Wahoo Fitness LLC. "Zwift", "Zwift Click", "Zwift Play", and "Zwift Ride" are trademarks of Zwift Inc. "Garmin" is a trademark of Garmin Ltd. "Android" is a trademark of Google LLC, "Sailfish OS" of Jolla Mobile Ltd, and "iPhone" and "App Store" of Apple Inc. These names are used here only to describe device and platform compatibility; the trademark holders neither sponsor nor endorse this project.
