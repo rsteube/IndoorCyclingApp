@@ -55,5 +55,19 @@ ApplicationWindow {
         onUriOpened: window.open(uri)
     }
 
+    // A companion that proved the pairing code asks to be remembered, wherever the rider is.
+    property bool askingToPair: false
+    Connections {
+        target: core
+        onEventReceived: {
+            if (topic !== "companion" || !payload || !payload.pendingPairing || window.askingToPair)
+                return
+            window.askingToPair = true
+            var dialog = pageStack.push(Qt.resolvedUrl("pages/RememberCompanionDialog.qml"),
+                                        { name: payload.pendingPairing.name })
+            dialog.done.connect(function() { window.askingToPair = false })
+        }
+    }
+
     InfoNotice { id: notice }
 }

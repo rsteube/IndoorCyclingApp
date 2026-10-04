@@ -220,6 +220,13 @@ Page {
                 }
             }
 
+            ChoiceItem {
+                title: qsTr("Companion")
+                description: qsTr("A game or app on another device describes the road, and the trainer rides it.")
+                enabled: !page.ride.active
+                onClicked: pageStack.push(Qt.resolvedUrl("CompanionPage.qml"))
+            }
+
             SectionHeader { text: qsTr("Devices") }
 
             Label {

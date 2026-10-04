@@ -9,6 +9,7 @@ Column {
     property string value
     property string unit
     property bool large
+    property color valueColor: Theme.primaryColor
 
     spacing: Theme.paddingSmall / 2
 
@@ -20,7 +21,7 @@ Column {
             id: valueLabel
 
             text: root.value
-            color: Theme.primaryColor
+            color: root.valueColor
             font.pixelSize: root.large ? Theme.fontSizeHuge * 1.4 : Theme.fontSizeExtraLarge
             font.family: Theme.fontFamilyHeading
         }

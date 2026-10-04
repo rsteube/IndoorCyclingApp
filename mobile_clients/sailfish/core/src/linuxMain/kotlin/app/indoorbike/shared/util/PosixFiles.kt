@@ -53,6 +53,16 @@ internal object PosixFiles {
 
     fun move(from: String, to: String): Boolean = rename(from, to) == 0
 
+    /** Delete [path] and, when it is a folder, everything in it. */
+    fun deleteTree(path: String) {
+        val dir = opendir(path)
+        if (dir != null) {
+            closedir(dir)
+            for (name in list(path)) deleteTree("$path/$name")
+        }
+        remove(path)
+    }
+
     /** Make [path] and any folder above it that is missing. */
     fun mkdirs(path: String) {
         var at = ""

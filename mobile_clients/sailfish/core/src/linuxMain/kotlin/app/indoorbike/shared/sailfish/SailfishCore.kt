@@ -23,6 +23,9 @@ import app.indoorbike.shared.ble.HeartRateMonitor
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.ble.TrainerManager
 import app.indoorbike.shared.companion.CompanionEngine
+import app.indoorbike.shared.companion.CompanionHost
+import app.indoorbike.shared.companion.CompanionRideRecorder
+import app.indoorbike.shared.companion.JsonPairedCompanionStore
 import app.indoorbike.shared.db.DatabaseDriverFactory
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.repo.FollowedRepositories
@@ -133,6 +136,49 @@ internal class SailfishCore(
     /** The community repositories the rider follows, and what each has that they haven't seen. */
     val followedRepositories = FollowedRepositories(LinuxFolder("followed").asTextStore(), LinuxHttp.textFetcher)
 
+    /** Screenshots a companion sent, kept with their ride. */
+    val screenshots = LinuxScreenshotStore()
+
+    /** The companion each ride was ridden with, for its files and the share card. */
+    val brands = LinuxBrandStore()
+
+    /**
+     * The companion socket: the same host the Android and iOS apps run. Found
+     * by the UDP beacon or by its address typed in; Sailfish has no Avahi for
+     * DNS-SD.
+     */
+    val companionHost = CompanionHost(
+        engine = companionEngine,
+        sessionManager = sessionManager,
+        appVersion = appVersion,
+        ftp = { userSettings.ftp.value },
+        riderMassKg = { userSettings.weightKg.value },
+        bikeMassKg = { userSettings.bikeWeightKg.value },
+        powerWatts = { trainerManager.power.value },
+        cadenceRpm = { trainerManager.cadence.value },
+        heartRateBpm = { effectiveHeartRate() },
+        trainerName = { trainerManager.connectedTrainerName.value },
+        trainerConnected = {
+            trainerManager.connectionState.value == TrainerConnectionState.Connected || trainerManager.isMockTrainer.value
+        },
+        trainerAcceptsPower = { trainerManager.acceptsTargetPower },
+        deviceId = { userSettings.deviceId },
+        pairedStore = JsonPairedCompanionStore(LinuxTextFile("paired_companions.json")),
+        screenshots = screenshots,
+        brands = brands,
+        advertiser = null,
+        beacon = LinuxCompanionBeacon(CoroutineScope(SupervisorJob() + Dispatchers.IO)),
+        isDebug = debug,
+        decodeIcon = { png -> companionIconFile(png) },
+    ).also { host ->
+        // Each ride the game finishes is saved by the host, through the same
+        // path as every other ride.
+        host.rideRecorder = CompanionRideRecorder(historyRepository, sessionManager) { workout, start, duration, telemetry, road, record ->
+            saveRide(workout, start, duration, telemetry, road, record)
+                ?: throw IllegalStateException("The companion ride couldn't be saved")
+        }
+    }
+
     /**
      * Intervals.icu by athlete id and API key. Signing in comes back through
      * the verified https link indoorbike.app vouches for on Android, which a
@@ -143,8 +189,7 @@ internal class SailfishCore(
         historyRepository = historyRepository,
         userSettings = userSettings,
         appVersion = appVersion,
-        // The game's name joins with the companion (milestone 9).
-        rideBrandName = { null },
+        rideBrandName = { rideStart -> brands.name(rideStart) },
         pending = JsonPrefs(SailfishPaths.config("intervals_oauth.json"), private = true),
         clientId = "",
         clientSecret = "",
@@ -157,7 +202,7 @@ internal class SailfishCore(
         historyRepository = historyRepository,
         userSettings = userSettings,
         appVersion = appVersion,
-        rideBrandName = { null },
+        rideBrandName = { rideStart -> brands.name(rideStart) },
         pending = JsonPrefs(SailfishPaths.config("fittrackee_oauth.json"), private = true),
     )
 
@@ -210,6 +255,7 @@ internal class SailfishCore(
         installRoutes()
         installLibrary()
         installSync()
+        installCompanion()
 
         workoutLibrary.start()
         routeLibrary.start()
@@ -289,6 +335,7 @@ internal class SailfishCore(
         .also { if (it == null) Log.w(TAG, "No bundled workouts in $packageDir/data") }
 
     fun stop() {
+        companionHost.dispose()
         trainerManager.dispose()
         heartRateMonitor.dispose()
         controllerManager.dispose()

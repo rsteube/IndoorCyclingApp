@@ -38,3 +38,13 @@ function zoneForPct(zones, pct) {
     }
     return 7
 }
+
+// "2 min ago" and the like, for an epoch in milliseconds, as the Android and iOS apps say it.
+function relative(epochMs) {
+    var seconds = Math.max(0, Math.floor((Date.now() - epochMs) / 1000))
+    if (seconds < 5) return qsTr("just now")
+    if (seconds < 60) return qsTr("%1 s ago").arg(seconds)
+    if (seconds < 3600) return qsTr("%1 min ago").arg(Math.floor(seconds / 60))
+    if (seconds < 86400) return qsTr("%1 h ago").arg(Math.floor(seconds / 3600))
+    return qsTr("%1 d ago").arg(Math.floor(seconds / 86400))
+}

@@ -109,6 +109,9 @@ internal fun SailfishCore.installRide() {
     sm.state.onEach { state ->
         val workout = sm.activeWorkout.value
         if (state != WorkoutState.Completed || workout == null) return@onEach
+        // A companion ride the host is hosting is saved by the host, the
+        // moment the game says it is over; saving it here too would save it twice.
+        if (workout.isCompanion && companionHost.hosting.value) return@onEach
         val start = sm.sessionStartTimeEpoch
         if (start == 0L || start == savingStart) return@onEach
         savingStart = start

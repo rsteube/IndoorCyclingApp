@@ -123,7 +123,14 @@ internal fun SailfishCore.installHistory() {
     }
 
     bus.request("history.delete") { args ->
-        historyRepository.deleteSession(args.requireLong("id"))
+        val id = args.requireLong("id")
+        val start = historyRepository.getSessionById(id)?.startTimeEpoch
+        historyRepository.deleteSession(id)
+        // A companion ride's pictures and the game it was ridden with go with it.
+        if (start != null) {
+            screenshots.deleteRide(start)
+            brands.deleteRide(start)
+        }
         JsonNull
     }
 
@@ -151,7 +158,7 @@ internal fun SailfishCore.installHistory() {
                         session, telemetry, workout, ftp, kg,
                         appVersion = appVersion,
                         // A companion ride's game, which milestone 9 keeps; none until then.
-                        world = VirtualWorld.of(session, null),
+                        world = VirtualWorld.of(session, brands.name(session.startTimeEpoch)),
                     ),
                 )
             } else {
