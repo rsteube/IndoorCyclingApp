@@ -26,8 +26,12 @@
     app. It shows only when that did not happen, for instance when the approval
     was opened in a browser the link could not be handed from.
 
+    Sailfish OS has no verified links, so there the page is always seen, and
+    its Sailfish link hands the query on to indoorbike://oauth/intervals, which
+    the Sailfish app registers for.
+
     The query carries a one-time authorization code. Nothing here sends it
-    anywhere: there are no scripts but the one below, which only builds a link
+    anywhere: there are no scripts but the one below, which only builds links
     back into the app, and the referrer is withheld. The intent: link names the
     app's package, so no other app can be handed the code.
   -->
@@ -38,6 +42,7 @@
       <a id="open" class="btn btn-primary" href="#">Open Indoor Bike</a>
     </div>
     <p class="small" id="debug-note">Using a debug build? <a id="open-debug" href="#">Open the debug build instead</a>.</p>
+    <p class="small">Using Sailfish OS? <a id="open-sailfish" href="#">Open IndoorBike for Sailfish</a>.</p>
     <p class="small">Opened this on a computer? Connecting happens on your phone: in Indoor Bike, go to Settings, then Connections, then Intervals.icu.</p>
   </main>
   <script>
@@ -54,6 +59,7 @@
       }
       document.getElementById("open").href = intentFor("app.indoorbike");
       document.getElementById("open-debug").href = intentFor("app.indoorbike.debug");
+      document.getElementById("open-sailfish").href = "indoorbike://oauth/intervals" + query;
     })();
   </script>
 </body>
