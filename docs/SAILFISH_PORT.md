@@ -167,7 +167,7 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
   - FIT and TCX export through the share sheet (`Sailfish.Share`) and into Downloads.
   - The 1080 × 1080 share picture, drawn with `QPainter`.
   - Level, streak and badges.
-  - **Status:** done except the share picture, which waits for polish. The ride page's chart is a painted C++ item: QML `Canvas` goes blank after the app is backgrounded.
+  - **Status:** done. The ride page's chart is a painted C++ item: QML `Canvas` goes blank after the app is backgrounded. The share picture is iOS's layout, drawn with `QPainter` into a PNG.
 - [x] **5. Settings and onboarding.**
   - Profile, devices, bike and gearing.
   - The diagnostics log, with crash logging through Kotlin/Native's unhandled-exception hook.
@@ -177,7 +177,7 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
 - [x] **6. Route rides and Just ride.**
   - The route library: bundled GPX, the registry, and import through the file picker.
   - The tile map, gradient, virtual gear with its shifter, and FTMS simulation.
-  - **Status:** done except the tile map: the route's shape is drawn without tiles behind it.
+  - **Status:** done. OpenStreetMap's tiles are fetched by the core and kept, two at a time under the app's own User-Agent as OSM's tile policy asks, and dimmed through the Android app's night filter.
 - [x] **7. Workout library.**
   - Registry, repositories, favourites and filters.
   - Import from a file or a pasted link.
@@ -199,6 +199,7 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
   - Version `Version:` in the spec, with no git-tag versioning (`no-fix-version`).
   - A Codefloe release with the single aarch64 RPM, and the add-to-Harpoon QR code in the README.
   - Jolla Store submission if wanted.
+  - **Status:** `harbour-indoorbike-0.1.0-1.aarch64.rpm` builds clean (no inspect surface) and passes `sfdk check`'s Harbour validation. rpmlint's one error, an architecture-dependent file in `/usr/share`, is the core library where Harbour requires an app's own libraries to be. Still to do, each the owner's call: install it on the phone, ride a real trainer from it under Sailjail, and publish.
 
 A first public build could stop after milestone 5 plus Intervals.icu from milestone 8.
 
