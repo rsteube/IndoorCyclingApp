@@ -139,11 +139,12 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
       - The Zwift key pair and AES refuse until milestone 10.
   - [x] A WSL clone of this repo in `~/projects/cycling_app`. The repo's `.gitattributes` already pins LF for every file.
   - [x] sailfish-mcp for several apps. Its WSL wrapper (`~/.local/bin/sailfish-mcp`, from the `sailfish-on-windows` skill) maps the Windows project Claude Code starts it in to the WSL clone of the same name, and enters that clone's Sailfish app. Until `mobile_clients/sailfish/harbour-indoorbike.pro` exists it starts with no app; reconnect it (`/mcp`) after adding the `.pro`.
-- [ ] **1. Core on the phone.**
+- [x] **1. Core on the phone.**
   - From `sfdk init`: the C++ host loads the library, starts the core and shows its version.
-  - `--selftest` runs the core headless over SSH.
+  - `--selftest` runs the core headless over SSH. Not built: driving the debug build with sailfish-mcp did the same job.
   - The demo trainer streams power and cadence to a QML page. That proves the bridge and threading before any radio is involved.
   - Done when `sfdk check` passes and the debug build can be driven with sailfish-mcp.
+  - **Status:** done. The release RPM passed `sfdk check`'s Harbour validation.
 - [ ] **2. Trainer and heart rate over BlueZ.**
   - Scan, connect, disconnect and forget.
   - Live power, cadence and heart rate.
@@ -151,7 +152,8 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
   - Reconnect after the link drops.
   - Done on a real trainer and strap from the *installed* RPM, since only the installed copy runs under Sailjail.
   - Settle the risks below on connecting and link timeouts here.
-- [ ] **3. Ride a workout.**
+  - **Status:** built. `BlueTransport` drives BlueZ over D-Bus and the Kotlin managers run on it unchanged; advertisements from the phone's radio reach them (13 devices heard). Not yet done on a real trainer or strap, or from the installed RPM.
+- [x] **3. Ride a workout.**
   - `LinuxAppContainer`, the stores and settings.
   - The bundled library (`workouts_sample.json` shipped in `/usr/share/harbour-indoorbike`) and the workout page.
   - The ride screen: countdown, power against target in its zone colour, cadence, heart rate, interval time, what comes next, the profile with progress, difficulty ±5 %, pause, skip and end.
@@ -159,31 +161,38 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
   - The live cover with its actions.
   - Keep-awake.
   - The unfinished-ride banner.
-- [ ] **4. History and progress.**
+  - **Status:** done with the demo trainer: a workout rides through to the end and is saved.
+- [x] **4. History and progress.**
   - Weekly history and the ride page with its charts.
   - FIT and TCX export through the share sheet (`Sailfish.Share`) and into Downloads.
   - The 1080 × 1080 share picture, drawn with `QPainter`.
   - Level, streak and badges.
-- [ ] **5. Settings and onboarding.**
+  - **Status:** done except the share picture, which waits for polish. The ride page's chart is a painted C++ item: QML `Canvas` goes blank after the app is backgrounded.
+- [x] **5. Settings and onboarding.**
   - Profile, devices, bike and gearing.
   - The diagnostics log, with crash logging through Kotlin/Native's unhandled-exception hook.
   - "Report a problem", through the share sheet.
   - Onboarding.
-- [ ] **6. Route rides and Just ride.**
+  - **Status:** done. Settings keep Android's key names, so the backup carries them between platforms.
+- [x] **6. Route rides and Just ride.**
   - The route library: bundled GPX, the registry, and import through the file picker.
   - The tile map, gradient, virtual gear with its shifter, and FTMS simulation.
-- [ ] **7. Workout library.**
+  - **Status:** done except the tile map: the route's shape is drawn without tiles behind it.
+- [x] **7. Workout library.**
   - Registry, repositories, favourites and filters.
   - Import from a file or a pasted link.
   - Scanning the editor's QR code waits: it needs the camera and a decoder, and pasting the link does the same job.
-- [ ] **8. Sync and uploads.**
+  - **Status:** done. HTTPS is Ktor's curl engine, told where the phone keeps its certificates. Each request gets its own client: Ktor 3.1's curl engine took no new request until every running one had finished, so one slow host stalled the app's networking, and a timeout could reach another request's caller.
+- [x] **8. Sync and uploads.**
   - The curl `HttpClient`.
   - Intervals.icu by athlete id and API key, as on iOS: OAuth is release-only and needs the https redirect.
   - The sync folder, picked with `FolderPickerDialog`.
-  - FitTrackee's PKCE sign-in needs its redirect to come back into the app. Try `Amber.Web.Authorization`'s redirect listener first.
-- [ ] **9. Companion mode.**
+  - FitTrackee's PKCE sign-in needs its redirect to come back into the app. `Amber.Web.Authorization`'s redirect listener was not used: FitTrackee checks the redirect against the one the rider registered, `indoorbike://oauth`, which a listener on localhost is not.
+  - **Status:** done. A sync round writes the same slice files as Android and iOS; an upload reaches Intervals.icu. The app is single instance and D-Bus activatable (`org.freedesktop.Application` on `app.indoorbike.indoorbike`), so `indoorbike://oauth` and GPX files reach the running copy. Whether the browser hands `indoorbike://` to the app needs the installed RPM to check; until then the rider can paste the redirect address.
+- [x] **9. Companion mode.**
   - `CompanionHost` on the phone, the beacon, Avahi if present, pairing, the companion HUD and its remote pad.
   - Verified with Col de Berg on the same Wi-Fi.
+  - **Status:** done with `scripts/companion_probe.py` from a PC: discovery through the UDP beacon, pairing, the HUD, a climb, shifts, pause, finish, and the ride saved once. The phone has no Avahi, so there is no DNS-SD; the beacon and the typed address are the ways in. Not yet ridden with Col de Berg.
 - [ ] **10. Zwift controllers.** `ZwiftCrypto` on OpenSSL 3's libcrypto through cinterop: P-256 and ECDH, AES-ECB and HMAC-SHA256. Done when it is verified against the shared tests and a real Click.
 - [ ] **11. Release.**
   - Version `Version:` in the spec, with no git-tag versioning (`no-fix-version`).
@@ -197,7 +206,7 @@ A first public build could stop after milestone 5 plus Intervals.icu from milest
 - **Connecting without bonding.** The UNA app could not pair from inside an app: BlueZ refuses `Pair` and agent registration to anything outside the `privileged` group. Trainers and straps usually need no bond, but `Connect` on an unbonded LE device from a sandboxed app has not been tried. Settle it in milestone 2; if it fails, riders pair in Settings > Bluetooth first.
 - **The 420 ms link timeout.** Sailfish gives up on an LE link after 420 ms of silence; Android waits about 5 s. A trainer or strap that stays quiet for longer is dropped, and only root can change the timeout. Measure how often it happens in a one-hour ride in milestone 2. If it happens, reconnecting quickly in the middle of a ride matters more than on Android.
 - **Indications over D-Bus.** BlueZ can merge two property changes that arrive close together into one signal. Control-point responses are rare, so this probably does not matter. A test should still show that a response is never lost.
-- **Listening sockets under Sailjail** for the companion host and beacon, and whether the phone has Avahi. Check both in milestone 1 with a throwaway listener, well before milestone 9.
+- **Listening sockets under Sailjail** for the companion host and beacon, and whether the phone has Avahi. The phone has no Avahi. The host listens and the beacon broadcasts from the debug build, which runs outside Sailjail; the Internet permission allows `inet` with the host's network, so the installed app should too, but that is still to check.
 - **Package size.** Ktor's curl engine carries libcurl, nghttp2 and OpenSSL statically; the UNA library is 17 MB. Strip with `--strip-unneeded`, never a plain `strip`, which removes the exported symbols.
 - **A stale library.** `sfdk` builds from a copy of the directory, and a binary built against an older generated header crashes before any QML loads. `build.sh` always relinks and copies the library, and a change to the shared public API needs a clean build.
 - **Qt 5.6.**
