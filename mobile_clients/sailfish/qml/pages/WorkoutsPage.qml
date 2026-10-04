@@ -40,6 +40,18 @@ Page {
                 }
                 MenuItem {
                     visible: item.workout.imported
+                    text: qsTr("Rename")
+                    onClicked: {
+                        var id = model.key
+                        var dialog = pageStack.push(Qt.resolvedUrl("RenameDialog.qml"),
+                                                    { title: qsTr("Rename workout"), name: item.workout.name })
+                        dialog.accepted.connect(function() {
+                            core.request({ "cmd": "workouts.rename", "id": id, "name": dialog.name }, null)
+                        })
+                    }
+                }
+                MenuItem {
+                    visible: item.workout.imported
                     text: qsTr("Delete")
                     onClicked: item.remorseDelete(function() {
                         core.request({ "cmd": "workouts.delete", "id": model.key }, null)
