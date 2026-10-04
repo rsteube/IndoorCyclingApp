@@ -16,7 +16,14 @@ Page {
         return routes.get(routeId)
     }
 
+    readonly property bool trainerReady: !!(core.state.trainer || {}).connected
+
+    // A ride needs the trainer: without one, pairing comes first, as on Android.
     function ride(fromStart) {
+        if (!trainerReady) {
+            pageStack.push(Qt.resolvedUrl("PairPage.qml"))
+            return
+        }
         if (core.send({ "cmd": "ride.prepareRoute", "id": routeId, "fromStart": fromStart }).ok)
             pageStack.push(Qt.resolvedUrl("RideScreenPage.qml"))
     }
@@ -53,7 +60,7 @@ Page {
                 height: Math.min(width, Theme.itemSizeHuge * 2)
                 points: page.route.shape || []
                 fraction: page.route.progressMeters ? page.route.progressMeters / page.route.distanceMeters : -1
-                color: Theme.secondaryHighlightColor
+                color: Theme.secondaryColor
                 riddenColor: Theme.highlightColor
                 markerColor: Theme.primaryColor
                 lineWidth: Theme.paddingSmall / 2
@@ -104,11 +111,12 @@ Page {
 
             ButtonLayout {
                 Button {
-                    text: page.route.progressMeters ? qsTr("Carry on") : qsTr("Ride this route")
+                    text: !page.trainerReady ? qsTr("Pair a trainer to ride")
+                          : page.route.progressMeters ? qsTr("Carry on") : qsTr("Ride this route")
                     onClicked: page.ride(false)
                 }
                 Button {
-                    visible: !!page.route.progressMeters
+                    visible: !!page.route.progressMeters && page.trainerReady
                     text: qsTr("From the start")
                     onClicked: page.ride(true)
                 }

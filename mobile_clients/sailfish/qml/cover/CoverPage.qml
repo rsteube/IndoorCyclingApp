@@ -53,6 +53,8 @@ CoverBackground {
             visible: cover.riding
             color: Theme.highlightColor
             text: ride.state === "Paused" ? qsTr("Paused")
+                  : ride.state === "Countdown" ? (ride.countdown > 0 ? String(ride.countdown) : qsTr("Go!"))
+                  : ride.state === "Standby" ? (ride.canEndAndSave ? qsTr("Auto-paused") : qsTr("Pedal to start"))
                   : ride.kind === "workout" ? Format.clock(cover.segment.remaining)
                   : Format.clock(ride.rideSeconds)
         }

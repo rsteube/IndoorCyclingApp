@@ -14,7 +14,14 @@ Page {
     }
     readonly property var workouts: core.list("workouts")
 
+    readonly property bool trainerReady: !!(core.state.trainer || {}).connected
+
+    // A ride needs the trainer: without one, pairing comes first, as on Android.
     function ride() {
+        if (!trainerReady) {
+            pageStack.push(Qt.resolvedUrl("PairPage.qml"))
+            return
+        }
         var reply = core.send({ "cmd": "ride.prepareWorkout", "id": workoutId })
         if (reply.ok)
             pageStack.push(Qt.resolvedUrl("RideScreenPage.qml"))
@@ -33,7 +40,7 @@ Page {
                                        "favourite": !page.workout.favourite })
             }
             MenuItem {
-                text: qsTr("Ride this workout")
+                text: page.trainerReady ? qsTr("Ride this workout") : qsTr("Pair a trainer to ride")
                 onClicked: page.ride()
             }
         }
@@ -108,7 +115,7 @@ Page {
 
             Button {
                 anchors.horizontalCenter: parent.horizontalCenter
-                text: qsTr("Ride this workout")
+                text: page.trainerReady ? qsTr("Ride this workout") : qsTr("Pair a trainer to ride")
                 onClicked: page.ride()
             }
 

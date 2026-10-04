@@ -23,6 +23,16 @@ Page {
         pageStack.push(Qt.resolvedUrl("RideScreenPage.qml"))
     }
 
+    // A ride needs the trainer: without one, pairing comes first, as on Android.
+    function rideWith(command) {
+        if (!page.trainer.connected) {
+            pageStack.push(Qt.resolvedUrl("PairPage.qml"))
+            return
+        }
+        if (core.send(command).ok)
+            page.openRide()
+    }
+
     // The first start: once the settings have arrived and say the rider has not been welcomed.
     function welcomeIfNew() {
         if (welcomed || !settings || settings.onboarded || status !== PageStatus.Active)
@@ -123,7 +133,7 @@ Page {
 
                 ButtonLayout {
                     Button {
-                        visible: !!page.unfinished && !page.unfinished.finished && page.unfinished.kind !== "route"
+                        visible: !!page.unfinished && !page.unfinished.finished
                         text: qsTr("Continue")
                         onClicked: {
                             if (core.send({ "cmd": "unfinished.continue" }).ok)
@@ -181,11 +191,8 @@ Page {
 
                 ButtonLayout {
                     Button {
-                        text: qsTr("Ride it")
-                        onClicked: {
-                            if (core.send({ "cmd": "ride.prepareWorkout", "id": "starter-15min" }).ok)
-                                page.openRide()
-                        }
+                        text: page.trainer.connected ? qsTr("Ride it") : qsTr("Pair a trainer to ride")
+                        onClicked: page.rideWith({ "cmd": "ride.prepareWorkout", "id": "starter-15min" })
                     }
                     Button {
                         text: qsTr("Not now")
@@ -212,12 +219,11 @@ Page {
 
             ChoiceItem {
                 title: qsTr("Just ride")
-                description: qsTr("No plan. The trainer holds a power you move up and down as you go.")
+                description: page.trainer.connected
+                             ? qsTr("No plan. The trainer holds a power you move up and down as you go.")
+                             : qsTr("No plan. The trainer holds a power you move up and down as you go. Pair a trainer first.")
                 enabled: !page.ride.active
-                onClicked: {
-                    if (core.send({ "cmd": "ride.prepareFreeRide" }).ok)
-                        page.openRide()
-                }
+                onClicked: page.rideWith({ "cmd": "ride.prepareFreeRide" })
             }
 
             ChoiceItem {

@@ -18,6 +18,7 @@ package app.indoorbike.shared.sailfish
 import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.library.WorkoutSource
+import app.indoorbike.shared.workout.HeartRateZoneBand
 import app.indoorbike.shared.workout.PowerZoneBand
 import app.indoorbike.shared.workout.toSummary
 import kotlinx.coroutines.flow.combine
@@ -34,7 +35,8 @@ import kotlinx.serialization.json.put
 /**
  * The workout library as the `workouts` topic: every workout the rider can
  * ride, their own first, with the numbers a list shows worked out at their FTP.
- * Plus the seven zones on `zones`, so QML draws them from the one shared table.
+ * Plus the seven power zones on `zones` and the five heart-rate zones on
+ * `heartRateZones`, so QML draws them from the one shared table.
  */
 internal fun SailfishCore.installWorkouts() {
     bus.publish("zones", flowOf(Unit)) {
@@ -46,6 +48,19 @@ internal fun SailfishCore.installWorkouts() {
                     put("color", argb(zone.color))
                     put("tint", argb(zone.tint))
                     put("ftpHighPct", zone.ftpHighPct)
+                })
+            }
+        }
+    }
+
+    bus.publish("heartRateZones", flowOf(Unit)) {
+        buildJsonArray {
+            HeartRateZoneBand.entries.forEach { zone ->
+                add(buildJsonObject {
+                    put("number", zone.number)
+                    put("label", zone.label)
+                    put("color", argb(zone.color))
+                    put("maxHrHighPct", zone.maxHrHighPct)
                 })
             }
         }

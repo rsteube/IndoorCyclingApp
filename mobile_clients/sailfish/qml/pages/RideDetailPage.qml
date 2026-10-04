@@ -106,22 +106,37 @@ Page {
         contentHeight: column.height + Theme.paddingLarge
 
         PullDownMenu {
-            visible: page.ride !== null && page.ride.canExport
+            visible: page.ride !== null
             MenuItem {
+                text: qsTr("Delete")
+                onClicked: remorse.execute(qsTr("Deleting the ride"), function() {
+                    core.request({ "cmd": "history.delete", "id": parseInt(page.rideId) }, function(reply) {
+                        if (reply.ok)
+                            pageStack.pop()
+                        else
+                            page.error = reply.message
+                    })
+                })
+            }
+            MenuItem {
+                visible: page.ride !== null && page.ride.canExport
                 text: qsTr("Save as FIT in Downloads")
                 onClicked: page.exportTo("fit", StandardPaths.download, function(path) {
                     notice.show(qsTr("Saved %1").arg(path.split("/").pop()))
                 })
             }
             MenuItem {
+                visible: page.ride !== null && page.ride.canExport
                 text: qsTr("Share as a picture")
                 onClicked: page.sharePicture()
             }
             MenuItem {
+                visible: page.ride !== null && page.ride.canExport
                 text: qsTr("Share as TCX")
                 onClicked: page.share("tcx")
             }
             MenuItem {
+                visible: page.ride !== null && page.ride.canExport
                 text: qsTr("Share as FIT")
                 onClicked: page.share("fit")
             }
@@ -313,4 +328,6 @@ Page {
     }
 
     InfoNotice { id: notice }
+
+    RemorsePopup { id: remorse }
 }

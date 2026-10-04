@@ -73,6 +73,7 @@ internal fun SailfishCore.installRoutes() {
             put("id", route.id)
             put("name", route.name)
             put("totalMeters", route.totalDistanceMeters)
+            put("ascentMeters", route.totalAscentMeters)
             put("minElevation", route.minElevationMeters)
             put("maxElevation", route.maxElevationMeters)
             put("shape", shapeOf(route, 400))
@@ -110,6 +111,8 @@ internal fun SailfishCore.installRoutes() {
             put("startedAtMeters", v[9] as Double)
             put("gear", gear + 1)
             put("gears", drivetrain.gears.size)
+            // What the gear asks of the legs at this speed: the number that says whether to shift.
+            put("askedCadence", drivetrain.cadenceRpmFor(v[1] as Double, gear))
             drivetrain.gears.getOrNull(gear)?.let { put("gearLabel", "${it.chainring} x ${it.sprocket}") }
             position?.let {
                 put("latitude", it.latitude)

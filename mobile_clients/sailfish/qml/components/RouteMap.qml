@@ -2,16 +2,21 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import harbour.indoorbike 1.0
 
-// The road on OpenStreetMap's map, framed to fit, with the part ridden and where the rider is, as
-// the Android app shows a route. The core fetches each tile once and keeps it (MapTiles.kt), and
-// they are dimmed for a ride screen (src/maptiles.cpp). With no network the road is drawn on an
-// empty ground and nothing else changes.
+// The road on OpenStreetMap's map, with the part ridden and where the rider is, as the Android
+// app shows a route: the whole road framed to fit, or, with [follow], close in on the rider. The
+// core fetches each tile once and keeps it (MapTiles.kt), and they are dimmed for a ride screen
+// (src/maptiles.cpp). With no network the road is drawn on an empty ground and nothing else
+// changes.
 Item {
     id: root
 
     // [latitude, longitude] pairs along the road.
     property var points: []
     property real fraction: -1
+    // Close in on the rider rather than framing the whole road; needs the rider's position.
+    property bool follow: false
+    property real riderLatitude: NaN
+    property real riderLongitude: NaN
     property alias color: shape.color
     property alias riddenColor: shape.riddenColor
     property alias markerColor: shape.markerColor
@@ -19,7 +24,27 @@ Item {
 
     // Tiles drawn at the phone's scale, so the map's labels can be read on it.
     readonly property real tileSize: 256 * Math.max(1, Theme.pixelRatio)
-    readonly property var frame: frameFor(points, width, height)
+    // Close enough to see the road the rider is on, wide enough to see the next bend, as on Android.
+    readonly property int followZoom: 15
+    readonly property bool following: follow && !isNaN(riderLatitude) && !isNaN(riderLongitude)
+    readonly property var frame: following ? frameAround(riderLatitude, riderLongitude, width, height)
+                                           : frameFor(points, width, height)
+
+    // The tiles in view, as one key, so the set only changes when the view crosses a tile's edge: a
+    // rider moving along does not reload the map four times a second. One key rather than a number
+    // each, because numbers updated one at a time once paired one zoom's first column with
+    // another's last, and the app froze working through millions of tiles.
+    readonly property string rangeKey: frame ? rangeOf(frame).join("/") : ""
+    readonly property var range: rangeKey.length > 0 ? rangeKey.split("/").map(Number) : null
+    readonly property var tiles: tilesFor(rangeKey)
+
+    // A view needs a handful of tiles; more than this is a frame gone wrong, not a map to load.
+    readonly property int maxTiles: 64
+
+    function rangeOf(f) {
+        var n = Math.pow(2, f.z)
+        return [f.z, Math.floor(f.x * n), Math.floor((f.x + f.w) * n), Math.floor(f.y * n), Math.floor((f.y + f.h) * n)]
+    }
 
     function mercator(latitude, longitude) {
         var lat = Math.max(-85.0511, Math.min(85.0511, latitude)) * Math.PI / 180
@@ -27,7 +52,13 @@ Item {
                  "y": (1 - Math.log(Math.tan(lat) + 1 / Math.cos(lat)) / Math.PI) / 2 }
     }
 
-    // The zoom that fits the whole road with a margin, and the part of the world in view.
+    function view(centerX, centerY, z, w, h) {
+        var world = tileSize * Math.pow(2, z)
+        return { "z": z, "world": world, "x": centerX - w / world / 2, "y": centerY - h / world / 2,
+                 "w": w / world, "h": h / world }
+    }
+
+    // The zoom that fits the whole road with a margin.
     function frameFor(points, w, h) {
         if (!points || points.length < 2 || w <= 0 || h <= 0)
             return null
@@ -40,26 +71,30 @@ Item {
         var spanX = Math.max(maxX - minX, 1e-7) * 1.2
         var spanY = Math.max(maxY - minY, 1e-7) * 1.2
         var z = Math.floor(Math.log(Math.min(w / (spanX * tileSize), h / (spanY * tileSize))) / Math.LN2)
-        z = Math.max(1, Math.min(17, z))
-        var world = tileSize * Math.pow(2, z)
-        var viewW = w / world
-        var viewH = h / world
-        return { "z": z, "world": world, "x": (minX + maxX) / 2 - viewW / 2, "y": (minY + maxY) / 2 - viewH / 2,
-                 "w": viewW, "h": viewH }
+        return view((minX + maxX) / 2, (minY + maxY) / 2, Math.max(1, Math.min(17, z)), w, h)
     }
 
-    readonly property var tiles: {
-        var f = frame
-        if (!f)
+    function frameAround(latitude, longitude, w, h) {
+        if (w <= 0 || h <= 0)
+            return null
+        var m = mercator(latitude, longitude)
+        return view(m.x, m.y, followZoom, w, h)
+    }
+
+    function tilesFor(key) {
+        if (key.length === 0)
             return []
-        var n = Math.pow(2, f.z)
+        var r = key.split("/").map(Number)
+        var z = r[0], x0 = r[1], x1 = r[2], y0 = r[3], y1 = r[4]
+        if ((x1 - x0 + 1) * (y1 - y0 + 1) > maxTiles)
+            return []
+        var n = Math.pow(2, z)
         var list = []
-        for (var ty = Math.floor(f.y * n); ty <= Math.floor((f.y + f.h) * n); ++ty) {
+        for (var ty = y0; ty <= y1; ++ty) {
             if (ty < 0 || ty >= n)
                 continue
-            for (var tx = Math.floor(f.x * n); tx <= Math.floor((f.x + f.w) * n); ++tx)
-                list.push({ "z": f.z, "x": ((tx % n) + n) % n, "y": ty,
-                            "left": (tx / n - f.x) * f.world, "top": (ty / n - f.y) * f.world })
+            for (var tx = x0; tx <= x1; ++tx)
+                list.push({ "z": z, "x": ((tx % n) + n) % n, "y": ty, "column": tx - x0, "row": ty - y0 })
         }
         return list
     }
@@ -71,31 +106,37 @@ Item {
         color: Theme.rgba(Theme.highlightDimmerColor, 0.5)
     }
 
-    Repeater {
-        model: root.tiles
+    // The tiles, laid out from the first one in view; the whole layer slides as the view moves.
+    Item {
+        x: root.frame && root.range ? (root.range[1] / Math.pow(2, root.range[0]) - root.frame.x) * root.frame.world : 0
+        y: root.frame && root.range ? (root.range[3] / Math.pow(2, root.range[0]) - root.frame.y) * root.frame.world : 0
 
-        Image {
-            id: tile
+        Repeater {
+            model: root.tiles
 
-            property bool gone: false
+            Image {
+                id: tile
 
-            x: modelData.left
-            y: modelData.top
-            width: root.tileSize
-            height: root.tileSize
-            asynchronous: true
-            smooth: true
-            opacity: status === Image.Ready ? 1 : 0
+                property bool gone: false
 
-            Behavior on opacity { FadeAnimator { } }
+                x: modelData.column * root.tileSize
+                y: modelData.row * root.tileSize
+                width: root.tileSize
+                height: root.tileSize
+                asynchronous: true
+                smooth: true
+                opacity: status === Image.Ready ? 1 : 0
 
-            Component.onCompleted: {
-                core.request({ "cmd": "map.tile", "z": modelData.z, "x": modelData.x, "y": modelData.y }, function(reply) {
-                    if (reply.ok && tile && !tile.gone)
-                        tile.source = "image://maptile" + reply.value
-                })
+                Behavior on opacity { FadeAnimator { } }
+
+                Component.onCompleted: {
+                    core.request({ "cmd": "map.tile", "z": modelData.z, "x": modelData.x, "y": modelData.y }, function(reply) {
+                        if (reply.ok && tile && !tile.gone)
+                            tile.source = "image://maptile" + reply.value
+                    })
+                }
+                Component.onDestruction: gone = true
             }
-            Component.onDestruction: gone = true
         }
     }
 

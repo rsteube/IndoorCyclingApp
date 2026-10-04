@@ -17,6 +17,7 @@ package app.indoorbike.shared.sailfish
 
 import app.indoorbike.shared.Workout
 import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.physics.VirtualSpeed
 import app.indoorbike.shared.session.ActiveSessionSnapshot
 import app.indoorbike.shared.session.RideRecord
 import app.indoorbike.shared.session.RideRoad
@@ -26,6 +27,7 @@ import app.indoorbike.shared.session.describeUnfinishedRide
 import app.indoorbike.shared.session.writeRideToHistory
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.workout.PowerZoneBand
+import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.shared.workout.isSimulation
@@ -65,7 +67,7 @@ internal fun SailfishCore.installRide() {
     val clocks: List<Flow<Any?>> = listOf(
         sm.state, sm.activeWorkout, sm.elapsedSeconds, sm.actualRideSeconds, sm.countdownSeconds,
         sm.currentSegmentIndex, sm.elapsedInSegment, sm.targetBiasPercent, sm.freeRideTargetWatts,
-        sm.untrackedLabel, sm.virtualDistanceMeters, userSettings.ftp,
+        sm.untrackedLabel, sm.virtualDistanceMeters, userSettings.ftp, trainerManager.power, userSettings.weightKg,
     )
     bus.publish("ride", combine(clocks) { it.toList() }, minIntervalMs = 250) { v ->
         encodeRide(
@@ -81,6 +83,7 @@ internal fun SailfishCore.installRide() {
             untracked = v[9] as String?,
             distanceMeters = v[10] as Double,
             ftp = v[11] as Int,
+            virtualSpeedKmh = (v[13] as Float).takeIf { it > 0f }?.let { VirtualSpeed.speedKmh(v[12] as Int, it) },
         )
     }
 
@@ -247,6 +250,21 @@ internal suspend fun SailfishCore.saveRide(
     return id
 }
 
+/**
+ * Whether "End and save" is offered, as the Android ride screen decides it:
+ * paused, or stopped pedalling in a ride that has started, and while riding
+ * too in an open-ended ride, whose only way to finish is ending it. A structured
+ * workout riding along finishes by itself, so it is paused first; a ride that
+ * never started has nothing to save.
+ */
+private fun canEndAndSave(state: WorkoutState, workout: Workout?, rideSeconds: Int): Boolean {
+    val openEnded = workout != null && (workout.isFreeRide || workout.isSimulation)
+    return state == WorkoutState.Paused ||
+        (state == WorkoutState.Standby && rideSeconds > 0) ||
+        (state == WorkoutState.Untracked && rideSeconds > 0) ||
+        (openEnded && state == WorkoutState.Active && rideSeconds > 0)
+}
+
 private fun encodeRide(
     state: WorkoutState,
     workout: Workout?,
@@ -260,9 +278,16 @@ private fun encodeRide(
     untracked: String?,
     distanceMeters: Double,
     ftp: Int,
+    virtualSpeedKmh: Double?,
 ): JsonElement = buildJsonObject {
     put("state", state.name)
     put("active", state != WorkoutState.Idle && state != WorkoutState.Completed)
+    // Riding has been recorded: a ride that has started, as opposed to one
+    // still waiting for the trainer or the pedals.
+    put("started", rideSeconds > 0)
+    put("openEnded", workout != null && (workout.isFreeRide || workout.isSimulation || workout.isCompanion))
+    put("canEndAndSave", canEndAndSave(state, workout, rideSeconds))
+    put("virtualSpeedKmh", virtualSpeedKmh)
     put("workoutId", workout?.id)
     put("kind", workout?.let(::kindOf))
     put("elapsed", elapsed)
@@ -291,6 +316,13 @@ private fun encodeRide(
             put("targetWatts", if (workout.isFreeRide) freeRideWatts else if (structured) target(segment.powerPercentFTP) else 0)
             put("cadenceMin", segment.cadenceMinRpm)
             put("cadenceMax", segment.cadenceMaxRpm)
+            segment.cadenceTarget?.let { cadence ->
+                put("cadence", buildJsonObject {
+                    put("label", cadence.label)
+                    put("low", cadence.lowBoundRpm)
+                    put("high", cadence.highBoundRpm)
+                })
+            }
         })
     }
     if (structured) {
