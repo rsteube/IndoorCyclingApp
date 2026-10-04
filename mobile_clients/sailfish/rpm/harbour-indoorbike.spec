@@ -1,7 +1,7 @@
 Name:       harbour-indoorbike
 
 Summary:    Indoor cycling with a smart trainer
-Version:    0.1.0
+Version:    0.1.1
 Release:    1
 License:    GPLv3
 URL:        https://indoorbike.app
