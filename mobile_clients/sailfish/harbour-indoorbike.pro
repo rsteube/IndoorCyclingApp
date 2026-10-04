@@ -70,13 +70,15 @@ CORE_LIB = $$CORE_DIR/libindoorbikecore.so
 INCLUDEPATH += $$CORE_DIR
 LIBS += -L$$CORE_DIR -lindoorbikecore
 
-# Harbour's place for an app's own libraries. Two rpath entries: the installed place, and the same
-# place relative to the binary, which is how a build pushed under the home directory with
-# share/<TARGET>/lib beside it finds it too. Both given to the linker directly: QMAKE_RPATHDIR
-# prefixes the SDK's sysroot, and the binary would carry a path from the build machine.
+# Harbour's place for an app's own libraries. Two rpath entries: the place relative to the binary,
+# and the installed place. Relative first: installed, it is the same folder, and a build pushed
+# under the home directory with share/<TARGET>/lib beside it must find its own library before an
+# installed copy's, or it runs the installed core. Both given to the linker directly:
+# QMAKE_RPATHDIR prefixes the SDK's sysroot, and the binary would carry a path from the build
+# machine.
 CORE_INSTALL_DIR = /usr/share/$${TARGET}/lib
-QMAKE_LFLAGS += -Wl,-rpath,$$CORE_INSTALL_DIR
 QMAKE_LFLAGS += -Wl,-rpath,\'\$\$ORIGIN/../share/$${TARGET}/lib\'
+QMAKE_LFLAGS += -Wl,-rpath,$$CORE_INSTALL_DIR
 !exists($$PWD/data/workouts_sample.json) {
     error("The package's data is missing. Run ./sync-core.sh first; see docs/SAILFISH_PORT.md.")
 }

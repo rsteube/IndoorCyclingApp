@@ -41,6 +41,11 @@ int main(int argc, char *argv[])
 
 #ifdef INDOORBIKE_DEV
     const bool debug = true;
+    // A debug build pushed beside an installed copy keeps data of its own. libsailfishapp names the
+    // app after an installed .desktop file's X-Sailjail section when there is one, which handed this
+    // build the installed app's history and settings: its test rides landed in the rider's history.
+    app->setOrganizationName(QStringLiteral("harbour-indoorbike"));
+    app->setApplicationName(QStringLiteral("harbour-indoorbike"));
 #else
     const bool debug = false;
 #endif
