@@ -744,8 +744,29 @@ a.repo-row:hover > .icon { transform: translateX(3px); }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
   gap: var(--s-4);
-  align-items: start;
+  /* Cards side by side are one height, whatever each one holds. */
+  align-items: stretch;
 }
+.platform-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-bottom: var(--s-5);
+}
+.platform-logo {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: var(--r-lg);
+  display: grid;
+  place-items: center;
+  background: var(--bg-1);
+  color: var(--fg-1);
+}
+.platform-logo svg { width: 32px; height: 32px; fill: currentColor; }
+/* The robot in its own green, as Android's brand guidelines draw it. */
+.platform-logo-android { color: #3ddc84; }
+.platform-logo-iphone { color: var(--fg-2); }
 /* The platform still to come: one slim card across the grid. */
 .platform-card.platform-soon {
   grid-column: 1 / -1;
@@ -755,7 +776,7 @@ a.repo-row:hover > .icon { transform: translateX(3px); }
   justify-content: space-between;
   gap: var(--s-4);
 }
-.platform-soon .platform-lead { margin-bottom: 0; }
+.platform-soon .platform-head { margin-bottom: 0; }
 .platform-soon .install-rows { flex: 0 1 360px; }
 .install-card.platform-card h3 {
   display: flex;
@@ -764,7 +785,7 @@ a.repo-row:hover > .icon { transform: translateX(3px); }
   margin: 0 0 4px;
 }
 .platform-card .platform-lead {
-  margin: 0 0 var(--s-5);
+  margin: 0;
   font-weight: 500;
   font-size: 14px;
   line-height: 1.5;
@@ -968,6 +989,13 @@ details.faq-item p a { color: var(--fg-1); text-decoration: underline; text-unde
   color: var(--fg-2);
 }
 .site-footer a { color: var(--fg-2); transition: color var(--dur-fast) var(--ease-out); }
+.site-footer .footer-fine {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
 .site-footer a:hover { color: var(--fg-1); }
 
 /* ---------- Shared bits the tool pages lean on ---------- */
