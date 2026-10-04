@@ -815,6 +815,8 @@ a.install-row:hover > .icon { transform: translate(2px, -2px); }
   color: var(--fg-3);
 }
 .install-note b { color: var(--fg-2); }
+.install-note a { color: var(--fg-2); text-decoration: underline; text-underline-offset: 2px; }
+.install-note code { overflow-wrap: anywhere; }
 
 /* ---------- The deal ---------- */
 .deal-list {
