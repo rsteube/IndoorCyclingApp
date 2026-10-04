@@ -159,8 +159,10 @@ class WebSocket:
         return out
 
     def send_text(self, text):
-        payload = text.encode()
-        header = bytearray([0x81])  # FIN + text
+        self._send(0x1, text.encode())
+
+    def _send(self, opcode, payload):
+        header = bytearray([0x80 | opcode])  # FIN + the opcode
         mask = os.urandom(4)
         n = len(payload)
         if n < 126:
@@ -197,7 +199,11 @@ class WebSocket:
             code = struct.unpack(">H", payload[:2])[0] if len(payload) >= 2 else 0
             return "close", "%d %s" % (code, payload[2:].decode("utf-8", "replace"))
         if opcode == 0x9:  # ping
-            self.sock.sendall(b"\x8a\x80" + os.urandom(4))
+            # The pong carries the ping's payload back (RFC 6455, 5.5.3). The
+            # phone's pinger waits for its own payload and closes the socket
+            # with 1011 "Ping timeout" when it never comes, as an empty pong
+            # did, 15 s into every ride.
+            self._send(0xA, payload)
             return "ping", ""
         return "other", ""
 

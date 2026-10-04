@@ -1432,6 +1432,10 @@ class CompanionHost(
      */
     private fun rememberBrand() {
         val store = brands ?: return
+        // No ride to file it under yet: the ride's start files it, and this
+        // used to leave a ride_brands/0 behind for every companion that sent
+        // its brand on connecting.
+        if (sessionManager.sessionStartTimeEpoch == 0L) return
         val name = _look.value?.name ?: controller?.session?.clientName ?: return
         store.keep(
             rideStartEpochMs = sessionManager.sessionStartTimeEpoch,
