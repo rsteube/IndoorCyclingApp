@@ -30,6 +30,7 @@ import app.indoorbike.shared.progression.formatXp
 import app.indoorbike.shared.progression.riderLevelTitle
 import app.indoorbike.shared.progression.sessionKilojoules
 import app.indoorbike.shared.progression.timeInZoneSeconds
+import app.indoorbike.shared.route.rideRoute
 import app.indoorbike.shared.util.PosixFiles
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.util.localUtcOffsetMs
@@ -122,6 +123,26 @@ internal fun SailfishCore.installHistory() {
             put("timeInZone", buildJsonArray { timeInZoneSeconds(watts, ftp).forEach { add(JsonPrimitive(it)) } })
             put("plan", if (workout == null) JsonNull else encodeSegments(workout.segments))
             put("peakPower", watts.maxOrNull() ?: 0)
+            put("screenshots", buildJsonArray {
+                screenshots.list(session.startTimeEpoch).forEach { add(JsonPrimitive(it)) }
+            })
+            put("brandName", brands.name(session.startTimeEpoch))
+            put("brandIcon", brands.iconPath(session.startTimeEpoch))
+            // The road it was on, a route ride's or the one a companion described, as iOS's
+            // and Android's summaries draw it.
+            rideRoute(session, routeLibrary::find)?.takeIf { !it.isEmpty }?.let { route ->
+                put("route", buildJsonObject {
+                    put("name", route.name)
+                    put("totalMeters", route.totalDistanceMeters)
+                    put("ascentMeters", route.totalAscentMeters)
+                    put("riddenMeters", session.routeDistanceMeters)
+                    put("startedAtMeters", session.routeStartMeters)
+                    put("climbedMeters", session.routeElevationGainMeters)
+                    put("startClimbedMeters", session.routeStartElevationGainMeters)
+                    put("shape", shapeOf(route, 300))
+                    put("profile", profileOf(route, 200))
+                })
+            }
             put("highlight", workout?.let { toughestInterval(it.segments) } ?: JsonNull)
         })
     }

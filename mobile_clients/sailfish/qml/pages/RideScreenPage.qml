@@ -81,11 +81,23 @@ Page {
         case "Standby":
             if (ride.canEndAndSave)
                 return qsTr("Auto-paused · pedal to resume")
+            // A companion ride starts when the game says so, not on the pedals.
+            if (isCompanion)
+                return qsTr("Ready · start the ride in the game")
             return trainer.connected ? qsTr("Pedal to start") : qsTr("Waiting for the trainer")
         case "Paused":
             return qsTr("Paused · trainer at 0 W")
         case "Untracked":
-            return ride.untracked ? qsTr("Not recording · %1").arg(ride.untracked) : qsTr("Not recording")
+            // What matters first: none of this goes into the ride. Then what the rider is doing,
+            // and what they are held at, never a target the trainer is not holding.
+            var text = qsTr("Not recording")
+            if (ride.untracked)
+                text += " · " + ride.untracked
+            if (croad.powerReleased)
+                text += " · " + qsTr("target let go, pedal to take it back")
+            else if (croad.powerTarget > 0)
+                text += " · " + qsTr("Target %1 W").arg(croad.powerTarget)
+            return text
         default:
             return ""
         }
@@ -96,18 +108,67 @@ Page {
     readonly property var companion: core.state.companion || ({})
     readonly property var croad: core.state.companionRoad || ({})
     readonly property string phase: companion.phase || "LIVE"
-    readonly property string companionName: companion.lookName || companion.controllerName || companion.companionName
-                                             || qsTr("Companion")
-    readonly property string companionNotice: {
-        if (companion.screenshotMessage)
-            return companion.screenshotMessage
-        if (!companion.controllerName)
-            return qsTr("No companion connected: the road is flat")
-        if (croad.roadStale)
-            return qsTr("%1 has gone quiet: flattening the road").arg(companionName)
-        return ""
-    }
+    readonly property string companionName: companion.lookName || companion.companionName || companion.controllerName
+                                             || rideWorkout.name || qsTr("Companion")
     readonly property var controls: companion.controls || null
+    // The companion's own ride, saved by the host as each one ends: the rules Android's ride screen
+    // keys its companion chrome on.
+    readonly property bool hostSavesRide: isCompanion && !!companion.hosting
+    readonly property var sessionRides: companion.sessionRides || []
+    readonly property bool panelShowing: hostSavesRide && !!companion.companionName && phase !== "LIVE"
+    readonly property bool sessionLive: hostSavesRide && !!companion.companionName && phase !== "ENDED"
+    readonly property bool rideUnderway: started && rideState !== "Completed" && rideState !== "Idle"
+    readonly property color successColor: "#1FB373"
+
+    // "Saved to history" for a while after each ride the host saves, as on Android.
+    property bool announcingSaved: false
+    property int savedCount: 0
+    onSessionRidesChanged: {
+        if (sessionRides.length > savedCount) {
+            announcingSaved = true
+            savedAnnounce.restart()
+        }
+        savedCount = sessionRides.length
+    }
+    Timer {
+        id: savedAnnounce
+        interval: 6000
+        onTriggered: page.announcingSaved = false
+    }
+
+    // What the header says above the ride, in Android's order: a ride just saved, the screenshot
+    // asked for, no companion, a companion gone quiet.
+    readonly property var companionNotice: {
+        if (announcingSaved) {
+            var last = sessionRides.length > 0 ? sessionRides[sessionRides.length - 1].name : ""
+            return { "text": last ? qsTr("Saved to history: %1").arg(last) : qsTr("Ride saved to history"),
+                     "color": successColor }
+        }
+        if (panelShowing)
+            return null
+        if (companion.screenshotMessage)
+            return { "text": companion.screenshotMessage,
+                     "color": companion.screenshotKind === "SAVED" ? successColor
+                              : companion.screenshotKind === "FAILED" ? warningColor : Theme.highlightColor }
+        if (!companion.controllerName)
+            return { "text": qsTr("No companion connected - flat road"), "color": warningColor }
+        if (croad.roadStale)
+            return { "text": qsTr("%1 has gone quiet - flattening the road").arg(companionName), "color": warningColor }
+        return null
+    }
+
+    // Under the companion's name: the course, its world, the rides saved, and where the game is.
+    readonly property string companionSubtitle: {
+        var parts = []
+        var course = croad.courseName || companion.label
+        var world = croad.courseWorld || companion.world
+        if (course) parts.push(course)
+        if (world) parts.push(world)
+        if (sessionRides.length === 1) parts.push(qsTr("1 ride saved"))
+        else if (sessionRides.length > 1) parts.push(qsTr("%1 rides saved").arg(sessionRides.length))
+        if (companion.controllerAddress) parts.push(qsTr("from %1").arg(companion.controllerAddress))
+        return parts.join(" · ")
+    }
 
     function controlEnabled(control) {
         return !!controls && !!controls.enabled && controls.enabled.indexOf(control) >= 0
@@ -117,34 +178,44 @@ Page {
         pageStack.pop(pageStack.find(function(p) { return p.objectName === "ridePage" }))
     }
 
-    // Leave the ride screen once a companion session is over: back to the Companion page when it
-    // is still open, which keeps the connection for the next session.
+    // Done with a companion session: home, as on Android. Leaving closes the socket.
     function finishCompanion() {
         core.send({ "cmd": "ride.close" })
-        var companionPage = pageStack.find(function(p) { return p.objectName === "companionPage" })
-        if (companionPage) {
-            pageStack.pop(companionPage)
-        } else {
-            core.send({ "cmd": "companion.stop" })
-            backToRidePage()
-        }
+        backToRidePage()
     }
 
     // What the last completed ride came to, from the core's ride.saved.
     property var saved: null
 
+    // A ride the game left in the middle of: shown in the panel until it is ended.
+    readonly property bool inProgress: phase === "COMPANION_AWAY" && rideUnderway
+
+    // "12:30 · 4.2 km · 210 W avg", as Android's session panel lists a ride.
+    function rideSummary(seconds, meters, watts) {
+        var parts = [Format.clock(seconds)]
+        if (meters >= 10)
+            parts.push(qsTr("%1 km").arg((meters / 1000).toFixed(1)))
+        if (watts > 0)
+            parts.push(qsTr("%1 W avg").arg(watts))
+        return parts.join(" · ")
+    }
+
     allowedOrientations: Orientation.All
 
     // Riding, a swipe back must not throw the ride away: the pull-down holds End and save. Before
-    // the ride has started, and while it is paused, leaving is allowed, as Android's back is.
-    backNavigation: isCompanion || !(rideState === "Active" && started)
+    // the ride has started, and while it is paused, leaving is allowed, as Android's back is. A
+    // companion session that is still on is ended from the pull-down, which is what Android's back
+    // does, and its summary stays on this screen.
+    backNavigation: isCompanion ? !sessionLive : !(rideState === "Active" && started)
 
     // Leaving the screen leaves the ride, as on Android: one that never started is gone, one that
-    // had (paused, auto-paused) is kept and the Ride page offers it back as unfinished. A companion
-    // ride belongs to its Companion page instead.
+    // had (paused, auto-paused) is kept and the Ride page offers it back as unfinished. Leaving a
+    // companion ride closes its socket too.
     Component.onDestruction: {
-        if (!isCompanion && ride.active)
+        if (ride.active)
             core.send({ "cmd": "ride.leave" })
+        if (isCompanion)
+            core.send({ "cmd": "companion.stop" })
     }
 
     // The screen stays on for the whole ride, the way a ride screen on a stand is used.
@@ -165,17 +236,24 @@ Page {
         contentHeight: Math.max(page.height, content.height + Theme.paddingLarge)
 
         PullDownMenu {
-            visible: !!ride.active && (!page.isCompanion || page.phase === "LIVE")
+            visible: !!ride.active || (page.isCompanion && page.sessionLive)
 
             MenuItem {
-                visible: page.isCompanion && !!page.companion.controllerName
+                visible: page.hostSavesRide && !!page.companion.controllerName
                 text: qsTr("Take back control")
                 onClicked: core.send({ "cmd": "companion.revoke" })
             }
             MenuItem {
-                visible: page.isCompanion && !!page.companion.screenshotsOffered
+                visible: page.sessionLive && !page.panelShowing
+                text: page.rideUnderway ? qsTr("End ride and session") : qsTr("End session")
+                onClicked: remorse.execute(qsTr("Ending the session"), function() {
+                    core.send({ "cmd": "companion.endSession" })
+                })
+            }
+            MenuItem {
+                visible: page.hostSavesRide && !!page.companion.screenshotsOffered && page.rideUnderway
                 enabled: !page.companion.screenshotWaiting
-                text: qsTr("Take a screenshot")
+                text: page.companion.screenshotWaiting ? qsTr("Asking for a screenshot") : qsTr("Take a screenshot")
                 onClicked: core.send({ "cmd": "companion.screenshot" })
             }
             MenuItem {
@@ -187,7 +265,7 @@ Page {
                 }
             }
             MenuItem {
-                visible: page.canEnd || (page.isCompanion && page.started)
+                visible: page.canEnd && !page.panelShowing
                 text: qsTr("End and save")
                 onClicked: remorse.execute(qsTr("Ending and saving the ride"), function() {
                     core.send({ "cmd": "ride.end" })
@@ -199,9 +277,25 @@ Page {
                 onClicked: core.send({ "cmd": "ride.skip" })
             }
             MenuItem {
-                visible: page.rideState === "Active" || page.rideState === "Untracked" || page.rideState === "Paused"
+                visible: (page.rideState === "Active" || page.rideState === "Untracked" || page.rideState === "Paused")
+                         && !page.panelShowing
                 text: page.rideState === "Paused" ? qsTr("Resume") : qsTr("Pause")
                 onClicked: core.send({ "cmd": page.rideState === "Paused" ? "ride.resume" : "ride.pause" })
+            }
+        }
+
+        // A companion ride's header in the game's colours, with a line of its accent under it.
+        Rectangle {
+            width: parent.width
+            height: header.height
+            visible: page.hostSavesRide && !!page.companion.header && content.visible
+            color: page.companion.header || "transparent"
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: Theme.paddingSmall / 2
+                color: page.companion.accent || "transparent"
             }
         }
 
@@ -213,10 +307,12 @@ Page {
             visible: page.isCompanion ? page.phase === "LIVE" : page.rideState !== "Completed"
 
             PageHeader {
+                id: header
+
                 title: page.isCompanion ? page.companionName : (page.rideWorkout.name || qsTr("Ride"))
                 description: {
                     if (page.isCompanion)
-                        return [page.companion.label, page.companion.world].filter(function(x) { return !!x }).join(" · ")
+                        return page.companionSubtitle
                     if (page.structured)
                         return Format.clock(ride.elapsed || 0) + " / " + Format.clock(ride.totalSeconds || 0) + " · "
                                + qsTr("Interval %1 of %2").arg((ride.segmentIndex || 0) + 1).arg(ride.segmentCount || 0)
@@ -224,28 +320,43 @@ Page {
                 }
             }
 
-            // The game: its icon and colour, and what it is doing to the road.
+            // The game: its mark, and what it is saying or doing to the road.
             Row {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 spacing: Theme.paddingMedium
-                visible: page.isCompanion && (!!page.companion.icon || page.companionNotice.length > 0)
+                visible: page.hostSavesRide
 
-                Image {
+                // Its icon, or its initial on its accent colour.
+                Rectangle {
                     width: Theme.iconSizeMedium
                     height: width
-                    visible: !!page.companion.icon
-                    source: page.companion.icon ? "file://" + page.companion.icon : ""
-                    sourceSize.width: width
-                    sourceSize.height: height
+                    radius: Theme.paddingSmall
+                    color: page.companion.accent || Theme.rgba(Theme.highlightBackgroundColor, 0.4)
+
+                    Image {
+                        anchors.fill: parent
+                        visible: !!page.companion.icon
+                        source: page.companion.icon ? "file://" + page.companion.icon : ""
+                        sourceSize.width: width
+                        sourceSize.height: height
+                    }
+                    Label {
+                        anchors.centerIn: parent
+                        visible: !page.companion.icon
+                        color: page.companion.onAccent || Theme.primaryColor
+                        font.pixelSize: Theme.fontSizeLarge
+                        text: page.companionName.charAt(0).toUpperCase()
+                    }
                 }
                 Label {
-                    width: parent.width - (page.companion.icon ? Theme.iconSizeMedium + Theme.paddingMedium : 0)
+                    width: parent.width - Theme.iconSizeMedium - Theme.paddingMedium
                     anchors.verticalCenter: parent.verticalCenter
                     wrapMode: Text.Wrap
-                    color: page.companion.accent || Theme.highlightColor
+                    color: page.companionNotice ? page.companionNotice.color : Theme.secondaryHighlightColor
                     font.pixelSize: Theme.fontSizeSmall
-                    text: page.companionNotice
+                    text: page.companionNotice ? page.companionNotice.text
+                                               : (page.companion.controllerName ? qsTr("%1 is driving the ride").arg(page.companion.controllerName) : "")
                 }
             }
 
@@ -308,13 +419,6 @@ Page {
                 }
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    visible: page.isCompanion && page.croad.powerTarget > 0
-                    text: qsTr("Target %1 W").arg(page.croad.powerTarget || 0)
-                    color: Theme.secondaryColor
-                    font.pixelSize: Theme.fontSizeMedium
-                }
-                Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
                     visible: page.structured && page.targetWatts > 0
                     text: qsTr("of %1 W").arg(page.targetWatts)
                     color: Theme.secondaryColor
@@ -366,24 +470,28 @@ Page {
                 }
             }
 
-            // A companion ride: the road's gradient, the gear and the cadence, the rest on request.
+            // A companion ride: the game draws the road on its own big screen, so the phone shows the
+            // gear and what the legs make. Every reading for someone building a companion.
             Row {
                 width: parent.width
                 visible: page.isCompanion
 
                 Reading {
-                    width: parent.width / 3
+                    width: parent.width / (page.companion.showAllData ? 3 : 1)
+                    visible: !!page.companion.showAllData
                     label: qsTr("Gradient")
                     value: (page.croad.gradientText || "0") + " %"
                     valueColor: Gradient.colors[page.croad.band] || Theme.highlightColor
                 }
                 Reading {
-                    width: parent.width / 3
+                    width: parent.width / (page.companion.showAllData ? 3 : 1)
                     label: qsTr("Gear")
                     value: page.croad.gear || "--"
+                    large: !page.companion.showAllData
                 }
                 Reading {
                     width: parent.width / 3
+                    visible: !!page.companion.showAllData
                     label: qsTr("Cadence")
                     value: trainer.connected ? page.cadence : "--"
                     unit: "rpm"
@@ -397,6 +505,13 @@ Page {
 
                 Reading {
                     width: parent.width / 2
+                    label: page.heartRateZone ? qsTr("Heart rate · Z%1").arg(page.heartRateZone.number) : qsTr("Heart rate")
+                    value: page.heartRate > 0 ? page.heartRate : "--"
+                    valueColor: page.heartRateZone ? page.heartRateZone.color : Theme.primaryColor
+                    unit: "bpm"
+                }
+                Reading {
+                    width: parent.width / 2
                     label: qsTr("Speed")
                     value: (page.croad.speedKmh || 0).toFixed(1)
                     unit: "km/h"
@@ -404,7 +519,7 @@ Page {
                 Reading {
                     width: parent.width / 2
                     label: qsTr("Distance")
-                    value: ((page.croad.distanceMeters || 0) / 1000).toFixed(2)
+                    value: ((page.croad.rideDistanceMeters || 0) / 1000).toFixed(2)
                     unit: "km"
                 }
                 Reading {
@@ -412,12 +527,6 @@ Page {
                     label: qsTr("Climbed")
                     value: Math.round(page.croad.climbedMeters || 0)
                     unit: "m"
-                }
-                Reading {
-                    width: parent.width / 2
-                    label: qsTr("Heart rate")
-                    value: page.heartRate > 0 ? page.heartRate : "--"
-                    unit: "bpm"
                 }
             }
 
@@ -428,19 +537,26 @@ Page {
                 visible: page.isCompanion
 
                 Repeater {
-                    model: [{ "steps": -1, "label": qsTr("Easier"), "icon": "image://theme/icon-m-down" },
-                            { "steps": 1, "label": qsTr("Harder"), "icon": "image://theme/icon-m-up" }]
+                    model: [{ "steps": -1, "label": qsTr("Easier"), "icon": "image://theme/icon-m-remove" },
+                            { "steps": 1, "label": qsTr("Harder"), "icon": "image://theme/icon-m-add" }]
 
+                    // One gear, on the touch rather than its release, as a paddle under a finger on
+                    // the bars should be. Dead at the end of the ladder and through the countdown.
                     BackgroundItem {
+                        readonly property bool atEnd: modelData.steps < 0 ? (page.croad.gearIndex || 0) <= 0
+                                                      : (page.croad.gearIndex || 0) >= (page.croad.gears || 1) - 1
+
                         width: (page.width - 2 * Theme.horizontalPageMargin - Theme.paddingLarge) / 2
                         height: Theme.itemSizeHuge
-                        enabled: page.rideState !== "Countdown"
-                        onClicked: core.send({ "cmd": "companion.shift", "steps": modelData.steps })
+                        enabled: page.rideState !== "Countdown" && !atEnd
+                        opacity: enabled ? 1 : 0.4
+                        onPressed: core.send({ "cmd": "companion.shift", "steps": modelData.steps })
 
                         Rectangle {
                             anchors.fill: parent
                             radius: Theme.paddingMedium
-                            color: Theme.rgba(page.companion.accent || Theme.highlightBackgroundColor, 0.3)
+                            color: parent.down ? (page.companion.accent || Theme.highlightBackgroundColor)
+                                               : Theme.rgba(Theme.highlightBackgroundColor, 0.25)
                         }
                         Column {
                             anchors.centerIn: parent
@@ -450,7 +566,7 @@ Page {
                             }
                             Label {
                                 anchors.horizontalCenter: parent.horizontalCenter
-                                color: Theme.highlightColor
+                                color: parent.parent.down && page.companion.onAccent ? page.companion.onAccent : Theme.highlightColor
                                 text: modelData.label
                             }
                         }
@@ -471,45 +587,28 @@ Page {
                     font.pixelSize: Theme.fontSizeSmall
                     text: page.controls && page.controls.title ? page.controls.title : ""
                 }
-                Row {
+                // The game's menu as a cross, with Back across the bottom, as on Android. A button
+                // the game did not enable stays where it is, dead, so the pad never moves under a
+                // thumb.
+                Grid {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    spacing: Theme.paddingMedium
+                    columns: 3
 
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        enabled: page.controlEnabled("left")
-                        icon.source: "image://theme/icon-m-left"
-                        onClicked: core.send({ "cmd": "companion.press", "control": "left" })
-                    }
-                    Column {
-                        IconButton {
-                            enabled: page.controlEnabled("up")
-                            icon.source: "image://theme/icon-m-up"
-                            onClicked: core.send({ "cmd": "companion.press", "control": "up" })
-                        }
-                        IconButton {
-                            enabled: page.controlEnabled("enter")
-                            icon.source: "image://theme/icon-m-acknowledge"
-                            onClicked: core.send({ "cmd": "companion.press", "control": "enter" })
-                        }
-                        IconButton {
-                            enabled: page.controlEnabled("down")
-                            icon.source: "image://theme/icon-m-down"
-                            onClicked: core.send({ "cmd": "companion.press", "control": "down" })
-                        }
-                    }
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        enabled: page.controlEnabled("right")
-                        icon.source: "image://theme/icon-m-right"
-                        onClicked: core.send({ "cmd": "companion.press", "control": "right" })
-                    }
-                    IconButton {
-                        anchors.verticalCenter: parent.verticalCenter
-                        enabled: page.controlEnabled("back")
-                        icon.source: "image://theme/icon-m-back"
-                        onClicked: core.send({ "cmd": "companion.press", "control": "back" })
-                    }
+                    Item { width: Theme.itemSizeMedium; height: width }
+                    PadButton { control: "up"; icon: "image://theme/icon-m-up" }
+                    Item { width: Theme.itemSizeMedium; height: width }
+                    PadButton { control: "left"; icon: "image://theme/icon-m-left" }
+                    PadButton { control: "enter"; icon: "image://theme/icon-m-acknowledge" }
+                    PadButton { control: "right"; icon: "image://theme/icon-m-right" }
+                    Item { width: Theme.itemSizeMedium; height: width }
+                    PadButton { control: "down"; icon: "image://theme/icon-m-down" }
+                    Item { width: Theme.itemSizeMedium; height: width }
+                }
+                PadButton {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: Theme.itemSizeMedium * 3
+                    control: "back"
+                    icon: "image://theme/icon-m-back"
                 }
                 Label {
                     x: Theme.horizontalPageMargin
@@ -788,50 +887,65 @@ Page {
             spacing: Theme.paddingLarge
             visible: page.isCompanion && page.phase !== "LIVE"
 
-            PageHeader { title: page.phase === "ENDED" ? qsTr("Session ended") : qsTr("Ride paused") }
+            // The game's accent across the top, as Android's panel has it.
+            Rectangle {
+                width: parent.width
+                height: Theme.paddingSmall
+                color: page.companion.accent || "transparent"
+            }
+
+            PageHeader {
+                title: page.phase === "ENDED" ? qsTr("Session ended")
+                       : page.inProgress ? qsTr("Ride paused")
+                       : qsTr("%1 disconnected").arg(page.companionName)
+            }
 
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: page.phase === "COMPANION_AWAY"
                 wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                text: qsTr("%1 has disconnected. Waiting for it to reconnect. The ride is paused, and saved as a completed ride when you end it.")
-                      .arg(page.companionName)
+                color: page.phase === "ENDED" ? Theme.highlightColor : page.warningColor
+                text: page.phase === "ENDED"
+                      ? (page.sessionRides.length === 0 ? qsTr("No rides were recorded. A ride is kept once the game has started one.")
+                                                        : qsTr("Every ride below is saved in your history."))
+                      : page.inProgress
+                        ? qsTr("%1 disconnected before the ride finished. The trainer is off and nothing is being recorded. When it reconnects the ride carries on by itself; if it is not coming back, end the ride to save it.").arg(page.companionName)
+                        : qsTr("Waiting for it to reconnect.")
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                text: !page.companion.sessionRides || page.companion.sessionRides.length === 0
-                      ? qsTr("No rides were recorded in this session.")
-                      : qsTr("Every ride below is saved in your history.")
+
+            SectionHeader {
+                visible: page.sessionRides.length > 0 || page.inProgress
+                text: qsTr("Rides this session")
             }
             Repeater {
-                model: page.companion.sessionRides || []
+                model: page.sessionRides
 
-                DetailItem {
-                    label: modelData.name
-                    value: Format.clock(modelData.durationSeconds) + " · " + qsTr("%1 W").arg(modelData.averagePower)
+                SessionRideItem {
+                    name: modelData.name
+                    detail: page.rideSummary(modelData.durationSeconds, modelData.distanceMeters, modelData.averagePower)
+                    screenshots: modelData.screenshots || []
                 }
             }
-            ButtonLayout {
-                Button {
-                    visible: page.phase === "ENDED"
-                    text: qsTr("Done")
-                    onClicked: page.finishCompanion()
-                }
-                Button {
-                    visible: page.phase !== "ENDED"
-                    text: qsTr("End ride")
-                    onClicked: core.send({ "cmd": "ride.end" })
-                }
-                Button {
-                    visible: page.phase !== "ENDED"
-                    text: qsTr("End session")
-                    onClicked: core.send({ "cmd": "companion.endSession" })
-                }
+            SessionRideItem {
+                visible: page.inProgress
+                name: page.croad.courseName || page.rideWorkout.name || qsTr("Companion ride")
+                detail: page.rideSummary(ride.rideSeconds || 0, page.croad.rideDistanceMeters || 0, 0)
+                note: qsTr("Paused. Saved as a completed ride when you end it.")
+                screenshots: page.companion.rideScreenshots || []
+            }
+
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: page.phase === "ENDED"
+                text: qsTr("Done")
+                onClicked: page.finishCompanion()
+            }
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: page.phase !== "ENDED"
+                // With the game gone, ending is the only thing to do, and it keeps the ride.
+                text: page.inProgress ? qsTr("End ride") : qsTr("End session")
+                onClicked: core.send({ "cmd": "companion.endSession" })
             }
         }
 

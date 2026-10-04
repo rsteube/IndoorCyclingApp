@@ -65,7 +65,7 @@ ApplicationWindow {
             window.askingToPair = true
             var dialog = pageStack.push(Qt.resolvedUrl("pages/RememberCompanionDialog.qml"),
                                         { name: payload.pendingPairing.name })
-            dialog.done.connect(function() { window.askingToPair = false })
+            dialog.answered.connect(function() { window.askingToPair = false })
         }
     }
 

@@ -40,6 +40,7 @@ import app.indoorbike.shared.sync.RideUploads
 import app.indoorbike.shared.sync.SyncEngine
 import app.indoorbike.shared.sync.SyncWorkoutLibrary
 import app.indoorbike.shared.util.DiagnosticsLog
+import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.util.Log
 import app.indoorbike.shared.util.PosixFiles
 import app.indoorbike.shared.util.installCrashLogging
@@ -267,7 +268,10 @@ internal class SailfishCore(
             runCatching { historyRepository.backfillExternalIds { "$deviceId:${Uuid.random()}" } }
             syncEngine.syncNow()
         }
-        scope.launch { sessionManager.loadPersistedSnapshot() }
+        scope.launch {
+            sessionManager.loadPersistedSnapshot()
+            runCatching { pruneRideStores() }
+        }
 
         // Keep retrying the devices this rider paired, so they need not pick
         // them every time they open the app. Gated by [setForeground] and the
@@ -296,7 +300,13 @@ internal class SailfishCore(
         controllerManager.events
             .onEach { event ->
                 if (!rideActive) return@onEach
-                stepEffort(if (event == ControllerEvent.Plus) 1 else -1)
+                val direction = if (event == ControllerEvent.Plus) 1 else -1
+                // A companion is told where a shift came from: this one, the controller.
+                if (sessionManager.activeWorkout.value?.isCompanion == true) {
+                    companionEngine.shiftBy(direction, source = CompanionEngine.SOURCE_CLICK)
+                } else {
+                    stepEffort(direction)
+                }
             }
             .launchIn(scope)
         // A ride keeps its devices even with the app in the background.

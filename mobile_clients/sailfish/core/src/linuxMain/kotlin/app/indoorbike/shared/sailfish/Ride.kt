@@ -183,7 +183,15 @@ internal fun SailfishCore.installRide() {
         ) ?: throw UserFacing("The ride couldn't be saved.")
         JsonPrimitive(id)
     }
-    bus.command("unfinished.abandon") { sm.abandonUnfinishedRide(); JsonNull }
+    bus.command("unfinished.abandon") {
+        // Its pictures and the game it was ridden with go with it, as on Android.
+        sm.persistedSnapshot.value?.sessionStartTimeEpochMs?.let { start ->
+            screenshots.deleteRide(start)
+            brands.deleteRide(start)
+        }
+        sm.abandonUnfinishedRide()
+        JsonNull
+    }
 }
 
 /** The workout's kind, as the ride screens choose their layout by. */

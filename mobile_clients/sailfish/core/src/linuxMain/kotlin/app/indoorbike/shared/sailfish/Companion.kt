@@ -47,6 +47,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonNull
@@ -309,15 +310,30 @@ internal fun SailfishCore.installCompanion() {
                         put("id", r.sessionId.toString())
                         put("name", r.name)
                         put("durationSeconds", r.durationSeconds)
+                        put("distanceMeters", r.distanceMeters)
                         put("averagePower", r.averagePowerWatts)
+                        put("screenshots", buildJsonArray {
+                            screenshots.list(r.startTimeEpoch).forEach { add(JsonPrimitive(it)) }
+                        })
                     })
+                }
+            })
+            // The ride under way's pictures, for the session panel's row of a ride the game left.
+            put("rideScreenshots", buildJsonArray {
+                sessionManager.sessionStartTimeEpoch.takeIf { it != 0L }?.let { start ->
+                    screenshots.list(start).forEach { add(JsonPrimitive(it)) }
                 }
             })
             put("companionName", v[5] as String?)
             put("lookName", look?.name)
             put("icon", look?.icon as? String)
+            // The game's colours, as Android draws them: the header band, a line of the accent
+            // under it, and text on the accent.
             put("accent", look?.palette?.let { argb(it.accent.toLong() and 0xFFFFFFFFL) } ?: JsonNull)
+            put("onAccent", look?.palette?.let { argb(it.onAccent.toLong() and 0xFFFFFFFFL) } ?: JsonNull)
+            put("header", look?.palette?.let { argb(it.header.toLong() and 0xFFFFFFFFL) } ?: JsonNull)
             put("screenshotMessage", shot?.message)
+            put("screenshotKind", shot?.kind?.name)
             put("screenshotWaiting", shot?.kind == CompanionHost.ScreenshotStatus.Kind.WAITING)
             put("screenshotsOffered", v[8] as Boolean)
             put("hosting", v[9] as Boolean)
@@ -329,7 +345,7 @@ internal fun SailfishCore.installCompanion() {
 
     val road: List<Flow<Any?>> = listOf(
         e.gradient, e.speedMps, e.distanceMeters, e.elevationGainMeters, e.gearIndex, e.drivetrain, e.roadStale,
-        e.powerTarget,
+        e.powerTarget, e.course, e.rideStartMeters, e.powerReleased,
     )
     bus.publish("companionRoad", combine(road) { it.toList() }, minIntervalMs = 250) { v ->
         val drivetrain = v[5] as app.indoorbike.shared.simulation.Drivetrain
@@ -343,8 +359,17 @@ internal fun SailfishCore.installCompanion() {
             put("distanceMeters", v[2] as Double)
             put("climbedMeters", v[3] as Double)
             put("gear", drivetrain.label(gear))
+            // Where the gear is in the ladder, so the paddles can say there is no further to go.
+            put("gearIndex", gear)
+            put("gears", drivetrain.gears.size)
             put("roadStale", v[6] as Boolean)
             put("powerTarget", v[7] as Int?)
+            val course = v[8] as app.indoorbike.shared.companion.CompanionCourse
+            put("courseName", course.name)
+            put("courseWorld", course.world)
+            // This ride's distance: the game's counter runs on through a session.
+            put("rideDistanceMeters", ((v[2] as Double) - (v[9] as Double)).coerceAtLeast(0.0))
+            put("powerReleased", v[10] as Boolean)
         }
     }
 
@@ -358,8 +383,11 @@ internal fun SailfishCore.installCompanion() {
     bus.command("companion.press") { args -> host.pressControl(args.requireString("control")); JsonNull }
     bus.command("companion.screenshot") { host.requestScreenshot(); JsonNull }
     bus.command("companion.endSession") { host.endSession(); JsonNull }
-    /** {"steps": 1} one gear harder, -1 easier. */
-    bus.command("companion.shift") { args -> e.shiftBy(args.requireInt("steps"), source = "screen"); JsonNull }
+    /** {"steps": 1} one gear harder, -1 easier, from the ride screen's paddles. */
+    bus.command("companion.shift") { args ->
+        e.shiftBy(args.requireInt("steps"), source = app.indoorbike.shared.companion.CompanionEngine.SOURCE_SCREEN)
+        JsonNull
+    }
     bus.command("companion.showAllData") { args ->
         userSettings.setCompanionShowAllData(args.bool("value") ?: false)
         JsonNull
@@ -376,4 +404,23 @@ private fun encodeControls(controls: app.indoorbike.shared.companion.RemoteContr
     put("title", controls.title)
     put("hint", controls.hint)
     put("enabled", buildJsonArray { controls.enabled.forEach { add(JsonPrimitive(it)) } })
+}
+
+/**
+ * Screenshots and brands kept for rides that are no longer anywhere: deleted
+ * from history, or abandoned. Run at start, as Android prunes its stores, and
+ * kept for the ride in progress and the one left unfinished.
+ */
+internal suspend fun SailfishCore.pruneRideStores() {
+    val keep = HashSet<Long>()
+    historyRepository.getAllSessions().first().forEach { keep += it.startTimeEpoch }
+    sessionManager.persistedSnapshot.value?.let { keep += it.sessionStartTimeEpochMs }
+    if (sessionManager.sessionStartTimeEpoch != 0L) keep += sessionManager.sessionStartTimeEpoch
+    for (folder in listOf("ride_screenshots", "ride_brands")) {
+        val root = SailfishPaths.data(folder)
+        for (name in PosixFiles.list(root)) {
+            val start = name.toLongOrNull() ?: continue
+            if (start !in keep) PosixFiles.deleteTree("$root/$name")
+        }
+    }
 }

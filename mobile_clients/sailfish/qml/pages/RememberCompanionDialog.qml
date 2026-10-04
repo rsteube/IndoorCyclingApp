@@ -8,12 +8,23 @@ Dialog {
 
     property string name
 
-    signal done()
+    // The request the host is holding. It goes when the companion withdraws it or disconnects,
+    // and then there is nothing left to answer: the question goes too, as on Android.
+    readonly property var pending: (core.state.companion || {}).pendingPairing || null
+    property bool withdrawn: false
+
+    signal answered()
 
     acceptDestinationAction: PageStackAction.Pop
     onAccepted: core.send({ "cmd": "companion.acceptPairing" })
-    onRejected: core.send({ "cmd": "companion.declinePairing" })
-    onStatusChanged: if (status === PageStatus.Inactive && (result === DialogResult.Accepted || result === DialogResult.Rejected)) done()
+    onRejected: if (!withdrawn) core.send({ "cmd": "companion.declinePairing" })
+    onStatusChanged: if (status === PageStatus.Inactive && (result === DialogResult.Accepted || result === DialogResult.Rejected)) answered()
+    onPendingChanged: {
+        if (!pending && status === PageStatus.Active) {
+            withdrawn = true
+            reject()
+        }
+    }
 
     Column {
         width: parent.width
@@ -30,14 +41,22 @@ Dialog {
             wrapMode: Text.Wrap
             color: Theme.highlightColor
             font.pixelSize: Theme.fontSizeLarge
-            text: qsTr("Remember %1?").arg(dialog.name || qsTr("this companion"))
+            text: qsTr("Remember this companion?")
         }
         Label {
             x: Theme.horizontalPageMargin
             width: parent.width - 2 * Theme.horizontalPageMargin
             wrapMode: Text.Wrap
             color: Theme.secondaryHighlightColor
-            text: qsTr("It will connect without a code from now on. You can forget it on the Companion page.")
+            text: qsTr("\"%1\" wants to pair with this phone permanently. After this it can connect on its own whenever the two are on the same network, with no pairing code, and drive your trainer.").arg(dialog.name || qsTr("A companion"))
+        }
+        Label {
+            x: Theme.horizontalPageMargin
+            width: parent.width - 2 * Theme.horizontalPageMargin
+            wrapMode: Text.Wrap
+            color: Theme.secondaryColor
+            font.pixelSize: Theme.fontSizeSmall
+            text: qsTr("Only agree if this is a program you set up yourself. You can undo it later from the Companion page.")
         }
     }
 }

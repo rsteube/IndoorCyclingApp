@@ -94,7 +94,27 @@ bool ShareCard::render(const QVariantMap &card, const QString &path) const
     qreal bottom = Size - Margin;
     p.setFont(font(30, true));
     p.setPen(Primary);
-    p.drawText(QRectF(Margin, bottom - 40, width, 40), Qt::AlignLeft | Qt::AlignVCenter, QStringLiteral("Indoor Bike"));
+    const QString wordmark = QStringLiteral("Indoor Bike");
+    p.drawText(QRectF(Margin, bottom - 40, width, 40), Qt::AlignLeft | Qt::AlignVCenter, wordmark);
+    // A ride a companion drove credits the game, as Android's card does: "with", its icon, its name.
+    const QString brand = card.value(QStringLiteral("brandName")).toString();
+    if (!brand.isEmpty()) {
+        qreal x = Margin + QFontMetricsF(p.font()).width(wordmark) + 20;
+        p.setFont(font(26, false));
+        p.setPen(Secondary);
+        const QString with = QStringLiteral("with");
+        p.drawText(QRectF(x, bottom - 40, width, 40), Qt::AlignLeft | Qt::AlignVCenter, with);
+        x += QFontMetricsF(p.font()).width(with) + 14;
+        const QImage icon(card.value(QStringLiteral("brandIcon")).toString());
+        if (!icon.isNull()) {
+            p.drawImage(QRectF(x, bottom - 40, 40, 40), icon);
+            x += 40 + 12;
+        }
+        p.setFont(font(30, true));
+        p.setPen(Primary);
+        p.drawText(QRectF(x, bottom - 40, Size - Margin - x - 260, 40), Qt::AlignLeft | Qt::AlignVCenter,
+                   QFontMetricsF(p.font()).elidedText(brand, Qt::ElideRight, Size - Margin - x - 260));
+    }
     p.setFont(font(26, false));
     p.setPen(Secondary);
     p.drawText(QRectF(Margin, bottom - 40, width, 40), Qt::AlignRight | Qt::AlignVCenter, QStringLiteral("indoorbike.app"));

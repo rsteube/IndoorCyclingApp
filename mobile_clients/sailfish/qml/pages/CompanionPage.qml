@@ -4,9 +4,9 @@ import Nemo.KeepAlive 1.2
 import "../components"
 import "../components/Format.js" as Format
 
-// Companion mode's way in: open the socket, show the address and the code, and hand over to the
-// ride as soon as the game starts describing a road. The socket is open only while this page, or
-// the companion ride it leads to, is on screen.
+// Companion mode's way in, as the Android app's Companion screen: open the socket, say how things
+// stand, show where to connect and the code, and give way to the ride as soon as the game starts
+// describing a road. The socket is open only while this page, or the ride it leads to, is on screen.
 Page {
     id: page
 
@@ -16,20 +16,24 @@ Page {
     readonly property var trainer: core.state.trainer || ({})
     readonly property var ride: core.state.ride || ({})
     readonly property bool trainerReady: !!trainer.connected
+    readonly property var addresses: companion.addresses || []
     property bool wasReceiving: false
+    property bool handedOff: false
 
+    // The ride takes this page's place, as on Android: leaving the ride goes home, not back here.
     function openRide() {
-        if (pageStack.currentPage === page)
-            pageStack.push(Qt.resolvedUrl("RideScreenPage.qml"))
+        if (handedOff)
+            return
+        handedOff = true
+        pageStack.replace(Qt.resolvedUrl("RideScreenPage.qml"))
     }
 
     allowedOrientations: Orientation.All
     // Every time the page comes up, as on iOS: back from a session that ended, the socket is closed.
     onStatusChanged: if (status === PageStatus.Active && !companion.running) core.send({ "cmd": "companion.start" })
-    // Leaving for anywhere but the ride closes the socket. A companion ride still going keeps it,
-    // until the ride's own page ends the session.
+    // Leaving for anywhere but the ride closes the socket.
     Component.onDestruction: {
-        if (!(ride.active && ride.kind === "companion"))
+        if (!handedOff)
             core.send({ "cmd": "companion.stop" })
     }
 
@@ -44,7 +48,7 @@ Page {
     // A game on another computer is set up while the phone sits there; it must not lock.
     DisplayBlanking { preventBlanking: page.status === PageStatus.Active }
 
-    // Joining or leaving a Wi-Fi changes the address to type in.
+    // Joining or leaving a Wi-Fi changes the addresses to type in.
     Timer {
         interval: 10000
         repeat: true
@@ -59,7 +63,7 @@ Page {
         PullDownMenu {
             visible: !!page.companion.debug
             MenuItem {
-                text: qsTr("Debug: ride without a companion")
+                text: qsTr("Debug: open the ride without a companion")
                 onClicked: {
                     core.send({ "cmd": "companion.withoutCompanion" })
                     page.openRide()
@@ -71,87 +75,143 @@ Page {
             id: column
 
             width: parent.width
-            spacing: Theme.paddingMedium
+            spacing: Theme.paddingLarge
 
-            PageHeader { title: qsTr("Companion") }
+            PageHeader {
+                title: qsTr("Companion")
+                description: qsTr("Ride mode · Alpha")
+            }
 
-            Label {
+            // How things stand.
+            Column {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: !!page.companion.error
-                wrapMode: Text.Wrap
-                color: Theme.errorColor
-                text: qsTr("Could not start: %1").arg(page.companion.error || "")
-            }
-            BusyLabel {
-                running: !page.companion.running && !page.companion.error
-                text: qsTr("Opening the connection")
+                spacing: Theme.paddingSmall
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    color: page.companion.error ? "#F0C419" : Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeLarge
+                    text: page.companion.error ? qsTr("Could not start")
+                          : !page.companion.running ? qsTr("Opening the socket")
+                          : page.companion.controllerName ? qsTr("%1 connected").arg(page.companion.controllerName)
+                          : qsTr("Waiting for a companion")
+                }
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: page.companion.error ? page.companion.error
+                          : !page.companion.running ? qsTr("One moment.")
+                          : page.companion.controllerName
+                            ? qsTr("Waiting for it to start describing the road. The ride begins on its first update.")
+                            : qsTr("Start your companion app and point it at this phone.")
+                }
             }
 
-            SectionHeader { text: qsTr("How to start") }
-
-            Step {
-                number: 1
-                title: qsTr("Get the trainer ready")
-                done: page.trainerReady
-                detail: page.trainerReady ? qsTr("Ready.")
-                                          : qsTr("The companion can connect without one, but nothing would move the trainer.")
-            }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
+            // Without a trainer a companion can connect, but nothing would move the bike.
+            Column {
+                width: parent.width
                 visible: !page.trainerReady
-                text: qsTr("Pair a trainer")
-                onClicked: pageStack.push(Qt.resolvedUrl("PairPage.qml"))
-            }
-            Step {
-                number: 2
-                title: qsTr("Connect the companion")
-                done: !!page.companion.controllerName
-                detail: page.companion.controllerName
-                        ? qsTr("%1 is connected.").arg(page.companion.controllerName)
-                        : qsTr("Open it on a computer or console on the same Wi-Fi. It finds this phone by itself; if it doesn't, type in the details below, then the pairing code.")
-            }
-            Step {
-                number: 3
-                title: qsTr("Start the ride in the companion")
-                done: false
-                detail: qsTr("This page turns into the ride as soon as it starts describing the road.")
+                spacing: Theme.paddingMedium
+
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: "#F0C419"
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: qsTr("No trainer paired. A companion can connect without one, but nothing would move the trainer.")
+                }
+                Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Pair a trainer")
+                    onClicked: pageStack.push(Qt.resolvedUrl("PairPage.qml"))
+                }
             }
 
-            SectionHeader {
+            // Where to connect: every address, as the URL a companion types in.
+            Column {
+                width: parent.width
                 visible: !!page.companion.running
-                text: qsTr("Connection details")
-            }
-            DetailItem {
-                visible: !!page.companion.running
-                label: qsTr("Pairing code")
-                value: page.companion.token || ""
-            }
-            DetailItem {
-                visible: !!page.companion.running
-                label: qsTr("Address")
-                value: page.companion.addresses && page.companion.addresses.length > 0
-                       ? page.companion.addresses.join(", ") : qsTr("No network")
-            }
-            DetailItem {
-                visible: !!page.companion.running
-                label: qsTr("Port")
-                value: page.companion.port || ""
-            }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: !!page.companion.running
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: !page.companion.addresses || page.companion.addresses.length === 0
-                      ? qsTr("Join a Wi-Fi network: a companion connects over it.")
-                      : page.companion.debug ? qsTr("Debug build: the code is always the same.")
-                                             : qsTr("The code is new for every ride.")
+                spacing: Theme.paddingSmall
+
+                SectionHeader { text: page.addresses.length > 1 ? qsTr("Addresses") : qsTr("Address") }
+
+                Repeater {
+                    model: page.addresses
+
+                    Label {
+                        x: Theme.horizontalPageMargin
+                        width: column.width - 2 * Theme.horizontalPageMargin
+                        wrapMode: Text.WrapAnywhere
+                        color: Theme.highlightColor
+                        font.pixelSize: Theme.fontSizeMedium
+                        text: "ws://" + modelData + ":" + page.companion.port + "/companion"
+                    }
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    visible: page.addresses.length === 0
+                    wrapMode: Text.Wrap
+                    color: "#F0C419"
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: qsTr("No network. Join the same Wi-Fi as the companion: it connects over it.")
+                }
+                DetailItem {
+                    label: qsTr("Port")
+                    value: page.companion.port || ""
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: qsTr("New for every ride. A companion that remembered the last one is pointing at a socket that has closed.")
+                }
+                // Sailfish has no DNS-SD to advertise with; the UDP beacon is how a companion finds it.
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: qsTr("A companion that listens for this phone's beacon finds it on the same Wi-Fi. Otherwise type the address into the companion by hand.")
+                }
             }
 
-            SectionHeader { text: qsTr("What this is") }
+            // The pairing code.
+            Column {
+                width: parent.width
+                visible: !!page.companion.running
+                spacing: Theme.paddingSmall
+
+                SectionHeader { text: qsTr("Pairing code") }
+
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeHuge
+                    font.letterSpacing: Theme.paddingSmall
+                    text: page.companion.token || ""
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: page.companion.debug ? qsTr("Debug build: the code is always the same.")
+                                               : qsTr("New for every ride. It is never stored and never reused.")
+                }
+            }
+
+            SectionHeader { text: qsTr("Needs a second app") }
 
             Label {
                 x: Theme.horizontalPageMargin
@@ -161,15 +221,10 @@ Page {
                 font.pixelSize: Theme.fontSizeSmall
                 text: qsTr("Companion mode hands the trainer to a game or app on another device, which describes the road. It needs one running.")
             }
-            BackgroundItem {
-                width: parent.width
-                onClicked: Qt.openUrlExternally("https://indoorbike.app")
-                Label {
-                    x: Theme.horizontalPageMargin
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: parent.highlighted ? Theme.highlightColor : Theme.primaryColor
-                    text: qsTr("Find or build a companion")
-                }
+            Button {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: qsTr("Find or build a companion")
+                onClicked: Qt.openUrlExternally("https://indoorbike.app/companion/")
             }
 
             SectionHeader {
@@ -183,6 +238,7 @@ Page {
                     id: pairedItem
 
                     width: column.width
+                    contentHeight: Theme.itemSizeMedium
                     menu: ContextMenu {
                         MenuItem {
                             text: qsTr("Forget")
@@ -207,7 +263,9 @@ Page {
                             width: parent.width
                             color: Theme.secondaryColor
                             font.pixelSize: Theme.fontSizeExtraSmall
-                            text: qsTr("Last connected %1").arg(Format.relative(modelData.lastSeen))
+                            text: !modelData.lastSeen ? qsTr("Paired")
+                                  : Date.now() - modelData.lastSeen < 60000 ? qsTr("Connected just now")
+                                  : qsTr("Last connected %1").arg(Format.relative(modelData.lastSeen))
                         }
                     }
                 }
@@ -215,7 +273,7 @@ Page {
 
             TextSwitch {
                 text: qsTr("Show every reading while riding")
-                description: qsTr("Speed, distance, climbing and heart rate as well as power, gradient, gear and cadence.")
+                description: qsTr("Gradient, gear, cadence, heart rate, speed, distance and climb as well as power. For building a companion: it changes nothing the game is sent.")
                 checked: !!page.companion.showAllData
                 automaticCheck: false
                 onClicked: core.send({ "cmd": "companion.showAllData", "value": !checked })

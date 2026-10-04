@@ -67,7 +67,9 @@ Page {
             "ftp": r.ftp,
             "powerColor": String(Format.zoneColor(page.zones, 2, "#4CAF50")),
             "planColor": "#C8CCD0",
-            "highlight": highlight
+            "highlight": highlight,
+            "brandName": r.brandName || "",
+            "brandIcon": r.brandIcon || ""
         }, path)
         if (!ok) {
             page.error = qsTr("The picture couldn't be made.")
@@ -151,6 +153,17 @@ Page {
             PageHeader {
                 title: page.ride ? page.ride.name : ""
                 description: page.ride ? new Date(page.ride.startMs).toLocaleString(Qt.locale(), Locale.LongFormat) : ""
+            }
+
+            // A companion ride names the game it was ridden with.
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                visible: page.ride !== null && !!page.ride.brandName
+                wrapMode: Text.Wrap
+                color: Theme.highlightColor
+                font.pixelSize: Theme.fontSizeSmall
+                text: page.ride && page.ride.brandName ? qsTr("Ridden with %1").arg(page.ride.brandName) : ""
             }
 
             BusyLabel {
@@ -247,6 +260,27 @@ Page {
             }
 
             SectionHeader {
+                visible: page.ride !== null && !!page.ride.screenshots && page.ride.screenshots.length > 0
+                text: page.ride && page.ride.screenshots ? qsTr("Screenshots · %1").arg(page.ride.screenshots.length) : ""
+            }
+            Flickable {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                height: strip.height
+                visible: strip.pictures.length > 0
+                contentWidth: strip.width
+                flickableDirection: Flickable.HorizontalFlick
+                clip: true
+
+                ScreenshotStrip {
+                    id: strip
+
+                    pictures: page.ride && page.ride.screenshots ? page.ride.screenshots : []
+                    thumbHeight: Theme.itemSizeExtraLarge
+                }
+            }
+
+            SectionHeader {
                 visible: page.ride !== null && (page.intervalsOn || page.fitTrackeeOn)
                 text: qsTr("Uploads")
             }
@@ -266,6 +300,76 @@ Page {
                 autoUpload: !!page.connections.fitTrackee && !!page.connections.fitTrackee.autoUpload
                 uploading: page.uploads.indexOf(page.rideId + ":FITTRACKEE") >= 0
                 onUpload: page.upload("upload.fitTrackee")
+            }
+
+            // The road it was on: a route ride's, or the one a companion described, as iOS's and
+            // Android's summaries show it. A ride picked up from an earlier one counts from there.
+            Column {
+                width: parent.width
+                spacing: Theme.paddingMedium
+                visible: page.ride !== null && !!page.ride.route
+
+                readonly property var route: page.ride && page.ride.route ? page.ride.route : null
+                readonly property bool continued: !!route && route.startedAtMeters > 1
+
+                SectionHeader { text: qsTr("Virtual route") }
+
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    truncationMode: TruncationMode.Fade
+                    color: Theme.highlightColor
+                    text: parent.route ? parent.route.name
+                                         + (parent.route.riddenMeters >= parent.route.totalMeters - 5 ? " · " + qsTr("Completed") : "")
+                                       : ""
+                }
+                RouteMap {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    height: Math.min(width, Theme.itemSizeHuge * 2)
+                    points: parent.route ? parent.route.shape : []
+                    fraction: parent.route ? parent.route.riddenMeters / Math.max(1, parent.route.totalMeters) : -1
+                    color: Theme.secondaryColor
+                    riddenColor: Theme.highlightColor
+                    markerColor: Theme.primaryColor
+                    lineWidth: Theme.paddingSmall / 2
+                }
+                Row {
+                    width: parent.width
+
+                    Reading {
+                        width: parent.width / 2
+                        label: parent.parent.continued ? qsTr("Ridden today") : qsTr("Ridden")
+                        value: parent.parent.route
+                               ? ((parent.parent.route.riddenMeters - parent.parent.route.startedAtMeters) / 1000).toFixed(1) : ""
+                        unit: parent.parent.route ? qsTr("of %1 km").arg((parent.parent.route.totalMeters / 1000).toFixed(1)) : ""
+                    }
+                    Reading {
+                        width: parent.width / 2
+                        label: parent.parent.continued ? qsTr("Climbed today") : qsTr("Climbed")
+                        value: parent.parent.route
+                               ? Math.round(parent.parent.route.climbedMeters - parent.parent.route.startClimbedMeters) : ""
+                        unit: parent.parent.route ? qsTr("of %1 m").arg(Math.round(parent.parent.route.ascentMeters)) : ""
+                    }
+                }
+                ElevationView {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    height: Theme.itemSizeLarge
+                    profile: parent.route ? parent.route.profile : []
+                    fraction: parent.route ? parent.route.riddenMeters / Math.max(1, parent.route.totalMeters) : -1
+                    color: Theme.secondaryHighlightColor
+                    markerColor: Theme.primaryColor
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: qsTr("Simulated indoors. Gradient and distance from the route, speed from your own power.")
+                          + (parent.continued ? " " + qsTr("Picked up from an earlier ride.") : "")
+                }
             }
 
             SectionHeader {

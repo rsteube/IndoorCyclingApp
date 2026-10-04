@@ -190,7 +190,7 @@ private fun encodeRoute(
 }
 
 /** Elevation in [samples] steps, scaled 0..1 between the route's lowest and highest point. */
-private fun profileOf(route: RouteTrack, samples: Int): JsonArray {
+internal fun profileOf(route: RouteTrack, samples: Int): JsonArray {
     val low = route.minElevationMeters
     val span = (route.maxElevationMeters - low).coerceAtLeast(1.0)
     return buildJsonArray {
@@ -199,7 +199,7 @@ private fun profileOf(route: RouteTrack, samples: Int): JsonArray {
 }
 
 /** The route's shape as at most [points] [latitude, longitude] pairs, evenly along it. */
-private fun shapeOf(route: RouteTrack, points: Int): JsonArray = buildJsonArray {
+internal fun shapeOf(route: RouteTrack, points: Int): JsonArray = buildJsonArray {
     if (route.isEmpty) return@buildJsonArray
     for (i in 0 until points) {
         val p = route.positionAt(route.totalDistanceMeters * i / (points - 1))
