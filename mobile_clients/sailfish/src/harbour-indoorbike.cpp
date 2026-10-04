@@ -16,6 +16,7 @@
 #include "bluetransport.h"
 #include "indoorbikecore.h"
 #include "keyedlistmodel.h"
+#include "maptiles.h"
 #include "ridechart.h"
 #include "routeviews.h"
 #include "sharecard.h"
@@ -90,6 +91,8 @@ int main(int argc, char *argv[])
 
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     core.setEngine(view->engine());
+    // Map tiles, dimmed for a ride screen; the engine owns the provider.
+    view->engine()->addImageProvider(QStringLiteral("maptile"), new MapTileProvider);
     AppService appService(view.data());
     ShareCard shareCard;
     QQmlContext *context = view->rootContext();

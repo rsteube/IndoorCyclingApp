@@ -47,7 +47,7 @@ Page {
 
             PageHeader { title: page.route.name || "" }
 
-            RouteShape {
+            RouteMap {
                 anchors.horizontalCenter: parent.horizontalCenter
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 height: Math.min(width, Theme.itemSizeHuge * 2)

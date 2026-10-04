@@ -2,9 +2,11 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QVector>
 #include <QtMath>
 
 #include <algorithm>
+#include <cmath>
 
 // --- RouteShape -----------------------------------------------------------------------------
 
@@ -58,11 +60,42 @@ void RouteShape::setLineWidth(qreal width)
     update();
 }
 
+void RouteShape::setMapView(const QRectF &view)
+{
+    if (view == m_mapView)
+        return;
+    m_mapView = view;
+    emit changed();
+    update();
+}
+
+QPointF RouteShape::mercator(double latitude, double longitude)
+{
+    const double lat = qDegreesToRadians(std::max(-85.0511, std::min(85.0511, latitude)));
+    return QPointF((longitude + 180.0) / 360.0, (1.0 - std::log(std::tan(lat) + 1.0 / std::cos(lat)) / M_PI) / 2.0);
+}
+
 void RouteShape::paint(QPainter *painter)
 {
     const int n = m_points.size();
     if (n < 2 || width() <= 0 || height() <= 0)
         return;
+
+    QVector<QPointF> pts;
+    if (!m_mapView.isEmpty()) {
+        // On a map: where each point is on the tiles under this item.
+        pts.reserve(n);
+        for (const QVariant &v : m_points) {
+            const QVariantList p = v.toList();
+            if (p.size() < 2)
+                continue;
+            const QPointF m = mercator(p.at(0).toDouble(), p.at(1).toDouble());
+            pts.append(QPointF((m.x() - m_mapView.x()) / m_mapView.width() * width(),
+                               (m.y() - m_mapView.y()) / m_mapView.height() * height()));
+        }
+        drawRoad(painter, pts);
+        return;
+    }
 
     // Project: longitude scaled by the cosine of the middle latitude, latitude up.
     QVector<QPointF> raw;
@@ -96,11 +129,16 @@ void RouteShape::paint(QPainter *painter)
     const double scale = std::min((width() - 2 * margin) / spanX, (height() - 2 * margin) / spanY);
     const double offX = (width() - spanX * scale) / 2;
     const double offY = (height() - spanY * scale) / 2;
-    QVector<QPointF> pts;
     pts.reserve(raw.size());
     for (const QPointF &q : raw)
         pts.append(QPointF(offX + (q.x() - minX) * scale, offY + (q.y() - minY) * scale));
+    drawRoad(painter, pts);
+}
 
+void RouteShape::drawRoad(QPainter *painter, const QVector<QPointF> &pts)
+{
+    if (pts.size() < 2)
+        return;
     QPen pen(m_color, m_lineWidth, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
     painter->setPen(pen);
     painter->drawPolyline(pts.constData(), pts.size());

@@ -462,7 +462,7 @@ Page {
                     }
                 }
 
-                RouteShape {
+                RouteMap {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: parent.width - 2 * Theme.horizontalPageMargin
                     height: Theme.itemSizeHuge * 1.5

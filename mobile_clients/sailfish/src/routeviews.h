@@ -3,6 +3,7 @@
 
 #include <QColor>
 #include <QQuickPaintedItem>
+#include <QRectF>
 #include <QVariantList>
 #include <QVariantMap>
 
@@ -23,6 +24,9 @@ class RouteShape : public QQuickPaintedItem
     Q_PROPERTY(QColor riddenColor READ riddenColor WRITE setRiddenColor NOTIFY changed)
     Q_PROPERTY(QColor markerColor READ markerColor WRITE setMarkerColor NOTIFY changed)
     Q_PROPERTY(qreal lineWidth READ lineWidth WRITE setLineWidth NOTIFY changed)
+    // The part of the world this item shows, in Web Mercator's 0..1 square, so the road lands on
+    // map tiles drawn under it (RouteMap.qml). Empty draws the road fitted to the item instead.
+    Q_PROPERTY(QRectF mapView READ mapView WRITE setMapView NOTIFY changed)
 
 public:
     explicit RouteShape(QQuickItem *parent = nullptr);
@@ -40,6 +44,11 @@ public:
     void setMarkerColor(const QColor &color);
     qreal lineWidth() const { return m_lineWidth; }
     void setLineWidth(qreal width);
+    QRectF mapView() const { return m_mapView; }
+    void setMapView(const QRectF &view);
+
+    // Where a latitude and longitude are in Web Mercator's 0..1 square, as map tiles are laid out.
+    static QPointF mercator(double latitude, double longitude);
 
 signals:
     void changed();
@@ -51,6 +60,10 @@ private:
     QColor m_riddenColor = Qt::white;
     QColor m_markerColor = Qt::white;
     qreal m_lineWidth = 3;
+    QRectF m_mapView;
+
+    // The road, the part ridden and the rider, through points already placed on the item.
+    void drawRoad(QPainter *painter, const QVector<QPointF> &pts);
 };
 
 // The road's height along its length, each stretch in its gradient band's colour, with where the

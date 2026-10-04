@@ -256,6 +256,7 @@ internal class SailfishCore(
         installLibrary()
         installSync()
         installCompanion()
+        installMapTiles()
 
         workoutLibrary.start()
         routeLibrary.start()
