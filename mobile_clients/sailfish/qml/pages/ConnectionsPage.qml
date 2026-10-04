@@ -37,6 +37,28 @@ Page {
         Qt.openUrlExternally(reply.value)
     }
 
+    function connectIntervals() {
+        var reply = core.send({ "cmd": "intervals.authorizeUrl" })
+        if (!reply.ok) {
+            message = reply.message
+            return
+        }
+        message = ""
+        Qt.openUrlExternally(reply.value)
+    }
+
+    function completeIntervals(url) {
+        core.request({ "cmd": "intervals.complete", "url": url }, function(reply) {
+            if (reply.ok) {
+                page.message = ""
+                intervalsPasted.text = ""
+                notice.show(qsTr("Connected to Intervals.icu"))
+            } else {
+                page.message = reply.message
+            }
+        })
+    }
+
     function complete(url) {
         core.request({ "cmd": "fitTrackee.complete", "url": url }, function(reply) {
             if (reply.ok) {
@@ -68,6 +90,15 @@ Page {
     Connections {
         target: core
         onEventReceived: {
+            if (topic === "intervals.signedIn" && payload) {
+                if (payload.ok) {
+                    page.message = ""
+                    notice.show(qsTr("Connected to Intervals.icu"))
+                } else {
+                    page.message = payload.message
+                }
+                return
+            }
             if (topic !== "fitTrackee.signedIn" || !payload)
                 return
             if (payload.ok) {
@@ -108,11 +139,71 @@ Page {
                 wrapMode: Text.Wrap
                 color: Theme.secondaryHighlightColor
                 font.pixelSize: Theme.fontSizeExtraSmall
+                text: qsTr("Send your finished rides to Intervals.icu. Nothing is contacted until you connect, and after that only when a ride is uploaded.")
+            }
+
+            // Signing in, in a build that carries the OAuth client, as on Android.
+            Column {
+                width: parent.width
+                visible: !page.intervals.signedIn && !!page.intervals.signInAvailable
+                spacing: Theme.paddingMedium
+
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: qsTr("You approve IndoorBike on Intervals.icu in your browser, so your password and API key never reach this app. It can upload rides and nothing else, and you can disconnect it here or in your Intervals.icu settings.")
+                }
+                Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Connect Intervals.icu")
+                    onClicked: page.connectIntervals()
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    visible: !!page.intervals.athleteId && !!page.intervals.apiKey
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: qsTr("Connecting replaces the API key saved on this phone.")
+                }
+                Label {
+                    x: Theme.horizontalPageMargin
+                    width: parent.width - 2 * Theme.horizontalPageMargin
+                    wrapMode: Text.Wrap
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: qsTr("After you approve, the page Intervals.icu opens has a button back to IndoorBike. If it does not come back, copy that page's address and paste it here within two minutes:")
+                }
+                TextField {
+                    id: intervalsPasted
+
+                    width: parent.width
+                    label: qsTr("Address of the page Intervals.icu opened")
+                    placeholderText: label
+                    inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                    EnterKey.enabled: text.trim().length > 0
+                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                    EnterKey.onClicked: page.completeIntervals(text)
+                }
+            }
+
+            // The athlete id and personal API key, in a build without the OAuth client.
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
+                wrapMode: Text.Wrap
+                color: Theme.secondaryHighlightColor
+                font.pixelSize: Theme.fontSizeExtraSmall
                 text: qsTr("Both are on your Intervals.icu settings page, under Developer settings. The key is kept in a file only this app can read.")
             }
 
             TextSetting {
-                visible: !page.intervals.signedIn
+                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
                 key: "intervalsAthleteId"
                 label: qsTr("Athlete ID, for example i12345")
                 value: page.intervals.athleteId || ""
@@ -121,7 +212,7 @@ Page {
                 id: apiKey
 
                 width: parent.width
-                visible: !page.intervals.signedIn
+                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
                 label: qsTr("API key")
                 placeholderText: label
                 text: page.intervals.apiKey || ""
@@ -144,7 +235,8 @@ Page {
             TextSwitch {
                 text: qsTr("Upload finished rides automatically")
                 description: page.intervals.configured ? qsTr("Each finished ride is sent as soon as it is saved.")
-                                                       : qsTr("Enter the athlete ID and key first.")
+                             : page.intervals.signInAvailable ? qsTr("Connect above first.")
+                             : qsTr("Enter the athlete ID and key first.")
                 enabled: !!page.intervals.configured
                 checked: !!page.intervals.autoUpload
                 automaticCheck: false

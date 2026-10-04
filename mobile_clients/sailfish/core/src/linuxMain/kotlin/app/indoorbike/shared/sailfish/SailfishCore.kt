@@ -181,9 +181,16 @@ internal class SailfishCore(
     }
 
     /**
-     * Intervals.icu by athlete id and API key. Signing in comes back through
-     * the verified https link indoorbike.app vouches for on Android, which a
-     * Sailfish app cannot receive, and needs a client this build doesn't carry.
+     * Intervals.icu, signed in through the browser when this build carries the
+     * OAuth client (IntervalsClient, generated from intervals.properties), and
+     * by athlete id and API key when it does not, as on Android and iOS.
+     *
+     * Intervals.icu sends the browser to https://indoorbike.app/oauth/intervals,
+     * which Android receives as a verified app link. Sailfish has no verified
+     * links: the page there hands the code on to `indoorbike://oauth/intervals`,
+     * which reaches this app through AppService, and the rider can paste the
+     * address instead. Unlike Android's, this path does not depend on which key
+     * signed the build, so a debug build may sign in too.
      */
     val intervalsIcuUploader = IntervalsIcuUploader(
         http = LinuxHttpClient,
@@ -192,9 +199,8 @@ internal class SailfishCore(
         appVersion = appVersion,
         rideBrandName = { rideStart -> brands.name(rideStart) },
         pending = JsonPrefs(SailfishPaths.config("intervals_oauth.json"), private = true),
-        clientId = "",
-        clientSecret = "",
-        signInAllowed = false,
+        clientId = IntervalsClient.ID,
+        clientSecret = IntervalsClient.SECRET,
     )
 
     /** FitTrackee, signed in through the browser and `indoorbike://oauth`. */

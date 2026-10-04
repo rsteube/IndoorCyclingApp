@@ -1,4 +1,5 @@
 import java.nio.file.Files
+import java.util.Properties
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -8,6 +9,45 @@ plugins {
 
 /** The shared Kotlin, compiled here as it is, with no copy of its own. */
 val shared = "../../../shared/src"
+
+/**
+ * The Intervals.icu OAuth client, from the gitignored intervals.properties at
+ * the repository root, as the Android build reads it. Intervals.icu's OAuth
+ * has no PKCE, so signing a rider in needs the secret, and the repository is
+ * public. Without the file the core builds as one from source does, and the
+ * app offers the rider's personal API key instead of the sign-in.
+ */
+val intervalsProps = Properties().apply {
+    val file = rootDir.resolve("../../../intervals.properties")
+    if (file.exists()) file.inputStream().use { load(it) }
+}
+val intervalsClientId = (intervalsProps["intervalsClientId"] as String? ?: "").trim()
+val intervalsClientSecret = (intervalsProps["intervalsClientSecret"] as String? ?: "").trim()
+if (intervalsClientId.isBlank() || intervalsClientSecret.isBlank()) {
+    logger.lifecycle("intervals.properties not found or not filled in: this core connects Intervals.icu with an API key only")
+}
+val intervalsClientDir = layout.buildDirectory.dir("generated/intervalsClient")
+val generateIntervalsClient = tasks.register("generateIntervalsClient") {
+    inputs.property("clientId", intervalsClientId)
+    inputs.property("clientSecret", intervalsClientSecret)
+    outputs.dir(intervalsClientDir)
+    doLast {
+        fun quoted(value: String) = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$") + "\""
+        val dir = intervalsClientDir.get().asFile.resolve("app/indoorbike/shared/sailfish")
+        dir.mkdirs()
+        dir.resolve("IntervalsClient.kt").writeText(
+            """
+            |// Generated from intervals.properties by the core's build. Not committed.
+            |package app.indoorbike.shared.sailfish
+            |
+            |internal object IntervalsClient {
+            |    const val ID: String = ${quoted(intervalsClientId)}
+            |    const val SECRET: String = ${quoted(intervalsClientSecret)}
+            |}
+            |""".trimMargin()
+        )
+    }
+}
 
 /**
  * The phone's libraries the linker needs and Kotlin/Native's own aarch64
@@ -100,6 +140,10 @@ kotlin {
             // catalog (the other apps use their platforms' own), so it takes the catalog's
             // Ktor version.
             implementation("io.ktor:ktor-client-curl:${libs.versions.ktor.get()}")
+        }
+        linuxMain {
+            // The Intervals.icu client, generated above.
+            kotlin.srcDir(generateIntervalsClient.map { intervalsClientDir.get() })
         }
     }
 }

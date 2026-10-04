@@ -7,10 +7,15 @@ import "components"
 ApplicationWindow {
     id: window
 
-    // Something handed to the app from outside: the browser coming back from a FitTrackee
+    // Something handed to the app from outside: the browser coming back from an Intervals.icu or FitTrackee
     // sign-in, a GPX route, or a workout file.
     function open(uri) {
-        if (uri.indexOf("indoorbike://oauth") === 0) {
+        if (uri.indexOf("indoorbike://oauth/intervals") === 0) {
+            // The Connections page says how it went; bring it up if the rider left it.
+            core.send({ "cmd": "intervals.redirect", "url": uri })
+            if (!pageStack.currentPage || pageStack.currentPage.objectName !== "connections")
+                pageStack.push(Qt.resolvedUrl("pages/ConnectionsPage.qml"))
+        } else if (uri.indexOf("indoorbike://oauth") === 0) {
             // The connections page says how it went; bring it up if the rider left it.
             core.send({ "cmd": "fitTrackee.redirect", "url": uri })
             if (!pageStack.currentPage || pageStack.currentPage.objectName !== "connections")
