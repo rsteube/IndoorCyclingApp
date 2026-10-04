@@ -11,32 +11,37 @@ val shared = "../../../shared/src"
 
 /**
  * The phone's libraries the linker needs and Kotlin/Native's own aarch64
- * sysroot lacks (only libsqlite3 so far), staged out of the SDK's build engine
- * by stage-sysroot.sh. Without them the linuxArm64 klib still compiles, so a
- * checkout with no Sailfish SDK can build and test everything but the library.
+ * sysroot lacks (libsqlite3 and libcrypto), staged out of the SDK's build
+ * engine by stage-sysroot.sh. Without them the linuxArm64 klib still compiles,
+ * so a checkout with no Sailfish SDK can build and test everything but the
+ * library.
  */
 val sailfishSysroot: String = providers.gradleProperty("sailfish.sysroot")
     .getOrElse(layout.projectDirectory.dir("sailfish-sysroot").asFile.absolutePath)
-val canLinkSailfish = File("$sailfishSysroot/lib/libsqlite3.so").exists()
+val canLinkSailfish = listOf("libsqlite3.so", "libcrypto.so").all { File("$sailfishSysroot/lib/$it").exists() }
 
 /**
- * The host's libsqlite3 for the linuxX64 test build, which runs the shared
- * tests natively in WSL. SQLDelight's driver links `-lsqlite3`, and a host
- * without the -dev package has only `libsqlite3.so.0`, so the bare name is
- * linked to it in a folder of our own. Kotlin/Native's x86_64 sysroot is an old
- * glibc and the host library a new one, hence `--allow-shlib-undefined`: the
- * symbols resolve against the host's glibc when the tests run.
+ * The host's libsqlite3 and libcrypto for the linuxX64 test build, which runs
+ * the shared tests natively in WSL. SQLDelight's driver links `-lsqlite3` and
+ * the Zwift crypto `-lcrypto`, and a host without the -dev packages has only
+ * the versioned files, so the bare names are linked to them in a folder of our
+ * own. Kotlin/Native's x86_64 sysroot is an old glibc and the host libraries a
+ * new one, hence `--allow-shlib-undefined`: the symbols resolve against the
+ * host's glibc when the tests run.
  */
 val hostLibDir: File = layout.buildDirectory.dir("host-lib").get().asFile
-val hostSqlite: File? = listOf("/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib64", "/usr/lib")
-    .flatMap { listOf(File(it, "libsqlite3.so"), File(it, "libsqlite3.so.0")) }
-    .firstOrNull { it.exists() }
-if (hostSqlite != null) {
+for ((name, versioned) in listOf("libsqlite3" to "libsqlite3.so.0", "libcrypto" to "libcrypto.so.3")) {
+    val found = listOf("/usr/lib/x86_64-linux-gnu", "/lib/x86_64-linux-gnu", "/usr/lib64", "/usr/lib")
+        .flatMap { listOf(File(it, "$name.so"), File(it, versioned)) }
+        .firstOrNull { it.exists() } ?: continue
     hostLibDir.mkdirs()
-    val link = File(hostLibDir, "libsqlite3.so").toPath()
+    val link = File(hostLibDir, "$name.so").toPath()
     Files.deleteIfExists(link)
-    Files.createSymbolicLink(link, hostSqlite.toPath())
+    Files.createSymbolicLink(link, found.toPath())
 }
+
+/** The OpenSSL calls the Zwift controller session makes; see libcrypto.def. */
+val libcryptoDef = layout.projectDirectory.file("src/nativeInterop/cinterop/libcrypto.def")
 
 kotlin {
     compilerOptions {
@@ -44,6 +49,7 @@ kotlin {
     }
 
     linuxArm64 {
+        compilations.getByName("main").cinterops.create("libcrypto") { definitionFile.set(libcryptoDef) }
         if (canLinkSailfish) {
             binaries.sharedLib {
                 baseName = "indoorbikecore"
@@ -54,6 +60,8 @@ kotlin {
                 linkerOpts("--as-needed")
                 // A name of its own, which rpmlint asks of any shared library.
                 linkerOpts("-soname", "libindoorbikecore.so")
+                // One exported symbol, the bridge's; see exports.map.
+                linkerOpts("--version-script=${layout.projectDirectory.file("exports.map").asFile.absolutePath}")
             }
         } else {
             logger.info("No Sailfish sysroot at $sailfishSysroot: run stage-sysroot.sh to link the library")
@@ -61,6 +69,7 @@ kotlin {
     }
 
     linuxX64 {
+        compilations.getByName("main").cinterops.create("libcrypto") { definitionFile.set(libcryptoDef) }
         binaries.withType<org.jetbrains.kotlin.gradle.plugin.mpp.TestExecutable>().configureEach {
             linkerOpts("-L${hostLibDir.absolutePath}", "--allow-shlib-undefined")
         }
@@ -80,10 +89,6 @@ kotlin {
         }
         commonTest {
             kotlin.srcDir("$shared/commonTest/kotlin")
-            // Needs AES and P-256 from the platform, which the Sailfish core
-            // gets from OpenSSL in milestone 10 of docs/SAILFISH_PORT.md. The
-            // SHA-256 and HMAC it does have are tested in linuxTest.
-            kotlin.exclude("app/indoorbike/shared/ble/zwift/ZwiftCryptoTest.kt")
             dependencies {
                 implementation(libs.kotlin.test)
                 implementation(libs.kotlinx.coroutines.test)

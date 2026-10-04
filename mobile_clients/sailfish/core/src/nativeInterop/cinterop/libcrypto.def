@@ -1,0 +1,65 @@
+# The few OpenSSL 3 calls the Zwift controller session needs: a P-256 key
+# pair, ECDH, and one AES block. See ZwiftCrypto.linux.kt.
+#
+# Declared here rather than taken from OpenSSL's headers, which neither the
+# Sailfish SDK's target nor a plain Linux host carries without a -devel
+# package. Every type is an opaque pointer, so the declarations are the ABI,
+# which OpenSSL keeps stable across 3.x.
+#
+# On the phone they resolve against the OpenSSL 3.3 that Ktor's curl engine
+# links into the core statically, so the core asks the phone for no libcrypto
+# at all: --as-needed drops -lcrypto. The -lcrypto, and the phone's
+# libcrypto.so.3 that stage-sysroot.sh stages, are for a Ktor that stops doing
+# that. libcrypto.so.3 is on Harbour's list of allowed libraries, and every
+# Sailfish OS 5 phone has it.
+package = app.indoorbike.shared.ble.zwift.openssl
+linkerOpts = -lcrypto
+# The parameter builder keeps the pointers it is given rather than copying them,
+# and the key names end up inside the finished OSSL_PARAM array, so these take
+# pointers that outlive the call, not Kotlin strings converted for its length.
+noStringConversion = OSSL_PARAM_BLD_push_utf8_string OSSL_PARAM_BLD_push_octet_string
+---
+#include <stddef.h>
+
+typedef struct evp_pkey_st EVP_PKEY;
+typedef struct evp_pkey_ctx_st EVP_PKEY_CTX;
+typedef struct evp_cipher_st EVP_CIPHER;
+typedef struct evp_cipher_ctx_st EVP_CIPHER_CTX;
+typedef struct ossl_lib_ctx_st OSSL_LIB_CTX;
+typedef struct ossl_param_st OSSL_PARAM;
+typedef struct ossl_param_bld_st OSSL_PARAM_BLD;
+typedef struct engine_st ENGINE;
+
+EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_name(OSSL_LIB_CTX *libctx, const char *name, const char *propquery);
+EVP_PKEY_CTX *EVP_PKEY_CTX_new_from_pkey(OSSL_LIB_CTX *libctx, EVP_PKEY *pkey, const char *propquery);
+void EVP_PKEY_CTX_free(EVP_PKEY_CTX *ctx);
+void EVP_PKEY_free(EVP_PKEY *pkey);
+
+int EVP_PKEY_keygen_init(EVP_PKEY_CTX *ctx);
+int EVP_PKEY_CTX_set_group_name(EVP_PKEY_CTX *ctx, const char *name);
+int EVP_PKEY_generate(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey);
+int EVP_PKEY_get_octet_string_param(const EVP_PKEY *pkey, const char *key_name, unsigned char *buf,
+                                    size_t max_buf_sz, size_t *out_len);
+
+int EVP_PKEY_fromdata_init(EVP_PKEY_CTX *ctx);
+int EVP_PKEY_fromdata(EVP_PKEY_CTX *ctx, EVP_PKEY **ppkey, int selection, OSSL_PARAM *params);
+OSSL_PARAM_BLD *OSSL_PARAM_BLD_new(void);
+int OSSL_PARAM_BLD_push_utf8_string(OSSL_PARAM_BLD *bld, const char *key, const char *buf, size_t bsize);
+int OSSL_PARAM_BLD_push_octet_string(OSSL_PARAM_BLD *bld, const char *key, const void *buf, size_t bsize);
+OSSL_PARAM *OSSL_PARAM_BLD_to_param(OSSL_PARAM_BLD *bld);
+void OSSL_PARAM_BLD_free(OSSL_PARAM_BLD *bld);
+void OSSL_PARAM_free(OSSL_PARAM *params);
+
+int EVP_PKEY_derive_init(EVP_PKEY_CTX *ctx);
+int EVP_PKEY_derive_set_peer(EVP_PKEY_CTX *ctx, EVP_PKEY *peer);
+int EVP_PKEY_derive(EVP_PKEY_CTX *ctx, unsigned char *key, size_t *keylen);
+
+EVP_CIPHER_CTX *EVP_CIPHER_CTX_new(void);
+void EVP_CIPHER_CTX_free(EVP_CIPHER_CTX *ctx);
+const EVP_CIPHER *EVP_aes_128_ecb(void);
+const EVP_CIPHER *EVP_aes_192_ecb(void);
+const EVP_CIPHER *EVP_aes_256_ecb(void);
+int EVP_EncryptInit_ex(EVP_CIPHER_CTX *ctx, const EVP_CIPHER *type, ENGINE *impl, const unsigned char *key,
+                       const unsigned char *iv);
+int EVP_CIPHER_CTX_set_padding(EVP_CIPHER_CTX *ctx, int pad);
+int EVP_EncryptUpdate(EVP_CIPHER_CTX *ctx, unsigned char *out, int *outl, const unsigned char *in, int inl);

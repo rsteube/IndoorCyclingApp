@@ -129,14 +129,14 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
     - [ ] A ride on a real trainer on Android.
   - [x] `mobile_clients/sailfish/core` with the Linux `actual`s.
     - **Common code:** compiled for Linux with no change.
-    - **Tests:** `linuxX64Test` passes 835 tests: the 843 common tests minus `ZwiftCryptoTest` (17 tests, which need AES and P-256; milestone 10), plus 9 SHA-256 and HMAC vector tests for the Linux implementations.
+    - **Tests:** `linuxX64Test` passes 852 tests: the 843 common tests, `ZwiftCryptoTest` among them since milestone 10, plus 9 SHA-256 and HMAC vector tests for the Linux implementations.
     - **The library:** `libindoorbikecore.so` is 12 MB for aarch64. It needs only `libsqlite3.so.0`, `libz`, `libm`, `libpthread`, `libdl`, `libgcc_s` and `libc`, nothing newer than glibc 2.17. The phone's loader resolves all of them on a Jolla C2.
     - **Linux `actual`s:**
       - SHA-256 and HMAC are written in Kotlin and tested against FIPS 180-4 and RFC 4231.
       - Randomness comes from `/dev/urandom`, the lock is a recursive pthread mutex, gzip uses zlib, and the network addresses come from `getifaddrs`.
       - The database lives in the data folder the Qt side passes in (`SailfishPaths`).
       - The radio reports Bluetooth unavailable (`NoRadio`) until the BlueZ bridge exists.
-      - The Zwift key pair and AES refuse until milestone 10.
+      - The Zwift key pair, ECDH and AES come from OpenSSL 3 (milestone 10).
   - [x] A WSL clone of this repo in `~/projects/cycling_app`. The repo's `.gitattributes` already pins LF for every file.
   - [x] sailfish-mcp for several apps. Its WSL wrapper (`~/.local/bin/sailfish-mcp`, from the `sailfish-on-windows` skill) maps the Windows project Claude Code starts it in to the WSL clone of the same name, and enters that clone's Sailfish app. Until `mobile_clients/sailfish/harbour-indoorbike.pro` exists it starts with no app; reconnect it (`/mcp`) after adding the `.pro`.
 - [x] **1. Core on the phone.**
@@ -193,7 +193,8 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
   - `CompanionHost` on the phone, the beacon, Avahi if present, pairing, the companion HUD and its remote pad.
   - Verified with Col de Berg on the same Wi-Fi.
   - **Status:** done with `scripts/companion_probe.py` from a PC: discovery through the UDP beacon, pairing, the HUD, a climb, shifts, pause, finish, and the ride saved once. The phone has no Avahi, so there is no DNS-SD; the beacon and the typed address are the ways in. Not yet ridden with Col de Berg.
-- [ ] **10. Zwift controllers.** `ZwiftCrypto` on OpenSSL 3's libcrypto through cinterop: P-256 and ECDH, AES-ECB and HMAC-SHA256. Done when it is verified against the shared tests and a real Click.
+- [x] **10. Zwift controllers.** `ZwiftCrypto` on OpenSSL 3's libcrypto through cinterop: P-256 and ECDH, AES-ECB and HMAC-SHA256. Done when it is verified against the shared tests and a real Click.
+  - **Status:** the crypto is done; a real Click is still to try. P-256, ECDH and the AES block come from OpenSSL 3 through cinterop, declared in `libcrypto.def` without OpenSSL's headers. They resolve against the OpenSSL 3.3 that Ktor's curl engine already links into the core, so the core needs no libcrypto from the phone. All 852 shared tests pass on Linux, `ZwiftCryptoTest` among them, and a debug build's `app.cryptoCheck` passes on the phone. The core now exports one symbol, `libindoorbikecore_symbols`; it used to export all of libcurl and that OpenSSL, which another library in the process could have bound to.
 - [ ] **11. Release.**
   - Version `Version:` in the spec, with no git-tag versioning (`no-fix-version`).
   - A Codefloe release with the single aarch64 RPM, and the add-to-Harpoon QR code in the README.

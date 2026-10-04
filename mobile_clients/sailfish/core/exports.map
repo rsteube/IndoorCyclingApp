@@ -1,0 +1,11 @@
+/*
+ * What libindoorbikecore.so shows the rest of the process: the one entry point
+ * the Qt side calls, and nothing else. Without this it exported over ten
+ * thousand symbols, among them all of libcurl and the OpenSSL 3.3 that Ktor
+ * links in statically, so a library loading the phone's own libcrypto.so.3
+ * could have its calls bound to that copy instead.
+ */
+{
+    global: libindoorbikecore_symbols;
+    local: *;
+};

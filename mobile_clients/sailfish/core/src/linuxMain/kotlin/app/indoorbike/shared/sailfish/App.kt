@@ -15,6 +15,8 @@
  */
 package app.indoorbike.shared.sailfish
 
+import app.indoorbike.shared.ble.zwift.aesEncryptBlock
+import app.indoorbike.shared.ble.zwift.generateZwiftKeyPair
 import app.indoorbike.shared.feedback.SUPPORT_EMAIL
 import app.indoorbike.shared.feedback.bugReportSubject
 import app.indoorbike.shared.feedback.bugReportText
@@ -53,6 +55,22 @@ internal fun SailfishCore.installApp() {
     }
 
     bus.command("app.diagnostics") { JsonPrimitive(DiagnosticsLog.snapshot()) }
+
+    /**
+     * A debug build's check that the Zwift controllers' curve and cipher work
+     * on this phone, where no test runs: two fresh key pairs agree on a
+     * secret, and one AES block gives FIPS-197's answer (appendix C.1).
+     */
+    if (debug) bus.command("app.cryptoCheck") {
+        fun hex(text: String) = ByteArray(text.length / 2) { text.substring(2 * it, 2 * it + 2).toInt(16).toByte() }
+        val a = generateZwiftKeyPair()
+        val b = generateZwiftKeyPair()
+        val aes = aesEncryptBlock(hex("000102030405060708090a0b0c0d0e0f"), hex("00112233445566778899aabbccddeeff"))
+        buildJsonObject {
+            put("ecdhAgrees", a.sharedSecret(b.publicKey).contentEquals(b.sharedSecret(a.publicKey)))
+            put("aesMatchesFips197", aes.contentEquals(hex("69c4e0d86a7b0430d8cdb78070b4c55a")))
+        }
+    }
 
     /**
      * A bug report, laid out as the Android app lays it out: the address, the

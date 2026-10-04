@@ -7,10 +7,13 @@
 # and only as the versioned .so.N file: the bare .so the linker looks for comes
 # from a -devel package the target does not carry.
 #
-# libsqlite3 is the one needed so far: SQLDelight's native driver links
-# -lsqlite3. It is on Harbour's allowed list and ships on every phone. The
-# library keeps its own SONAME (libsqlite3.so.0), so the linked core asks for
-# the file the phone really has.
+# Two are staged: libsqlite3, which SQLDelight's native driver links, and
+# libcrypto from OpenSSL 3, for the Zwift controllers' curve and cipher should
+# the OpenSSL Ktor links in statically ever go (see libcrypto.def). Both
+# are on Harbour's allowed list and ship on every phone. Each is named by the
+# SONAME the core must ask for, since the target also carries OpenSSL 1.1's
+# libcrypto.so.1.1, and each keeps that SONAME, so the linked core asks for the
+# file the phone really has.
 #
 # Taken from nextcloud-sailfish's core/sailfish/stage-sysroot.sh.
 #
@@ -38,11 +41,12 @@ fi
 echo "Staging from $TARGET into $OUT"
 mkdir -p "$OUT/lib"
 
-for lib in libsqlite3; do
+for wanted in libsqlite3.so.0 libcrypto.so.3; do
+    lib="${wanted%%.so.*}"
     # Resolved inside the container: docker cp copies a symlink as a symlink,
     # which would land here pointing at a path that does not exist.
     file="$(docker exec "$ENGINE" sh -c \
-        "readlink -f \$(ls /srv/mer/targets/$TARGET/usr/lib64/$lib.so.* 2>/dev/null | head -1) 2>/dev/null")"
+        "readlink -f /srv/mer/targets/$TARGET/usr/lib64/$wanted 2>/dev/null")"
     if [ -z "$file" ]; then
         echo "  $lib: not in the target" >&2
         exit 1
