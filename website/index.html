@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Indoor Bike - Free, open-source indoor cycling for Android</title>
-  <meta name="description" content="Free, open-source indoor cycling for Android. Ride structured workouts, real-world routes, or just ride. Workouts and routes come from repositories riders maintain. No account, no subscription, no Google.">
+  <title>Indoor Bike - Free, open-source indoor cycling for your phone</title>
+  <meta name="description" content="Free, open-source indoor cycling for Android and Sailfish OS, with iPhone coming soon. Ride structured workouts, real-world routes, or just ride. Workouts and routes come from repositories riders maintain. No account, no subscription, no Google.">
   <meta name="theme-color" content="#313e50">
   <link rel="icon" type="image/svg+xml" href="assets/favicon-32.svg">
 
-  <meta property="og:title" content="Indoor Bike - Free, open-source indoor cycling for Android">
+  <meta property="og:title" content="Indoor Bike - Free, open-source indoor cycling for your phone">
   <meta property="og:description" content="Your smart trainer. Your phone. Nothing in between. Structured workouts, real-world routes, and just ride - from repositories riders maintain.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://indoorbike.app/">
@@ -58,7 +58,7 @@
         <a href="#ride">Three ways to ride</a>
         <a href="#community">Community</a>
         <a href="#tools">Editor &amp; tools</a>
-        <a href="#anywhere">Any Android</a>
+        <a href="#install">Platforms</a>
         <a href="#faq">FAQ</a>
       </nav>
       <a class="btn btn-primary" href="#install">Install</a>
@@ -71,7 +71,7 @@
     <section class="hero">
       <div class="container">
         <div class="hero-copy" data-stagger>
-          <p class="eyebrow" style="margin:0">Free, open-source indoor cycling for Android</p>
+          <p class="eyebrow" style="margin:0">Free, open-source indoor cycling for Android, Sailfish OS and soon iPhone</p>
           <h1>Your smart trainer.<br>Your phone.<br>Nothing in between.</h1>
           <p class="lead">
             Ride structured workouts, real-world routes, or just ride. Workouts
@@ -358,81 +358,119 @@
       </div>
     </section>
 
-    <!-- 5. ANY ANDROID + INSTALL -->
-    <section id="anywhere" class="section-alt">
-      <div class="container split">
+    <!-- 5. INSTALL: one card per platform, then what "any Android" means -->
+    <section id="install" class="section-alt">
+      <div class="container">
+        <p class="eyebrow">Install</p>
+        <h2 class="section-title">Android, Sailfish OS, and soon iPhone.</h2>
+        <p class="section-lead">
+          One shared core and a native app on each platform, free and open
+          source on all of them.
+        </p>
+
+        <div class="platform-grid" data-stagger>
+          <article class="card install-card platform-card">
+            <h3>Android</h3>
+            <p class="platform-lead">Any phone, with Google or without it.</p>
+            <div class="install-rows">
+              <a class="install-row" href="https://github.com/bikram-agarwal/ObtainX" target="_blank" rel="noopener">
+                <span class="well well-dest"><svg class="icon icon-22" aria-hidden="true"><use href="#i-sync"></use></svg></span>
+                <div>
+                  <span class="install-name">ObtainX <span class="badge">Recommended</span></span>
+                  <p>Signed APKs and automatic updates straight from our releases. No store account.</p>
+                </div>
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+              </a>
+              <a class="install-row" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases/latest" target="_blank" rel="noopener">
+                <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-android"></use></svg></span>
+                <div>
+                  <span class="install-name">Direct APK</span>
+                  <p>Download the latest release and sideload it.</p>
+                </div>
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+              </a>
+              <a class="install-row" href="https://play.google.com/store/apps/details?id=app.indoorbike" target="_blank" rel="noopener">
+                <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-shop"></use></svg></span>
+                <div>
+                  <span class="install-name">Google Play</span>
+                  <p>For phones that do have Google. Same app, same zero dependencies, updated by the store.</p>
+                </div>
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+              </a>
+            </div>
+            <p class="install-note">
+              New to ObtainX? Install it, tap <b>Add App</b>, and paste
+              <code>https://codefloe.com/SnappTechnology/IndoorCyclingApp</code>
+            </p>
+          </article>
+
+          <article class="card install-card platform-card">
+            <h3>Sailfish OS <span class="badge badge-quiet">Testing</span></h3>
+            <p class="platform-lead">Sailfish OS 5.1 on an aarch64 phone, such as the Jolla C2.</p>
+            <div class="install-rows">
+              <a class="install-row" href="https://github.com/JuhaniLehtimaeki/Harpoon" target="_blank" rel="noopener">
+                <span class="well well-dest"><svg class="icon icon-22" aria-hidden="true"><use href="#i-sync"></use></svg></span>
+                <div>
+                  <span class="install-name">Harpoon</span>
+                  <p>The app installer for Sailfish OS that installs Indoor Bike from our releases and keeps it up to date.</p>
+                </div>
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+              </a>
+              <a class="install-row" href="https://codefloe.com/SnappTechnology/harbour-indoorbike" target="_blank" rel="noopener">
+                <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-smartphone"></use></svg></span>
+                <div>
+                  <span class="install-name">Sailfish releases</span>
+                  <p>The packages Harpoon installs, to look at or install by hand.</p>
+                </div>
+                <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
+              </a>
+            </div>
+            <p class="install-note">
+              <b>Sailfish OS is in early development.</b> Expect bugs and frequent
+              updates, so install it now only if you are happy to put up with
+              teething problems. Eventually it will be in the Jolla Store for
+              everyone. <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/issues" target="_blank" rel="noopener">Bug reports</a> are welcome.
+            </p>
+            <p class="install-note">
+              New to Harpoon? Install it, tap <b>Add app</b>, and paste
+              <code>https://codefloe.com/SnappTechnology/harbour-indoorbike</code>
+            </p>
+          </article>
+
+          <article class="card install-card platform-card platform-soon">
+            <div>
+              <h3>iPhone <span class="badge badge-quiet">Soon</span></h3>
+              <p class="platform-lead">The same app, on the same shared core.</p>
+            </div>
+            <div class="install-rows">
+              <div class="install-row soon">
+                <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-shop"></use></svg></span>
+                <div>
+                  <span class="install-name">App Store</span>
+                  <p>Coming soon.</p>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <div class="container split platform-android" id="anywhere">
         <div>
           <p class="eyebrow">Any Android</p>
           <h2 class="section-title">No Google Play Services. Not optional, structural.</h2>
-          <p class="section-lead" style="margin-bottom:var(--s-6)">
-            The app uses standard Android Bluetooth APIs and nothing proprietary:
-            no Firebase, no crash reporters, no analytics. So it runs on phones
-            that have no Google on them at all.
-          </p>
-          <ul class="os-list" data-stagger>
-            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Murena /e/OS</li>
-            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>GrapheneOS</li>
-            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Huawei and other GApps-free phones</li>
-            <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Stock Android, of course</li>
-          </ul>
-        </div>
-
-        <div class="card install-card" id="install">
-          <p class="eyebrow" style="margin:0">Install</p>
-          <h3>Three ways on Android. One on Sailfish OS.</h3>
-          <div class="install-rows">
-            <a class="install-row" href="https://github.com/bikram-agarwal/ObtainX" target="_blank" rel="noopener">
-              <span class="well well-dest"><svg class="icon icon-22" aria-hidden="true"><use href="#i-sync"></use></svg></span>
-              <div>
-                <span class="install-name">ObtainX <span class="badge">Recommended</span></span>
-                <p>Signed APKs and automatic updates straight from our releases. No store account.</p>
-              </div>
-              <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
-            </a>
-            <a class="install-row" href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/releases/latest" target="_blank" rel="noopener">
-              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-android"></use></svg></span>
-              <div>
-                <span class="install-name">Direct APK</span>
-                <p>Download the latest release and sideload it.</p>
-              </div>
-              <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
-            </a>
-            <a class="install-row" href="https://play.google.com/store/apps/details?id=app.indoorbike" target="_blank" rel="noopener">
-              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-shop"></use></svg></span>
-              <div>
-                <span class="install-name">Google Play</span>
-                <p>For phones that do have Google. Same app, same zero dependencies, updated by the store.</p>
-              </div>
-              <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
-            </a>
-            <a class="install-row" href="https://codefloe.com/SnappTechnology/harbour-indoorbike" target="_blank" rel="noopener">
-              <span class="well"><svg class="icon icon-22" aria-hidden="true"><use href="#i-smartphone"></use></svg></span>
-              <div>
-                <span class="install-name">Sailfish OS <span class="badge badge-quiet">Early</span></span>
-                <p>Installed and kept up to date with Harpoon, from our Sailfish releases. Read the note below first.</p>
-              </div>
-              <svg class="icon icon-22" aria-hidden="true"><use href="#i-arrow_outward"></use></svg>
-            </a>
-          </div>
-          <p class="install-note">
-            New to ObtainX? Install it, tap <b>Add App</b>, and paste
-            <code>https://codefloe.com/SnappTechnology/IndoorCyclingApp</code>
-          </p>
-          <p class="install-note">
-            <b>Sailfish OS is in early development.</b> Expect bugs and frequent
-            updates, so install it now only if you are happy to put up with
-            teething problems. It needs Sailfish OS 5.1 on an aarch64 phone, such
-            as the Jolla C2. Eventually it will be in the Jolla Store for everyone.
-            <a href="https://codefloe.com/SnappTechnology/IndoorCyclingApp/issues" target="_blank" rel="noopener">Bug reports</a> are welcome.
-          </p>
-          <p class="install-note">
-            New to <a href="https://github.com/JuhaniLehtimaeki/Harpoon" target="_blank" rel="noopener">Harpoon</a>?
-            It is an app installer for Sailfish OS that installs apps straight
-            from their releases and keeps them up to date. Install it, tap
-            <b>Add app</b>, and paste
-            <code>https://codefloe.com/SnappTechnology/harbour-indoorbike</code>
+          <p class="section-lead">
+            The Android app uses standard Android Bluetooth APIs and nothing
+            proprietary: no Firebase, no crash reporters, no analytics. So it
+            runs on phones that have no Google on them at all.
           </p>
         </div>
+        <ul class="os-list" data-stagger>
+          <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Murena /e/OS</li>
+          <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>GrapheneOS</li>
+          <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Huawei and other GApps-free phones</li>
+          <li><svg class="icon icon-20 icon-ok" aria-hidden="true"><use href="#i-check_circle"></use></svg>Stock Android, of course</li>
+        </ul>
       </div>
     </section>
 
@@ -464,7 +502,7 @@
           </li>
           <li>
             <svg class="icon icon-22" aria-hidden="true"><use href="#i-code"></use></svg>
-            <span><b>Open source, GPLv3.</b> Kotlin Multiplatform core, Jetpack Compose UI. Read it, fork it, build it.</span>
+            <span><b>Open source, GPLv3.</b> Kotlin Multiplatform core, with a native interface on each platform. Read it, fork it, build it.</span>
           </li>
           <li>
             <svg class="icon icon-22" aria-hidden="true"><use href="#i-description"></use></svg>
@@ -527,7 +565,7 @@
             <summary>Is iOS supported?
               <svg class="icon icon-20" aria-hidden="true"><use href="#i-expand_more"></use></svg>
             </summary>
-            <p>Not yet. The shared core is Kotlin Multiplatform, so a port is planned once the Android release is polished.</p>
+            <p>Soon. The iPhone app runs the same Kotlin Multiplatform core as the Android and Sailfish OS apps, and its release is close.</p>
           </details>
         </div>
       </div>
