@@ -195,11 +195,11 @@ Each milestone ends with the app on the Jolla C2, driven and screenshotted throu
   - **Status:** done with `scripts/companion_probe.py` from a PC: discovery through the UDP beacon, pairing, the HUD, a climb, shifts, pause, finish, and the ride saved once. The phone has no Avahi, so there is no DNS-SD; the beacon and the typed address are the ways in. Not yet ridden with Col de Berg.
 - [x] **10. Zwift controllers.** `ZwiftCrypto` on OpenSSL 3's libcrypto through cinterop: P-256 and ECDH, AES-ECB and HMAC-SHA256. Done when it is verified against the shared tests and a real Click.
   - **Status:** the crypto is done; a real Click is still to try. P-256, ECDH and the AES block come from OpenSSL 3 through cinterop, declared in `libcrypto.def` without OpenSSL's headers. They resolve against the OpenSSL 3.3 that Ktor's curl engine already links into the core, so the core needs no libcrypto from the phone. All 852 shared tests pass on Linux, `ZwiftCryptoTest` among them, and a debug build's `app.cryptoCheck` passes on the phone. The core now exports one symbol, `libindoorbikecore_symbols`; it used to export all of libcurl and that OpenSSL, which another library in the process could have bound to.
-- [ ] **11. Release.**
-  - Version `Version:` in the spec, with no git-tag versioning (`no-fix-version`).
-  - A Codefloe release with the single aarch64 RPM, and the add-to-Harpoon QR code in the README.
-  - Jolla Store submission if wanted.
-  - **Status:** `harbour-indoorbike-0.1.0-1.aarch64.rpm` builds clean (no inspect surface) and passes `sfdk check`'s Harbour validation. rpmlint's one error, an architecture-dependent file in `/usr/share`, is the core library where Harbour requires an app's own libraries to be. Still to do, each the owner's call: install it on the phone, ride a real trainer from it under Sailjail, and publish.
+- [x] **11. Release.**
+  - Published for [Harpoon](https://github.com/JuhaniLehtimaeki/Harpoon) on the releases-only repository [SnappTechnology/harbour-indoorbike](https://codefloe.com/SnappTechnology/harbour-indoorbike), whose README carries the add-to-Harpoon QR code. The code stays here. A separate repository keeps the Android APK releases here out of Harpoon's way (it reads only the newest 100) and the RPM releases out of Android release trackers'.
+  - Each release: raise `Version:` (or `Release:` for a rebuild) in the spec with a `.changes` entry, `./build.sh`, push a tag equal to the bare version (`0.2.0`) to the releases repository, then `./publish.sh notes.md`. The script creates the release, attaches the RPM, and checks through the public API that it is published with the RPM at its local size. Its token, with write:repository on that repository, is `~/.config/codefloe/release-token-indoorbike-sailfish` (`CODEFLOE_TOKEN` overrides it).
+  - A Jolla Store submission if wanted.
+  - **Status:** 0.2.0 published on 2026-10-04, `harbour-indoorbike-0.2.0-1.aarch64.rpm`, which passes `sfdk check`'s Harbour validation. rpmlint's one error, an architecture-dependent file in `/usr/share`, is the core library where Harbour requires an app's own libraries to be.
 
 A first public build could stop after milestone 5 plus Intervals.icu from milestone 8.
 
