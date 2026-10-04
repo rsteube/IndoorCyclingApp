@@ -28,6 +28,12 @@ public:
 
     void paint(QPainter *painter) override;
 
+    // The chart into [rect], for a picture as well as for this item. [lineScale] thickens the
+    // lines for a picture drawn larger than the screen.
+    static void draw(QPainter *painter, const QRectF &rect, const QVariantList &power,
+                     const QVariantList &heartRate, const QVariantList &plan, int ftp, const QColor &powerColor,
+                     const QColor &heartRateColor, const QColor &planColor, qreal lineScale = 1);
+
     QVariantList power() const { return m_power; }
     void setPower(const QVariantList &values);
     QVariantList heartRate() const { return m_heartRate; }

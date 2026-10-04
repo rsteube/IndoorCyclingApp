@@ -15,6 +15,7 @@
  */
 package app.indoorbike.shared.sailfish
 
+import app.indoorbike.shared.PowerZone
 import app.indoorbike.shared.activity.TcxBuilder
 import app.indoorbike.shared.activity.exportFileName
 import app.indoorbike.shared.db.WorkoutSession
@@ -32,6 +33,7 @@ import app.indoorbike.shared.progression.timeInZoneSeconds
 import app.indoorbike.shared.util.PosixFiles
 import app.indoorbike.shared.util.getCurrentEpochMillis
 import app.indoorbike.shared.util.localUtcOffsetMs
+import app.indoorbike.shared.workout.PowerZoneBand
 import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.shared.workout.isSimulation
@@ -119,6 +121,8 @@ internal fun SailfishCore.installHistory() {
             put("heartRate", downsample(telemetry.map { it.heartRate.toDouble() }))
             put("timeInZone", buildJsonArray { timeInZoneSeconds(watts, ftp).forEach { add(JsonPrimitive(it)) } })
             put("plan", if (workout == null) JsonNull else encodeSegments(workout.segments))
+            put("peakPower", watts.maxOrNull() ?: 0)
+            put("highlight", workout?.let { toughestInterval(it.segments) } ?: JsonNull)
         })
     }
 
@@ -197,5 +201,24 @@ private fun downsample(values: List<Double>, points: Int = 360) = buildJsonArray
         val from = (i * step).toInt()
         val to = ((i + 1) * step).toInt().coerceAtMost(values.size).coerceAtLeast(from + 1)
         add(JsonPrimitive(values.subList(from, to).average().toInt()))
+    }
+}
+
+/**
+ * The interval a planned ride is remembered by on its share picture, as on
+ * iOS: the longest at Z4 or above by length times intensity, else the hardest.
+ */
+private fun toughestInterval(segments: List<PowerZone>): JsonObject? {
+    if (segments.isEmpty()) return null
+    val pick = segments
+        .filter { PowerZoneBand.fromFtpPercent(it.powerPercentFTP).number >= 4 }
+        .maxByOrNull { it.lengthInSeconds * it.powerPercentFTP }
+        ?: segments.maxBy { it.powerPercentFTP }
+    val zone = PowerZoneBand.fromFtpPercent(pick.powerPercentFTP)
+    return buildJsonObject {
+        put("seconds", pick.lengthInSeconds)
+        put("pct", pick.powerPercentFTP)
+        put("zone", zone.number)
+        put("label", zone.label)
     }
 }

@@ -61,40 +61,52 @@ void RideChart::setPlanColor(const QColor &color)
 
 void RideChart::paint(QPainter *painter)
 {
-    const qreal w = width();
-    const qreal h = height();
+    draw(painter, QRectF(0, 0, width(), height()), m_power, m_heartRate, m_plan, m_ftp, m_powerColor,
+         m_heartRateColor, m_planColor);
+}
+
+void RideChart::draw(QPainter *painter, const QRectF &rect, const QVariantList &power,
+                     const QVariantList &heartRate, const QVariantList &plan, int ftp,
+                     const QColor &powerColor, const QColor &heartRateColor, const QColor &planColor,
+                     qreal lineScale)
+{
+    const qreal w = rect.width();
+    const qreal h = rect.height();
     if (w <= 0 || h <= 0)
         return;
+    painter->save();
+    painter->translate(rect.topLeft());
+    painter->setRenderHint(QPainter::Antialiasing);
 
     // One scale for power and the plan, with headroom above the higher of the two.
     double top = 100;
-    for (const QVariant &v : m_power)
+    for (const QVariant &v : power)
         top = std::max(top, v.toDouble());
     int planSeconds = 0;
-    for (const QVariant &s : m_plan) {
+    for (const QVariant &s : plan) {
         const QVariantMap segment = s.toMap();
         planSeconds += segment.value(QStringLiteral("seconds")).toInt();
-        top = std::max(top, segment.value(QStringLiteral("pct")).toDouble() / 100.0 * m_ftp);
+        top = std::max(top, segment.value(QStringLiteral("pct")).toDouble() / 100.0 * ftp);
     }
     top *= 1.1;
 
-    if (m_power.size() > 1) {
+    if (power.size() > 1) {
         QPainterPath area;
         area.moveTo(0, h);
-        const int n = m_power.size();
+        const int n = power.size();
         for (int i = 0; i < n; ++i)
-            area.lineTo(w * i / (n - 1), h - h * m_power.at(i).toDouble() / top);
+            area.lineTo(w * i / (n - 1), h - h * power.at(i).toDouble() / top);
         area.lineTo(w, h);
         area.closeSubpath();
-        QColor fill = m_powerColor;
+        QColor fill = powerColor;
         fill.setAlphaF(0.35);
         painter->fillPath(area, fill);
-        QPen pen(m_powerColor, 2);
+        QPen pen(powerColor, 2 * lineScale);
         painter->setPen(pen);
         painter->setBrush(Qt::NoBrush);
         QPainterPath line;
         for (int i = 0; i < n; ++i) {
-            const QPointF p(w * i / (n - 1), h - h * m_power.at(i).toDouble() / top);
+            const QPointF p(w * i / (n - 1), h - h * power.at(i).toDouble() / top);
             if (i == 0)
                 line.moveTo(p);
             else
@@ -105,14 +117,14 @@ void RideChart::paint(QPainter *painter)
 
     // The plan, stepped, over the same time as the ride.
     if (planSeconds > 0) {
-        QPen pen(m_planColor, 2, Qt::DashLine);
+        QPen pen(planColor, 2 * lineScale, Qt::DashLine);
         painter->setPen(pen);
         QPainterPath steps;
         int at = 0;
         bool first = true;
-        for (const QVariant &s : m_plan) {
+        for (const QVariant &s : plan) {
             const QVariantMap segment = s.toMap();
-            const double y = h - h * segment.value(QStringLiteral("pct")).toDouble() / 100.0 * m_ftp / top;
+            const double y = h - h * segment.value(QStringLiteral("pct")).toDouble() / 100.0 * ftp / top;
             const double x0 = w * at / planSeconds;
             at += segment.value(QStringLiteral("seconds")).toInt();
             const double x1 = w * at / planSeconds;
@@ -130,22 +142,22 @@ void RideChart::paint(QPainter *painter)
     // Heart rate on a scale of its own, so it reads as a shape rather than squashed under power.
     double hrLow = 1000;
     double hrHigh = 0;
-    for (const QVariant &v : m_heartRate) {
+    for (const QVariant &v : heartRate) {
         const double bpm = v.toDouble();
         if (bpm <= 0)
             continue;
         hrLow = std::min(hrLow, bpm);
         hrHigh = std::max(hrHigh, bpm);
     }
-    if (m_heartRate.size() > 1 && hrHigh > 0) {
+    if (heartRate.size() > 1 && hrHigh > 0) {
         const double span = std::max(10.0, hrHigh - hrLow);
-        QPen pen(m_heartRateColor, 1.5);
+        QPen pen(heartRateColor, 1.5 * lineScale);
         painter->setPen(pen);
         QPainterPath line;
         bool drawing = false;
-        const int n = m_heartRate.size();
+        const int n = heartRate.size();
         for (int i = 0; i < n; ++i) {
-            const double bpm = m_heartRate.at(i).toDouble();
+            const double bpm = heartRate.at(i).toDouble();
             if (bpm <= 0) {
                 drawing = false;
                 continue;
@@ -159,4 +171,5 @@ void RideChart::paint(QPainter *painter)
         }
         painter->drawPath(line);
     }
+    painter->restore();
 }

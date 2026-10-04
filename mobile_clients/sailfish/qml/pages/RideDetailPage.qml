@@ -45,6 +45,39 @@ Page {
                      })
     }
 
+    // The ride as a 1080 x 1080 picture, as the Android and iOS apps share it.
+    function sharePicture() {
+        var r = page.ride
+        var highlight = null
+        if (r.highlight)
+            highlight = {
+                "zone": r.highlight.zone, "label": r.highlight.label, "seconds": r.highlight.seconds,
+                "pct": r.highlight.pct, "color": String(Format.zoneColor(page.zones, r.highlight.zone, "#888888"))
+            }
+        var path = StandardPaths.cache + "/ride-" + page.rideId + ".png"
+        var ok = shareCard.render({
+            "date": Qt.formatDate(new Date(r.startMs), "d MMM yyyy"),
+            "name": r.name,
+            "duration": Format.clock(r.durationSeconds),
+            "avgPower": r.avgPower,
+            "tss": r.tss,
+            "peak": r.peakPower,
+            "power": r.power,
+            "plan": r.plan || [],
+            "ftp": r.ftp,
+            "powerColor": String(Format.zoneColor(page.zones, 2, "#4CAF50")),
+            "planColor": "#C8CCD0",
+            "highlight": highlight
+        }, path)
+        if (!ok) {
+            page.error = qsTr("The picture couldn't be made.")
+            return
+        }
+        shareAction.mimeType = "image/png"
+        shareAction.resources = [path]
+        shareAction.trigger()
+    }
+
     function share(format) {
         exportTo(format, StandardPaths.cache, function(path) {
             shareAction.mimeType = format === "fit" ? "application/vnd.ant.fit" : "application/vnd.garmin.tcx+xml"
@@ -79,6 +112,10 @@ Page {
                 onClicked: page.exportTo("fit", StandardPaths.download, function(path) {
                     notice.show(qsTr("Saved %1").arg(path.split("/").pop()))
                 })
+            }
+            MenuItem {
+                text: qsTr("Share as a picture")
+                onClicked: page.sharePicture()
             }
             MenuItem {
                 text: qsTr("Share as TCX")

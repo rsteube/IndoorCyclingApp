@@ -31,7 +31,8 @@ HEADERS += \
     src/keyedlistmodel.h \
     src/notifypipe.h \
     src/ridechart.h \
-    src/routeviews.h
+    src/routeviews.h \
+    src/sharecard.h
 
 SOURCES += \
     src/appservice.cpp \
@@ -43,7 +44,8 @@ SOURCES += \
     src/keyedlistmodel.cpp \
     src/notifypipe.cpp \
     src/ridechart.cpp \
-    src/routeviews.cpp
+    src/routeviews.cpp \
+    src/sharecard.cpp
 
 DISTFILES += \
     qml/harbour-indoorbike.qml \

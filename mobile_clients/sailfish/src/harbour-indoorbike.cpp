@@ -18,6 +18,7 @@
 #include "keyedlistmodel.h"
 #include "ridechart.h"
 #include "routeviews.h"
+#include "sharecard.h"
 
 namespace {
 
@@ -90,9 +91,11 @@ int main(int argc, char *argv[])
     QScopedPointer<QQuickView> view(SailfishApp::createView());
     core.setEngine(view->engine());
     AppService appService(view.data());
+    ShareCard shareCard;
     QQmlContext *context = view->rootContext();
     context->setContextProperty(QStringLiteral("core"), &core);
     context->setContextProperty(QStringLiteral("appService"), &appService);
+    context->setContextProperty(QStringLiteral("shareCard"), &shareCard);
     context->setContextProperty(QStringLiteral("appVersion"), QStringLiteral(APP_VERSION));
     context->setContextProperty(QStringLiteral("devBuild"), debug);
     // A debug build pushed by sailfish-mcp keeps its QML beside the binary and names the main
