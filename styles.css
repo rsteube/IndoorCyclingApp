@@ -739,6 +739,39 @@ a.repo-row:hover > .icon { transform: translateX(3px); }
 .qr-grid i { border-radius: 2px; }
 .qr-grid i.on { background: var(--fg-1); }
 
+/* ---------- Install: a card per platform ---------- */
+.platform-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  gap: var(--s-4);
+  align-items: start;
+}
+/* The platform still to come: one slim card across the grid. */
+.platform-card.platform-soon {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+}
+.platform-soon .platform-lead { margin-bottom: 0; }
+.platform-soon .install-rows { flex: 0 1 360px; }
+.install-card.platform-card h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin: 0 0 4px;
+}
+.platform-card .platform-lead {
+  margin: 0 0 var(--s-5);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--fg-3);
+}
+.platform-android { margin-top: var(--s-10); }
+
 /* ---------- Any Android ---------- */
 .os-list {
   margin: 0;
