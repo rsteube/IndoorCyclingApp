@@ -108,18 +108,7 @@ Page {
         contentHeight: column.height + Theme.paddingLarge
 
         PullDownMenu {
-            visible: page.ride !== null
-            MenuItem {
-                text: qsTr("Delete")
-                onClicked: remorse.execute(qsTr("Deleting the ride"), function() {
-                    core.request({ "cmd": "history.delete", "id": parseInt(page.rideId) }, function(reply) {
-                        if (reply.ok)
-                            pageStack.pop()
-                        else
-                            page.error = reply.message
-                    })
-                })
-            }
+            visible: page.ride !== null && page.ride.canExport
             MenuItem {
                 visible: page.ride !== null && page.ride.canExport
                 text: qsTr("Save as FIT in Downloads")
@@ -433,5 +422,4 @@ Page {
 
     InfoNotice { id: notice }
 
-    RemorsePopup { id: remorse }
 }

@@ -19,6 +19,8 @@ ApplicationName=indoorbike
 # the companion game's connection on the local network. Downloads is where a ride is saved as FIT
 # or TCX when the rider asks for a file rather than the share sheet. With Documents, it is where a
 # GPX route or a workout file to import is found, read only when the rider picks one, and where the
-# backup folder can be, which is written only once the rider picks it.
-Permissions=Bluetooth;Internet;Downloads;Documents
+# backup folder can be, which is written only once the rider picks it. Sharing is the share sheet
+# (org.sailfishos.share), for a ride's picture, FIT or TCX and a game's screenshot: without it the
+# sheet never opens and the share buttons do nothing.
+Permissions=Bluetooth;Internet;Downloads;Documents;Sharing
 ExecDBus=harbour-indoorbike
