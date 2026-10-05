@@ -1,3 +1,7 @@
+* Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.3-1
+- Save a ride's picture and a game's screenshot to Pictures, where Gallery
+  shows them and any app can attach them.
+
 * Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.2-1
 - Sharing works: a ride as a picture, FIT or TCX, and a game screenshot.
 - A ride is no longer deleted from its own page; delete it from History.
