@@ -1,3 +1,8 @@
+* Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.1-1
+- Icons no longer disappear after switching to another app and back.
+- Intervals.icu can be connected with an athlete ID and API key again,
+  for when the browser does not load the sign-in page.
+
 * Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.0-1
 - A redesign: icons throughout, Settings and Companion rebuilt as clear
   lists with how each thing stands, and the long explanations folded away.
