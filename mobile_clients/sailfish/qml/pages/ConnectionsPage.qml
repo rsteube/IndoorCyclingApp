@@ -210,47 +210,11 @@ Page {
                 title: qsTr("Connect with an API key instead")
                 expanded: !!page.intervals.athleteId || !!page.intervals.apiKey
 
-                Loader {
-                    width: parent.width
-                    active: apiKeyFallback.visible
-                    sourceComponent: apiKeyFields
-                }
+                IntervalsKeyFields { intervals: page.intervals }
             }
-            Loader {
-                width: parent.width
-                active: !page.intervals.signedIn && !page.intervals.signInAvailable
-                visible: active
-                sourceComponent: apiKeyFields
-            }
-
-            Component {
-                id: apiKeyFields
-
-            Column {
-                width: parent ? parent.width : 0
-                spacing: Theme.paddingMedium
-
-                TextSetting {
-                    key: "intervalsAthleteId"
-                    label: qsTr("Athlete ID, for example i12345")
-                    value: page.intervals.athleteId || ""
-                }
-                PasswordField {
-                    width: parent.width
-                    label: qsTr("API key")
-                    placeholderText: label
-                    text: page.intervals.apiKey || ""
-                    onActiveFocusChanged: {
-                        if (!activeFocus && text.trim() !== (page.intervals.apiKey || ""))
-                            page.set("intervalsApiKey", text.trim())
-                    }
-                    EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                    EnterKey.onClicked: focus = false
-                }
-                Note {
-                    text: qsTr("Both are on your Intervals.icu settings page, under Developer settings. The key is kept in a file only this app can read.")
-                }
-            }
+            IntervalsKeyFields {
+                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
+                intervals: page.intervals
             }
 
             TextSwitch {

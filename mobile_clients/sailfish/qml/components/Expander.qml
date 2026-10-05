@@ -10,7 +10,16 @@ Column {
     property bool expanded
     default property alias content: body.data
 
+    // Qt 5.6 does not lay a Column out again when an ancestor that hid it at creation is shown, so
+    // the folded part kept a height of 0 and showed a sliver. A change of spacing makes it lay out.
+    function relayout() {
+        body.spacing = 0
+        body.spacing = Theme.paddingMedium
+    }
+
     width: parent ? parent.width : 0
+    onVisibleChanged: if (visible) relayout()
+    onExpandedChanged: relayout()
 
     BackgroundItem {
         id: toggle
