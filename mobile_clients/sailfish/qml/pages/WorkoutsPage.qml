@@ -69,11 +69,24 @@ Page {
                 }
                 spacing: Theme.paddingSmall
 
-                Label {
+                Row {
                     width: parent.width
-                    truncationMode: TruncationMode.Fade
-                    color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
-                    text: (item.workout.favourite ? "★ " : "") + item.workout.name
+                    spacing: Theme.paddingSmall
+
+                    Glyph {
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: !!item.workout.favourite
+                        width: Theme.iconSizeExtraSmall
+                        height: width
+                        name: "favorite_fill"
+                        color: "#E5484D"
+                    }
+                    Label {
+                        width: parent.width - (item.workout.favourite ? Theme.iconSizeExtraSmall + parent.spacing : 0)
+                        truncationMode: TruncationMode.Fade
+                        color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
+                        text: item.workout.name
+                    }
                 }
                 Label {
                     width: parent.width

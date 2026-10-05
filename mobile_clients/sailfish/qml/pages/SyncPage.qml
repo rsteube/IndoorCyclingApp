@@ -1,9 +1,12 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Pickers 1.0
+import "../components"
+import "../components/Accent.js" as Accent
 
 // Backup and sync: one small file per device in a folder the rider already trusts, the same files the
-// Android and iOS apps write, so a folder Nextcloud or Syncthing keeps in step joins them all.
+// Android and iOS apps write, so a folder Nextcloud or Syncthing keeps in step joins them all. How it
+// stands first; the how and why fold away.
 Page {
     id: page
 
@@ -20,23 +23,36 @@ Page {
         return qsTr("%1 d ago").arg(Math.floor(seconds / 86400))
     }
 
-    function statusLine() {
+    function statusTitle() {
+        if (!sync.folder)
+            return qsTr("Off")
         switch (syncStatus.kind) {
         case "syncing":
             return qsTr("Syncing")
         case "success":
-            var devices = syncStatus.devicesSeen === 1 ? qsTr("1 device seen") : qsTr("%1 devices seen").arg(syncStatus.devicesSeen)
-            var skipped = syncStatus.slicesSkipped > 0 ? " · " + qsTr("%1 unreadable").arg(syncStatus.slicesSkipped) : ""
-            return qsTr("Synced %1").arg(relative(syncStatus.syncedAt)) + " · " + devices + skipped
+            return qsTr("Synced %1").arg(relative(syncStatus.syncedAt))
         case "failed":
-            return qsTr("Couldn't sync: %1").arg(syncStatus.message)
+            return qsTr("Couldn't sync")
         case "needsReview":
-            return qsTr("Paused: the data here looks reset. See below.")
-        case "notConfigured":
-            return qsTr("No folder chosen")
+            return qsTr("Paused")
         default:
-            return sync.paused ? qsTr("Paused: the data here looks reset. See below.")
-                               : qsTr("Not synced yet")
+            return sync.paused ? qsTr("Paused") : qsTr("Not synced yet")
+        }
+    }
+
+    function statusDetail() {
+        if (!sync.folder)
+            return qsTr("Choose a folder to start")
+        switch (syncStatus.kind) {
+        case "success":
+            var devices = syncStatus.devicesSeen === 1 ? qsTr("1 device in the folder") : qsTr("%1 devices in the folder").arg(syncStatus.devicesSeen)
+            return devices + (syncStatus.slicesSkipped > 0 ? " · " + qsTr("%1 unreadable").arg(syncStatus.slicesSkipped) : "")
+        case "failed":
+            return syncStatus.message || ""
+        case "needsReview":
+            return qsTr("The data here looks reset. Choose below what to keep.")
+        default:
+            return sync.paused ? qsTr("The data here looks reset. Choose below what to keep.") : ""
         }
     }
 
@@ -91,20 +107,30 @@ Page {
             width: parent.width
             spacing: Theme.paddingMedium
 
-            PageHeader { title: qsTr("Backup and sync") }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: qsTr("Pick a folder in Documents or Downloads, such as one Nextcloud or Syncthing keeps in step with your other devices. Each device writes one small file into it, and every device pointed at the same folder shares your rides, workouts and settings. No accounts, no servers: just a file in a folder you already trust.")
+            PageHeader {
+                title: qsTr("Backup and sync")
+                description: qsTr("Your rides, in a folder you trust")
             }
 
-            ValueButton {
-                label: qsTr("Folder")
-                value: page.sync.folder ? page.sync.folder.replace(StandardPaths.home + "/", "") : qsTr("None")
+            SettingRow {
+                enabled: false
+                icon: page.syncStatus.kind === "failed" ? "sync_problem" : page.sync.folder ? "sync" : "cloud_off"
+                tint: page.syncStatus.kind === "failed" || page.reviewing ? Theme.errorColor : Accent.green
+                muted: !page.sync.folder
+                spinning: page.syncStatus.kind === "syncing"
+                title: tick.n >= 0 ? page.statusTitle() : ""
+                subtitle: tick.n >= 0 ? page.statusDetail() : ""
+                status: !page.sync.folder ? ""
+                        : page.syncStatus.kind === "failed" || page.reviewing ? "bad"
+                        : page.syncStatus.kind === "syncing" ? "busy" : "ok"
+            }
+
+            SettingRow {
+                icon: "folder"
+                tint: Accent.sky
+                title: page.sync.folder ? page.sync.folder.replace(StandardPaths.home + "/", "") : qsTr("Choose a folder")
+                subtitle: page.sync.folder ? qsTr("Tap to choose another") : qsTr("In Documents or Downloads")
+                navigates: true
                 onClicked: pageStack.push(folderPicker, { path: page.sync.folder || StandardPaths.documents })
             }
 
@@ -122,73 +148,52 @@ Page {
                 EnterKey.onClicked: focus = false
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: !!page.sync.folder
-                wrapMode: Text.Wrap
-                color: page.syncStatus.kind === "failed" ? Theme.errorColor : Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: tick.n >= 0 ? page.statusLine() : ""
-            }
-
+            // The data here and the backup disagree too much to sync without asking.
             Column {
                 width: parent.width
                 visible: !!page.sync.folder && page.reviewing
                 spacing: Theme.paddingMedium
 
-                SectionHeader { text: qsTr("Backup paused") }
+                SectionHeader { text: qsTr("Choose what to keep") }
 
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeSmall
+                Note {
+                    emphasised: true
                     text: page.syncStatus.kind === "needsReview"
-                          ? qsTr("This device has %1 rides and %2 workouts; the backup has %3 rides and %4 workouts. They disagree about too many at once, which usually means one device's data was reset. Backup is paused so nothing is deleted by mistake. Choose what to do:")
+                          ? qsTr("This device has %1 rides and %2 workouts; the backup has %3 rides and %4 workouts. They disagree about too many at once, which usually means one device's data was reset. Backup is paused so nothing is deleted by mistake.")
                             .arg(page.syncStatus.localSessions).arg(page.syncStatus.localImports)
                             .arg(page.syncStatus.backupSessions).arg(page.syncStatus.backupImports)
-                          : qsTr("This device and the backup disagree about too many rides at once. Backup is paused so nothing is deleted by mistake. Choose what to do:")
+                          : qsTr("This device and the backup disagree about too many rides at once. Backup is paused so nothing is deleted by mistake.")
                 }
-                Button {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Restore from backup")
+
+                SettingRow {
+                    icon: "cloud_done"
+                    tint: Accent.green
+                    title: qsTr("Restore from backup")
+                    subtitle: qsTr("Recommended if this device's data was lost by accident. This device comes to match the backup.")
                     onClicked: core.send({ "cmd": "sync.restore" })
                 }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: qsTr("Makes this device match the backup: rides, workouts and settings missing here come back, and anything the backup has removed is removed here too. Recommended if this device's data was lost by accident.")
-                }
-                Button {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Keep this device's data")
+                SettingRow {
+                    icon: "cloud_upload"
+                    tint: Accent.warning
+                    title: qsTr("Keep this device's data")
+                    subtitle: qsTr("The backup comes to match this device. Rides this device doesn't have are removed from the backup, and from your other devices when they next sync.")
                     onClicked: Remorse.popupAction(page, qsTr("Keeping this device's data"), function() {
                         core.send({ "cmd": "sync.keepLocal" })
                     })
                 }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: qsTr("Keeps every ride and workout on this device as it is and updates the backup to match. Rides this device doesn't have are removed from the backup, and from your other devices when they next sync. Use only if that is what you want.")
-                }
             }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: !!page.sync.folder
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: qsTr("Stop syncing disconnects this device from the folder. The rides, settings and workouts here stay, and nothing in the folder is deleted.")
+            Expander {
+                title: qsTr("How backup works")
+                // Open until there is a folder: before then it is the page's whole point.
+                expanded: !page.sync.folder
+
+                Note {
+                    text: qsTr("Pick a folder in Documents or Downloads, such as one Nextcloud or Syncthing keeps in step with your other devices. Each device writes one small file into it, and every device pointed at the same folder shares your rides, workouts and settings. No accounts, no servers: just a file in a folder you already trust.")
+                }
+                Note {
+                    text: qsTr("Stop syncing, in the pull-down menu, disconnects this device from the folder. The rides, settings and workouts here stay, and nothing in the folder is deleted.")
+                }
             }
         }
 

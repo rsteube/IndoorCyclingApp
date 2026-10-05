@@ -2,11 +2,13 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Nemo.KeepAlive 1.2
 import "../components"
+import "../components/Accent.js" as Accent
 import "../components/Format.js" as Format
 
 // Companion mode's way in, as the Android app's Companion screen: open the socket, say how things
-// stand, show where to connect and the code, and give way to the ride as soon as the game starts
-// describing a road. The socket is open only while this page, or the ride it leads to, is on screen.
+// stand, show the code, and give way to the ride as soon as the game starts describing a road. Laid
+// out as a glance: where things stand, the code, a checklist; the detail folds away below. The
+// socket is open only while this page, or the ride it leads to, is on screen.
 Page {
     id: page
 
@@ -14,9 +16,11 @@ Page {
 
     readonly property var companion: core.state.companion || ({})
     readonly property var trainer: core.state.trainer || ({})
-    readonly property var ride: core.state.ride || ({})
     readonly property bool trainerReady: !!trainer.connected
     readonly property var addresses: companion.addresses || []
+    readonly property var paired: companion.paired || []
+    readonly property bool running: !!companion.running
+    readonly property bool connected: !!companion.controllerName
     property bool wasReceiving: false
     property bool handedOff: false
 
@@ -26,6 +30,11 @@ Page {
             return
         handedOff = true
         pageStack.replace(Qt.resolvedUrl("RideScreenPage.qml"))
+    }
+
+    function copy(text, what) {
+        Clipboard.text = text
+        notice.show(qsTr("%1 copied").arg(what))
     }
 
     allowedOrientations: Orientation.All
@@ -52,7 +61,7 @@ Page {
     Timer {
         interval: 10000
         repeat: true
-        running: page.status === PageStatus.Active && !!page.companion.running
+        running: page.status === PageStatus.Active && page.running
         onTriggered: core.send({ "cmd": "companion.refreshAddresses" })
     }
 
@@ -61,8 +70,12 @@ Page {
         contentHeight: column.height + Theme.paddingLarge
 
         PullDownMenu {
-            visible: !!page.companion.debug
             MenuItem {
+                text: qsTr("Find or build a companion")
+                onClicked: Qt.openUrlExternally("https://indoorbike.app/companion/")
+            }
+            MenuItem {
+                visible: !!page.companion.debug
                 text: qsTr("Debug: open the ride without a companion")
                 onClicked: {
                     core.send({ "cmd": "companion.withoutCompanion" })
@@ -79,125 +92,32 @@ Page {
 
             PageHeader {
                 title: qsTr("Companion")
-                description: qsTr("Ride mode · Alpha")
+                description: qsTr("A game on another screen rides the trainer")
             }
 
-            // How things stand.
-            Column {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                spacing: Theme.paddingSmall
-
-                Label {
-                    width: parent.width
-                    wrapMode: Text.Wrap
-                    color: page.companion.error ? "#F0C419" : Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeLarge
-                    text: page.companion.error ? qsTr("Could not start")
-                          : !page.companion.running ? qsTr("Opening the socket")
-                          : page.companion.controllerName ? qsTr("%1 connected").arg(page.companion.controllerName)
-                          : qsTr("Waiting for a companion")
-                }
-                Label {
-                    width: parent.width
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: page.companion.error ? page.companion.error
-                          : !page.companion.running ? qsTr("One moment.")
-                          : page.companion.controllerName
-                            ? qsTr("Waiting for it to start describing the road. The ride begins on its first update.")
-                            : qsTr("Start your companion app and point it at this phone.")
-                }
-            }
-
-            // Without a trainer a companion can connect, but nothing would move the bike.
+            // Where things stand, as one picture: announcing itself, someone connected, or stuck.
             Column {
                 width: parent.width
-                visible: !page.trainerReady
                 spacing: Theme.paddingMedium
 
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: "#F0C419"
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: qsTr("No trainer paired. A companion can connect without one, but nothing would move the trainer.")
-                }
-                Button {
+                Radar {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Pair a trainer")
-                    onClicked: pageStack.push(Qt.resolvedUrl("PairPage.qml"))
-                }
-            }
-
-            // Where to connect: every address, as the URL a companion types in.
-            Column {
-                width: parent.width
-                visible: !!page.companion.running
-                spacing: Theme.paddingSmall
-
-                SectionHeader { text: page.addresses.length > 1 ? qsTr("Addresses") : qsTr("Address") }
-
-                Repeater {
-                    model: page.addresses
-
-                    Label {
-                        x: Theme.horizontalPageMargin
-                        width: column.width - 2 * Theme.horizontalPageMargin
-                        wrapMode: Text.WrapAnywhere
-                        color: Theme.highlightColor
-                        font.pixelSize: Theme.fontSizeMedium
-                        text: "ws://" + modelData + ":" + page.companion.port + "/companion"
-                    }
+                    icon: page.companion.error ? "error" : "sports_esports"
+                    tint: page.companion.error ? Theme.errorColor : page.connected ? Accent.success : Theme.highlightColor
+                    searching: page.running && !page.connected && !page.companion.error
+                    found: page.connected
                 }
                 Label {
                     x: Theme.horizontalPageMargin
                     width: parent.width - 2 * Theme.horizontalPageMargin
-                    visible: page.addresses.length === 0
+                    horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
-                    color: "#F0C419"
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: qsTr("No network. Join the same Wi-Fi as the companion: it connects over it.")
-                }
-                DetailItem {
-                    label: qsTr("Port")
-                    value: page.companion.port || ""
-                }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: qsTr("New for every ride. A companion that remembered the last one is pointing at a socket that has closed.")
-                }
-                // Sailfish has no DNS-SD to advertise with; the UDP beacon is how a companion finds it.
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: qsTr("A companion that listens for this phone's beacon finds it on the same Wi-Fi. Otherwise type the address into the companion by hand.")
-                }
-            }
-
-            // The pairing code.
-            Column {
-                width: parent.width
-                visible: !!page.companion.running
-                spacing: Theme.paddingSmall
-
-                SectionHeader { text: qsTr("Pairing code") }
-
-                Label {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeHuge
-                    font.letterSpacing: Theme.paddingSmall
-                    text: page.companion.token || ""
+                    color: page.companion.error ? Theme.errorColor : Theme.highlightColor
+                    font.pixelSize: Theme.fontSizeLarge
+                    text: page.companion.error ? qsTr("Could not start")
+                          : !page.running ? qsTr("Getting ready")
+                          : page.connected ? qsTr("%1 connected").arg(page.companion.controllerName)
+                          : qsTr("Waiting for your game")
                 }
                 Label {
                     x: Theme.horizontalPageMargin
@@ -205,81 +125,205 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: page.companion.debug ? qsTr("Debug build: the code is always the same.")
-                                               : qsTr("New for every ride. It is never stored and never reused.")
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: page.companion.error ? page.companion.error
+                          : !page.running ? qsTr("One moment.")
+                          : page.connected ? qsTr("The ride begins as soon as the game starts it.")
+                          : qsTr("Open the game and choose this phone. Enter this code when it asks.")
                 }
             }
 
-            SectionHeader { text: qsTr("Needs a second app") }
+            // The code, as big tiles: read across a room and typed into a game.
+            Column {
+                width: parent.width
+                spacing: Theme.paddingMedium
+                visible: page.running && !page.connected && !!page.companion.token
+                opacity: visible ? 1 : 0
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: qsTr("Companion mode hands the trainer to a game or app on another device, which describes the road. It needs one running.")
+                Behavior on opacity { FadeAnimator { } }
+
+                CodeTiles {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    code: page.companion.token || ""
+                }
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeExtraSmall
+                    text: page.companion.debug ? qsTr("Pairing code · the same in every debug build")
+                                               : qsTr("Pairing code · new for every ride")
+                }
             }
-            Button {
-                anchors.horizontalCenter: parent.horizontalCenter
-                text: qsTr("Find or build a companion")
-                onClicked: Qt.openUrlExternally("https://indoorbike.app/companion/")
+
+            // What has to be true for a game to get in.
+            Column {
+                width: parent.width
+
+                SectionHeader { text: qsTr("Ready to ride") }
+
+                SettingRow {
+                    icon: "pedal_bike"
+                    tint: Accent.power
+                    title: page.trainerReady ? (page.trainer.name || qsTr("Trainer")) : qsTr("No trainer")
+                    subtitle: page.trainerReady ? qsTr("Connected. The game will set its resistance.")
+                                                : qsTr("A game can connect without one, but nothing would move the trainer. Tap to pair.")
+                    status: page.trainerReady ? "ok" : "bad"
+                    navigates: !page.trainerReady
+                    onClicked: if (!page.trainerReady) pageStack.push(Qt.resolvedUrl("PairPage.qml"))
+                }
+                SettingRow {
+                    icon: "wifi"
+                    tint: Accent.sky
+                    title: page.addresses.length > 0 ? qsTr("On the network") : qsTr("No network")
+                    subtitle: page.addresses.length > 0 ? qsTr("The game has to be on the same Wi-Fi to find this phone.")
+                                                        : qsTr("Join the same Wi-Fi as the game.")
+                    status: !page.running ? "busy" : page.addresses.length > 0 ? "ok" : "bad"
+                }
+                SettingRow {
+                    icon: "sports_esports"
+                    tint: Accent.violet
+                    title: page.connected ? page.companion.controllerName : qsTr("Game")
+                    subtitle: page.connected ? qsTr("Connected from %1").arg(page.companion.controllerAddress || "")
+                                             : qsTr("Waiting for it to connect")
+                    status: page.connected ? "ok" : page.running ? "busy" : "off"
+                }
             }
 
-            SectionHeader {
-                visible: !!page.companion.paired && page.companion.paired.length > 0
-                text: qsTr("Paired companions")
-            }
-            Repeater {
-                model: page.companion.paired || []
+            // For a game that does not find the phone by itself.
+            Expander {
+                visible: page.running
+                title: qsTr("Connect by hand")
 
-                ListItem {
-                    id: pairedItem
+                Note {
+                    text: qsTr("Type this address into the game if it does not find the phone by itself. Tap it to copy. It changes for every ride.")
+                }
+                Repeater {
+                    model: page.addresses
 
-                    width: column.width
-                    contentHeight: Theme.itemSizeMedium
-                    menu: ContextMenu {
-                        MenuItem {
-                            text: qsTr("Forget")
-                            onClicked: pairedItem.remorseDelete(function() {
-                                core.send({ "cmd": "companion.forget", "deviceId": modelData.deviceId })
-                            })
+                    BackgroundItem {
+                        id: addressItem
+
+                        readonly property string url: "ws://" + modelData + ":" + page.companion.port + "/companion"
+
+                        width: column.width
+                        height: Theme.itemSizeSmall
+                        onClicked: page.copy(url, qsTr("Address"))
+
+                        Label {
+                            anchors {
+                                left: parent.left
+                                leftMargin: Theme.horizontalPageMargin
+                                right: copyIcon.left
+                                rightMargin: Theme.paddingMedium
+                                verticalCenter: parent.verticalCenter
+                            }
+                            truncationMode: TruncationMode.Fade
+                            font.family: "monospace"
+                            font.pixelSize: Theme.fontSizeSmall
+                            color: addressItem.highlighted ? Theme.highlightColor : Theme.primaryColor
+                            text: addressItem.url
+                        }
+                        Glyph {
+                            id: copyIcon
+
+                            anchors {
+                                right: parent.right
+                                rightMargin: Theme.horizontalPageMargin
+                                verticalCenter: parent.verticalCenter
+                            }
+                            width: Theme.iconSizeSmall
+                            height: width
+                            name: "content_copy"
+                            color: addressItem.highlighted ? Theme.highlightColor : Theme.secondaryColor
                         }
                     }
+                }
+                DetailItem {
+                    label: qsTr("Address")
+                    value: page.addresses.length > 0 ? page.addresses[0] : "-"
+                }
+                DetailItem {
+                    label: qsTr("Port")
+                    value: page.companion.port || "-"
+                }
+                DetailItem {
+                    label: qsTr("Code")
+                    value: page.companion.token || "-"
+                }
+            }
 
-                    Column {
-                        x: Theme.horizontalPageMargin
-                        width: parent.width - 2 * Theme.horizontalPageMargin
-                        anchors.verticalCenter: parent.verticalCenter
+            // Games the rider let the phone remember: they connect without the code.
+            Column {
+                width: parent.width
+                visible: page.paired.length > 0
 
-                        Label {
-                            width: parent.width
-                            truncationMode: TruncationMode.Fade
-                            color: pairedItem.highlighted ? Theme.highlightColor : Theme.primaryColor
-                            text: modelData.name
-                        }
-                        Label {
-                            width: parent.width
-                            color: Theme.secondaryColor
-                            font.pixelSize: Theme.fontSizeExtraSmall
-                            text: !modelData.lastSeen ? qsTr("Paired")
+                SectionHeader { text: qsTr("Remembered games") }
+
+                Repeater {
+                    model: page.paired
+
+                    SettingRow {
+                        id: pairedRow
+
+                        icon: "sports_esports"
+                        tint: Accent.violet
+                        title: modelData.name
+                        subtitle: !modelData.lastSeen ? qsTr("Remembered · connects without the code")
                                   : Date.now() - modelData.lastSeen < 60000 ? qsTr("Connected just now")
                                   : qsTr("Last connected %1").arg(Format.relative(modelData.lastSeen))
+
+                        function forget() {
+                            var id = modelData.deviceId
+                            remorseDelete(function() { core.send({ "cmd": "companion.forget", "deviceId": id }) })
+                        }
+
+                        onClicked: openMenu()
+                        menu: ContextMenu {
+                            MenuItem {
+                                text: qsTr("Forget")
+                                onClicked: pairedRow.forget()
+                            }
+                        }
+
+                        IconButton {
+                            icon.source: "image://theme/icon-m-delete"
+                            onClicked: pairedRow.forget()
                         }
                     }
                 }
+                Note {
+                    text: qsTr("Forget a game to make it ask for the code again, for example when it says it has no key for this phone.")
+                }
             }
 
-            TextSwitch {
-                text: qsTr("Show every reading while riding")
-                description: qsTr("Gradient, gear, cadence, heart rate, speed, distance and climb as well as power. For building a companion: it changes nothing the game is sent.")
-                checked: !!page.companion.showAllData
-                automaticCheck: false
-                onClicked: core.send({ "cmd": "companion.showAllData", "value": !checked })
+            Expander {
+                title: qsTr("What is companion mode?")
+
+                Note {
+                    text: qsTr("Companion mode hands the trainer to a game or app on another device, such as a computer by the bike. The game describes the road and the trainer rides it; the phone shows your gear, takes your shifts and saves each ride to your history.")
+                }
+                Button {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("Find or build a companion")
+                    onClicked: Qt.openUrlExternally("https://indoorbike.app/companion/")
+                }
+            }
+
+            Expander {
+                title: qsTr("For game developers")
+
+                TextSwitch {
+                    text: qsTr("Show every reading while riding")
+                    description: qsTr("Gradient, gear, cadence, heart rate, speed, distance and climb as well as power. Changes nothing the game is sent.")
+                    checked: !!page.companion.showAllData
+                    automaticCheck: false
+                    onClicked: core.send({ "cmd": "companion.showAllData", "value": !checked })
+                }
             }
         }
 
         VerticalScrollDecorator { }
     }
+
+    InfoNotice { id: notice }
 }

@@ -1,9 +1,11 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import "../components"
+import "../components/Accent.js" as Accent
 
-// Where finished rides can be sent. Each service is off until it is set up, and nothing is
-// contacted before then.
+// Where finished rides can be sent. Each service is one row saying how it stands and the one thing
+// to do next; how it works, and what to do when the browser does not come back, fold away below.
+// Nothing is contacted before a service is set up.
 Page {
     id: page
     objectName: "connections"
@@ -120,26 +122,36 @@ Page {
             width: parent.width
             spacing: Theme.paddingMedium
 
-            PageHeader { title: qsTr("Connections") }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: qsTr("Finished rides can be uploaded to a training platform. Each one is off until you set it up, and nothing is contacted before then.")
+            PageHeader {
+                title: qsTr("Connections")
+                description: qsTr("Where your finished rides go")
             }
 
+            // What went wrong, where it is seen: at the top, not under the last field.
+            SettingRow {
+                visible: page.message.length > 0
+                enabled: false
+                icon: "error"
+                tint: Theme.errorColor
+                title: qsTr("That didn't work")
+                subtitle: page.message
+                status: "bad"
+            }
+
+            // ---- Intervals.icu ----
             SectionHeader { text: "Intervals.icu" }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: qsTr("Send your finished rides to Intervals.icu. Nothing is contacted until you connect, and after that only when a ride is uploaded.")
+            SettingRow {
+                enabled: false
+                icon: "cloud_upload"
+                tint: Accent.sky
+                muted: !page.intervals.configured
+                title: page.intervals.signedIn
+                       ? (page.intervals.athleteName ? qsTr("Connected as %1").arg(page.intervals.athleteName) : qsTr("Connected"))
+                       : page.intervals.configured ? qsTr("Connected with your API key")
+                       : qsTr("Not connected")
+                subtitle: qsTr("Training analysis for your rides: fitness, fatigue and every power curve.")
+                status: page.intervals.configured ? "ok" : ""
             }
 
             // Signing in, in a build that carries the OAuth client, as on Android.
@@ -148,96 +160,77 @@ Page {
                 visible: !page.intervals.signedIn && !!page.intervals.signInAvailable
                 spacing: Theme.paddingMedium
 
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: qsTr("You approve IndoorBike on Intervals.icu in your browser, so your password and API key never reach this app. It can upload rides and nothing else, and you can disconnect it here or in your Intervals.icu settings.")
-                }
                 Button {
                     anchors.horizontalCenter: parent.horizontalCenter
+                    preferredWidth: Theme.buttonWidthLarge
                     text: qsTr("Connect Intervals.icu")
                     onClicked: page.connectIntervals()
                 }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
+                Note {
                     visible: !!page.intervals.athleteId && !!page.intervals.apiKey
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
                     text: qsTr("Connecting replaces the API key saved on this phone.")
                 }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: qsTr("After you approve, the page Intervals.icu opens has a button back to IndoorBike. If it does not come back, copy that page's address and paste it here within two minutes:")
-                }
-                TextField {
-                    id: intervalsPasted
+                Expander {
+                    title: qsTr("How it works")
 
-                    width: parent.width
-                    label: qsTr("Address of the page Intervals.icu opened")
-                    placeholderText: label
-                    inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                    EnterKey.enabled: text.trim().length > 0
-                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                    EnterKey.onClicked: page.completeIntervals(text)
+                    Note {
+                        text: qsTr("You approve IndoorBike on Intervals.icu in your browser, so your password and API key never reach this app. It can upload rides and nothing else, and you can disconnect it here or in your Intervals.icu settings.")
+                    }
+                }
+                Expander {
+                    title: qsTr("The browser didn't come back?")
+
+                    Note {
+                        text: qsTr("After you approve, the page Intervals.icu opens has a button back to IndoorBike. If that does not work, copy the page's address and paste it here within two minutes.")
+                    }
+                    TextField {
+                        id: intervalsPasted
+
+                        width: parent.width
+                        label: qsTr("Address of the page Intervals.icu opened")
+                        placeholderText: label
+                        inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                        EnterKey.enabled: text.trim().length > 0
+                        EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                        EnterKey.onClicked: page.completeIntervals(text)
+                    }
                 }
             }
 
             // The athlete id and personal API key, in a build without the OAuth client.
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: qsTr("Both are on your Intervals.icu settings page, under Developer settings. The key is kept in a file only this app can read.")
-            }
-
-            TextSetting {
-                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
-                key: "intervalsAthleteId"
-                label: qsTr("Athlete ID, for example i12345")
-                value: page.intervals.athleteId || ""
-            }
-            PasswordField {
-                id: apiKey
-
+            Column {
                 width: parent.width
                 visible: !page.intervals.signedIn && !page.intervals.signInAvailable
-                label: qsTr("API key")
-                placeholderText: label
-                text: page.intervals.apiKey || ""
-                onActiveFocusChanged: {
-                    if (!activeFocus && text.trim() !== (page.intervals.apiKey || ""))
-                        page.set("intervalsApiKey", text.trim())
+                spacing: Theme.paddingMedium
+
+                TextSetting {
+                    key: "intervalsAthleteId"
+                    label: qsTr("Athlete ID, for example i12345")
+                    value: page.intervals.athleteId || ""
                 }
-                EnterKey.iconSource: "image://theme/icon-m-enter-close"
-                EnterKey.onClicked: focus = false
+                PasswordField {
+                    id: apiKey
+
+                    width: parent.width
+                    label: qsTr("API key")
+                    placeholderText: label
+                    text: page.intervals.apiKey || ""
+                    onActiveFocusChanged: {
+                        if (!activeFocus && text.trim() !== (page.intervals.apiKey || ""))
+                            page.set("intervalsApiKey", text.trim())
+                    }
+                    EnterKey.iconSource: "image://theme/icon-m-enter-close"
+                    EnterKey.onClicked: focus = false
+                }
+                Note {
+                    text: qsTr("Both are on your Intervals.icu settings page, under Developer settings. The key is kept in a file only this app can read.")
+                }
             }
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: !!page.intervals.signedIn
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                text: page.intervals.athleteName ? qsTr("Connected as %1").arg(page.intervals.athleteName)
-                                                 : qsTr("Connected")
-            }
+
             TextSwitch {
+                visible: !!page.intervals.configured
                 text: qsTr("Upload finished rides automatically")
-                description: page.intervals.configured ? qsTr("Each finished ride is sent as soon as it is saved.")
-                             : page.intervals.signInAvailable ? qsTr("Connect above first.")
-                             : qsTr("Enter the athlete ID and key first.")
-                enabled: !!page.intervals.configured
+                description: qsTr("Each ride is sent as soon as it is saved. Otherwise, send one from its page in your history.")
                 checked: !!page.intervals.autoUpload
                 automaticCheck: false
                 onClicked: page.set("intervalsAutoUpload", !checked)
@@ -252,15 +245,18 @@ Page {
                 })
             }
 
+            // ---- FitTrackee ----
             SectionHeader { text: "FitTrackee" }
 
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.secondaryHighlightColor
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: qsTr("Your own FitTrackee server. Worth knowing before you set it up: FitTrackee is built for outdoor activities and only accepts files with GPS coordinates, which an indoor ride has none of. Rides therefore arrive as an entry with the date, duration and estimated distance, with the power, cadence and heart rate written into the notes. There is no power graph. Export a FIT file if you need one.")
+            SettingRow {
+                enabled: false
+                icon: "dns"
+                tint: Accent.violet
+                muted: !page.fitTrackee.connected
+                title: page.fitTrackee.connected ? qsTr("Connected") : qsTr("Not connected")
+                subtitle: page.fitTrackee.connected ? (page.fitTrackee.url || "")
+                                                    : qsTr("Your own server, for a log of your rides.")
+                status: page.fitTrackee.connected ? "ok" : ""
             }
 
             Column {
@@ -268,35 +264,51 @@ Page {
                 visible: !page.fitTrackee.connected
                 spacing: Theme.paddingMedium
 
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.highlightColor
-                    font.pixelSize: Theme.fontSizeSmall
-                    text: qsTr("You approve this in your browser, on your own server, so the app never sees your password. In FitTrackee, go to Profile, Apps, Create an app, allow it to write workouts, and give it this redirect URI:")
+                Expander {
+                    title: qsTr("What arrives on FitTrackee")
+
+                    Note {
+                        text: qsTr("FitTrackee is built for outdoor activities and only accepts files with GPS coordinates, which an indoor ride has none of. Rides therefore arrive as an entry with the date, duration and estimated distance, with power, cadence and heart rate written into the notes. There is no power graph: export a FIT file if you need one.")
+                    }
+                }
+
+                Step {
+                    number: 1
+                    title: qsTr("Create an app in FitTrackee")
+                    detail: qsTr("Profile, Apps, Create an app. Allow it to write workouts, and give it this redirect URI. Tap it to copy.")
                 }
                 BackgroundItem {
+                    id: redirectItem
+
                     width: parent.width
                     onClicked: {
                         Clipboard.text = page.fitTrackee.redirectUri
                         notice.show(qsTr("Redirect URI copied"))
                     }
                     Label {
-                        x: Theme.horizontalPageMargin
+                        x: Theme.horizontalPageMargin + Theme.iconSizeSmallPlus + Theme.paddingLarge
                         anchors.verticalCenter: parent.verticalCenter
                         font.family: "monospace"
-                        color: Theme.highlightColor
+                        color: redirectItem.highlighted ? Theme.highlightColor : Theme.primaryColor
                         text: page.fitTrackee.redirectUri || ""
                     }
-                    Icon {
+                    Glyph {
                         anchors {
                             right: parent.right
                             rightMargin: Theme.horizontalPageMargin
                             verticalCenter: parent.verticalCenter
                         }
-                        source: "image://theme/icon-m-clipboard"
+                        width: Theme.iconSizeSmall
+                        height: width
+                        name: "content_copy"
+                        color: redirectItem.highlighted ? Theme.highlightColor : Theme.secondaryColor
                     }
+                }
+
+                Step {
+                    number: 2
+                    title: qsTr("Enter its details")
+                    done: !!page.fitTrackee.url && !!page.fitTrackee.clientId && !!page.fitTrackee.clientSecret
                 }
                 TextSetting {
                     key: "fitTrackeeUrl"
@@ -322,29 +334,35 @@ Page {
                     EnterKey.iconSource: "image://theme/icon-m-enter-close"
                     EnterKey.onClicked: focus = false
                 }
+
+                Step {
+                    number: 3
+                    title: qsTr("Approve it in the browser")
+                    detail: qsTr("On your own server, so the app never sees your password.")
+                }
                 Button {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("Connect in the browser")
+                    preferredWidth: Theme.buttonWidthLarge
+                    text: qsTr("Connect FitTrackee")
                     onClicked: page.signIn()
                 }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
-                    text: qsTr("After you approve, the browser comes back to IndoorBike. If it says it cannot open the address instead, copy that address, the one starting with %1, and paste it here:").arg(page.fitTrackee.redirectUri || "")
-                }
-                TextField {
-                    id: pasted
+                Expander {
+                    title: qsTr("The browser didn't come back?")
 
-                    width: parent.width
-                    label: qsTr("Address the browser couldn't open")
-                    placeholderText: label
-                    inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
-                    EnterKey.enabled: text.trim().length > 0
-                    EnterKey.iconSource: "image://theme/icon-m-enter-accept"
-                    EnterKey.onClicked: page.complete(text)
+                    Note {
+                        text: qsTr("If the browser says it cannot open an address starting with %1, copy that address and paste it here.").arg(page.fitTrackee.redirectUri || "")
+                    }
+                    TextField {
+                        id: pasted
+
+                        width: parent.width
+                        label: qsTr("Address the browser couldn't open")
+                        placeholderText: label
+                        inputMethodHints: Qt.ImhUrlCharactersOnly | Qt.ImhNoAutoUppercase | Qt.ImhNoPredictiveText
+                        EnterKey.enabled: text.trim().length > 0
+                        EnterKey.iconSource: "image://theme/icon-m-enter-accept"
+                        EnterKey.onClicked: page.complete(text)
+                    }
                 }
             }
 
@@ -353,13 +371,6 @@ Page {
                 visible: !!page.fitTrackee.connected
                 spacing: Theme.paddingMedium
 
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
-                    truncationMode: TruncationMode.Fade
-                    color: Theme.highlightColor
-                    text: qsTr("Connected to %1").arg(page.fitTrackee.url || "")
-                }
                 ComboBox {
                     width: parent.width
                     visible: page.sports.length > 0
@@ -381,18 +392,13 @@ Page {
                         }
                     }
                 }
-                Label {
-                    x: Theme.horizontalPageMargin
-                    width: parent.width - 2 * Theme.horizontalPageMargin
+                Note {
                     visible: page.sports.length === 0
-                    wrapMode: Text.Wrap
-                    color: Theme.secondaryHighlightColor
-                    font.pixelSize: Theme.fontSizeExtraSmall
                     text: qsTr("Rides are filed as Cycling (Virtual). Your server didn't share its list of sports, which is normal and doesn't stop anything.")
                 }
                 TextSwitch {
                     text: qsTr("Upload finished rides automatically")
-                    description: qsTr("Each finished ride is sent as soon as it is saved.")
+                    description: qsTr("Each ride is sent as soon as it is saved.")
                     checked: !!page.fitTrackee.autoUpload
                     automaticCheck: false
                     onClicked: page.set("fitTrackeeAutoUpload", !checked)
@@ -405,15 +411,6 @@ Page {
                         page.sports = []
                     }
                 }
-            }
-
-            Label {
-                x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                visible: page.message.length > 0
-                wrapMode: Text.Wrap
-                color: Theme.errorColor
-                text: page.message
             }
         }
 

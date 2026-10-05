@@ -187,6 +187,20 @@ Page {
     // What the last completed ride came to, from the core's ride.saved.
     property var saved: null
 
+    // The moments the screen marks: each second of the countdown, and each new interval.
+    readonly property int countdownValue: rideState === "Countdown" ? (ride.countdown || 0) : -1
+    readonly property int segmentIndex: ride.segmentIndex || 0
+    onCountdownValueChanged: if (countdownValue >= 0) countdownPop.restart()
+    onSegmentIndexChanged: if (structured && started && rideState === "Active") intervalFlash.restart()
+
+    // The zone colours, for the confetti.
+    readonly property var zoneColors: {
+        var colors = []
+        for (var i = 0; i < zones.length; ++i)
+            colors.push(zones[i].color)
+        return colors.length > 0 ? colors : ["#2E7DD7", "#1FB373", "#F0C419", "#F28C28", "#E5484D"]
+    }
+
     // A ride the game left in the middle of: shown in the panel until it is ended.
     readonly property bool inProgress: phase === "COMPANION_AWAY" && rideUnderway
 
@@ -224,8 +238,11 @@ Page {
     Connections {
         target: core
         onEventReceived: {
-            if (topic === "ride.saved")
+            if (topic === "ride.saved") {
                 page.saved = payload
+                if (payload && payload.ok)
+                    confetti.burst()
+            }
         }
     }
 
@@ -367,6 +384,8 @@ Page {
                 visible: page.stateText.length > 0
 
                 Label {
+                    id: stateLabel
+
                     x: Theme.horizontalPageMargin
                     width: parent.width - 2 * Theme.horizontalPageMargin
                     horizontalAlignment: Text.AlignHCenter
@@ -375,6 +394,13 @@ Page {
                            ? page.warningColor : Theme.highlightColor
                     font.pixelSize: page.rideState === "Countdown" ? Theme.fontSizeHuge * 2 : Theme.fontSizeLarge
                     text: page.stateText
+
+                    ParallelAnimation {
+                        id: countdownPop
+
+                        NumberAnimation { target: stateLabel; property: "scale"; from: 1.7; to: 1; duration: 520; easing.type: Easing.OutBack }
+                        NumberAnimation { target: stateLabel; property: "opacity"; from: 0; to: 1; duration: 260 }
+                    }
                 }
                 Label {
                     x: Theme.horizontalPageMargin
@@ -396,8 +422,57 @@ Page {
                 }
             }
 
-            // Power, in its zone's colour, against what the ride asks for.
+            // Power, in its zone's colour, against what the ride asks for. On a workout it sits in a
+            // ring of how far through the interval the rider is, which glows while the trainer
+            // holds the target.
+            Item {
+                id: powerHero
+
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: page.structured
+                       ? Math.min(parent.width - 2 * Theme.horizontalPageMargin, Theme.itemSizeHuge * (page.isLandscape ? 2 : 2.8))
+                       : parent.width
+                height: page.structured ? width : powerColumn.height
+
+                Rectangle {
+                    id: glow
+
+                    anchors.centerIn: parent
+                    visible: page.structured
+                    width: parent.width * 0.84
+                    height: width
+                    radius: width / 2
+                    color: page.powerColor
+                    opacity: page.onTarget ? 0.14 : 0
+
+                    Behavior on opacity { FadeAnimator { duration: 400 } }
+
+                    SequentialAnimation on scale {
+                        running: page.onTarget && Qt.application.active
+                        loops: Animation.Infinite
+                        NumberAnimation { from: 0.96; to: 1.02; duration: 1400; easing.type: Easing.InOutSine }
+                        NumberAnimation { from: 1.02; to: 0.96; duration: 1400; easing.type: Easing.InOutSine }
+                    }
+                }
+
+                ProgressRing {
+                    anchors.fill: parent
+                    visible: page.structured
+                    value: page.segment.seconds > 0 ? 1 - page.segment.remaining / page.segment.seconds : 0
+                    color: page.powerColor
+                    trackColor: Theme.rgba(page.powerColor, 0.15)
+                    lineWidth: Theme.paddingMedium * (page.onTarget ? 1.5 : 1)
+                    // Remaining time moves a second at a time: sweep through each second evenly.
+                    duration: 1000
+                    easing: Easing.Linear
+
+                    Behavior on lineWidth { NumberAnimation { duration: 300 } }
+                }
+
             Column {
+                id: powerColumn
+
+                anchors.centerIn: parent
                 width: parent.width
                 spacing: 0
 
@@ -410,12 +485,15 @@ Page {
                     text: page.onTarget ? qsTr("Power · on target")
                           : page.ergLocked ? qsTr("Power · ERG locked") : qsTr("Power · ERG idle")
                 }
-                Label {
+                AnimatedNumber {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: trainer.connected ? page.power : "--"
+                    value: page.power
+                    available: !!trainer.connected
                     color: page.powerColor
                     font.pixelSize: Theme.fontSizeHuge * (page.isLandscape ? 1.6 : 2.2)
                     font.family: Theme.fontFamilyHeading
+
+                    Behavior on color { ColorAnimation { duration: 400 } }
                 }
                 Label {
                     anchors.horizontalCenter: parent.horizontalCenter
@@ -431,6 +509,7 @@ Page {
                     color: Theme.secondaryColor
                     font.pixelSize: Theme.fontSizeSmall
                 }
+            }
             }
 
             // Harder or easier: the plan's intensity, or a free ride's target. A free ride's can be
@@ -506,7 +585,10 @@ Page {
                 Reading {
                     width: parent.width / 2
                     label: page.heartRateZone ? qsTr("Heart rate · Z%1").arg(page.heartRateZone.number) : qsTr("Heart rate")
-                    value: page.heartRate > 0 ? page.heartRate : "--"
+                    numeric: true
+                    number: page.heartRate
+                    available: page.heartRate > 0
+                    beat: page.heartRate
                     valueColor: page.heartRateZone ? page.heartRateZone.color : Theme.primaryColor
                     unit: "bpm"
                 }
@@ -631,14 +713,19 @@ Page {
                 Reading {
                     width: parent.width / 3
                     label: page.cadenceTarget ? qsTr("Cadence · %1").arg(page.cadenceTarget.label) : qsTr("Cadence")
-                    value: trainer.connected ? page.cadence : "--"
+                    numeric: true
+                    number: page.cadence
+                    available: !!trainer.connected
                     valueColor: page.cadenceOff ? page.warningColor : Theme.primaryColor
                     unit: "rpm"
                 }
                 Reading {
                     width: parent.width / 3
                     label: page.heartRateZone ? qsTr("Heart rate · Z%1").arg(page.heartRateZone.number) : qsTr("Heart rate")
-                    value: page.heartRate > 0 ? page.heartRate : "--"
+                    numeric: true
+                    number: page.heartRate
+                    available: page.heartRate > 0
+                    beat: page.heartRate
                     valueColor: page.heartRateZone ? page.heartRateZone.color : Theme.primaryColor
                     unit: "bpm"
                 }
@@ -960,6 +1047,20 @@ Page {
                 description: page.rideWorkout.name || ""
             }
 
+            IconTile {
+                id: trophy
+
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeHuge
+                name: "emoji_events"
+                tint: "#F0C419"
+                scale: page.saved !== null && page.saved.ok ? 1 : 0.4
+                opacity: page.saved !== null && page.saved.ok ? 1 : 0
+
+                Behavior on scale { NumberAnimation { duration: 600; easing.type: Easing.OutBack } }
+                Behavior on opacity { FadeAnimator { duration: 300 } }
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
@@ -982,7 +1083,9 @@ Page {
                 Reading {
                     width: parent.width / 2
                     label: qsTr("Average")
-                    value: page.saved ? page.saved.averagePower : ""
+                    numeric: true
+                    number: page.saved ? page.saved.averagePower : 0
+                    duration: 1200
                     unit: "W"
                     large: true
                 }
@@ -1019,5 +1122,32 @@ Page {
         }
 
         VerticalScrollDecorator { }
+    }
+
+    // A new interval: the screen washes once in its zone's colour, so the change is felt.
+    Rectangle {
+        id: flash
+
+        anchors.fill: parent
+        color: page.powerColor
+        opacity: 0
+        enabled: false
+
+        NumberAnimation {
+            id: intervalFlash
+
+            target: flash
+            property: "opacity"
+            from: 0.28
+            to: 0
+            duration: 900
+            easing.type: Easing.OutQuad
+        }
+    }
+
+    Confetti {
+        id: confetti
+
+        colors: page.zoneColors
     }
 }

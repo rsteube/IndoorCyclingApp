@@ -31,7 +31,7 @@ The SIL Open Font License is available at https://openfontlicense.org/.
 
 | Asset | Purpose | License | Source |
 | --- | --- | --- | --- |
-| Material Symbols Outlined (weight 300) | Icon glyphs, inlined as an SVG sprite in each website page | Apache 2.0 | https://github.com/google/material-design-icons |
+| Material Symbols Outlined (weight 300) | Icon glyphs: inlined as an SVG sprite in each website page, and as path data in the Sailfish app (mobile_clients/sailfish/qml/components/Icons.js) | Apache 2.0 | https://github.com/google/material-design-icons |
 | Simple Icons: the Sailfish OS mark | The Sailfish OS card on the website's install section | CC0 1.0 (the trademark stays Jolla's) | https://simpleicons.org |
 | The Android robot | The Android card on the website's install section, from Material Symbols' `android` glyph | CC BY 3.0, attributed in the site footer | https://developer.android.com/distribute/marketing-tools/brand-guidelines |
 

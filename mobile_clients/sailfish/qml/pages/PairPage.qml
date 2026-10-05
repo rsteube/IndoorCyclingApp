@@ -1,8 +1,11 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
+import "../components/Accent.js" as Accent
 
 // Find a trainer, a heart rate monitor or a controller and connect to it. `kind` is the core's
-// topic and command prefix for it: "trainer", "hrm" or "controller". Scans while the page is open.
+// topic and command prefix for it: "trainer", "hrm" or "controller". Scans while the page is open,
+// with a radar going until something answers, and every device found with how strongly it is heard.
 Page {
     id: page
 
@@ -12,6 +15,8 @@ Page {
 
     readonly property var device: core.state[kind] || ({})
     readonly property var candidates: device.candidates || []
+    readonly property string icon: kind === "hrm" ? "favorite" : kind === "controller" ? "gamepad" : "pedal_bike"
+    readonly property color tint: kind === "hrm" ? Accent.heart : kind === "controller" ? Accent.violet : Accent.power
 
     allowedOrientations: Orientation.All
 
@@ -35,21 +40,39 @@ Page {
 
             PageHeader { title: page.title }
 
+            Radar {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: Theme.itemSizeHuge * 1.3
+                icon: page.icon
+                tint: page.device.connected ? Accent.success : page.tint
+                searching: !page.device.connected
+                found: !!page.device.connected
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
+                horizontalAlignment: Text.AlignHCenter
                 wrapMode: Text.Wrap
                 color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeSmall
-                text: device.connected
-                      ? qsTr("Connected to %1").arg(device.name)
-                      : (device.state === "Connecting" ? qsTr("Connecting...") : page.hint)
+                font.pixelSize: page.device.connected ? Theme.fontSizeLarge : Theme.fontSizeSmall
+                text: page.device.connected
+                      ? qsTr("Connected to %1").arg(page.device.name)
+                      : (page.device.state === "Connecting" ? qsTr("Connecting...") : page.hint)
             }
 
-            BusyLabel {
-                running: page.candidates.length === 0 && !device.connected
+            SectionHeader {
+                visible: page.candidates.length > 0
+                text: qsTr("Found nearby")
+            }
+            Label {
+                x: Theme.horizontalPageMargin
+                width: parent.width - 2 * Theme.horizontalPageMargin
+                visible: page.candidates.length === 0 && !page.device.connected
+                horizontalAlignment: Text.AlignHCenter
+                color: Theme.secondaryHighlightColor
+                font.pixelSize: Theme.fontSizeExtraSmall
                 text: qsTr("Searching")
-                height: running ? Theme.itemSizeLarge : 0
             }
         }
 
@@ -59,13 +82,23 @@ Page {
             contentHeight: Theme.itemSizeMedium
             onClicked: core.send({ "cmd": page.kind + ".connect", "id": modelData.id })
 
-            Label {
-                id: name
+            IconTile {
+                id: tile
 
                 anchors {
                     left: parent.left
                     leftMargin: Theme.horizontalPageMargin
-                    right: signal.left
+                    verticalCenter: parent.verticalCenter
+                }
+                name: page.icon
+                tint: page.tint
+                highlighted: item.highlighted
+            }
+            Label {
+                anchors {
+                    left: tile.right
+                    leftMargin: Theme.paddingLarge
+                    right: bars.left
                     rightMargin: Theme.paddingMedium
                     verticalCenter: parent.verticalCenter
                 }
@@ -73,17 +106,16 @@ Page {
                 color: item.highlighted ? Theme.highlightColor : Theme.primaryColor
                 text: modelData.name
             }
-            Label {
-                id: signal
+            SignalBars {
+                id: bars
 
                 anchors {
                     right: parent.right
                     rightMargin: Theme.horizontalPageMargin
                     verticalCenter: parent.verticalCenter
                 }
-                color: Theme.secondaryColor
-                font.pixelSize: Theme.fontSizeExtraSmall
-                text: modelData.rssi ? qsTr("%1 dBm").arg(modelData.rssi) : ""
+                rssi: modelData.rssi || 0
+                color: item.highlighted ? Theme.highlightColor : page.tint
             }
         }
 

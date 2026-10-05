@@ -1,15 +1,19 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
-import "../components/Format.js" as Format
+import "../components"
+import "../components/Accent.js" as Accent
 
 // Level and title, the streak of weeks ridden, and the badges: earned ones, and what the rest take.
-// All worked out by shared/progression, as on Android.
+// All worked out by shared/progression, as on Android. The level ring fills and the weeks light up
+// one after another each time the page opens.
 Page {
     id: page
 
     readonly property var progress: core.state.progress || ({})
+    property bool shown
 
     allowedOrientations: Orientation.All
+    onStatusChanged: if (status === PageStatus.Active) shown = true
 
     SilicaFlickable {
         anchors.fill: parent
@@ -23,40 +27,88 @@ Page {
 
             PageHeader { title: qsTr("Progress") }
 
-            Label {
+            // The level, inside a ring of how far it is to the next one.
+            Item {
                 anchors.horizontalCenter: parent.horizontalCenter
-                color: Theme.highlightColor
-                font.pixelSize: Theme.fontSizeHuge
-                text: qsTr("Level %1").arg(page.progress.level || 0)
-            }
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                color: Theme.primaryColor
-                font.pixelSize: Theme.fontSizeLarge
-                text: page.progress.title || ""
+                width: Theme.itemSizeHuge * 1.8
+                height: width
+
+                ProgressRing {
+                    anchors.fill: parent
+                    value: page.shown ? (page.progress.levelProgress || 0) : 0
+                    duration: 1200
+                    lineWidth: Theme.paddingLarge
+                    color: Theme.highlightColor
+                }
+                Column {
+                    anchors.centerIn: parent
+
+                    Label {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        color: Theme.secondaryHighlightColor
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        font.capitalization: Font.AllUppercase
+                        text: qsTr("Level")
+                    }
+                    AnimatedNumber {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        value: page.shown ? (page.progress.level || 0) : 0
+                        duration: 900
+                        color: Theme.highlightColor
+                        font.pixelSize: Theme.fontSizeHuge * 1.3
+                        font.family: Theme.fontFamilyHeading
+                    }
+                }
             }
 
-            ProgressBar {
+            Column {
                 width: parent.width
-                minimumValue: 0
-                maximumValue: 1
-                value: page.progress.levelProgress || 0
-                label: qsTr("%1 XP · %2 to the next level").arg(page.progress.xp || "0").arg(page.progress.xpToNext || "0")
+                spacing: Theme.paddingSmall
+
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Theme.primaryColor
+                    font.pixelSize: Theme.fontSizeLarge
+                    text: page.progress.title || ""
+                }
+                Label {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    color: Theme.secondaryHighlightColor
+                    font.pixelSize: Theme.fontSizeSmall
+                    text: qsTr("%1 XP · %2 to the next level").arg(page.progress.xp || "0").arg(page.progress.xpToNext || "0")
+                }
             }
 
             SectionHeader { text: qsTr("Weeks ridden") }
 
-            Label {
+            Row {
                 x: Theme.horizontalPageMargin
-                width: parent.width - 2 * Theme.horizontalPageMargin
-                wrapMode: Text.Wrap
-                color: Theme.highlightColor
-                text: (page.progress.streakWeeks === 1 ? qsTr("1 week in a row")
-                                                       : qsTr("%1 weeks in a row").arg(page.progress.streakWeeks || 0))
-                      + " · " + qsTr("longest %1").arg(page.progress.longestStreakWeeks || 0)
+                spacing: Theme.paddingLarge
+
+                IconTile {
+                    anchors.verticalCenter: parent.verticalCenter
+                    name: "local_fire_department"
+                    tint: Accent.power
+                    muted: (page.progress.streakWeeks || 0) === 0
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+
+                    Label {
+                        color: Theme.highlightColor
+                        text: page.progress.streakWeeks === 1 ? qsTr("1 week in a row")
+                                                              : qsTr("%1 weeks in a row").arg(page.progress.streakWeeks || 0)
+                    }
+                    Label {
+                        color: Theme.secondaryHighlightColor
+                        font.pixelSize: Theme.fontSizeExtraSmall
+                        text: qsTr("Longest: %1").arg(page.progress.longestStreakWeeks || 0)
+                    }
+                }
             }
 
-            // The last fourteen weeks, oldest first: how many days of each had a ride.
+            // The last fourteen weeks, oldest first: how many days of each had a ride. They light
+            // up from the oldest, a beat apart.
             Row {
                 x: Theme.horizontalPageMargin
                 spacing: Theme.paddingSmall
@@ -65,13 +117,23 @@ Page {
                     model: page.progress.weeks || []
 
                     Rectangle {
-                        readonly property real cell: (column.width - 2 * Theme.horizontalPageMargin) / 14
+                        id: cell
+
+                        readonly property real size: (column.width - 2 * Theme.horizontalPageMargin) / 14
                                                      - Theme.paddingSmall
-                        width: cell
-                        height: cell
-                        radius: cell / 4
+                        width: size
+                        height: size
+                        radius: size / 4
                         color: modelData > 0 ? Theme.highlightColor : Theme.rgba(Theme.primaryColor, Theme.opacityFaint)
                         opacity: modelData > 0 ? Math.min(1, 0.4 + modelData * 0.2) : 1
+                        scale: page.shown ? 1 : 0
+
+                        Behavior on scale {
+                            SequentialAnimation {
+                                PauseAnimation { duration: 200 + index * 35 }
+                                NumberAnimation { duration: 320; easing.type: Easing.OutBack }
+                            }
+                        }
                     }
                 }
             }
@@ -83,9 +145,9 @@ Page {
 
                 Item {
                     width: column.width
-                    height: Theme.itemSizeMedium
+                    height: Math.max(Theme.itemSizeMedium, badgeTexts.height + 2 * Theme.paddingMedium)
 
-                    Label {
+                    IconTile {
                         id: mark
 
                         anchors {
@@ -93,12 +155,13 @@ Page {
                             leftMargin: Theme.horizontalPageMargin
                             verticalCenter: parent.verticalCenter
                         }
-                        font.pixelSize: Theme.fontSizeLarge
-                        color: modelData.unlocked ? Theme.highlightColor : Theme.secondaryColor
-                        opacity: modelData.unlocked ? 1 : Theme.opacityLow
-                        text: modelData.unlocked ? "★" : "☆"
+                        name: "emoji_events"
+                        tint: Accent.warning
+                        muted: !modelData.unlocked
                     }
                     Column {
+                        id: badgeTexts
+
                         anchors {
                             left: mark.right
                             leftMargin: Theme.paddingLarge

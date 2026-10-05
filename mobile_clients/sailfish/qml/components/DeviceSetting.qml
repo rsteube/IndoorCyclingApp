@@ -1,23 +1,35 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "Accent.js" as Accent
 
-// A trainer, strap or controller in Settings: how it is, in the shared wording, and pairing,
-// disconnecting or forgetting it from its menu.
-ListItem {
+// A trainer, strap or controller in Settings: what it is, how it is doing, in the shared wording.
+// Tapping one that is not set up pairs it; tapping one that is opens what can be done with it.
+SettingRow {
     id: root
 
     property string kind
     property string pairTitle
     property string pairHint
     readonly property var device: core.state[kind] || ({})
+    readonly property bool known: !!device.connected || !!device.pairedId
 
     function pair() {
         pageStack.push(Qt.resolvedUrl("../pages/PairPage.qml"), { kind: kind, title: pairTitle, hint: pairHint })
     }
 
-    width: parent ? parent.width : 0
-    contentHeight: Math.max(Theme.itemSizeMedium, texts.height + 2 * Theme.paddingSmall)
-    onClicked: if (!device.connected && !device.pairedId) pair()
+    icon: kind === "trainer" ? "pedal_bike" : kind === "hrm" ? "favorite" : "gamepad"
+    tint: kind === "trainer" ? Accent.power : kind === "hrm" ? Accent.heart : Accent.violet
+    muted: !known
+    title: known ? (device.title || device.name || pairTitle) : pairTitle
+    // What kinds of device fit is worth saying before one is set up, not after.
+    subtitle: (device.status || "") + (device.helper && !known ? "\n" + device.helper : "")
+    subtitleColor: device.tone === "Bad" ? Theme.errorColor : Theme.secondaryColor
+    status: device.connected ? "ok"
+            : device.state === "Connecting" || device.state === "Scanning" ? "busy"
+            : device.tone === "Bad" ? "bad"
+            : known ? "off" : ""
+
+    onClicked: known ? openMenu() : pair()
 
     menu: ContextMenu {
         MenuItem {
@@ -35,32 +47,6 @@ ListItem {
             onClicked: root.remorseAction(qsTr("Forgetting"), function() {
                 core.send({ "cmd": root.kind + ".forget" })
             })
-        }
-    }
-
-    Column {
-        id: texts
-
-        anchors {
-            left: parent.left
-            leftMargin: Theme.horizontalPageMargin
-            right: parent.right
-            rightMargin: Theme.horizontalPageMargin
-            verticalCenter: parent.verticalCenter
-        }
-
-        Label {
-            width: parent.width
-            truncationMode: TruncationMode.Fade
-            color: root.highlighted ? Theme.highlightColor : Theme.primaryColor
-            text: root.device.title || root.pairTitle
-        }
-        Label {
-            width: parent.width
-            wrapMode: Text.Wrap
-            color: root.device.tone === "Bad" ? Theme.errorColor : Theme.secondaryColor
-            font.pixelSize: Theme.fontSizeExtraSmall
-            text: (root.device.status || "") + (root.device.helper ? "\n" + root.device.helper : "")
         }
     }
 }

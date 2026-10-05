@@ -1,5 +1,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
+import "../components"
+import "../components/Accent.js" as Accent
 
 // The first start: what the app does, the two numbers every ride is worked out from, and where
 // the trainer comes in.
@@ -33,10 +35,38 @@ Dialog {
                 acceptText: qsTr("Start")
             }
 
+            // The three ways to ride, arriving one after another.
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: Theme.paddingLarge
+
+                Repeater {
+                    model: [{ "icon": "stacked_bar_chart", "tint": Accent.power },
+                            { "icon": "landscape", "tint": Accent.green },
+                            { "icon": "sports_esports", "tint": Accent.violet }]
+
+                    IconTile {
+                        id: welcomeTile
+
+                        width: Theme.itemSizeLarge
+                        name: modelData.icon
+                        tint: modelData.tint
+                        scale: 0
+
+                        SequentialAnimation {
+                            running: true
+                            PauseAnimation { duration: 250 + index * 140 }
+                            NumberAnimation { target: welcomeTile; property: "scale"; to: 1; duration: 480; easing.type: Easing.OutBack }
+                        }
+                    }
+                }
+            }
+
             Label {
                 x: Theme.horizontalPageMargin
                 width: parent.width - 2 * Theme.horizontalPageMargin
                 wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
                 color: Theme.highlightColor
                 text: qsTr("IndoorBike rides structured workouts, routes and games on a smart trainer. Your rides stay on this phone.")
             }
@@ -94,7 +124,7 @@ Dialog {
                 wrapMode: Text.Wrap
                 color: Theme.highlightColor
                 font.pixelSize: Theme.fontSizeSmall
-                text: qsTr("Turn Bluetooth on and wake the trainer by pedalling. Then pull down on the first page and pair it. A heart rate strap pairs the same way. Once paired, both are found again by themselves.")
+                text: qsTr("Turn Bluetooth on and wake the trainer by pedalling. Then tap the trainer on the first page to pair it. A heart rate strap pairs the same way. Once paired, both are found again by themselves.")
             }
         }
 
