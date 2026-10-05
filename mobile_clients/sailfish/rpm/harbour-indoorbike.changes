@@ -1,3 +1,11 @@
+* Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.0-1
+- A redesign: icons throughout, Settings and Companion rebuilt as clear
+  lists with how each thing stands, and the long explanations folded away.
+- Companion shows the pairing code as large tiles, a ready-to-ride
+  checklist, and remembered games that can be forgotten with one tap.
+- The ride screen rings each interval round the power, glows on target,
+  and celebrates a finished ride.
+
 * Sun Oct 04 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.2.0-1
 - Companion mode as the Android app has it: the game's colours and name on the
   ride screen, its paddles and screenshots, untracked riding, and the session
