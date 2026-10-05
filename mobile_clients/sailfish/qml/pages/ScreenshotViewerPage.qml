@@ -1,6 +1,7 @@
 import QtQuick 2.6
 import Sailfish.Silica 1.0
 import Sailfish.Share 1.0
+import "../components"
 import "../components/Format.js" as Format
 
 // A ride's screenshots full size, one at a time, as Android's viewer: swipe between them, see how
@@ -61,6 +62,21 @@ Page {
         }
     }
 
+    // Into Pictures, where Gallery shows it and any app can attach it.
+    IconButton {
+        anchors {
+            left: parent.left
+            bottom: parent.bottom
+            margins: Theme.paddingMedium
+        }
+        icon.source: "image://theme/icon-m-download"
+        onClicked: {
+            var path = page.pictures[view.currentIndex]
+            var saved = shareCard.saveToPictures(path, "IndoorBike " + path.split("/").pop())
+            notice.show(saved ? qsTr("Saved to Pictures") : qsTr("The screenshot couldn't be saved to Pictures."))
+        }
+    }
+
     IconButton {
         anchors {
             right: parent.right
@@ -75,4 +91,6 @@ Page {
             shareAction.trigger()
         }
     }
+
+    InfoNotice { id: notice }
 }

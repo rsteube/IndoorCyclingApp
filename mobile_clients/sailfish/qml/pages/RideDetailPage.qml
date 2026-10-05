@@ -45,8 +45,9 @@ Page {
                      })
     }
 
-    // The ride as a 1080 x 1080 picture, as the Android and iOS apps share it.
-    function sharePicture() {
+    // The ride as a 1080 x 1080 picture, as the Android and iOS apps share it: its path in the
+    // cache, or empty when it could not be made.
+    function renderPicture() {
         var r = page.ride
         var highlight = null
         if (r.highlight)
@@ -73,11 +74,28 @@ Page {
         }, path)
         if (!ok) {
             page.error = qsTr("The picture couldn't be made.")
-            return
+            return ""
         }
+        return path
+    }
+
+    function sharePicture() {
+        var path = renderPicture()
+        if (!path)
+            return
         shareAction.mimeType = "image/png"
         shareAction.resources = [path]
         shareAction.trigger()
+    }
+
+    // Into Pictures, where Gallery shows it and any app can attach it.
+    function savePicture() {
+        var path = renderPicture()
+        if (!path)
+            return
+        var name = "IndoorBike " + Qt.formatDate(new Date(page.ride.startMs), "yyyy-MM-dd") + " " + page.ride.name + ".png"
+        var saved = shareCard.saveToPictures(path, name)
+        notice.show(saved ? qsTr("Saved to Pictures") : qsTr("The picture couldn't be saved to Pictures."))
     }
 
     function share(format) {
@@ -115,6 +133,11 @@ Page {
                 onClicked: page.exportTo("fit", StandardPaths.download, function(path) {
                     notice.show(qsTr("Saved %1").arg(path.split("/").pop()))
                 })
+            }
+            MenuItem {
+                visible: page.ride !== null && page.ride.canExport
+                text: qsTr("Save the picture to Pictures")
+                onClicked: page.savePicture()
             }
             MenuItem {
                 visible: page.ride !== null && page.ride.canExport

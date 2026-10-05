@@ -19,6 +19,11 @@ public:
     // chart ("power", "plan", "ftp", "powerColor", "planColor") and, for a planned ride,
     // "highlight" ({"zone", "label", "seconds", "pct", "color"}).
     Q_INVOKABLE bool render(const QVariantMap &card, const QString &path) const;
+
+    // Copies [source] into the IndoorBike album in Pictures as [name], where Gallery shows it and
+    // any app's own picker finds it; an existing file of that name is kept, and this one gets a
+    // number. The path it was saved to, or empty when it could not be.
+    Q_INVOKABLE QString saveToPictures(const QString &source, const QString &name) const;
 };
 
 #endif // SHARECARD_H

@@ -2,7 +2,11 @@
 
 #include <QColor>
 #include <QDebug>
+#include <QDir>
+#include <QFile>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QStandardPaths>
 #include <QFont>
 #include <QFontMetricsF>
 #include <QGuiApplication>
@@ -163,4 +167,26 @@ bool ShareCard::render(const QVariantMap &card, const QString &path) const
         return false;
     }
     return QFileInfo(path).size() > 0;
+}
+
+QString ShareCard::saveToPictures(const QString &source, const QString &name) const
+{
+    const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+    QDir album(pictures + QStringLiteral("/IndoorBike"));
+    if (pictures.isEmpty() || !album.mkpath(QStringLiteral("."))) {
+        qWarning() << "Save to Pictures: no album at" << album.path();
+        return QString();
+    }
+    // A name the file system takes, whatever the ride was called.
+    QString clean = name;
+    clean.replace(QRegularExpression(QStringLiteral("[/\\\\:*?\"<>|]")), QStringLiteral("-"));
+    const QFileInfo info(clean.isEmpty() ? QFileInfo(source).fileName() : clean);
+    QString target = album.filePath(info.fileName());
+    for (int n = 2; QFile::exists(target); ++n)
+        target = album.filePath(QStringLiteral("%1 %2.%3").arg(info.completeBaseName()).arg(n).arg(info.suffix()));
+    if (!QFile::copy(source, target)) {
+        qWarning() << "Save to Pictures: could not copy" << source << "to" << target;
+        return QString();
+    }
+    return target;
 }
