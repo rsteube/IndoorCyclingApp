@@ -1,3 +1,8 @@
+* Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.2-1
+- Sharing works: a ride as a picture, FIT or TCX, and a game screenshot.
+- A ride is no longer deleted from its own page; delete it from History.
+- The API key section for Intervals.icu opens to its full height.
+
 * Mon Oct 05 2026 Juhani Lehtimäki <juhani.lehtimaki@iki.fi> - 0.3.1-1
 - Icons no longer disappear after switching to another app and back.
 - Intervals.icu can be connected with an athlete ID and API key again,
