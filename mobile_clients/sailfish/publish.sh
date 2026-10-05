@@ -8,7 +8,10 @@
 #   - the .rpm itself is attached, named as sfdk writes it;
 #   - the release is published: not a draft, not a prerelease.
 #
-# The repository must already have a commit for the tag to point at. The token, with the
+# The tag must point at a commit no earlier release's tag points at: Codefloe dates a release by
+# its tag's commit, Harpoon takes the newest release by that date, and two releases on one commit
+# tie, so the new one may never be offered (0.3.0 was, on 2026-10-05). Add the release's notes to
+# CHANGELOG.md there and tag that commit. The token, with the
 # write:repository scope, is read from a file only its owner can read and is never put on a
 # command line.
 #
@@ -49,6 +52,24 @@ hdr="$(mktemp)"; out="$(mktemp)"
 chmod 600 "$hdr"
 trap 'rm -f "$hdr" "$out"' EXIT
 printf 'Authorization: token %s\n' "$(tr -d '\r\n' < "$token")" > "$hdr"
+
+# The tag's own commit, and no earlier release's: otherwise the two releases share a date.
+python3 - "$api" "$tag" <<'EOF'
+import json, sys, urllib.request
+api, tag = sys.argv[1], sys.argv[2]
+def get(path):
+    with urllib.request.urlopen(api + path, timeout=30) as r:
+        return json.load(r)
+try:
+    mine = get("/tags/" + tag)["commit"]["sha"]
+except Exception:
+    sys.exit(f"No tag {tag} in the releases repository: push it first")
+for release in get("/releases?limit=50"):
+    other = release["tag_name"]
+    if other != tag and get("/tags/" + other)["commit"]["sha"] == mine:
+        sys.exit(f"Tag {tag} is on the same commit as release {other}, so Harpoon could not tell "
+                 f"them apart. Commit this release's notes to CHANGELOG.md and tag that commit.")
+EOF
 
 # An earlier run that stopped part way has made the release already: attach what is missing.
 status="$(curl -s -o "$out" -w '%{http_code}' -H @"$hdr" "$api/releases/tags/$tag")"
