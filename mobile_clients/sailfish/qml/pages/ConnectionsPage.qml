@@ -170,6 +170,9 @@ Page {
                     visible: !!page.intervals.athleteId && !!page.intervals.apiKey
                     text: qsTr("Connecting replaces the API key saved on this phone.")
                 }
+                Note {
+                    text: qsTr("If the Intervals.icu page stays empty in the browser, connect with your API key instead, below.")
+                }
                 Expander {
                     title: qsTr("How it works")
 
@@ -197,10 +200,34 @@ Page {
                 }
             }
 
-            // The athlete id and personal API key, in a build without the OAuth client.
-            Column {
+            // The athlete id and personal API key: the way in for a build without the OAuth client,
+            // and the fallback for one with it, since the Sailfish browser does not always load
+            // Intervals.icu's approval page.
+            Expander {
+                id: apiKeyFallback
+
+                visible: !page.intervals.signedIn && !!page.intervals.signInAvailable
+                title: qsTr("Connect with an API key instead")
+                expanded: !!page.intervals.athleteId || !!page.intervals.apiKey
+
+                Loader {
+                    width: parent.width
+                    active: apiKeyFallback.visible
+                    sourceComponent: apiKeyFields
+                }
+            }
+            Loader {
                 width: parent.width
-                visible: !page.intervals.signedIn && !page.intervals.signInAvailable
+                active: !page.intervals.signedIn && !page.intervals.signInAvailable
+                visible: active
+                sourceComponent: apiKeyFields
+            }
+
+            Component {
+                id: apiKeyFields
+
+            Column {
+                width: parent ? parent.width : 0
                 spacing: Theme.paddingMedium
 
                 TextSetting {
@@ -209,8 +236,6 @@ Page {
                     value: page.intervals.athleteId || ""
                 }
                 PasswordField {
-                    id: apiKey
-
                     width: parent.width
                     label: qsTr("API key")
                     placeholderText: label
@@ -225,6 +250,7 @@ Page {
                 Note {
                     text: qsTr("Both are on your Intervals.icu settings page, under Developer settings. The key is kept in a file only this app can read.")
                 }
+            }
             }
 
             TextSwitch {

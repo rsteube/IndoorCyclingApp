@@ -2,37 +2,33 @@ import QtQuick 2.6
 import Sailfish.Silica 1.0
 import "Icons.js" as Icons
 
-// A Material Symbols icon, drawn from its path rather than shipped as a picture: it is sharp at any
-// size, needs no image plugin, and takes any colour, so it follows the ambience and the pressed
-// highlight like the text beside it.
-Canvas {
+// A Material Symbols icon, made into a one-path SVG in its own colour: sharp at any size, and it
+// follows the ambience and the pressed highlight like the text beside it. An image rather than a
+// Canvas, because a Canvas comes back empty after Sailfish takes a backgrounded app's graphics
+// away, and an image is reloaded by itself.
+Image {
     id: glyph
 
     property string name
     property color color: Theme.primaryColor
 
-    implicitWidth: Theme.iconSizeMedium
-    implicitHeight: implicitWidth
-    antialiasing: true
-
-    onNameChanged: requestPaint()
-    onColorChanged: requestPaint()
-    onWidthChanged: requestPaint()
-    onHeightChanged: requestPaint()
-
-    onPaint: {
-        var ctx = getContext("2d")
-        ctx.reset()
+    // "#aarrggbb" is not SVG: the colour goes in as rgb() and its alpha as an opacity.
+    readonly property string svg: {
         var d = Icons.paths[name]
-        if (!d || width <= 0 || height <= 0)
-            return
-        var s = Math.min(width, height) / 960
-        ctx.translate((width - 960 * s) / 2, (height - 960 * s) / 2)
-        ctx.scale(s, s)
-        // The glyphs are drawn in a box from y = -960 to 0.
-        ctx.translate(0, 960)
-        ctx.fillStyle = color
-        ctx.path = d
-        ctx.fill()
+        if (!d)
+            return ""
+        var fill = "rgb(" + Math.round(color.r * 255) + "," + Math.round(color.g * 255) + ","
+                   + Math.round(color.b * 255) + ")"
+        return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 -960 960 960'>"
+               + "<path fill='" + fill + "' fill-opacity='" + color.a.toFixed(3) + "' d='" + d + "'/></svg>"
     }
+
+    // An Image's implicit size is its picture's and read-only: the defaults go on the size itself.
+    width: Theme.iconSizeMedium
+    height: width
+    sourceSize.width: Math.max(1, Math.round(width))
+    sourceSize.height: Math.max(1, Math.round(height))
+    fillMode: Image.PreserveAspectFit
+    smooth: true
+    source: svg.length > 0 ? "data:image/svg+xml;utf8," + encodeURIComponent(svg) : ""
 }

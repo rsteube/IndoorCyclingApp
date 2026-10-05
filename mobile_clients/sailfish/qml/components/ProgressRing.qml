@@ -43,6 +43,16 @@ Canvas {
     }
 
     antialiasing: true
+
+    // Sailfish takes a backgrounded app's graphics away, and a Canvas does not draw itself again:
+    // draw it afresh whenever the app is back, and whenever the ring is shown again.
+    Connections {
+        target: Qt.application
+        onStateChanged: ring.requestPaint()
+    }
+    onVisibleChanged: if (visible) requestPaint()
+    onAvailableChanged: if (available) requestPaint()
+
     onShownChanged: requestPaint()
     onColorChanged: requestPaint()
     onTrackColorChanged: requestPaint()
