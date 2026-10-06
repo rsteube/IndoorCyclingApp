@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.9.1] (29) - 2026-10-06
+
 ### Changed
 
 - **A ride's figures on FitTrackee go in its description, not its private

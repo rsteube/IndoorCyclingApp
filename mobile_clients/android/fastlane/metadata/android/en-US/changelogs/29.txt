@@ -1,0 +1,1 @@
+Changed: a ride's figures on FitTrackee (power, cadence, heart rate, TSS, kJ) now go in the workout's description instead of its private notes, so they follow the visibility you set for the workout and the notes stay yours. Rides already uploaded are unchanged.
