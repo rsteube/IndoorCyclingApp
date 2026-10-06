@@ -237,6 +237,23 @@ function checkSegments(w, label) {
     if (s.intervalType !== undefined && s.intervalType !== 'CONSTANT') {
       err(`${at}: intervalType must be "CONSTANT", got ${JSON.stringify(s.intervalType)}.`);
     }
+    // A power range: both bounds or neither, with the start inside. It needs
+    // no schemaVersion, since an older app ignores the bounds and rides the
+    // start, so unlike cadence there is no version check here.
+    const hasMin = s.powerMinPercentFTP !== undefined, hasMax = s.powerMaxPercentFTP !== undefined;
+    if (hasMin !== hasMax) {
+      err(`${at}: powerMinPercentFTP and powerMaxPercentFTP go together; only ${hasMin ? 'powerMinPercentFTP' : 'powerMaxPercentFTP'} is set.`);
+    } else if (hasMin) {
+      const lo = s.powerMinPercentFTP, hi = s.powerMaxPercentFTP;
+      const bad = [lo, hi].some(v => !Number.isInteger(v) || v < 0 || v > MAX_POWER_PCT);
+      if (bad) {
+        err(`${at}: powerMinPercentFTP and powerMaxPercentFTP must be integers 0-${MAX_POWER_PCT}, got ${JSON.stringify(lo)} and ${JSON.stringify(hi)}.`);
+      } else if (lo >= hi) {
+        err(`${at}: powerMinPercentFTP ${lo} must be below powerMaxPercentFTP ${hi}.`);
+      } else if (typeof pct === 'number' && (pct < lo || pct > hi)) {
+        err(`${at}: powerPercentFTP ${pct} is where the ride starts, so it must be inside its range ${lo}-${hi}.`);
+      }
+    }
     for (const key of ['cadenceMinRpm', 'cadenceMaxRpm']) {
       if (s[key] === undefined) continue;
       if (!Number.isInteger(s[key]) || s[key] < CADENCE_MIN_RPM || s[key] > CADENCE_MAX_RPM) {

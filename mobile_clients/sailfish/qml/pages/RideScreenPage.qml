@@ -771,7 +771,7 @@ Page {
                     horizontalAlignment: Text.AlignHCenter
                     color: Format.zoneColor(page.zones, page.segment.zone || 1, Theme.highlightColor)
                     font.pixelSize: Theme.fontSizeMedium
-                    text: qsTr("%1 · %2 % FTP").arg(page.segment.type || "").arg(page.segment.pct || 0)
+                    text: qsTr("%1 · %2 % FTP").arg(page.segment.type || "").arg(page.segment.range || page.segment.pct || 0)
                 }
                 Label {
                     x: Theme.horizontalPageMargin

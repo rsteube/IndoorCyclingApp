@@ -105,6 +105,12 @@
     const bytes = new TextEncoder().encode(json);
     return 'w=' + b64urlEncodeBytes(bytes);
   }
+  /** "90-105" for a segment with a power range, its power alone otherwise. */
+  function rangeLabel(s) {
+    const lo = s.powerMinPercentFTP, hi = s.powerMaxPercentFTP;
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo === hi) return String(s.powerPercentFTP);
+    return `${Math.min(lo, hi)}-${Math.max(lo, hi)}`;
+  }
   function editorHrefFor(workout) {
     return `../editor/index.html#${buildWzPayload(workout)}`;
   }
@@ -727,7 +733,9 @@
       const z = zoneFor(s.powerPercentFTP);
       stepsList.appendChild(el('li', { class: 'detail-step' },
         el('span', { class: 'step-rail', style: { background: ZONE_COLORS[z] } }),
-        el('span', {}, `Z${z} · ${s.powerPercentFTP}% FTP`),
+        // A range reads as one ("90-105% FTP"): the ride starts at
+        // powerPercentFTP and the rider's taps move it anywhere inside.
+        el('span', {}, `Z${z} · ${rangeLabel(s)}% FTP`),
         el('span', { class: 'step-meta' }, fmtClock(s.lengthInSeconds))
       ));
     }

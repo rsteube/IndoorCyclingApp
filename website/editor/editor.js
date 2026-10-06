@@ -35,8 +35,10 @@
     tags: [],
     /**
      * Each segment: { id, lengthInSeconds:int, powerPercentFTP:int,
+     *                 powerMinPercentFTP:int|null, powerMaxPercentFTP:int|null,
      *                 cadenceMinRpm:int|null, cadenceMaxRpm:int|null }
-     * The cadence pair is optional per segment - see CADENCE_RPM_MIN/MAX.
+     * The power range and the cadence pair are optional per segment - see
+     * powerRangeOf and CADENCE_RPM_MIN/MAX.
      */
     segments: [],
     /** Multi-select: ordered Set so we can grab the "last" for insertion. */
@@ -85,6 +87,55 @@
     if (lo == null) return String(hi);
     if (hi == null || hi === lo) return String(lo);
     return `${Math.min(lo, hi)}-${Math.max(lo, hi)}`;
+  }
+
+  /** Parse a power range bound, in % FTP. Null when absent or junk. */
+  function readPct(value) {
+    const n = parseInt(value, 10);
+    if (!Number.isFinite(n) || n < 0 || n > 300) return null;
+    return n;
+  }
+  /**
+   * The segment's power range as { lo, hi }, or null for a constant segment.
+   * Mirrors PowerRange.of in the shared Kotlin model: both bounds or none, a
+   * reversed pair is the range the author meant, and equal bounds are no range.
+   */
+  function powerRangeOf(seg) {
+    const lo = seg.powerMinPercentFTP, hi = seg.powerMaxPercentFTP;
+    if (lo == null || hi == null || lo === hi) return null;
+    return { lo: Math.min(lo, hi), hi: Math.max(lo, hi) };
+  }
+  /** "90-105" for a range, "95" for a constant segment, in % FTP. */
+  function powerLabel(seg) {
+    const r = powerRangeOf(seg);
+    return r ? `${r.lo}-${r.hi}` : String(seg.powerPercentFTP);
+  }
+  /**
+   * A segment from storage, a file or a link, keeping every field the editor
+   * knows. One reader for all three, so none of them can quietly drop a field
+   * the others keep.
+   */
+  function readSegment(s, keepId) {
+    return {
+      id: (keepId && s.id) || nextId(),
+      lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10) || 0, 0, 60 * 60 * 4),
+      powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10) || 0, 0, 300),
+      powerMinPercentFTP: readPct(s.powerMinPercentFTP),
+      powerMaxPercentFTP: readPct(s.powerMaxPercentFTP),
+      cadenceMinRpm: readRpm(s.cadenceMinRpm),
+      cadenceMaxRpm: readRpm(s.cadenceMaxRpm),
+    };
+  }
+
+  /** Move a segment's power by delta, and its range with it, keeping its width. */
+  function nudgePower(seg, delta) {
+    const r = powerRangeOf(seg);
+    const shift = r ? clamp(delta, -r.lo, 300 - r.hi) : delta;
+    seg.powerPercentFTP = clamp(seg.powerPercentFTP + shift, 0, 300);
+    if (r) {
+      seg.powerMinPercentFTP = r.lo + shift;
+      seg.powerMaxPercentFTP = r.hi + shift;
+    }
   }
 
   function defaultSegment(zone) {
@@ -153,13 +204,7 @@
         state.description = p.description || '';
         state.tags = Array.isArray(p.tags) ? p.tags : [];
         state.segments = Array.isArray(p.segments)
-          ? p.segments.map(s => ({
-              id: s.id || nextId(),
-              lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10) || 0, 0, 60 * 60 * 4),
-              powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10) || 0, 0, 300),
-              cadenceMinRpm: readRpm(s.cadenceMinRpm),
-              cadenceMaxRpm: readRpm(s.cadenceMaxRpm),
-            }))
+          ? p.segments.map(s => readSegment(s, /*keepId*/ true))
           : [];
       }
     } catch (_) {}
@@ -269,12 +314,12 @@
           height: heightPct + '%',
           '--zone-fill': z.color,
         },
-        title: `Z${z.num} ${z.name} · ${fmtClock(seg.lengthInSeconds)} · ${seg.powerPercentFTP}% FTP`
+        title: `Z${z.num} ${z.name} · ${fmtClock(seg.lengthInSeconds)} · ${powerLabel(seg)}% FTP`
           + (rpm ? ` · ${rpm} rpm` : ''),
       },
         el('div', { class: 'clip-handle clip-handle--top', dataset: { resize: 'top' } }),
         el('div', { class: 'clip-handle clip-handle--right', dataset: { resize: 'right' } }),
-        widthPct > 6 ? el('span', { class: 'clip-label' }, `Z${z.num} · ${seg.powerPercentFTP}%`) : null,
+        widthPct > 6 ? el('span', { class: 'clip-label' }, `Z${z.num} · ${powerLabel(seg)}%`) : null,
         // A quiet corner marker, only wide enough to be worth drawing. Lets you
         // spot which intervals carry a cadence ask without opening each one.
         (rpm && widthPct > 9) ? el('span', { class: 'clip-rpm' }, `${rpm} rpm`) : null,
@@ -395,6 +440,7 @@
       startX: e.clientX, startY: e.clientY,
       startLength: seg.lengthInSeconds,
       startPct: seg.powerPercentFTP,
+      startRange: powerRangeOf(seg),
       secsPerPx, pctPerPx,
     };
     if (isTouch) {
@@ -426,6 +472,14 @@
       const newPct = clamp(snap(resizing.startPct - dy * resizing.pctPerPx, SNAP_PCT), 0, 250);
       if (newPct !== resizing.seg.powerPercentFTP) {
         resizing.seg.powerPercentFTP = newPct;
+        // A range moves with its start, keeping its width: dragging a
+        // "90-105" block up 10 makes it "100-115", not a start outside it.
+        const r = resizing.startRange;
+        if (r) {
+          const shift = clamp(newPct - resizing.startPct, -r.lo, 300 - r.hi);
+          resizing.seg.powerMinPercentFTP = r.lo + shift;
+          resizing.seg.powerMaxPercentFTP = r.hi + shift;
+        }
         renderGrid(); renderClips(); renderStats(); renderInspector();
       }
     }
@@ -773,6 +827,7 @@
       pctInput,
       el('span', { class: 'unit' }, '% FTP')
     ));
+    root.appendChild(buildPowerRangeField(seg));
     root.appendChild(buildCadenceField(seg));
     root.appendChild(el('span', { class: 'inspector-spacer' }));
     root.appendChild(el('button', {
@@ -785,6 +840,63 @@
       type: 'button',
       onClick: () => deleteMany([seg.id]),
     }, 'Delete'));
+  }
+
+  /**
+   * The optional power range for a single selected segment.
+   *
+   * ERG holds one wattage, so in the app a range means: the trainer starts at
+   * the segment's power, and the rider's ± taps move it anywhere inside the
+   * range but no further. Opt-in like cadence, and seeded at ±5 around the
+   * power so enabling it means something straight away. A power typed outside
+   * the range is pulled into it on export, so a half-typed number is harmless.
+   */
+  function buildPowerRangeField(seg) {
+    const range = powerRangeOf(seg);
+
+    const toggle = el('input', {
+      type: 'checkbox',
+      id: 'power-range-toggle',
+      onChange: (e) => {
+        if (e.target.checked) {
+          seg.powerMinPercentFTP = clamp(seg.powerPercentFTP - 5, 0, 295);
+          seg.powerMaxPercentFTP = clamp(seg.powerPercentFTP + 5, 5, 300);
+        } else {
+          seg.powerMinPercentFTP = null;
+          seg.powerMaxPercentFTP = null;
+        }
+        afterChange([seg.id]);
+      }
+    });
+    if (range) toggle.checked = true;
+
+    const field = el('div', { class: 'inspector-field inspector-field--cadence' },
+      el('label', { for: 'power-range-toggle' }, 'Range'),
+      toggle
+    );
+
+    if (!range) {
+      field.appendChild(el('span', { class: 'unit' }, 'off'));
+      return field;
+    }
+
+    const bound = (key, placeholder, label) => el('input', {
+      type: 'number', min: '0', max: '300',
+      value: seg[key] == null ? '' : String(seg[key]),
+      inputmode: 'numeric', placeholder,
+      'aria-label': label,
+      onInput: (e) => {
+        seg[key] = readPct(e.target.value);
+        afterChange([seg.id], /*skipInspector*/ true);
+      }
+    });
+
+    field.appendChild(bound('powerMinPercentFTP', 'min', 'Power range minimum, percent of FTP'));
+    field.appendChild(el('span', { class: 'unit' }, '–'));
+    field.appendChild(bound('powerMaxPercentFTP', 'max', 'Power range maximum, percent of FTP'));
+    field.appendChild(el('span', { class: 'unit' }, '% FTP'));
+    field.appendChild(el('span', { class: 'inspector-hint' }, 'starts at Power, ± taps stay inside'));
+    return field;
   }
 
   /**
@@ -941,7 +1053,15 @@
           intervalType: 'CONSTANT',
         };
         // Omitted entirely rather than written as null, so a workout without
-        // cadence targets serialises byte-identically to how it always did.
+        // ranges or cadence targets serialises byte-identically to how it
+        // always did. A range needs no schemaVersion: an older app ignores the
+        // bounds and rides powerPercentFTP, the range's start.
+        const range = powerRangeOf(s);
+        if (range) {
+          seg.powerPercentFTP = clamp(s.powerPercentFTP, range.lo, range.hi);
+          seg.powerMinPercentFTP = range.lo;
+          seg.powerMaxPercentFTP = range.hi;
+        }
         if (s.cadenceMinRpm != null) seg.cadenceMinRpm = s.cadenceMinRpm;
         if (s.cadenceMaxRpm != null) seg.cadenceMaxRpm = s.cadenceMaxRpm;
         return seg;
@@ -1078,6 +1198,17 @@
     const pct = parseInt(rest, 10);
     if (secs == null || !Number.isFinite(pct)) return null;
     const seg = { id: nextId(), lengthInSeconds: secs, powerPercentFTP: clamp(pct, 0, 300) };
+    // `20m@90-105` is a power range starting at its middle. An editor from
+    // before ranges reads the same token as 90%, which is still a fair ride.
+    const range = rest.match(/^\s*(\d+)\s*-\s*(\d+)/);
+    if (range) {
+      const lo = readPct(range[1]), hi = readPct(range[2]);
+      if (lo != null && hi != null && lo !== hi) {
+        seg.powerMinPercentFTP = Math.min(lo, hi);
+        seg.powerMaxPercentFTP = Math.max(lo, hi);
+        seg.powerPercentFTP = Math.round((lo + hi) / 2);
+      }
+    }
     const rpm = rest.match(/r\s*(\d+)(?:\s*-\s*(\d+))?\s*$/i);
     if (rpm) {
       const lo = readRpm(rpm[1]);
@@ -1203,11 +1334,7 @@
     state.tags = Array.isArray(w.tags) ? w.tags : [];
     state.segments = w.segments
       .filter(s => s && Number.isFinite(s.lengthInSeconds) && Number.isFinite(s.powerPercentFTP))
-      .map(s => ({
-        id: nextId(),
-        lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10), 0, 60 * 60 * 4),
-        powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10), 0, 300),
-      }));
+      .map(s => readSegment(s));
     state.selectedIds = new Set();
     $('#workout-name').value = state.name;
     $('#workout-description').value = state.description;
@@ -1398,12 +1525,12 @@
       }
       if (e.key === 'ArrowUp') {
         e.preventDefault();
-        sel.forEach(s => { s.powerPercentFTP = clamp(s.powerPercentFTP + SNAP_PCT, 0, 300); });
+        sel.forEach(s => nudgePower(s, SNAP_PCT));
         afterChange(ids, true); renderInspector(); return;
       }
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        sel.forEach(s => { s.powerPercentFTP = clamp(s.powerPercentFTP - SNAP_PCT, 0, 300); });
+        sel.forEach(s => nudgePower(s, -SNAP_PCT));
         afterChange(ids, true); renderInspector(); return;
       }
     });
@@ -1434,11 +1561,7 @@
       state.tags = Array.isArray(incoming.tags) ? incoming.tags : [];
       state.segments = incoming.segments
         .filter(s => s && Number.isFinite(s.lengthInSeconds) && Number.isFinite(s.powerPercentFTP))
-        .map(s => ({
-          id: nextId(),
-          lengthInSeconds: clamp(parseInt(s.lengthInSeconds, 10), 0, 60 * 60 * 4),
-          powerPercentFTP: clamp(parseInt(s.powerPercentFTP, 10), 0, 300),
-        }));
+        .map(s => readSegment(s));
       state.selectedIds = new Set();
       if (Number.isFinite(incoming._ftp)) { ftp = incoming._ftp; persistFtp(); }
       persist();

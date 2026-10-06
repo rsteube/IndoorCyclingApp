@@ -258,7 +258,7 @@ Page {
                     title: qsTr("What arrives on FitTrackee")
 
                     Note {
-                        text: qsTr("FitTrackee is built for outdoor activities and only accepts files with GPS coordinates, which an indoor ride has none of. Rides therefore arrive as an entry with the date, duration and estimated distance, with power, cadence and heart rate written into the notes. There is no power graph: export a FIT file if you need one.")
+                        text: qsTr("FitTrackee is built for outdoor activities and only accepts files with GPS coordinates, which an indoor ride has none of. Rides therefore arrive as an entry with the date, duration and estimated distance, with power, cadence and heart rate written into its description. There is no power graph: export a FIT file if you need one.")
                     }
                 }
 

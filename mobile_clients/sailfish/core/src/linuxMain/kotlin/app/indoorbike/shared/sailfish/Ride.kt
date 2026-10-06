@@ -31,8 +31,10 @@ import app.indoorbike.shared.workout.cadenceTarget
 import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.shared.workout.powerRange
 import app.indoorbike.shared.workout.resolveRideWorkout
 import app.indoorbike.shared.workout.simulationRouteId
+import app.indoorbike.shared.workout.targetWatts
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.launchIn
@@ -45,7 +47,6 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import kotlin.math.roundToInt
 
 /**
  * The ride, as the `ride` and `rideWorkout` topics and the `ride.*` commands:
@@ -313,7 +314,6 @@ private fun encodeRide(
     put("segmentIndex", segmentIndex)
     put("segmentCount", segments.size)
     val structured = !workout.isFreeRide && !workout.isSimulation && !workout.isCompanion
-    fun target(pct: Int) = (pct / 100.0 * ftp * (1.0 + bias / 100.0)).roundToInt().coerceAtLeast(0)
     segments.getOrNull(segmentIndex)?.let { segment ->
         put("segment", buildJsonObject {
             put("type", intervalLabel(segment.intervalType))
@@ -321,7 +321,9 @@ private fun encodeRide(
             put("seconds", segment.lengthInSeconds)
             put("remaining", (segment.lengthInSeconds - inSegment).coerceAtLeast(0))
             put("zone", PowerZoneBand.fromFtpPercent(segment.powerPercentFTP).number)
-            put("targetWatts", if (workout.isFreeRide) freeRideWatts else if (structured) target(segment.powerPercentFTP) else 0)
+            put("targetWatts", if (workout.isFreeRide) freeRideWatts else if (structured) segment.targetWatts(ftp, bias) else 0)
+            // "90-105" when the rider's taps can move the target anywhere in a range.
+            put("range", segment.powerRange?.label)
             put("cadenceMin", segment.cadenceMinRpm)
             put("cadenceMax", segment.cadenceMaxRpm)
             segment.cadenceTarget?.let { cadence ->
@@ -340,7 +342,8 @@ private fun encodeRide(
                 put("pct", next.powerPercentFTP)
                 put("seconds", next.lengthInSeconds)
                 put("zone", PowerZoneBand.fromFtpPercent(next.powerPercentFTP).number)
-                put("targetWatts", target(next.powerPercentFTP))
+                put("targetWatts", next.targetWatts(ftp, bias))
+                put("range", next.powerRange?.label)
             })
         }
     }

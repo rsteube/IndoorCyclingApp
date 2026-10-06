@@ -124,6 +124,7 @@ import app.indoorbike.ui.screens.companion.companionBand
 import app.indoorbike.ui.screens.companion.rememberCompanionNotice
 import app.indoorbike.ui.screens.simulation.SimulationHud
 import app.indoorbike.shared.workout.cadenceTarget
+import app.indoorbike.shared.workout.powerRange
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.ui.components.IconBtn
@@ -870,7 +871,9 @@ fun RideScreen(
                 val segLabel = (currentSeg?.intervalType ?: "Segment")
                     .lowercase()
                     .replaceFirstChar { it.uppercase() }
-                val segPower = currentSeg?.powerPercentFTP ?: 0
+                // A range reads as one: the rider's ± taps move the target
+                // anywhere inside it, so naming only the start would undersell it.
+                val segPower = currentSeg?.powerRange?.label ?: "${currentSeg?.powerPercentFTP ?: 0}"
 
                 val route = simulationRoute
                 if (isCompanion) {
@@ -1849,7 +1852,7 @@ private fun SegmentAndTimeline(
     currentSegIdx: Int,
     elapsedInSeg: Int,
     segLabel: String,
-    segPower: Int,
+    segPower: String,
     remainingInSeg: Int,
     nextZone: PowerZone?,
     nextSeconds: Int?,

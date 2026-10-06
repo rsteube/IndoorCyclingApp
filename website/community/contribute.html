@@ -199,6 +199,10 @@
           <span>Sequential intervals. Each has <code>lengthInSeconds</code> (1–14400), <code>powerPercentFTP</code> (0–300), and <code>intervalType: "CONSTANT"</code>.</span>
         </div>
         <div class="schema-row">
+          <span><code>powerMinPercentFTP</code><br><code>powerMaxPercentFTP</code></span><span>integer</span><span>no</span>
+          <span>Optional power range on a segment, 0–300% FTP, both or neither (e.g. <code>90</code>–<code>105</code>). Workouts run in ERG, which holds one wattage, so a range means: the trainer starts at <code>powerPercentFTP</code>, which must be inside the range, and the rider's ± taps move the target anywhere in the range but no further. Use it where the rider should set the effort within limits, such as a long threshold block or a test. No <code>schemaVersion</code> needed: apps from before ranges ignore the two bounds and ride <code>powerPercentFTP</code>.</span>
+        </div>
+        <div class="schema-row">
           <span><code>cadenceMinRpm</code><br><code>cadenceMaxRpm</code></span><span>integer</span><span>no</span>
           <span>Optional cadence target on a segment, 20–200 rpm. Both for a range (<code>70</code>–<code>80</code>), <code>cadenceMinRpm</code> alone for a single target. The trainer holds the power either way; this tells the rider how to spin while it does, so use it for climbing-cadence or leg-speed work. Requires <code>schemaVersion: 2</code>.</span>
         </div>

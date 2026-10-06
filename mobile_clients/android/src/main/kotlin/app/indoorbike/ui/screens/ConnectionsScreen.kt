@@ -172,7 +172,7 @@ private fun FitTrackeeCard() {
                 "contain GPS coordinates, which an indoor ride has none of. Rides " +
                 "therefore arrive as an entry with the date, duration and estimated " +
                 "distance, and the power, cadence and heart rate figures written into " +
-                "the notes. There is no power graph. Export a FIT file if you need one.",
+                "its description. There is no power graph. Export a FIT file if you need one.",
             style = CadenceType.body,
             color = CadenceColors.Fg3
         )

@@ -38,7 +38,9 @@ import app.indoorbike.shared.workout.freeRideWorkout
 import app.indoorbike.shared.workout.isFreeRide
 import app.indoorbike.shared.workout.isCompanion
 import app.indoorbike.shared.workout.isSimulation
+import app.indoorbike.shared.workout.nextBiasPercent
 import app.indoorbike.shared.workout.simulationWorkout
+import app.indoorbike.shared.workout.targetWatts
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,7 +53,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 import kotlin.time.TimeSource
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
@@ -694,9 +695,13 @@ class WorkoutSessionManager(
         persistSnapshotNow(WorkoutState.Standby)
     }
 
+    /**
+     * Move every target of a structured workout by [deltaPercent], held to
+     * the current segment's power range when it has one: see [nextBiasPercent].
+     */
     fun adjustDifficulty(deltaPercent: Int) = lock.withLock {
-        val newBias = (_targetBiasPercent.value + deltaPercent).coerceIn(-30, 30)
-        _targetBiasPercent.value = newBias
+        val segment = _activeWorkout.value?.segments?.getOrNull(_currentSegmentIndex.value)
+        _targetBiasPercent.value = nextBiasPercent(segment, _targetBiasPercent.value, deltaPercent)
         if (_state.value == WorkoutState.Active) updateTrainerTarget()
     }
 
@@ -1549,10 +1554,7 @@ class WorkoutSessionManager(
         }
         val idx = _currentSegmentIndex.value
         if (idx < workout.segments.size) {
-            val seg = workout.segments[idx]
-            val biasMultiplier = 1.0 + (_targetBiasPercent.value / 100.0)
-            val targetWatts = (seg.powerPercentFTP / 100.0 * ftpWatts * biasMultiplier).roundToInt()
-            trainerManager.setTargetPower(targetWatts.coerceAtLeast(0))
+            trainerManager.setTargetPower(workout.segments[idx].targetWatts(ftpWatts, _targetBiasPercent.value))
         }
     }
 

@@ -151,7 +151,7 @@ Page {
                         truncationMode: TruncationMode.Fade
                         color: Theme.highlightColor
                         font.pixelSize: Theme.fontSizeSmall
-                        text: qsTr("%1 · %2 % FTP").arg(modelData.type).arg(modelData.pct)
+                        text: qsTr("%1 · %2 % FTP").arg(modelData.type).arg(modelData.range || modelData.pct)
                     }
                     Label {
                         id: time

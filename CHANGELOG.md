@@ -6,6 +6,24 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **A segment can ask for a power range.** A workout can say "90-105% FTP"
+  rather than one number (`powerMinPercentFTP` / `powerMaxPercentFTP`). The
+  trainer starts at the segment's power and the ± buttons move the target
+  anywhere inside the range but no further, for efforts the rider should set
+  within limits, such as a long threshold block or a test. The website editor
+  writes ranges (and links take `20m@90-105`), the workout page and the ride
+  screen show them, and apps from before ranges ride the segment's power as
+  before.
+
+### Fixed
+
+- **FitTrackee's setup text said ride figures go in the notes.** They go in the
+  description since 2.9.1.
+- **The website editor dropped cadence targets** from a workout opened from a
+  file or a community repo.
+
 ## [2.9.1] (29) - 2026-10-06
 
 ### Changed

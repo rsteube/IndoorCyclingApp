@@ -39,7 +39,9 @@ repeat       := COUNT "x" "(" segment (";" segment)* ")"   ; group repeat
 DURATION     := NUMBER          ; seconds  (e.g. 300)
               | NUMBER "s"       ; seconds  (e.g. 90s)
               | NUMBER "m"       ; minutes, decimals ok (e.g. 5m, 2.5m)
-POWER        := integer percent of FTP, 0..300   ; 100 = FTP
+POWER        := PCT                  ; one power      (e.g. 95)
+              | PCT "-" PCT          ; power range    (e.g. 90-105)
+PCT          := integer percent of FTP, 0..300   ; 100 = FTP
 CADENCE      := "r" RPM              ; single target   (e.g. r90)
               | "r" RPM "-" RPM      ; range           (e.g. r85-95)
 RPM          := integer 20..200
@@ -47,6 +49,12 @@ COUNT        := integer 1..40
 
 Top-level items are comma-separated. Segments INSIDE a repeat group are
 semicolon-separated (commas are reserved for the top level).
+
+A power range starts at its middle (90-105 starts at 98). The trainer holds
+one wattage in ERG mode, so a range means the rider's +/- taps can move the
+target anywhere inside it but no further. Use it where the rider should set the
+effort within limits (a long threshold block, a test), not for ordinary steady
+intervals.
 
 CADENCE is optional and independent of POWER. The trainer holds the power in
 ERG mode regardless; a cadence target only tells the rider how to spin while it
@@ -62,7 +70,11 @@ workout genuinely calls for a particular cadence.
   85-95.
 - unparseable items are skipped silently; if `s` yields 0 valid segments the
   editor shows an error and opens empty - so emit valid syntax.
-- no per-segment labels (editor stores duration + power + optional cadence).
+- a power range needs two different values in 0..300; a reversed range
+  (105-90) is read as 90-105, and a malformed one leaves the first number as a
+  plain power.
+- no per-segment labels (editor stores duration + power + optional power range
+  + optional cadence).
 
 ## EXAMPLES
 
@@ -81,6 +93,9 @@ workout genuinely calls for a particular cadence.
 Flat list, seconds, no repeats:
   https://indoorbike.app/editor/?name=Pyramid&s=300@50,300@70,300@90,300@105,300@90,300@70,300@50
 
+Power range - a 20min threshold block the rider can take anywhere from 90 to 105% FTP:
+  https://indoorbike.app/editor/?name=Threshold+20&ftp=250&s=15m@55,3x(1m@105;1m@55),5m@55,20m@90-105,10m@50
+
 Cadence targets - 45min climbing block at 70-80 rpm, then leg speed at 105 rpm:
   https://indoorbike.app/editor/?name=Climb+%2B+Spin&ftp=230&s=10m@55,45m@78r70-80,5m@45,4x(2m@70r105;2m@50),5m@45
 
@@ -98,6 +113,13 @@ gain cadenceMinRpm / cadenceMaxRpm (a single target sets only cadenceMinRpm):
 
 schemaVersion is 1 whenever no segment carries a cadence target, so plain power
 workouts stay loadable by app builds that predate cadence targets.
+
+A segment with a power range gains powerMinPercentFTP / powerMaxPercentFTP, with
+powerPercentFTP as its start. It does not change schemaVersion: an app from
+before ranges ignores the bounds and rides the start.
+
+{ "lengthInSeconds": 1200, "powerPercentFTP": 98, "intervalType": "CONSTANT",
+  "powerMinPercentFTP": 90, "powerMaxPercentFTP": 105 }
 
 ## DOWNSTREAM FLOW (for context, not needed to build the link)
 

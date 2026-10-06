@@ -39,6 +39,15 @@ data class PowerZone(
      * callers should read this pair.
      */
     val cadenceMaxRpm: Int? = null,
+    /**
+     * Bottom of a power range in % of FTP, or null for one constant power.
+     * Set together with [powerMaxPercentFTP]; [powerPercentFTP] is then
+     * where the trainer starts inside the range, and what an app from before
+     * ranges rides instead. See [app.indoorbike.shared.workout.PowerRange].
+     */
+    val powerMinPercentFTP: Int? = null,
+    /** Top of the power range in % of FTP. See [powerMinPercentFTP]. */
+    val powerMaxPercentFTP: Int? = null,
 )
 
 /**
@@ -76,6 +85,10 @@ data class Workout(
  * everywhere, whereas a v2 workout is skipped wholesale by older builds. There
  * is no reason to lock a plain power workout out of an app that could ride it.
  * See [workoutSchemaVersionFor].
+ *
+ * A power range needs no version of its own: an older app ignores the two
+ * bounds and rides [PowerZone.powerPercentFTP], which is a fair reading of the
+ * workout rather than a wrong one.
  */
 const val WORKOUT_SCHEMA_VERSION_CURRENT = 2
 /** Highest format version this build can parse — entries above are skipped. */

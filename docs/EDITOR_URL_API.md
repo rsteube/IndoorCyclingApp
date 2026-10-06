@@ -61,12 +61,19 @@ The `s` parameter is a **comma-separated list**. Each item is one of:
   - bare number or `s` suffix → **seconds**: `300`, `300s`, `90s`
   - `m` suffix → **minutes**, decimals allowed: `5m`, `2.5m`
 - **`POWER`** - target as an integer **percentage of FTP** (`0`–`300`). `100` = FTP.
+  - `95` → one power, 95% FTP
+  - `90-105` → a **power range**, starting at its middle (98%)
 - **`rCADENCE`** *(optional)* - a cadence target in rpm, introduced by `r`:
   - `r90` → a **single** target of 90 rpm
   - `r85-95` → a **range**, 85 to 95 rpm
 
 Examples: `300@50` (5 min at 50% FTP), `5m@50` (same), `30s@120`,
 `45m@78r70-80` (45 min at 78% FTP spinning 70-80 rpm), `10m@60r95`.
+
+A power range is for efforts the rider should set within limits: a long threshold block, a
+test. ERG holds one wattage, so in the app the trainer starts at the range's middle and the
+rider's ± taps move the target anywhere inside the range but no further. An editor from before
+ranges reads `90-105` as 90%, which is still a fair ride.
 
 Cadence is optional and independent of power. The trainer holds the power in ERG mode either
 way; a cadence target just tells the rider how to spin while it does, which is how you express
@@ -123,6 +130,12 @@ https://indoorbike.app/editor/?name=VO2+6x3&tags=VO2+Max&s=12m@55,6x(3m@115;3m@5
 https://indoorbike.app/editor/?name=Pyramid&s=300@50,300@70,300@90,300@105,300@90,300@70,300@50
 ```
 
+**Power range** - a 20-minute threshold block the rider can take anywhere from 90 to 105% FTP:
+
+```
+https://indoorbike.app/editor/?name=Threshold+20&ftp=250&s=15m@55,3x(1m@105;1m@55),5m@55,20m@90-105,10m@50
+```
+
 **Cadence work** - a climbing simulation at grinder cadence, then leg speed at 100+ rpm:
 
 ```
@@ -133,12 +146,15 @@ https://indoorbike.app/editor/?name=Climb+%2B+Spin&ftp=230&s=10m@55,45m@78r70-80
 
 - **Segments cap:** 200. Anything beyond is dropped.
 - **Clamping:** duration `1s`–`4h`, power `0%`–`300%`, repeat count `1`–`40`.
+- **Power range:** two different values in `0`–`300`. A reversed range (`105-90`) is read as
+  `90-105`; a malformed one leaves the first number as a plain power.
 - **Cadence:** `20`–`200` rpm. Out-of-range or malformed values drop the cadence target and
   keep the segment, rather than discarding the whole segment. A reversed range (`r95-85`) is
   read as the range that was obviously meant.
 - **Garbage tolerance:** unparseable items are skipped, not fatal. If `s` is present but
   yields *zero* valid segments, the editor shows an error toast and opens normally.
-- **No per-segment labels:** the editor's segment model is duration + power only; it always
+- **No per-segment labels:** the editor's segment model is duration + power (with an optional
+  range and cadence target) only; it always
   records the interval type as `CONSTANT`. Labels are intentionally not part of v1 because the
   editor can't round-trip them.
 - **Overwrite guard (non-blocking):** the workout loads immediately. If the visitor already had

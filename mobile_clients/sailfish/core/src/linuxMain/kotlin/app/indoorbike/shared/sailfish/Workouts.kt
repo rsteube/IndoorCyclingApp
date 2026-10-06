@@ -20,6 +20,7 @@ import app.indoorbike.shared.Workout
 import app.indoorbike.shared.library.WorkoutSource
 import app.indoorbike.shared.workout.HeartRateZoneBand
 import app.indoorbike.shared.workout.PowerZoneBand
+import app.indoorbike.shared.workout.powerRange
 import app.indoorbike.shared.workout.toSummary
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOf
@@ -114,6 +115,7 @@ internal fun encodeSegments(segments: List<PowerZone>): JsonArray = buildJsonArr
             put("pct", segment.powerPercentFTP)
             put("type", intervalLabel(segment.intervalType))
             put("zone", PowerZoneBand.fromFtpPercent(segment.powerPercentFTP).number)
+            put("range", segment.powerRange?.label)
             put("cadenceMin", segment.cadenceMinRpm)
             put("cadenceMax", segment.cadenceMaxRpm)
         })

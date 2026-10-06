@@ -102,6 +102,7 @@ import app.indoorbike.LocalAppContainer
 import app.indoorbike.shared.ble.TrainerConnectionState
 import app.indoorbike.shared.workout.WorkoutSummary
 import app.indoorbike.shared.workout.cadenceTarget
+import app.indoorbike.shared.workout.powerRange
 import app.indoorbike.shared.workout.formatDurationPretty
 import app.indoorbike.shared.workout.toSummary
 import app.indoorbike.ui.zones.PowerZone as ZonePalette
@@ -547,6 +548,20 @@ private fun StepRow(segment: PowerZone, ftp: Int) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
+        // A power range is a chip for the same reason: the watts on the right
+        // are where the trainer starts, and the chip says how far the rider
+        // can take it from there.
+        segment.powerRange?.let { range ->
+            Text(
+                text = "${range.label}%",
+                style = CadenceType.tick,
+                color = CadenceColors.Fg2,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(Radii.sm))
+                    .background(CadenceColors.Bg2)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            )
+        }
         // Cadence is the segment's second ask, so it earns its own chip rather
         // than being appended to the power line — a rider scanning the list
         // before starting wants to spot which intervals have one.
