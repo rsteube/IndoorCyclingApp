@@ -348,9 +348,14 @@ class FitTrackeeUploader(
      *
      * The endpoint carries sport, date, distance, duration and text only:
      * there is nowhere to put power, cadence or heart rate as a series. Rather
-     * than drop them, the ride's numbers go into `notes`, so what the app
-     * actually measured survives as something a rider can read even though
-     * FitTrackee cannot chart it.
+     * than drop them, the ride's numbers go into `description`, so what the
+     * app actually measured survives as something a rider can read even
+     * though FitTrackee cannot chart it.
+     *
+     * Not `notes`: FitTrackee keeps notes private to the owner whatever the
+     * workout's visibility, and they are the rider's own place to write. The
+     * description follows the visibility the rider chose, and holds nothing
+     * more private than the duration and distance beside it.
      */
     private suspend fun uploadSummaryOnly(
         session: WorkoutSession,
@@ -369,7 +374,7 @@ class FitTrackeeUploader(
         // outright with "invalid format for workout date".
         val date = formatLocalMinute(session.startTimeEpoch)
 
-        val notes = buildString {
+        val description = buildString {
             append("Indoor ride recorded by Indoor Bike.\n")
             append("Average power ").append(session.avgPower).append(" W")
             if (stats.normalizedPowerWatts > 0) append(", normalised ").append(stats.normalizedPowerWatts).append(" W")
@@ -389,7 +394,7 @@ class FitTrackeeUploader(
             append(",\"distance\":").append(stats.distanceMeters / 1000.0)
             append(",\"duration\":").append(session.durationSeconds)
             append(",\"title\":").append(jsonString(session.workoutName.ifBlank { "Indoor ride" }))
-            append(",\"notes\":").append(jsonString(notes))
+            append(",\"description\":").append(jsonString(description))
             append('}')
         }
 

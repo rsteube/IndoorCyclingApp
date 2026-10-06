@@ -6,6 +6,14 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A ride's figures on FitTrackee go in its description, not its private
+  notes.** The line saying the ride was recorded by Indoor Bike, with its
+  power, cadence, heart rate, TSS and kJ, now follows the workout's visibility
+  like the rest of it, and the notes are left for the rider. Suggested by a
+  FitTrackee user.
+
 ## [2.9] (28) - 2026-10-02
 
 ### Added
