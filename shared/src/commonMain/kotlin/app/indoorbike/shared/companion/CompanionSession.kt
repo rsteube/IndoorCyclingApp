@@ -46,8 +46,27 @@ sealed interface CompanionEffect {
     /**
      * The road this ride is on, merged into whatever was already known. The
      * course, never a position on it.
+     *
+     * [replace] is a `course` that carried a `mode` (0.12): it is the whole
+     * description of the ride under way or the next one, not an update to
+     * merge, and it never belongs to a ride already finished.
      */
-    data class SetCourse(val course: CompanionCourse) : CompanionEffect
+    data class SetCourse(val course: CompanionCourse, val replace: Boolean = false) : CompanionEffect
+
+    /**
+     * The junction card to show, or null to clear it. Only ever what the game
+     * last said; a tap does not change it.
+     */
+    data class SetJunction(val junction: RouteJunction?) : CompanionEffect
+
+    /** Where the game is taking the rider, or null for nowhere. */
+    data class SetNavigation(val navigation: RouteNavigation?) : CompanionEffect
+
+    /** The rider has reached [name]. Said once per destination. */
+    data class Arrived(val name: String) : CompanionEffect
+
+    /** The answer to the search last asked for. Stale answers never get this far. */
+    data class SetPlaces(val requestId: String, val places: List<RoutePlace>) : CompanionEffect
 
     /**
      * Record, stop recording, or ride without being recorded. A request: it can
@@ -251,6 +270,44 @@ class CompanionSession(
     /** Screenshots asked for and not yet answered, by id. */
     private val pendingScreenshots = mutableSetOf<Long>()
 
+    /**
+     * A controller that sends junctions to a phone that draws them. Both
+     * halves, because the protocol is per build at each end: a game that never
+     * said it acts on `turnChosen` is never sent one.
+     */
+    val choosesRoute: Boolean
+        get() = phase == Phase.READY && isController &&
+            CompanionProtocol.ROUTE_CHOICE_CAPABILITY in config.capabilities &&
+            CompanionProtocol.ROUTE_CHOICE_CAPABILITY in clientCapabilities
+
+    /** The same, for search and destinations. */
+    val navigates: Boolean
+        get() = phase == Phase.READY && isController &&
+            CompanionProtocol.NAVIGATION_CAPABILITY in config.capabilities &&
+            CompanionProtocol.NAVIGATION_CAPABILITY in clientCapabilities
+
+    /** The card on screen, for checking a tap against. */
+    var junction: RouteJunction? = null
+        private set
+
+    /** The highest `junction.seq` of this ride, or null before its first. */
+    private var junctionSeq: Long? = null
+
+    /** The destination an arrival was already announced for, so it is said once. */
+    private var arrivedAt: String? = null
+
+    /** The search last asked; an answer to any other is stale. */
+    private var placesRequestId: String? = null
+    private var nextPlacesRequest = 1L
+
+    /** 0.12 fields already refused on this connection, so a bad one is said once. */
+    private val warnedRouteFields = mutableSetOf<String>()
+
+    /** Recent `turnChosen`, `placesQuery` and destination events, each limited on its own. */
+    private val turnEvents = ArrayDeque<Long>()
+    private val placesEvents = ArrayDeque<Long>()
+    private val destinationEvents = ArrayDeque<Long>()
+
     /** Fields already complained about, so a warning is once per connection, not once per frame. */
     private val warnedFields = mutableSetOf<String>()
 
@@ -356,6 +413,9 @@ class CompanionSession(
             is PairProofFrame -> emptyList()
             is FinishFrame -> onFinish(frame)
             is ScreenshotFrame -> onScreenshot(frame)
+            is JunctionFrame -> onJunction(frame)
+            is NavigationFrame -> onNavigation(frame)
+            is PlacesFrame -> onPlaces(frame)
             is PingFrame -> listOf(CompanionEffect.Send(PongFrame(id = frame.id)))
         }
     }
@@ -797,9 +857,182 @@ class CompanionSession(
             ascentMeters = frame.ascentM,
             shape = shape,
             profileMeters = profile,
+            freeRide = frame.mode == CourseFrame.MODE_FREE_RIDE,
         )
-        if (!course.isEmpty) effects += CompanionEffect.SetCourse(course)
+        // A `mode` (0.12) makes this the whole description of a ride, sent at
+        // its start: it replaces rather than merges, so a free ride after a
+        // course does not inherit the course's length, and it is passed on
+        // even when empty, because replacing with nothing is still replacing.
+        // It is also where a ride's junctions start again from seq 0.
+        if (frame.mode != null) {
+            effects += startRoute()
+            effects += CompanionEffect.SetCourse(course, replace = true)
+        } else if (!course.isEmpty) {
+            effects += CompanionEffect.SetCourse(course)
+        }
         return effects
+    }
+
+    // Free ride (0.12) ───────────────────────────────────────────────────────
+
+    /**
+     * Forget the last ride's junctions and destination: a new ride starts its
+     * `seq` again, and a card left over from the last one would be a choice
+     * about a road nobody is on.
+     */
+    private fun startRoute(): List<CompanionEffect> {
+        junctionSeq = null
+        arrivedAt = null
+        val effects = mutableListOf<CompanionEffect>()
+        if (junction != null) {
+            junction = null
+            effects += CompanionEffect.SetJunction(null)
+        }
+        if (navigating) {
+            navigating = false
+            effects += CompanionEffect.SetNavigation(null)
+        }
+        return effects
+    }
+
+    /** Whether a destination is on screen, so clearing it is said only when it is. */
+    private var navigating = false
+
+    /**
+     * The next junction, checked and drawn, or cleared once it is passed.
+     *
+     * Silently ignored where either end has not listed `routeChoice`: the game
+     * should not have sent it, and a warning per frame at two a second would
+     * bury everything else in the log.
+     */
+    private fun onJunction(frame: JunctionFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("junction"))
+        if (!choosesRoute) return emptyList()
+        val checked = when (val result = CompanionRoute.junction(frame)) {
+            is CompanionRoute.Checked.Refused -> return refusedRoute("junction", result)
+            is CompanionRoute.Checked.Ok -> result.value
+        }
+        val last = junctionSeq
+        if (last != null && checked.seq < last) return emptyList()
+        junctionSeq = checked.seq
+
+        if (checked.phase == RouteJunction.Phase.PASSED) {
+            // Only the card it describes is cleared. A late `passed` for the
+            // junction before must not take down the one now coming up.
+            if (junction?.junctionId != checked.junctionId) return emptyList()
+            junction = null
+            return listOf(CompanionEffect.SetJunction(null))
+        }
+        junction = checked
+        return listOf(CompanionEffect.SetJunction(checked))
+    }
+
+    private fun onNavigation(frame: NavigationFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("navigation"))
+        if (!navigates) return emptyList()
+        val shown = when (val result = CompanionRoute.navigation(frame)) {
+            is CompanionRoute.Checked.Refused -> return refusedRoute("navigation", result)
+            is CompanionRoute.Checked.Ok -> result.value
+        }
+        val effects = mutableListOf<CompanionEffect>()
+        // Shown once per destination, however many frames carry it before the
+        // game drops the destination.
+        if (frame.arrived && shown != null && arrivedAt != shown.placeId) {
+            arrivedAt = shown.placeId
+            effects += CompanionEffect.Arrived(shown.name)
+        }
+        if (shown == null) arrivedAt = null
+        navigating = shown != null
+        effects += CompanionEffect.SetNavigation(shown)
+        return effects
+    }
+
+    private fun onPlaces(frame: PlacesFrame): List<CompanionEffect> {
+        if (!isController) return listOf(notController("places"))
+        if (!navigates) return emptyList()
+        val id = frame.requestId
+        if (id == null || id != placesRequestId) return emptyList()
+        return listOf(CompanionEffect.SetPlaces(id, CompanionRoute.places(frame)))
+    }
+
+    /** A 0.12 frame refused, said once per field per connection. */
+    private fun refusedRoute(frameType: String, refused: CompanionRoute.Checked.Refused): List<CompanionEffect> {
+        if (!warnedRouteFields.add(frameType + "." + refused.field)) return emptyList()
+        return listOf(
+            CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.REJECTED,
+                    field = refused.field,
+                    frame = frameType,
+                    message = refused.reason + " The frame was ignored and the last good one kept.",
+                )
+            )
+        )
+    }
+
+    /**
+     * The rider tapped an option on the card.
+     *
+     * Sent only for the card on screen while it is open: a tap that lands
+     * after the commit, or on a card that has just been replaced, would ask
+     * the game for something it can no longer do. The card does not change
+     * here; the game's answer is what selects the option.
+     */
+    fun chooseTurn(junctionId: String, optionId: String, nowMs: Long): List<CompanionEffect> {
+        if (!choosesRoute) return emptyList()
+        val shown = junction ?: return emptyList()
+        if (!shown.isOpen || shown.junctionId != junctionId) return emptyList()
+        if (shown.options.none { it.optionId == optionId }) return emptyList()
+        if (!allow(turnEvents, nowMs)) return emptyList()
+        return listOf(
+            CompanionEffect.Send(
+                EventFrame(event = EventFrame.TURN_CHOSEN, junctionId = junctionId, optionId = optionId)
+            )
+        )
+    }
+
+    /**
+     * Ask the game for places matching [query]. Debouncing the rider's typing
+     * is the host's; this numbers the request, so only its answer is shown,
+     * and drops anything past the rate.
+     */
+    fun queryPlaces(query: String, nowMs: Long, limit: Int = CompanionRoute.DEFAULT_PLACES_LIMIT): List<CompanionEffect> {
+        if (!navigates) return emptyList()
+        if (!allow(placesEvents, nowMs)) return emptyList()
+        val id = "q" + nextPlacesRequest++
+        placesRequestId = id
+        return listOf(
+            CompanionEffect.Send(
+                EventFrame(
+                    event = EventFrame.PLACES_QUERY,
+                    requestId = id,
+                    query = query.trim().take(CompanionRoute.MAX_TEXT_CHARS),
+                    limit = limit.coerceIn(1, CompanionRoute.MAX_PLACES_LIMIT),
+                )
+            )
+        )
+    }
+
+    /** Take the rider to [placeId]. Answered with a `navigation` frame. */
+    fun chooseDestination(placeId: String, nowMs: Long): List<CompanionEffect> {
+        if (!navigates || placeId.isBlank()) return emptyList()
+        if (!allow(destinationEvents, nowMs)) return emptyList()
+        return listOf(CompanionEffect.Send(EventFrame(event = EventFrame.DESTINATION_CHOSEN, placeId = placeId)))
+    }
+
+    /** Stop being taken anywhere. */
+    fun clearDestination(nowMs: Long): List<CompanionEffect> {
+        if (!navigates) return emptyList()
+        if (!allow(destinationEvents, nowMs)) return emptyList()
+        return listOf(CompanionEffect.Send(EventFrame(event = EventFrame.DESTINATION_CLEARED)))
+    }
+
+    /** True, and counted, when another event fits in this second's allowance. */
+    private fun allow(recent: ArrayDeque<Long>, nowMs: Long): Boolean {
+        while (recent.isNotEmpty() && nowMs - recent.first() >= 1_000L) recent.removeFirst()
+        if (recent.size >= CompanionRoute.MAX_ROUTE_EVENTS_PER_SECOND) return false
+        recent.addLast(nowMs)
+        return true
     }
 
     /**
@@ -1121,6 +1354,8 @@ class CompanionSession(
             )
         }
         if (course != null && !course.isEmpty) effects += CompanionEffect.SetCourse(course)
+        // The ride's junctions end with it, and the next ride's start at seq 0.
+        effects += startRoute()
         effects += CompanionEffect.Finish(summary)
         return effects
     }

@@ -156,6 +156,9 @@ object CompanionCodec {
             "setPower" -> SetPowerFrame.serializer()
             "finish" -> FinishFrame.serializer()
             "screenshot" -> ScreenshotFrame.serializer()
+            "junction" -> JunctionFrame.serializer()
+            "navigation" -> NavigationFrame.serializer()
+            "places" -> PlacesFrame.serializer()
             "ping" -> PingFrame.serializer()
             else -> return Decoded.Unknown(type)
         }

@@ -72,6 +72,12 @@ data class CompanionCourse(
     val shape: String = "",
     /** Elevation in whole metres, evenly spaced along [shape]. */
     val profileMeters: List<Int> = emptyList(),
+    /**
+     * A free ride (0.12): no length or climb known in advance, junctions
+     * chosen as they come, and somewhere to be taken if the game navigates.
+     * Set only by a `course` that says so, and kept through later updates.
+     */
+    val freeRide: Boolean = false,
 ) {
 
     /**
@@ -118,6 +124,9 @@ data class CompanionCourse(
         ascentMeters = update.ascentMeters ?: ascentMeters,
         shape = update.shape.ifBlank { shape },
         profileMeters = update.profileMeters.ifEmpty { profileMeters },
+        // Only a course with a mode says what kind of ride it is, and that
+        // replaces rather than merges, so an update never changes it.
+        freeRide = freeRide,
     )
 
     companion object {

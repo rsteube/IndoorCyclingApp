@@ -78,6 +78,17 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.12 added free riding. `course.mode` says whether a ride is a course or
+     * a free ride, and a `course` that carries it replaces the ride's
+     * description rather than merging into it. A game that lists `routeChoice`
+     * describes each junction ahead in a `junction` frame and takes the
+     * rider's pick back as a `turnChosen` event; one that lists `navigation`
+     * answers `placesQuery` with `places` and, once a destination is chosen,
+     * keeps the phone told with `navigation` frames. Additive in both
+     * directions, and per build: a phone lists [ROUTE_CHOICE_CAPABILITY] and
+     * [NAVIGATION_CAPABILITY] only where it draws them, and a game sends those
+     * frames only to a phone that listed them.
+     *
      * 0.11 added where the rider is: `lat`, `lon` and `altM` on the `world`
      * frame, the companion's own account of the rider's position on its course.
      * The app records them second by second beside power, with the cumulative
@@ -139,7 +150,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 11)
+    val VERSION = ProtocolVersion(0, 12)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -179,6 +190,24 @@ object CompanionProtocol {
 
     /** The `setPower` frame: a fixed wattage, honoured only while untracked. */
     const val SET_POWER_CAPABILITY = "setPower"
+
+    /**
+     * `junction` frames and the `turnChosen` event: the rider picks each turn
+     * of a free ride on the phone.
+     *
+     * Not in [CAPABILITIES]. It promises a junction card on screen, so each
+     * platform adds it once it draws one; see `CompanionHost.routeChoice`. In
+     * `hello.capabilities` it means the game sends junctions and acts on picks.
+     */
+    const val ROUTE_CHOICE_CAPABILITY = "routeChoice"
+
+    /**
+     * `navigation` and `places` frames and the `placesQuery`,
+     * `destinationChosen` and `destinationCleared` events: the rider searches
+     * the game's area for a place and is taken there. Per platform, like
+     * [ROUTE_CHOICE_CAPABILITY].
+     */
+    const val NAVIGATION_CAPABILITY = "navigation"
 
     /**
      * What a `setPower` target is clamped to, in watts.

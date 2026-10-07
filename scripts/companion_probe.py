@@ -430,14 +430,14 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.11",
+            "protoMin": "0.1", "protoMax": "0.12",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
             "role": "controller",
             "capabilities": [
                 "summary", "course", "setState", "controls", "drivetrain", "pair", "brand",
-                "screenshot",
+                "screenshot", "routeChoice", "navigation",
             ],
         })
         for _ in range(50):
@@ -743,6 +743,200 @@ def scenario_controls(p, args):
     print("\n%d press(es): %s" % (len(presses), [e.get("control") for e in presses]))
 
 
+# Junctions the freeride scenario offers, in turn: (options, default index).
+# Each option is (bearingDeg, kind, roadName, roadClass, surface, gradient %, leadsTo).
+FREERIDE_JUNCTIONS = [
+    ([(-84, "left", "Rumfordstraße", "residential", "asphalt", 0.4, None),
+      (3, "straight", "Reichenbachstraße", "tertiary", "asphalt", -0.2, "Isar"),
+      (71, "right", "Fraunhoferstraße", "secondary", "asphalt", 0.1, None)], 1),
+    ([(-25, "slightLeft", "Isartalweg", "track", "gravel", 3.5, "Flaucher"),
+      (40, "slightRight", "Wittelsbacherbrücke", "primary", "asphalt", 0.0, "Sendling")], 0),
+    ([(-150, "sharpLeft", None, "path", "dirt", 8.0, None),
+      (-60, "left", "Am Glockenbach", "residential", "cobbles", 1.0, None),
+      (0, "straight", "Müllerstraße", "secondary", "asphalt", 0.0, "Sendlinger Tor"),
+      (95, "right", "Ein sehr langer Straßenname, der nicht passt, Allee", "residential", "asphalt", -1.0, None)], 2),
+]
+
+FREERIDE_PLACES = [
+    ("p-viktualienmarkt", "Viktualienmarkt", "marketplace"),
+    ("p-elisabethmarkt", "Elisabethmarkt", "marketplace"),
+    ("p-englischer-garten", "Englischer Garten", "park"),
+    ("p-flaucher", "Flaucher", "beergarden"),
+    ("p-marienplatz", "Marienplatz", "square"),
+]
+
+
+def scenario_freeride(p, args):
+    """Protocol 0.12, the game's side: a free ride with a junction every 600 m,
+    each offered from 400 m out and committed 200 m before it, the phone's
+    picks answered as the spec says, and search and destinations answered from
+    a few made-up places. The rider is moved at a steady 8 m/s whatever the
+    trainer says, so junctions come along without anybody pedalling."""
+    caps = (p.welcome or {}).get("capabilities", [])
+    route_choice = "routeChoice" in caps
+    navigation = "navigation" in caps
+    print("this phone acts on routeChoice: %s, navigation: %s" % (route_choice, navigation))
+    if not route_choice:
+        print("(no junctions will be sent; the game would offer them on its own screen)")
+
+    p.send({"t": "course", "mode": "freeRide", "name": "München - Altstadt", "world": "Probe",
+            "area": {"id": "muenchen-altstadt", "name": "München - Altstadt", "release": "2026.11.1"},
+            "distanceM": None, "ascentM": None})
+    p.send({"t": "setState", "state": "active"})
+
+    speed, hz, every, decide, commit = 8.0, 10.0, 600.0, 400.0, 200.0
+    distance = 0.0
+    seq = 0
+    count = 0
+    junction = None          # the open junction, as a dict the scenario mutates
+    sent_at = 0.0
+    seen = len(p.events)
+    destination = None       # (placeId, name, distance at which it is reached)
+    nav_sent_at = 0.0
+    end = time.time() + args.ride_seconds
+
+    def junction_frame():
+        frame = {"t": "junction", "junctionId": junction["id"], "seq": seq, "phase": junction["phase"],
+                 "distanceM": round(max(junction["at"] - distance, 0.0), 1),
+                 "commitInM": round(max(junction["at"] - commit - distance, 0.0), 1)
+                 if junction["phase"] == "open" else 0,
+                 "selectedOptionId": junction["selected"], "selectedBy": junction["by"],
+                 "options": junction["options"]}
+        return frame
+
+    def send_junction():
+        nonlocal seq, sent_at
+        seq += 1
+        sent_at = time.time()
+        frame = junction_frame()
+        if p.verbose:
+            print("  -> junction %s seq=%d %s %.0f m, selected %s by %s" % (
+                frame["junctionId"], seq, frame["phase"], frame["distanceM"],
+                frame["selectedOptionId"], frame["selectedBy"]))
+        p.ws.send_text(json.dumps(frame))
+
+    def send_navigation(arrived=False):
+        nonlocal nav_sent_at
+        nav_sent_at = time.time()
+        if destination is None:
+            p.send({"t": "navigation", "active": False})
+            return
+        place_id, name, at = destination
+        left = max(at - distance, 0.0)
+        frame = {"t": "navigation", "active": True,
+                 "destination": {"placeId": place_id, "name": name},
+                 "distanceM": round(left), "etaS": round(left / speed),
+                 "arrived": arrived}
+        if junction is not None:
+            pick = next(o for o in junction["options"] if o["optionId"] == junction["selected"])
+            frame["next"] = {"distanceM": round(max(junction["at"] - distance, 0.0)),
+                             "kind": pick["kind"], "roadName": pick.get("roadName", "")}
+        p.ws.send_text(json.dumps(frame))
+
+    def routes_open_junction():
+        """Route from the junction still open, as the spec says: mark the way
+        that is not the default as the way to the destination, and take it
+        unless the rider has already chosen. True when the junction changed."""
+        if junction is None or junction["phase"] != "open":
+            return False
+        default = next(i for i, o in enumerate(junction["options"]) if o["isDefault"])
+        nav = (default + 1) % len(junction["options"]) if destination else None
+        for i, o in enumerate(junction["options"]):
+            o["isNavigation"] = i == nav
+        if junction["by"] != "rider":
+            pick = junction["options"][nav if nav is not None else default]
+            junction["selected"] = pick["optionId"]
+            junction["by"] = "navigation" if nav is not None else "default"
+        return True
+
+    while time.time() < end and not p._stop.is_set():
+        distance += speed / hz
+        p.world(0.01, speed, distance_m=distance)
+
+        # What the phone asked for since the last tick.
+        for event in p.events[seen:]:
+            name = event.get("event")
+            if name == "turnChosen":
+                if junction and event.get("junctionId") == junction["id"] and junction["phase"] == "open" \
+                        and any(o["optionId"] == event.get("optionId") for o in junction["options"]):
+                    junction["selected"] = event["optionId"]
+                    picked = next(o for o in junction["options"] if o["optionId"] == event["optionId"])
+                    # Choosing the navigation option keeps selectedBy navigation;
+                    # anything else is the rider's, and the game routes again.
+                    junction["by"] = "navigation" if picked["isNavigation"] else "rider"
+                    if destination is not None and not picked["isNavigation"]:
+                        send_navigation()
+                if junction:
+                    send_junction()   # the answer, either way
+            elif name == "placesQuery":
+                query = (event.get("query") or "").lower()
+                limit = min(int(event.get("limit") or 20), 50)
+                hits = [pl for pl in FREERIDE_PLACES if query in pl[1].lower()][:limit]
+                p.send({"t": "places", "requestId": event.get("requestId"), "places": [
+                    {"placeId": pid, "name": nm, "kind": kind, "distanceM": 900 * (i + 1),
+                     "bearingDeg": (-60 + 40 * i)} for i, (pid, nm, kind) in enumerate(hits)]})
+            elif name == "destinationChosen":
+                place = next((pl for pl in FREERIDE_PLACES if pl[0] == event.get("placeId")), None)
+                destination = (place[0], place[1], distance + 1500.0) if place else None
+                if routes_open_junction():
+                    send_junction()
+                send_navigation()
+            elif name == "destinationCleared":
+                destination = None
+                if routes_open_junction():
+                    send_junction()
+                send_navigation()
+        seen = len(p.events)
+
+        # The next junction comes into range.
+        if junction is None and distance >= (count + 1) * every - decide:
+            options, default = FREERIDE_JUNCTIONS[count % len(FREERIDE_JUNCTIONS)]
+            built = []
+            for i, (bearing, kind, road, cls, surface, grade, leads) in enumerate(options):
+                o = {"optionId": "o%d" % i, "bearingDeg": bearing, "kind": kind, "roadClass": cls,
+                     "surface": surface, "gradientAheadPct": grade, "climbAheadM": round(max(grade, 0) * 5),
+                     "toNextJunctionM": every, "isDefault": i == default, "isNavigation": False}
+                if road:
+                    o["roadName"] = road[:48]
+                if leads:
+                    o["leadsTo"] = leads
+                built.append(o)
+            count += 1
+            junction = {"id": "j-%d" % count, "at": count * every, "phase": "open", "options": built,
+                        "selected": built[default]["optionId"], "by": "default"}
+            # The way on that is not the default leads to the destination, so
+            # choosing the default shows the game routing again.
+            routes_open_junction()
+            send_junction()
+        elif junction is not None:
+            to_go = junction["at"] - distance
+            if junction["phase"] == "open" and to_go <= commit:
+                junction["phase"] = "committed"
+                send_junction()
+            elif to_go <= -20:
+                junction["phase"] = "passed"
+                send_junction()
+                junction = None
+            elif time.time() - sent_at >= 1.0:
+                send_junction()
+
+        if destination is not None:
+            if distance >= destination[2]:
+                send_navigation(arrived=True)
+                print("     arrived at %s" % destination[1])
+                time.sleep(1.0)
+                destination = None
+                send_navigation()
+            elif time.time() - nav_sent_at >= 5.0:
+                send_navigation()
+        time.sleep(1.0 / hz)
+
+    if args.finish:
+        print("\nfinish: the line actually ridden")
+        p.send({"t": "finish", "summary": {"shape": "_p~iF~ps|U_ulLnnqC", "profile": [520, 521, 519, 523]}})
+        time.sleep(1.5)
+
+
 def ride_once(p, args, lap, distance_m=0.0, late_course=False):
     """The shortest thing that counts as a ride: name it, start it, pedal, end it.
 
@@ -824,6 +1018,7 @@ SCENARIOS = {
     "untracked": scenario_untracked,
     "world": scenario_world,
     "controls": scenario_controls,
+    "freeride": scenario_freeride,
 }
 
 

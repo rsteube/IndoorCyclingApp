@@ -180,6 +180,11 @@ data class RequestShiftFrame(
  * @param profile elevation in whole metres, evenly spaced along [shape]. 64
  *   samples is plenty and is what the app's own listings carry; anything past
  *   [CompanionProtocol.MAX_COURSE_PROFILE_SAMPLES] is refused.
+ * @param mode what kind of ride this is (0.12): [MODE_COURSE] or
+ *   [MODE_FREE_RIDE]. **A frame that carries it replaces the ride's description
+ *   instead of merging into it**, and always describes the ride under way or
+ *   the next one, never one already finished. Absent merges, as before 0.12.
+ * @param area the area a free ride is in.
  */
 @Serializable
 data class CourseFrame(
@@ -189,8 +194,143 @@ data class CourseFrame(
     val ascentM: Double? = null,
     val shape: String? = null,
     val profile: List<Int> = emptyList(),
+    val mode: String? = null,
+    val area: CourseAreaFrame? = null,
     val t: String = "course",
+) : ClientFrame {
+    companion object {
+        const val MODE_COURSE = "course"
+        const val MODE_FREE_RIDE = "freeRide"
+    }
+}
+
+/** The area of the world a free ride is ridden in. */
+@Serializable
+data class CourseAreaFrame(
+    val id: String? = null,
+    val name: String? = null,
+    val release: String? = null,
+)
+
+/**
+ * The next junction where the rider has a choice (0.12), sent only to a phone
+ * that listed `routeChoice`.
+ *
+ * Sent as the junction comes within the decision range, again whenever
+ * anything in it changes, and at least once a second while [phase] is
+ * [PHASE_OPEN]. [seq] increases on every frame of a ride; a lower one than
+ * already shown is stale. It starts again with each ride, so the phone forgets
+ * it at `finish` and at a `course` that carries a `mode`.
+ *
+ * The rider answers with a `turnChosen` event, and the selection shown is
+ * always the game's, never the phone's guess at what a tap will do.
+ *
+ * Every field is optional to the decoder and checked by [CompanionSession]
+ * instead, so a junction missing a field costs that card, with a warning
+ * naming the field, rather than closing the socket in the middle of a ride.
+ */
+@Serializable
+data class JunctionFrame(
+    val junctionId: String? = null,
+    val seq: Long? = null,
+    val phase: String? = null,
+    val distanceM: Double? = null,
+    val commitInM: Double? = null,
+    val options: List<JunctionOptionFrame> = emptyList(),
+    val selectedOptionId: String? = null,
+    val selectedBy: String? = null,
+    val t: String = "junction",
+) : ClientFrame {
+    companion object {
+        const val PHASE_OPEN = "open"
+        const val PHASE_COMMITTED = "committed"
+        const val PHASE_PASSED = "passed"
+
+        const val BY_DEFAULT = "default"
+        const val BY_RIDER = "rider"
+        const val BY_NAVIGATION = "navigation"
+    }
+}
+
+/**
+ * One way on from a junction. Everything but the ids is for drawing it: the
+ * phone does not route, and the game guarantees every option offered is legal
+ * and leads on.
+ */
+@Serializable
+data class JunctionOptionFrame(
+    val optionId: String? = null,
+    /** Relative to the rider's heading, -180..180, negative to the left. */
+    val bearingDeg: Double = 0.0,
+    /** `sharpLeft` .. `sharpRight`. See [TurnKind]. */
+    val kind: String? = null,
+    val roadName: String? = null,
+    /** As OpenStreetMap's `highway`. */
+    val roadClass: String? = null,
+    val surface: String? = null,
+    /** Singletrail scale S0-S6 as 0-6. */
+    val trailGrade: Int? = null,
+    val gradientAheadPct: Double? = null,
+    val climbAheadM: Double? = null,
+    val toNextJunctionM: Double? = null,
+    val leadsTo: String? = null,
+    val isDefault: Boolean = false,
+    val isNavigation: Boolean = false,
+)
+
+/**
+ * Where the ride is taking the rider (0.12), sent only to a phone that listed
+ * `navigation`. `active: false` clears the display and carries nothing else.
+ */
+@Serializable
+data class NavigationFrame(
+    val active: Boolean? = null,
+    val destination: NavigationPlaceFrame? = null,
+    val distanceM: Double? = null,
+    /** Absent while the rider is stopped. */
+    val etaS: Double? = null,
+    val next: NavigationInstructionFrame? = null,
+    /** True once, on arrival. */
+    val arrived: Boolean = false,
+    val t: String = "navigation",
 ) : ClientFrame
+
+@Serializable
+data class NavigationPlaceFrame(
+    val placeId: String? = null,
+    val name: String? = null,
+)
+
+@Serializable
+data class NavigationInstructionFrame(
+    val distanceM: Double? = null,
+    val kind: String? = null,
+    val roadName: String? = null,
+)
+
+/**
+ * The answer to a `placesQuery` (0.12). An answer to any query but the last
+ * one asked is stale and dropped.
+ */
+@Serializable
+data class PlacesFrame(
+    val requestId: String? = null,
+    val places: List<PlaceFrame> = emptyList(),
+    val t: String = "places",
+) : ClientFrame
+
+/** A place without an id or a name is left out of the list, not refused. */
+@Serializable
+data class PlaceFrame(
+    val placeId: String? = null,
+    val name: String? = null,
+    /** For an icon. Unknown kinds get a generic one. */
+    val kind: String? = null,
+    /** Riding distance by the network, not as the crow flies. */
+    val distanceM: Double? = null,
+    /** From the rider, relative to their heading, -180..180. */
+    val bearingDeg: Double? = null,
+)
 
 /**
  * Pause or resume the ride on the phone.
@@ -714,10 +854,34 @@ data class EventFrame(
      * key's absence as the null the protocol describes.
      */
     val watts: Int? = null,
+    /** For [TURN_CHOSEN]: the junction, from its `junction` frame. */
+    val junctionId: String? = null,
+    /** For [TURN_CHOSEN]: the option the rider tapped. */
+    val optionId: String? = null,
+    /** For [PLACES_QUERY]: echoed in the `places` answer. */
+    val requestId: String? = null,
+    /** For [PLACES_QUERY]: what the rider typed; empty asks for places near them. */
+    val query: String? = null,
+    /** For [PLACES_QUERY]: how many places at most. */
+    val limit: Int? = null,
+    /** For [DESTINATION_CHOSEN]: from a `places` answer. */
+    val placeId: String? = null,
     val t: String = "event",
 ) : ServerFrame {
     companion object {
         const val GEAR_CHANGED = "gearChanged"
+
+        /** The rider tapped an option on the junction card. Sent to a controller listing `routeChoice`. */
+        const val TURN_CHOSEN = "turnChosen"
+
+        /** The rider is searching for somewhere to go. Answered with a `places` frame. */
+        const val PLACES_QUERY = "placesQuery"
+
+        /** The rider picked a place to be taken to. Answered with a `navigation` frame. */
+        const val DESTINATION_CHOSEN = "destinationChosen"
+
+        /** The rider no longer wants to be taken anywhere. */
+        const val DESTINATION_CLEARED = "destinationCleared"
 
         /**
          * The power target changed, carrying [EventFrame.watts] and a

@@ -313,6 +313,9 @@ class AppContainer(
                         trainerManager.isMockTrainer.value
                 },
                 trainerAcceptsPower = { trainerManager.acceptsTargetPower },
+                // The junction card and the destination search are drawn here.
+                routeChoice = true,
+                navigation = true,
             )
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)

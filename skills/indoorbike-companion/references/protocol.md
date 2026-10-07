@@ -180,7 +180,7 @@ Codes are 6 characters, generated per ride, never stored, never reused.
 | `client.version` | string | no | |
 | `client.platform` | string | no | |
 | `role` | string | no | Absent defaults to `controller` |
-| `capabilities` | string[] | no | Declares what you can do. The app reads `summary`; send `course`, `setState`, `controls`, `drivetrain`, `pair` and `brand` too if you use them |
+| `capabilities` | string[] | no | Declares what you can do. The app reads `summary`, `screenshot`, `routeChoice` and `navigation`; send `course`, `setState`, `controls`, `drivetrain`, `pair` and `brand` too if you use them |
 | `deviceId` | string | no | Stable, opaque, yours forever. Enables permanent pairing. Not a credential |
 
 **Role resolution, exactly:**
@@ -250,6 +250,13 @@ timeout. The same companion (same `hello.client.name`) reconnecting resumes it a
 receives `stateChanged: active` after `welcome`; a ride it had paused itself stays paused. The
 rider can end a paused ride, which saves it as completed. This is app behaviour, not a protocol
 version.
+
+**0.12** added free riding (section 8b): `course.mode`, and a `course` that carries it replaces
+the ride's description instead of merging (section 7a). With `routeChoice` the game sends
+`junction` frames and takes the rider's pick as a `turnChosen` event; with `navigation` it answers
+`placesQuery` with `places` and sends `navigation` frames. Additive, and per build at both ends:
+send these frames only to a phone whose `welcome.capabilities` lists the capability. Android
+lists both; the iOS and Sailfish apps speak 0.12 without them for now.
 
 **0.11** added where the rider is: optional `lat`, `lon` and `altM` on the `world` frame
 (section 7). The app records them second by second beside power, with `distanceM`, and writes
@@ -542,8 +549,26 @@ GPX. Your course exists nowhere the app can reach, so it travels with the ride.
 | `ascentM` | number | The course's own total climb |
 | `shape` | string | Precision-5 encoded polyline (Google polyline algorithm). Max 32 768 chars |
 | `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. Fractions are rounded. 64 is plenty. Max 1 024 |
+| `mode` | string | `"course"` or `"freeRide"` (0.12). Present: **replaces** the ride's description. Absent: a course, and merges |
+| `area` | object | Free ride only: `{ "id", "name", "release" }` |
 
-**Every field is optional and fields merge.** A later frame that omits a field leaves whatever
+**A `course` with `mode` (0.12) replaces instead of merging.** Send one at the start of every
+ride. For a free ride, `name` is the area's name, and `distanceM` and `ascentM` are explicit
+`null` (unknown, not zero; a pre-0.12 phone merges, and the nulls stop it keeping the last
+course's length):
+
+```json
+{ "t": "course", "mode": "freeRide", "name": "München - Altstadt", "world": "Col de Berg",
+  "area": { "id": "muenchen-altstadt", "name": "München - Altstadt", "release": "2026.11.1" },
+  "distanceM": null, "ascentM": null }
+```
+
+It always describes the next ride or the one under way, **never one already finished**. Amend a
+finished ride only with `finish.summary` or a `course` without `mode`: the phone matches those
+to the ride just saved by name, and every free ride in an area has the same name. It is also
+where junction `seq` starts again (section 8b).
+
+**Without `mode`, every field is optional and fields merge.** A later frame that omits a field leaves whatever
 was already known alone. The usual shape is:
 
 ```json
@@ -880,6 +905,131 @@ The course reaches the ride record before the ride is ended, because ending it i
 the row. That ordering is the app's business, not yours - it holds whether the shape came in a
 `course` frame ten minutes ago or in this `summary`.
 
+On a free ride (0.12) `shape` and `profile` are the line actually ridden, so the shape may cross
+itself and the profile runs over the distance ridden. A `finish` also clears the phone's junction
+card and navigation display, and the next ride's junction `seq` starts again.
+
+---
+
+## 8b. Free ride: `junction`, `navigation`, `places` (companion -> app) and their events (app -> companion)
+
+Added in protocol 0.12. Controller only. Two capabilities, each needed in **both**
+`hello.capabilities` (you send and act) and `welcome.capabilities` (this build draws and asks):
+
+| Capability | You send | The phone sends |
+|---|---|---|
+| `routeChoice` | `junction` | `turnChosen` |
+| `navigation` | `navigation`, `places` | `placesQuery`, `destinationChosen`, `destinationCleared` |
+
+**Per build.** Android lists both; iOS and Sailfish speak 0.12 without them for now. Branch on
+the capability, never the version. Without `routeChoice`, steer the free ride yourself (keys,
+pad, or the default), and send no `junction`: the phone ignores one silently. The `controls` pad
+is not used for turns. Courses (`mode: "course"` or none) never send any of this.
+
+### `junction`
+
+```json
+{ "t": "junction", "junctionId": "j-4471-1", "seq": 12, "phase": "open",
+  "distanceM": 342.0, "commitInM": 132.0, "selectedOptionId": "b", "selectedBy": "default",
+  "options": [
+    { "optionId": "a", "bearingDeg": -84, "kind": "left", "roadName": "Rumfordstraße",
+      "roadClass": "residential", "surface": "asphalt", "gradientAheadPct": 0.4,
+      "climbAheadM": 2, "toNextJunctionM": 180, "isDefault": false, "isNavigation": false },
+    { "optionId": "b", "bearingDeg": 3, "kind": "straight", "roadName": "Reichenbachstraße",
+      "roadClass": "tertiary", "surface": "asphalt", "gradientAheadPct": -0.2,
+      "climbAheadM": 0, "toNextJunctionM": 260, "leadsTo": "Isar",
+      "isDefault": true, "isNavigation": false } ] }
+```
+
+Send it when the junction comes within the decision range (300-450 m), again on any change
+(selection, phase, an option's data), at least once a second while `open`, at most twice a
+second. Not periodically while paused.
+
+| Field | Rules |
+|---|---|
+| `junctionId` | Stable for the junction on this ride. A new id replaces the card |
+| `seq` | Increases with every `junction` frame of the ride. Lower than one already shown: dropped. **Starts again each ride**: the phone forgets it at `finish` and at a `course` with `mode` |
+| `phase` | `open`, `committed` (final, `commitInM` 0) or `passed` (the phone clears the card) |
+| `distanceM`, `commitInM` | Metres to the junction, and to the commit point |
+| `options` | 2 to 6, left to right as the rider sees them |
+| `selectedOptionId`, `selectedBy` | What the ride will take, and why: `default`, `rider` or `navigation` |
+
+Option fields: `optionId` (unique in the junction), `bearingDeg` (-180..180, negative left),
+`kind` (`sharpLeft`, `left`, `slightLeft`, `straight`, `slightRight`, `right`, `sharpRight`),
+`roadName` (optional), `roadClass` (OSM `highway`), `surface`, `trailGrade` (optional, 0-6),
+`gradientAheadPct`, `climbAheadM`, `toNextJunctionM`, `leadsTo` (optional), `isDefault` (exactly
+one), `isNavigation` (at most one, only while navigating).
+
+**The phone checks the shape, not the routing.** Legal and leading-on is your guarantee. A frame
+with fewer than 2 or more than 6 options, a missing or duplicate `optionId`, no default or two,
+two navigation options, a `selectedOptionId` naming none of them, or an unknown `phase` or
+`selectedBy` is refused whole; the last good card stays, and a `rejected` warning names the
+field (`frame: "junction"`), once per field per connection. A missing field never closes the
+socket. Text over 48 characters is trimmed; an unknown `kind` is drawn from `bearingDeg`.
+
+### `turnChosen`
+
+```json
+{ "t": "event", "event": "turnChosen", "junctionId": "j-4471-1", "optionId": "a" }
+```
+
+The rider tapped an option. **The phone does not select it until you answer.** While `open`,
+select it and answer at once with a `junction` frame (`selectedBy: "rider"`; choosing the
+navigation option keeps `"navigation"`, and choosing any other while navigating means route again
+and send a fresh `navigation`). The last choice before the commit point wins. Committed,
+passed, or an unknown id: change nothing, and answer with the current frame (or nothing if the
+junction is gone). Answer a `turnChosen` sent while paused the same way. The phone sends one
+only for the card on screen while it is `open`; ignore any past two a second.
+
+### `navigation`
+
+```json
+{ "t": "navigation", "active": true,
+  "destination": { "placeId": "p-viktualienmarkt", "name": "Viktualienmarkt" },
+  "distanceM": 2140, "etaS": 371,
+  "next": { "distanceM": 342, "kind": "left", "roadName": "Rumfordstraße" },
+  "arrived": false }
+```
+
+Send it when a destination is set, changed or cleared, when the route changes, at each
+instruction, and at least every 5 s while navigating; at most once a second. `active: false`
+with no other field clears the phone's display. `etaS` absent while stopped. `arrived: true`
+once, on arrival; the phone shows it for a few seconds; send `active: false` shortly after.
+
+### `placesQuery` and `places`
+
+```json
+{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "markt", "limit": 20 }
+{ "t": "places", "requestId": "q7", "places": [
+  { "placeId": "p-viktualienmarkt", "name": "Viktualienmarkt", "kind": "marketplace",
+    "distanceM": 2140, "bearingDeg": -35 } ] }
+```
+
+Echo `requestId`; the phone drops an answer to anything but its latest query. An empty `query`
+means places worth going to near the rider, and is what the phone asks when the search opens.
+`limit` at most 50. Order by relevance, then riding distance. `placeId` stable for the area's
+release; `distanceM` by the network, not as the crow flies; `bearingDeg` relative to the rider's
+heading. A place with no `placeId` or `name` is left out.
+
+### `destinationChosen` and `destinationCleared`
+
+```json
+{ "t": "event", "event": "destinationChosen", "placeId": "p-viktualienmarkt" }
+{ "t": "event", "event": "destinationCleared" }
+```
+
+Chosen: route from the next junction you can still choose at, **including one already open**,
+answer with `navigation`, and mark the option on the route `isNavigation` in the next
+`junction`, selecting it with `selectedBy: "navigation"` unless the rider already chose. Unknown
+`placeId`: answer `active: false`. Cleared: drop it, answer `active: false`, steer by the
+default again.
+
+### Limits
+
+`junction` 2/s, `navigation` 1/s, `places` in answer only; `turnChosen` 2/s, `placesQuery` 2/s,
+`destinationChosen` and `destinationCleared` 2/s together. Every text field at most 48
+characters. A `junction` is under 2 KB and 50 `places` under 8 KB.
+
 ---
 
 ## 8a. Screenshots: `requestScreenshot` (app -> companion) and `screenshot` (companion -> app)
@@ -1060,7 +1210,14 @@ encode as `0.0` rather than emitting invalid JSON.
 { "t": "event", "event": "controlRevoked", "by": "rider" }
 { "t": "event", "event": "powerTargetChanged", "watts": 125, "source": "companion" }
 { "t": "event", "event": "powerTargetChanged", "source": "state" }
+{ "t": "event", "event": "turnChosen", "junctionId": "j-4471-1", "optionId": "a" }
+{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "markt", "limit": 20 }
+{ "t": "event", "event": "destinationChosen", "placeId": "p-viktualienmarkt" }
+{ "t": "event", "event": "destinationCleared" }
 ```
+
+The last four are 0.12's free-ride events, sent only to the controller and only when both ends
+listed the capability; see [8b](#8b-free-ride-junction-navigation-places-companion---app-and-their-events-app---companion).
 
 | `event` | Fields | When |
 |---|---|---|
@@ -1184,7 +1341,8 @@ Present in the protocol, absent from this build. Do not design around them.
 | `trainerLost`, `noTrainer` | Defined, never emitted |
 | Consent scopes | Pairing is one decision; there is no separate grant for biometrics |
 | Trainer control tiers | `sim`, plus ERG for a `setPower` target while the ride is untracked (7b.2). No resistance tier, and no power target during a recorded ride |
-| Steering | No frame |
+| Steering | No frame, except a free ride's turn at a junction (8b) |
+| Free ride on iOS and Sailfish | They speak 0.12 but list neither `routeChoice` nor `navigation`; steer their free rides yourself |
 | TLS | Plaintext on the LAN, authenticated by the pairing code |
 
 ---

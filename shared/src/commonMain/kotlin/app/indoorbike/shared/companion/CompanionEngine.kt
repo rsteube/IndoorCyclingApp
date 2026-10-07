@@ -583,8 +583,16 @@ class CompanionEngine(
      * ride is happening and hand over its shape at the end, which is the only
      * order a free-roaming game can manage: it does not know what road the
      * rider took until they have taken it.
+     *
+     * [replace] is a `course` that carried a `mode`: the whole description of
+     * the ride, so a free ride does not keep a length left by the course before
+     * it.
      */
-    fun setCourse(update: CompanionCourse) = lock.withLock {
+    fun setCourse(update: CompanionCourse, replace: Boolean = false) = lock.withLock {
+        if (replace) {
+            _course.value = update
+            return
+        }
         if (update.isEmpty) return
         _course.value = _course.value.mergedWith(update)
     }

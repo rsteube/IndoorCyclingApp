@@ -191,6 +191,15 @@ class CompanionHost(
      * when it will not decode. Whatever comes back is only carried in [Look].
      */
     private val decodeIcon: (ByteArray) -> Any? = { null },
+    /**
+     * This platform draws the junction card and sends the rider's pick, so it
+     * lists `routeChoice` in `welcome`. Off until a platform has the card: a
+     * game that hears the phone acts on route choice stops offering the turns
+     * on its own screen.
+     */
+    private val routeChoice: Boolean = false,
+    /** And it offers search and destinations, so it lists `navigation`. */
+    private val navigation: Boolean = false,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -278,6 +287,46 @@ class CompanionHost(
      */
     private val _remoteControls = MutableStateFlow<RemoteControls?>(null)
     val remoteControls: StateFlow<RemoteControls?> = _remoteControls.asStateFlow()
+
+    /**
+     * The junction ahead on a free ride (0.12), as the game last described it,
+     * or null. A tap does not change it; the game's answer does.
+     */
+    private val _junction = MutableStateFlow<RouteJunction?>(null)
+    val junction: StateFlow<RouteJunction?> = _junction.asStateFlow()
+
+    /** Where the game is taking the rider, or null for nowhere. */
+    private val _routeNavigation = MutableStateFlow<RouteNavigation?>(null)
+    val routeNavigation: StateFlow<RouteNavigation?> = _routeNavigation.asStateFlow()
+
+    /** The place the rider has just reached, for a few seconds, then null. */
+    private val _arrival = MutableStateFlow<String?>(null)
+    val arrival: StateFlow<String?> = _arrival.asStateFlow()
+    private var arrivalJob: Job? = null
+
+    /**
+     * The search the rider is typing into: what they asked, and the game's
+     * answer to it once it comes. [places] is null while waiting.
+     */
+    data class PlacesSearch(val query: String, val places: List<RoutePlace>?)
+
+    private val _placesSearch = MutableStateFlow<PlacesSearch?>(null)
+    val placesSearch: StateFlow<PlacesSearch?> = _placesSearch.asStateFlow()
+    private var placesJob: Job? = null
+
+    /** When the last `placesQuery` went out, to keep them at most two a second. */
+    @Volatile
+    private var lastPlacesQueryMs = 0L
+
+    private val _routeChoiceOffered = MutableStateFlow(false)
+
+    /** The controller sends junctions and takes the rider's pick: a free ride steered from the phone. */
+    val routeChoiceOffered: StateFlow<Boolean> = _routeChoiceOffered.asStateFlow()
+
+    private val _navigationOffered = MutableStateFlow(false)
+
+    /** The controller answers searches and takes the rider to a place. */
+    val navigationOffered: StateFlow<Boolean> = _navigationOffered.asStateFlow()
 
     /**
      * A companion asking to be remembered, waiting on the rider.
@@ -758,6 +807,7 @@ class CompanionHost(
             ridePrepared = false
         }
         _remoteControls.value = null
+        clearRoute()
         _pendingPairing.value = null
         if (running != null || closing.isNotEmpty()) {
             // Stopped off the caller's thread: CIO's shutdown joins its
@@ -882,6 +932,11 @@ class CompanionHost(
                 appName = BEACON_NAME,
                 sessionId = sessionId,
                 token = currentToken,
+                capabilities = CompanionProtocol.CAPABILITIES +
+                    listOfNotNull(
+                        CompanionProtocol.ROUTE_CHOICE_CAPABILITY.takeIf { routeChoice },
+                        CompanionProtocol.NAVIGATION_CAPABILITY.takeIf { navigation },
+                    ),
             ),
             snapshot = ::snapshot,
             controllerConnected = { controller != null },
@@ -969,6 +1024,7 @@ class CompanionHost(
                 // up would offer the rider buttons with nothing on the other
                 // end of them.
                 _remoteControls.value = null
+                clearRoute()
                 _pendingPairing.value = null
                 if (_sessionPhase.value == SessionPhase.LIVE) {
                     _sessionPhase.value = SessionPhase.COMPANION_AWAY
@@ -1150,6 +1206,8 @@ class CompanionHost(
     private fun publishConnectionCounts() {
         val holder = controller
         _screenshotsOffered.value = screenshots != null && holder?.session?.answersScreenshots == true
+        _routeChoiceOffered.value = holder?.session?.choosesRoute == true
+        _navigationOffered.value = holder?.session?.navigates == true
         _status.update {
             it.copy(
                 controllerName = holder?.session?.clientName,
@@ -1192,7 +1250,10 @@ class CompanionHost(
                     val wasController = slot.withLock {
                         (controller === conn).also { if (it) controller = null }
                     }
-                    if (wasController) _remoteControls.value = null
+                    if (wasController) {
+                        _remoteControls.value = null
+                        clearRoute()
+                    }
                     conn.outbox.trySend(Outbound.Close(effect.code, effect.reason))
                     conn.outbox.close()
                     open = false
@@ -1219,7 +1280,24 @@ class CompanionHost(
                         it.copy(label = effect.name.ifEmpty { null } ?: it.label, world = effect.world ?: it.world)
                     }
 
-                is CompanionEffect.SetCourse -> applyCourse(effect.course)
+                is CompanionEffect.SetCourse -> applyCourse(effect.course, effect.replace)
+
+                is CompanionEffect.SetJunction -> _junction.value = effect.junction
+
+                is CompanionEffect.SetNavigation -> _routeNavigation.value = effect.navigation
+
+                is CompanionEffect.Arrived -> {
+                    arrivalJob?.cancel()
+                    _arrival.value = effect.name
+                    arrivalJob = scope.launch {
+                        delay(ARRIVAL_SHOWN_MS)
+                        _arrival.value = null
+                    }
+                }
+
+                is CompanionEffect.SetPlaces -> _placesSearch.update { search ->
+                    search?.copy(places = effect.places)
+                }
 
                 is CompanionEffect.RequestPairing -> {
                     // The one place this design asks for a human. Everything
@@ -1563,6 +1641,82 @@ class CompanionHost(
     }
 
     /**
+     * The rider tapped an option on the junction card.
+     *
+     * The card is not touched. It selects the option when the game answers,
+     * which it does at once while the junction is open; after the commit point
+     * the game answers with what it is really going to do, and the card shows
+     * that instead. The session drops a tap on a card that is no longer open
+     * or no longer the one on screen.
+     */
+    fun chooseTurn(junctionId: String, optionId: String) {
+        val holder = controller ?: return
+        scope.launch {
+            dispatch(holder, holder.lock.withLock { holder.session.chooseTurn(junctionId, optionId, getCurrentEpochMillis()) })
+        }
+    }
+
+    /**
+     * The rider typed into the destination search, or opened it with nothing
+     * typed, which asks for places worth going to nearby.
+     *
+     * Waits [CompanionRoute.PLACES_DEBOUNCE_MS] for the typing to stop and
+     * keeps searches [PLACES_QUERY_SPACING_MS] apart, so a fast typist sends
+     * one search for a word rather than one per letter. Only the answer to the
+     * last search asked is shown.
+     */
+    fun searchPlaces(query: String) {
+        val holder = controller ?: return
+        if (!holder.session.navigates) return
+        _placesSearch.value = PlacesSearch(query = query, places = null)
+        placesJob?.cancel()
+        placesJob = scope.launch {
+            delay(CompanionRoute.PLACES_DEBOUNCE_MS)
+            val wait = lastPlacesQueryMs + PLACES_QUERY_SPACING_MS - getCurrentEpochMillis()
+            if (wait > 0) delay(wait)
+            lastPlacesQueryMs = getCurrentEpochMillis()
+            dispatch(holder, holder.lock.withLock { holder.session.queryPlaces(query, lastPlacesQueryMs) })
+        }
+    }
+
+    /** The rider closed the search. A late answer then has nowhere to go. */
+    fun closePlacesSearch() {
+        placesJob?.cancel()
+        _placesSearch.value = null
+    }
+
+    /** Take the rider to a place from the search. The game answers with where it is taking them. */
+    fun chooseDestination(placeId: String) {
+        val holder = controller ?: return
+        closePlacesSearch()
+        scope.launch {
+            dispatch(holder, holder.lock.withLock { holder.session.chooseDestination(placeId, getCurrentEpochMillis()) })
+        }
+    }
+
+    /** Stop being taken anywhere. The game answers with `active: false`, which clears the display. */
+    fun clearDestination() {
+        val holder = controller ?: return
+        scope.launch {
+            dispatch(holder, holder.lock.withLock { holder.session.clearDestination(getCurrentEpochMillis()) })
+        }
+    }
+
+    /**
+     * Everything a free ride put on screen, gone with the controller that put
+     * it there. A card left up would offer turns to a game no longer listening.
+     */
+    private fun clearRoute() {
+        _junction.value = null
+        _routeNavigation.value = null
+        arrivalJob?.cancel()
+        _arrival.value = null
+        closePlacesSearch()
+        _routeChoiceOffered.value = false
+        _navigationOffered.value = false
+    }
+
+    /**
      * Ask the companion for a picture of its screen, to keep with the ride.
      *
      * Only while a ride is underway, so there is a ride to keep it with, and one
@@ -1832,7 +1986,10 @@ class CompanionHost(
         companionDrivetrain?.let { engine.setDrivetrain(it) }
         nextRideCourse?.let { course ->
             nextRideCourse = null
-            applyCourse(course)
+            // Replacing, not merging: it was kept because it is not the saved
+            // ride's, and a free ride named after the same area as the one just
+            // saved would otherwise be matched to it by name all over again.
+            applyCourse(course, replace = true)
         }
     }
 
@@ -1889,9 +2046,28 @@ class CompanionHost(
      *  - Once it is written, until the next ride starts, a course continuing it
      *    completes the saved row, and any other begins the next ride.
      *  - Otherwise it is the ride under way's.
+     *
+     * A [replace] course (one that carried a `mode`) is a whole ride's
+     * description, sent at its start, so it never continues a finished ride.
+     * The name cannot be trusted to tell: every free ride in an area is called
+     * after the area, so the second would have been folded into the first.
      */
-    private fun applyCourse(course: CompanionCourse) {
+    private fun applyCourse(course: CompanionCourse, replace: Boolean = false) {
         val ending = roadAtFinish
+        if (replace) {
+            if (ending != null) {
+                nextRideCourse = course
+                return
+            }
+            if (completableRide != null) {
+                completableRide = null
+                Log.i(TAG, "New ride described; the saved one is left as it was")
+            }
+            engine.setCourse(course, replace = true)
+            val replaced = engine.course.value
+            _status.update { it.copy(label = replaced.name ?: it.label, world = replaced.world ?: it.world) }
+            return
+        }
         if (ending != null) {
             if (course.continuesSavedRide(ending.course?.name?.takeIf { it.isNotBlank() })) {
                 roadAtFinish = ending.copy(course = (ending.course ?: CompanionCourse()).mergedWith(course))
@@ -2081,5 +2257,14 @@ class CompanionHost(
 
         /** How long "saved" or "could not" stays under the ride's name. */
         const val SCREENSHOT_NOTICE_MS = 5_000L
+
+        /** How long "you have arrived" stays up. The game drops the destination on its own schedule. */
+        const val ARRIVAL_SHOWN_MS = 6_000L
+
+        /**
+         * Least time between two searches. The protocol allows two a second,
+         * and a search typed fast enough to want more is still being typed.
+         */
+        const val PLACES_QUERY_SPACING_MS = 500L
     }
 }

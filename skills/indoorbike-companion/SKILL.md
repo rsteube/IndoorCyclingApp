@@ -1,6 +1,6 @@
 ---
 name: indoorbike-companion
-description: Build a companion app that drives an Indoor Bike trainer ride over the local network - the game owns the world, position and virtual speed; the phone owns the trainer, the gears and the recording. Use when implementing or debugging the client side of the Indoor Bike Companion API (WebSocket, JSON, `_indoorbike._tcp`, `ws://host:port/companion`, `world`/`telemetry`/`requestShift` frames), when a companion cannot pair, connect or find the phone on the network (UDP discovery beacon on port 47601, mDNS), when trainer resistance feels wrong, when a game needs the rider to work without it being recorded (`untracked`, `setPower`, pushing a bike up a climb, a warm-up or a cool-down), or when a companion is being written in Godot, Unity, Unreal, C#, Python or TypeScript.
+description: Build a companion app that drives an Indoor Bike trainer ride over the local network - the game owns the world, position and virtual speed; the phone owns the trainer, the gears and the recording. Use when implementing or debugging the client side of the Indoor Bike Companion API (WebSocket, JSON, `_indoorbike._tcp`, `ws://host:port/companion`, `world`/`telemetry`/`requestShift` frames), when a companion cannot pair, connect or find the phone on the network (UDP discovery beacon on port 47601, mDNS), when trainer resistance feels wrong, when a game needs the rider to work without it being recorded (`untracked`, `setPower`, pushing a bike up a climb, a warm-up or a cool-down), when a game offers a free ride whose turns the rider picks on the phone or a destination to be taken to (`course.mode`, `junction`, `turnChosen`, `navigation`, `placesQuery`), or when a companion is being written in Godot, Unity, Unreal, C#, Python or TypeScript.
 ---
 
 # Building an Indoor Bike companion
@@ -442,6 +442,37 @@ keeps it with the ride, on its summary and in History. Check `welcome.capabiliti
   came; a reason is better than silence. A late picture is still kept.
 - **Keep sending `world` while you capture and encode**, or the deadman flattens the road.
 
+## Optional: free ride, with the turns chosen on the phone
+
+Protocol 0.12. Start a free ride with a `course` that carries `mode`; it **replaces** the ride's
+description rather than merging, so send `distanceM` and `ascentM` as explicit `null`:
+
+```json
+{ "t": "course", "mode": "freeRide", "name": "München - Altstadt", "world": "Col de Berg",
+  "area": { "id": "muenchen-altstadt", "name": "München - Altstadt", "release": "2026.11.1" },
+  "distanceM": null, "ascentM": null }
+```
+
+With `routeChoice` in both `hello` and `welcome` capabilities, describe each junction ahead in a
+`junction` frame and the rider taps a road on the phone; it comes back as `turnChosen`. With
+`navigation`, the phone searches your area with `placesQuery`, picks a place with
+`destinationChosen`, and you keep it told with `navigation` frames. Full rules in
+`references/protocol.md` section 8b. What bites:
+
+- **Branch on `welcome.capabilities`.** Android lists both; iOS and Sailfish speak 0.12 without
+  them for now, and then you steer the free ride yourself.
+- **The phone never selects a turn on its own.** Answer every `turnChosen` with a `junction`
+  frame at once, including one sent while paused and one that arrives after the commit point
+  (send the current frame, so the card shows what will really happen).
+- **`seq` starts again each ride**, and the phone forgets it at `finish` and at a `course` with
+  `mode`. Never send a `mode`-carrying `course` after `finish` to amend the ride just saved:
+  that course is always the next ride's. Use `finish.summary` for the line ridden.
+- **A bad junction costs the card, not the socket.** Two defaults, one option, a
+  `selectedOptionId` that names none of them: refused whole with a `rejected` warning on
+  `frame: "junction"`, said once per field, and the last good card stays up.
+- **Route from a junction that is already open** when a destination is chosen, and mark it
+  `isNavigation`; otherwise the rider waits a whole junction to see the destination take effect.
+
 ## Do not chase the light feeling at the start of a ride
 
 The app helps riders off the line. Pulling away from a standstill is genuinely hard - almost
@@ -465,6 +496,9 @@ and normal thereafter, that is this and not a bug in your world.
 | `course` out | whenever | Merged field by field. Once at the start and once at the end is the usual shape |
 | `setState` out | on your own transitions, max 2/s | A request, not a command. `stateChanged` is the answer. A third within a second is warned and dropped |
 | `controls` out | when a menu opens, changes or closes | The last frame wins. Do not forget `visible: false` |
+| `junction` out | on change, at least 1/s while open, max 2/s | Not periodically while paused. Every `turnChosen` gets one as its answer |
+| `navigation` out | on change, at least every 5 s while navigating, max 1/s | `active: false` alone clears it |
+| `turnChosen`, `placesQuery` in | at most 2/s each | `destinationChosen` and `destinationCleared` share 2/s |
 | Deadman | 1500 ms | Then the gradient ramps to flat over 2000 ms |
 
 The physics on the phone moves four times a second. A faster telemetry stream would be
@@ -565,6 +599,9 @@ hand-rolled WebSocket client. It does the handshake, pumps `world` frames, sends
 complete example of the client side of this protocol that exists.
 `--scenario untracked` is a worked push-the-bike: ride, go off the record at half the rider's
 FTP, walk with the totals frozen, and come back on the record at the summit.
+`--scenario freeride` is the game's side of 0.12 in about two hundred lines: junctions with a
+commit point, `turnChosen` answered, search and destinations answered, routing from a junction
+already open, and an arrival.
 
 For the other direction, write a mock server before you have a trainer to hand. It needs to: accept a WebSocket on
 `/companion`, answer `hello` with a `welcome`, push `telemetry` every 250 ms, and echo

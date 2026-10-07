@@ -60,6 +60,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.companion.RemoteControls
+import app.indoorbike.shared.companion.RouteJunction
+import app.indoorbike.shared.companion.RouteNavigation
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.ui.screens.CadenceFlankMetric
 import app.indoorbike.ui.screens.FlankMetric
@@ -128,6 +130,15 @@ fun CompanionHud(
     /** A controllable screen the companion is showing, or null for none. */
     remoteControls: RemoteControls? = null,
     onControlPress: (String) -> Unit = {},
+    /** The junction ahead on a free ride, or null. Drawn only for a game that takes the rider's pick. */
+    junction: RouteJunction? = null,
+    onChooseTurn: (junctionId: String, optionId: String) -> Unit = { _, _ -> },
+    /** The game answers searches: show where it is taking the rider, or a way to say where. */
+    navigationOffered: Boolean = false,
+    navigation: RouteNavigation? = null,
+    arrival: String? = null,
+    onSearchPlaces: () -> Unit = {},
+    onClearDestination: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -218,6 +229,40 @@ fun CompanionHud(
                 // reflow every time it does. Bottom centre, between the two
                 // paddles, so a rider answering a menu never lands a thumb on a
                 // shift by mistake.
+                // A free ride's road ahead, over the top of the readouts. Over
+                // them for the same reason as the pad: a junction comes and goes
+                // every few hundred metres, and the power must not jump each
+                // time. The gear it covers is on the game's screen too, and is
+                // back the moment the junction is passed.
+                if (junction != null || navigationOffered || arrival != null) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .fillMaxWidth()
+                            .padding(horizontal = Spacing.s3, vertical = Spacing.s2),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
+                    ) {
+                        when {
+                            arrival != null -> CompanionArrivalBanner(name = arrival)
+                            navigationOffered -> CompanionNavigationStrip(
+                                navigation = navigation,
+                                onSearch = onSearchPlaces,
+                                onClear = onClearDestination,
+                                modifier = if (navigation != null) Modifier.fillMaxWidth() else Modifier,
+                            )
+                        }
+                        if (junction != null) {
+                            CompanionJunctionCard(
+                                junction = junction,
+                                onChoose = onChooseTurn,
+                                accent = accent,
+                                onAccent = onAccent,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
                 if (remoteControls != null) {
                     CompanionControlPad(
                         controls = remoteControls,

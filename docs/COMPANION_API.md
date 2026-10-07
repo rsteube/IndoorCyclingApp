@@ -215,7 +215,17 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.11, and this build accepts everything back to 0.1.**
+**Current version: 0.12, and this build accepts everything back to 0.1.**
+
+0.12 added [free riding](#4b-free-ride-route-choice-and-navigation-012): `course.mode` says
+whether a ride is a course or a free ride, and a `course` that carries it replaces the ride's
+description instead of merging into it. A game that lists `routeChoice` describes each junction
+ahead in a `junction` frame and takes the rider's pick back as a `turnChosen` event; one that
+lists `navigation` answers `placesQuery` with `places` and, once a destination is chosen, keeps
+the phone told with `navigation` frames. Additive in both directions and **per build**: the
+Android app lists `routeChoice` and `navigation` in `welcome.capabilities`, while the iOS and
+Sailfish apps speak 0.12 without listing them until they draw a junction card. A game sends
+those frames only to a phone that listed them, and steers the ride itself otherwise.
 
 0.11 added where the rider is: optional `lat`, `lon` and `altM` on the [`world`](#world)
 frame. The phone records them second by second beside power, with the cumulative `distanceM` it
@@ -372,7 +382,7 @@ First frame. See [Negotiation](#negotiation).
 | `token` | string | yes | From the QR payload or typed by the rider |
 | `client` | object | yes | `name`, `version`, `platform`. `name` is shown on the HUD |
 | `role` | string | no | `controller` (default) or `observer` |
-| `capabilities` | string[] | no | What the companion can do, e.g. `["summary"]`. `screenshot` gets the rider a camera button |
+| `capabilities` | string[] | no | What the companion can do, e.g. `["summary"]`. `screenshot` gets the rider a camera button. `routeChoice` and `navigation` (0.12): see [free ride](#4b-free-ride-route-choice-and-navigation-012) |
 
 **Send nothing until the `welcome` arrives.** A phone that remembers a companion answers
 `hello` with a `challenge` rather than a `welcome`, and while that proof is outstanding every
@@ -509,6 +519,24 @@ it.
 | `ascentM` | number | The course's own total climb, on the same footing |
 | `shape` | string | Precision-5 encoded polyline, the same encoding as `RoutePolyline`. Max 32 768 characters |
 | `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. A sample with a fraction is rounded to the metre. 64 samples is plenty. Max 1 024 |
+| `mode` | string | `"course"` or `"freeRide"` (0.12). **Present, the frame replaces the ride's description instead of merging.** Absent means a course and merges, as before |
+| `area` | object | Free ride only: `{ "id", "name", "release" }`, the area being ridden |
+
+**A `course` with `mode` (0.12) is the whole description of a ride, sent at its start.** It
+replaces what the phone knew rather than merging into it, so a free ride after a course does not
+inherit the course's length. That is also why a free ride sends `distanceM` and `ascentM` as
+explicit `null`: a phone older than 0.12 merges, and a `null` is how it is told the course's
+length is not this ride's. A `mode`-carrying `course` **always describes the next ride or the
+one under way, never one already finished**: a finished ride is amended only by
+`finish.summary` or by a `course` without `mode`. The phone otherwise tells a course for the
+ride just saved from one for the next by its name, and every free ride in an area is called
+after the area. It is also where a ride's [junction](#junction) `seq` starts again.
+
+```jsonc
+{ "t": "course", "mode": "freeRide", "name": "München - Altstadt", "world": "Col de Berg",
+  "area": { "id": "muenchen-altstadt", "name": "München - Altstadt", "release": "2026.11.1" },
+  "distanceM": null, "ascentM": null }
+```
 
 `shape` and `profile` describe the course, never a position on it. Where on that road the rider
 is travels separately, second by second, as the `world` frame's `lat`, `lon` and `altM` (0.11),
@@ -833,6 +861,11 @@ record before the ride is told to end, because ending it is what writes the row.
 | `shape` | string | Precision-5 encoded polyline, the same encoding as `RoutePolyline` |
 | `profile` | int[] | 64 elevation samples in metres, the same shape as `RouteEntry.profile`. Fractions are rounded |
 
+On a free ride (0.12) both describe the line actually ridden rather than a course known
+beforehand, so the shape may cross itself and the profile runs over the distance ridden. The
+shape is the same. A `finish` also clears the junction card and the navigation display, and the
+next ride's junctions start again from `seq` 0.
+
 **A `finish` always ends the ride.** If its `summary`, or a field inside it, cannot be read, that
 part is left out with a `rejected` warning whose `field` names it (`summary`, or
 `summary.profile`), and the ride ends and saves without it. Ending the ride is the part that
@@ -1028,7 +1061,14 @@ and mean nothing. Do not read an absent field as a standstill: fall back to your
 { "t": "event", "event": "trainerLost" }
 { "t": "event", "event": "controlRevoked", "by": "rider" }
 { "t": "event", "event": "powerTargetChanged", "watts": 125, "source": "companion" }
+{ "t": "event", "event": "turnChosen", "junctionId": "j-4471-1", "optionId": "a" }
+{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "markt", "limit": 20 }
+{ "t": "event", "event": "destinationChosen", "placeId": "p-viktualienmarkt" }
+{ "t": "event", "event": "destinationCleared" }
 ```
+
+The last four are 0.12's, sent only to a controller that listed `routeChoice` or `navigation`;
+see [free ride](#4b-free-ride-route-choice-and-navigation-012).
 
 `powerTargetChanged` says what the requested power target is now, with `source` naming who
 changed it: `companion` for your own `setPower`, `state` for one the ride's own state cleared.
@@ -1159,6 +1199,167 @@ the position pairing exists to get out of.
 ### What it does not do
 
 Encrypt anything. See [the security model](#security-model-stated-plainly).
+
+## 4b. Free ride: route choice and navigation (0.12)
+
+A free ride lets the rider ride through an area of the game's world, choosing a turn at every
+junction from the phone, and ask to be taken somewhere. Specified with Col de Berg, whose own
+account of the game's side is `docs/companion-route-choice.md` in that repository.
+
+- **Free ride.** A [`course`](#course) with `"mode": "freeRide"` starts one: no length or climb
+  known in advance, and a `finish` summary describing the road actually ridden. It is recorded
+  like any other ride, track and all.
+- **Route choice.** The game describes the next junction in a [`junction`](#junction) frame; the
+  phone draws it and sends the rider's pick back as a `turnChosen` event.
+- **Navigation.** The phone asks the game for places with `placesQuery`, sets one with
+  `destinationChosen`, and is kept told with [`navigation`](#navigation) frames.
+
+### Negotiation
+
+| Capability | In `hello` (the game) | In `welcome` (the phone) |
+|---|---|---|
+| `routeChoice` | Sends `junction`, acts on `turnChosen` | Draws the junction card and sends `turnChosen` |
+| `navigation` | Sends `navigation` and `places`, acts on `placesQuery`, `destinationChosen`, `destinationCleared` | Offers search and destinations |
+
+**Per build, and both ends must list one for it to be used.** Android lists both; the iOS and
+Sailfish builds speak 0.12 and list neither yet. The game sends route-choice frames only to a
+phone listing `routeChoice` and navigation frames only to one listing `navigation`, branching on
+the capability, never the version. Without them the game steers the free ride itself, from its
+own keys and pad or automatically. The phone ignores these frames, silently, from a game that
+did not list the capability, and never sends the events to one.
+
+Courses are unchanged: a ride with `"mode": "course"`, or no mode, never sees any of this.
+
+### `junction`
+
+Game to phone. The next junction where the rider has a choice; a junction with one way on is
+never sent.
+
+```jsonc
+{ "t": "junction", "junctionId": "j-4471-1", "seq": 12, "phase": "open",
+  "distanceM": 342.0, "commitInM": 132.0, "selectedOptionId": "b", "selectedBy": "default",
+  "options": [
+    { "optionId": "a", "bearingDeg": -84, "kind": "left", "roadName": "Rumfordstraße",
+      "roadClass": "residential", "surface": "asphalt", "gradientAheadPct": 0.4,
+      "climbAheadM": 2, "toNextJunctionM": 180, "isDefault": false, "isNavigation": false },
+    { "optionId": "b", "bearingDeg": 3, "kind": "straight", "roadName": "Reichenbachstraße",
+      "roadClass": "tertiary", "surface": "asphalt", "gradientAheadPct": -0.2,
+      "climbAheadM": 0, "toNextJunctionM": 260, "leadsTo": "Isar",
+      "isDefault": true, "isNavigation": false } ] }
+```
+
+Sent once the junction is within the decision range (typically 300-450 m), again whenever
+anything in it changes, at least once a second while `open`, and at most twice a second. Not
+sent periodically while the ride is paused; the last frame stays on screen.
+
+| Field | Type | Notes |
+|---|---|---|
+| `junctionId` | string | Stable for this junction on this ride. A new id replaces the card |
+| `seq` | integer | Increases with every `junction` frame of a ride. A lower one than already shown is stale and dropped. **Starts again with each ride**: the phone forgets it at `finish` and at a `course` that carries `mode` |
+| `phase` | string | `open`: a choice can still be made. `committed`: final. `passed`: the phone clears the card |
+| `distanceM` | number | Metres along the ride to the junction, when sent |
+| `commitInM` | number | Metres until the choice is final; 0 once committed |
+| `options` | array | 2 to 6, left to right as the rider sees them |
+| `selectedOptionId` | string | What the ride will take |
+| `selectedBy` | string | `default`, `rider` or `navigation` |
+
+Each option: `optionId`, `bearingDeg` (relative to the rider's heading, -180..180, negative to
+the left), `kind` (`sharpLeft` .. `sharpRight`), optional `roadName`, `roadClass` (as
+OpenStreetMap's `highway`), `surface`, optional `trailGrade` (S0-S6 as 0-6), `gradientAheadPct`,
+`climbAheadM`, `toNextJunctionM`, optional `leadsTo`, `isDefault` (exactly one) and
+`isNavigation` (at most one, only while navigating).
+
+**What the phone checks.** The shape, not the routing: every option the game offers is legal
+and leads on, and that is the game's guarantee. A frame with fewer than 2 or more than 6
+options, a missing or duplicated `optionId`, no default or two, two navigation options, a
+`selectedOptionId` that names none of them, or an unknown `phase` or `selectedBy`, is **refused
+whole and the last good card kept**, with a `rejected` warning naming the field, sent once per
+field per connection. A missing field costs the card, never the socket. Text over 48 characters
+is trimmed. An unknown `kind` is drawn from `bearingDeg` alone.
+
+**What the phone draws.** One row of buttons in the order sent, a thumb-sized target each, with
+an arrow at the option's own bearing, the road's name, `leadsTo`, and the gradient and surface
+when they are worth saying. The filled button is `selectedOptionId`, always as the game last
+said it. A `passed` frame clears the card it describes and no other.
+
+### `turnChosen`
+
+Phone to game, when the rider taps an option:
+
+```jsonc
+{ "t": "event", "event": "turnChosen", "junctionId": "j-4471-1", "optionId": "a" }
+```
+
+**Not optimistic.** The tap changes nothing on the phone; the game answers an open junction
+with a `junction` frame selecting the option (`selectedBy: "rider"`, or `"navigation"` for the
+navigation option), and that is what fills the button. After the commit point the game answers
+with the current frame instead, so the card shows what will really happen. A tap while the ride
+is paused is sent too, and answered the same way. The phone sends one only for the card on
+screen while it is `open`, and at most two a second.
+
+### `navigation`
+
+Game to phone. Where the ride is taking the rider.
+
+```jsonc
+{ "t": "navigation", "active": true,
+  "destination": { "placeId": "p-viktualienmarkt", "name": "Viktualienmarkt" },
+  "distanceM": 2140, "etaS": 371,
+  "next": { "distanceM": 342, "kind": "left", "roadName": "Rumfordstraße" },
+  "arrived": false }
+```
+
+Sent when a destination is set, changed or cleared, when the route changes, at each
+instruction, and at least every 5 s while navigating; at most once a second. `active: false`
+clears the phone's display and carries nothing else. `arrived` is true once, on arrival; the
+phone shows it for a few seconds, once per destination, and the game sends `active: false`
+shortly after. `etaS` is absent while the rider is stopped.
+
+### `placesQuery` and `places`
+
+```jsonc
+{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "markt", "limit": 20 }
+```
+
+```jsonc
+{ "t": "places", "requestId": "q7", "places": [
+  { "placeId": "p-viktualienmarkt", "name": "Viktualienmarkt", "kind": "marketplace",
+    "distanceM": 2140, "bearingDeg": -35 } ] }
+```
+
+The phone holds nothing of the area: search is a query, answered by the game, ranked by
+relevance and then by riding distance from where the rider is now. An empty `query` asks for
+places worth going to nearby, which is what the phone shows when the search opens. `limit` is
+at most 50. The phone waits 300 ms of typing before asking and keeps queries at most two a
+second, and only the answer to the last query asked is shown; an older `requestId` is dropped.
+A place with no `placeId` or `name` is left out of the list. `kind` is OpenStreetMap's word and
+picks an icon; an unknown one gets a generic one.
+
+### `destinationChosen` and `destinationCleared`
+
+```jsonc
+{ "t": "event", "event": "destinationChosen", "placeId": "p-viktualienmarkt" }
+{ "t": "event", "event": "destinationCleared" }
+```
+
+The game routes from the next junction it can still choose at, including one already open, and
+answers with `navigation`; the next `junction` marks the option on the route `isNavigation` and
+selects it unless the rider already chose. An unknown `placeId` is answered `active: false`.
+`destinationCleared` drops it and the game steers by its default again. The two share an
+allowance of two a second.
+
+### Limits
+
+| Frame | Direction | Most per second |
+|---|---|---|
+| `junction` | game to phone | 2 |
+| `navigation` | game to phone | 1 |
+| `places` | game to phone | in answer only |
+| `turnChosen` | phone to game | 2 |
+| `placesQuery` | phone to game | 2 |
+| `destinationChosen`, `destinationCleared` | phone to game | 2 together |
+
+Every text field is at most 48 characters, trimmed by the game and again by the phone.
 
 ## 5. Units and conventions
 
@@ -1424,6 +1625,7 @@ speed with no waiting and no flakiness. It also comes along free when iOS happen
 | [`CompanionRoad.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionRoad.kt) | The road, its clamps, sequencing, and the deadman ramp |
 | [`CompanionSession.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionSession.kt) | One connection as a state machine: handshake, roles, warn-once, rate limiting |
 | [`CompanionScreenshot.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionScreenshot.kt) | A screenshot's format and size, read from its header without decoding it |
+| [`CompanionRoute.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionRoute.kt) | Free ride (0.12): the junction card, navigation and places as the phone shows them, and the shape checks |
 
 `CompanionSession.onFrame(text, nowMs)` returns a list of `CompanionEffect`. The transport turns
 `Send` and `Close` into WebSocket writes; the ride turns `ApplyRoad`, `Shift`, `SetLabel`,
@@ -1450,6 +1652,7 @@ The Android side, which is where the sockets and the platform live:
 | [`CompanionPairing.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/companion/CompanionPairing.kt) | Pairing code, local addresses, the QR payload |
 | [`CompanionScreen.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/companion/CompanionScreen.kt) | Pairing, then hand-off on the first `world` frame |
 | [`CompanionHud.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/companion/CompanionHud.kt) | The HUD, which is the route HUD minus its three "where" elements |
+| [`CompanionFreeRide.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/screens/companion/CompanionFreeRide.kt) | The junction card, the navigation strip and the destination search (0.12) |
 | [`RideScreenshotStore.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ride/RideScreenshotStore.kt) | Screenshots on disk, one folder per ride, keyed by the ride's start time |
 | [`RideScreenshots.kt`](../mobile_clients/android/src/main/kotlin/app/indoorbike/ui/components/RideScreenshots.kt) | The screenshots card, the strip on the session panel, and the full-screen viewer |
 
@@ -1504,6 +1707,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `screenshot` | Rides and answers every `requestScreenshot` with a generated PNG. Tap the camera button on the phone. `--screenshot-reply error` answers with a reason, `silent` never answers so the phone's timeout shows |
 | `drop` | Rides, drops the socket with no `finish`, stays away for `--menu-seconds` (make it long), reconnects, and checks the ride carried on by itself before finishing it properly |
 | `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
+| `freeride` | The game's side of 0.12: a free ride at a steady 8 m/s whatever the trainer says, a junction every 600 m offered from 400 m out and committed 200 m before it, taps answered as the spec says, search answered from a few made-up places, and a destination reached 1.5 km after it is chosen. Tap the junction card, search, choose a place and stop navigating on the phone |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last
 month still runs the same way.
@@ -1535,7 +1739,11 @@ Deliberately unresolved in 0.1, listed so neither end designs around their absen
   mode gave speed back to the phone. A companion sending them gets a `fieldNotHonoured`
   warning. `crr` was one of them until a companion needed a gravel road to be felt rather than
   watched, and is now honoured; see `world` above.
-- **Steering.** No frame. A companion takes its own input for anything that is not a shift.
+- **Steering.** No frame. A companion takes its own input for anything that is not a shift,
+  except the turn at a junction of a free ride, which 0.12's `turnChosen` hands to the phone.
+- **Free ride on iOS and Sailfish.** Both speak 0.12 but list neither `routeChoice` nor
+  `navigation` until they draw a junction card and a search, so a game steers their free rides
+  itself.
 - **Trainer control tiers.** 0.1 assumes an FTMS `sim`-capable trainer, and 0.10 adds ERG for
   a `setPower` target while the ride is untracked, which is the one place a wattage is ever
   commanded on a companion's behalf.

@@ -393,6 +393,13 @@ fun RideScreen(
     val companionShowAllData by container.userSettings.companionShowAllData.collectAsStateWithLifecycle()
     val screenshotsOffered by companionHost.screenshotsOffered.collectAsStateWithLifecycle()
     val screenshotStatus by companionHost.screenshotStatus.collectAsStateWithLifecycle()
+    // A free ride's junction ahead and where the game is taking the rider.
+    val companionJunction by companionHost.junction.collectAsStateWithLifecycle()
+    val companionNavigation by companionHost.routeNavigation.collectAsStateWithLifecycle()
+    val companionArrival by companionHost.arrival.collectAsStateWithLifecycle()
+    val companionNavigationOffered by companionHost.navigationOffered.collectAsStateWithLifecycle()
+    val companionPlaces by companionHost.placesSearch.collectAsStateWithLifecycle()
+    var placesSheetOpen by remember { mutableStateOf(false) }
     // Whose job it is to write this ride. The host's, when it is hosting the
     // session this ride belongs to; this screen's for every other ride,
     // including a companion ride continued from the unfinished-ride banner,
@@ -909,7 +916,29 @@ fun RideScreen(
                             showAllData = companionShowAllData,
                             remoteControls = companionControls,
                             onControlPress = companionHost::pressControl,
+                            junction = companionJunction,
+                            onChooseTurn = companionHost::chooseTurn,
+                            // Courses never navigate, so search is offered on a free ride only.
+                            navigationOffered = companionNavigationOffered && companionCourse.freeRide,
+                            navigation = companionNavigation,
+                            arrival = companionArrival,
+                            onSearchPlaces = { placesSheetOpen = true },
+                            onClearDestination = companionHost::clearDestination,
                             modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                    if (placesSheetOpen && companionNavigationOffered) {
+                        app.indoorbike.ui.screens.companion.CompanionPlacesSheet(
+                            search = companionPlaces,
+                            onQuery = companionHost::searchPlaces,
+                            onChoose = { place ->
+                                placesSheetOpen = false
+                                companionHost.chooseDestination(place.placeId)
+                            },
+                            onDismiss = {
+                                placesSheetOpen = false
+                                companionHost.closePlacesSearch()
+                            },
                         )
                     }
                     if (showSessionPanel) {
