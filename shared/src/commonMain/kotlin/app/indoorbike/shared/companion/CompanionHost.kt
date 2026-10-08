@@ -305,14 +305,20 @@ class CompanionHost(
     private var arrivalJob: Job? = null
 
     /**
-     * The search the rider is typing into: what they asked, and the game's
-     * answer to it once it comes. [places] is null while waiting.
+     * The destination list the rider is browsing: the category shown (null for
+     * every kind), and the game's answer once it comes. [places] is null while
+     * waiting.
      */
-    data class PlacesSearch(val query: String, val places: List<RoutePlace>?)
+    data class PlacesSearch(val category: PlaceCategory?, val places: List<RoutePlace>?)
 
     private val _placesSearch = MutableStateFlow<PlacesSearch?>(null)
     val placesSearch: StateFlow<PlacesSearch?> = _placesSearch.asStateFlow()
     private var placesJob: Job? = null
+
+    private val _placeCategoriesOffered = MutableStateFlow(false)
+
+    /** The game sorts its places into categories, so the list can be filtered by one. */
+    val placeCategoriesOffered: StateFlow<Boolean> = _placeCategoriesOffered.asStateFlow()
 
     /** When the last `placesQuery` went out, to keep them at most two a second. */
     @Volatile
@@ -1208,6 +1214,7 @@ class CompanionHost(
         _screenshotsOffered.value = screenshots != null && holder?.session?.answersScreenshots == true
         _routeChoiceOffered.value = holder?.session?.choosesRoute == true
         _navigationOffered.value = holder?.session?.navigates == true
+        _placeCategoriesOffered.value = holder?.session?.sortsPlaces == true
         _status.update {
             it.copy(
                 controllerName = holder?.session?.clientName,
@@ -1657,29 +1664,27 @@ class CompanionHost(
     }
 
     /**
-     * The rider typed into the destination search, or opened it with nothing
-     * typed, which asks for places worth going to nearby.
+     * The rider opened the destination list, or picked a category on it: ask
+     * the game for places in [category], or of every kind, nearest first.
      *
-     * Waits [CompanionRoute.PLACES_DEBOUNCE_MS] for the typing to stop and
-     * keeps searches [PLACES_QUERY_SPACING_MS] apart, so a fast typist sends
-     * one search for a word rather than one per letter. Only the answer to the
-     * last search asked is shown.
+     * Nothing is typed, so nothing waits for typing to stop. Requests are only
+     * kept [PLACES_QUERY_SPACING_MS] apart, so a rider flicking through the
+     * categories sends at most two a second and sees the last one they chose.
      */
-    fun searchPlaces(query: String) {
+    fun browsePlaces(category: PlaceCategory? = null) {
         val holder = controller ?: return
         if (!holder.session.navigates) return
-        _placesSearch.value = PlacesSearch(query = query, places = null)
+        _placesSearch.value = PlacesSearch(category = category, places = null)
         placesJob?.cancel()
         placesJob = scope.launch {
-            delay(CompanionRoute.PLACES_DEBOUNCE_MS)
             val wait = lastPlacesQueryMs + PLACES_QUERY_SPACING_MS - getCurrentEpochMillis()
             if (wait > 0) delay(wait)
             lastPlacesQueryMs = getCurrentEpochMillis()
-            dispatch(holder, holder.lock.withLock { holder.session.queryPlaces(query, lastPlacesQueryMs) })
+            dispatch(holder, holder.lock.withLock { holder.session.browsePlaces(lastPlacesQueryMs, category) })
         }
     }
 
-    /** The rider closed the search. A late answer then has nowhere to go. */
+    /** The rider closed the list. A late answer then has nowhere to go. */
     fun closePlacesSearch() {
         placesJob?.cancel()
         _placesSearch.value = null
@@ -1714,6 +1719,7 @@ class CompanionHost(
         closePlacesSearch()
         _routeChoiceOffered.value = false
         _navigationOffered.value = false
+        _placeCategoriesOffered.value = false
     }
 
     /**
@@ -2261,10 +2267,7 @@ class CompanionHost(
         /** How long "you have arrived" stays up. The game drops the destination on its own schedule. */
         const val ARRIVAL_SHOWN_MS = 6_000L
 
-        /**
-         * Least time between two searches. The protocol allows two a second,
-         * and a search typed fast enough to want more is still being typed.
-         */
+        /** Least time between two `placesQuery`. The protocol allows two a second. */
         const val PLACES_QUERY_SPACING_MS = 500L
     }
 }

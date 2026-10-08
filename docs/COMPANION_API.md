@@ -215,7 +215,14 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.12, and this build accepts everything back to 0.1.**
+**Current version: 0.13, and this build accepts everything back to 0.1.**
+
+0.13 came out of the first rides of 0.12, and is additive. A `junction` may carry the shape of
+each way out and of the road in, so the phone draws the same junction the game does, and
+`commitInS` for a countdown; the game offers one junction at a time, always the next one, and
+always sends `passed`. Destinations are browsed by category instead of searched: a game that
+lists `placeCategories` sorts its places into at most four categories and answers a
+`placesQuery.category`. See [free ride](#4b-free-ride-route-choice-and-navigation-012).
 
 0.12 added [free riding](#4b-free-ride-route-choice-and-navigation-012): `course.mode` says
 whether a ride is a course or a free ride, and a `course` that carries it replaces the ride's
@@ -1282,6 +1289,28 @@ an arrow at the option's own bearing, the road's name, `leadsTo`, and the gradie
 when they are worth saying. The filled button is `selectedOptionId`, always as the game last
 said it. A `passed` frame clears the card it describes and no other.
 
+**The junction diagram (0.13).** Three optional fields let the card draw the junction the game
+draws on its own tile and over the road:
+
+| Field | Type | Notes |
+|---|---|---|
+| `options[].points` | `[[x, y], ...]` | The first ~40 m of the way out, in metres: x to the rider's right, y ahead, the junction at the origin. At most 16 points, to 0.1 m |
+| `approachPoints` | `[[x, y], ...]` | The road in, the same way, every y below zero |
+| `commitInS` | number | Seconds to the commit at the current speed, shown as "Choose within N s" |
+
+When every option has at least two points the card draws the diagram above the buttons: the
+road in, each way out, the selected one bold. Points that cannot be drawn (more than 16, not an
+x and a y, or more than 200 m out) cost the diagram, not the card, with a `rejected` warning on
+`options.points` once per connection; the arrows at `bearingDeg`, which stays required, are
+drawn as before. A `junction` is read field by field like `course`, so a mistyped field costs
+the card, never the socket.
+
+**Lifecycle (0.13, the game's side).** One card at a time, always the next junction the rider
+will reach, `open` then `committed` then `passed`, and `passed` always sent, including when the
+game's own junction tile goes away for any other reason (quitting to its menu, a ride ended
+without `finish`). The phone clears the card on that `passed`, on `finish`, on a `course` with
+`mode`, and when the controller goes; nothing else clears it, pause included.
+
 ### `turnChosen`
 
 Phone to game, when the rider taps an option:
@@ -1318,22 +1347,38 @@ shortly after. `etaS` is absent while the rider is stopped.
 ### `placesQuery` and `places`
 
 ```jsonc
-{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "markt", "limit": 20 }
+{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "", "limit": 50,
+  "category": "monuments" }
 ```
 
 ```jsonc
 { "t": "places", "requestId": "q7", "places": [
-  { "placeId": "p-viktualienmarkt", "name": "Viktualienmarkt", "kind": "marketplace",
+  { "placeId": "p-siegestor", "name": "Siegestor", "kind": "monument", "category": "monuments",
     "distanceM": 2140, "bearingDeg": -35 } ] }
 ```
 
-The phone holds nothing of the area: search is a query, answered by the game, ranked by
-relevance and then by riding distance from where the rider is now. An empty `query` asks for
-places worth going to nearby, which is what the phone shows when the search opens. `limit` is
-at most 50. The phone waits 300 ms of typing before asking and keeps queries at most two a
-second, and only the answer to the last query asked is shown; an older `requestId` is dropped.
-A place with no `placeId` or `name` is left out of the list. `kind` is OpenStreetMap's word and
-picks an icon; an unknown one gets a generic one.
+The phone holds nothing of the area: every list is the game's answer, ranked by riding distance
+from where the rider is now. **Since 0.13 the phone browses rather than searches**: it always
+sends an empty `query` (places worth going to nearby, never streets) and `limit: 50`, and a rider
+narrows the list by category instead of typing. Riders found a search field hard to use with a
+hand on the bars. Requests are kept at most two a second, and only the answer to the last one
+asked is shown; an older `requestId` is dropped. A place with no `placeId` or `name` is left out.
+`kind` is OpenStreetMap's word, shown under the name.
+
+**Categories (0.13).** A game that lists `placeCategories` in `hello.capabilities` puts every
+place in exactly one of these, in `places[].category`, and answers a `placesQuery.category`
+with that category alone (absent means every kind). There are never more than four; the phone
+owns the words and the icons.
+
+| `category` | What is in it |
+|---|---|
+| `squares` | Squares, marketplaces, village and suburb centres |
+| `monuments` | Monuments, castles, churches and other places of worship, museums, attractions, fountains, stations |
+| `food` | Restaurants, cafés, ice cream, beer gardens, pubs |
+| `nature` | Parks, gardens, water, beaches, peaks, viewpoints, waterfalls |
+
+That is all four, and there will be no fifth. To a game without `placeCategories` the phone sends no category
+and shows one list of everything nearby.
 
 ### `destinationChosen` and `destinationCleared`
 

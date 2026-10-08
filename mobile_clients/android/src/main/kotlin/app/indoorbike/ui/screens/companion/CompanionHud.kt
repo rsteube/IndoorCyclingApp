@@ -137,7 +137,7 @@ fun CompanionHud(
     navigationOffered: Boolean = false,
     navigation: RouteNavigation? = null,
     arrival: String? = null,
-    onSearchPlaces: () -> Unit = {},
+    onChooseDestination: () -> Unit = {},
     onClearDestination: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
@@ -239,6 +239,9 @@ fun CompanionHud(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .fillMaxWidth()
+                            // Solid, so the gear readout it covers does not show
+                            // through the gaps between the strip and the card.
+                            .background(CadenceColors.Bg0)
                             .padding(horizontal = Spacing.s3, vertical = Spacing.s2),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(Spacing.s3),
@@ -247,9 +250,8 @@ fun CompanionHud(
                             arrival != null -> CompanionArrivalBanner(name = arrival)
                             navigationOffered -> CompanionNavigationStrip(
                                 navigation = navigation,
-                                onSearch = onSearchPlaces,
+                                onChoose = onChooseDestination,
                                 onClear = onClearDestination,
-                                modifier = if (navigation != null) Modifier.fillMaxWidth() else Modifier,
                             )
                         }
                         if (junction != null) {

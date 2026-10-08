@@ -37,6 +37,24 @@ enum class TurnKind(val wire: String, val label: String) {
 }
 
 /**
+ * What a rider can filter destinations by.
+ *
+ * Fixed by the protocol, and never more than four: the list is browsed with a
+ * hand on the bars, and a fifth chip is a row too narrow to hit. The game
+ * sorts its places into these; the phone owns the words and the icons.
+ */
+enum class PlaceCategory(val wire: String, val label: String) {
+    SQUARES("squares", "Squares"),
+    MONUMENTS("monuments", "Monuments"),
+    FOOD("food", "Food & drink"),
+    NATURE("nature", "Nature");
+
+    companion object {
+        fun fromWire(value: String?): PlaceCategory? = entries.firstOrNull { it.wire == value }
+    }
+}
+
+/**
  * The junction card, as the game last described it.
  *
  * Only ever what the game said. A tap sends `turnChosen` and changes nothing
@@ -56,8 +74,15 @@ data class RouteJunction(
     val options: List<RouteOption>,
     val selectedOptionId: String,
     val selectedBy: SelectedBy,
+    /** Seconds until the choice is final, when the game says (0.13). */
+    val commitInS: Double? = null,
+    /** The road in, for the diagram (0.13); empty when the game sent none. */
+    val approach: List<RoutePoint> = emptyList(),
 ) {
     enum class Phase { OPEN, COMMITTED, PASSED }
+
+    /** Every option has its way out drawn, so the card can show the junction as it is. */
+    val hasDiagram: Boolean get() = options.isNotEmpty() && options.all { it.points.size >= 2 }
     enum class SelectedBy { DEFAULT, RIDER, NAVIGATION }
 
     /** A tap can still change what the ride does. */
@@ -80,12 +105,17 @@ data class RouteOption(
     val leadsTo: String?,
     val isDefault: Boolean,
     val isNavigation: Boolean,
+    /** The first stretch of this way out (0.13), junction at the origin; empty for none. */
+    val points: List<RoutePoint> = emptyList(),
 ) {
     /** What a screen reader says, and what is drawn when nothing else is known. */
     val spokenLabel: String
         get() = (kind?.label ?: CompanionRoute.turnLabelForBearing(bearingDeg)) +
             (roadName?.let { " onto $it" } ?: "")
 }
+
+/** A point near a junction in metres: x to the rider's right, y ahead, the junction at the origin. */
+data class RoutePoint(val x: Double, val y: Double)
 
 /** Where the game is taking the rider. Null in the host's flow means nowhere. */
 data class RouteNavigation(
@@ -104,6 +134,7 @@ data class RoutePlace(
     val kind: String?,
     val distanceM: Double?,
     val bearingDeg: Double?,
+    val category: PlaceCategory? = null,
 )
 
 /**
@@ -124,12 +155,8 @@ object CompanionRoute {
     const val MIN_OPTIONS = 2
     const val MAX_OPTIONS = 6
 
-    /** `placesQuery.limit`: the default, and the most the game will send. */
-    const val DEFAULT_PLACES_LIMIT = 20
+    /** `placesQuery.limit`: the most the game will send, and what a browse asks for. */
     const val MAX_PLACES_LIMIT = 50
-
-    /** How long typing must stop before a search goes out. */
-    const val PLACES_DEBOUNCE_MS = 300L
 
     /**
      * Most `turnChosen` a second, and most `placesQuery`, and most
@@ -204,6 +231,7 @@ object CompanionRoute {
                 leadsTo = text(option.leadsTo),
                 isDefault = option.isDefault,
                 isNavigation = option.isNavigation,
+                points = points(option.points),
             )
         }
         if (options.map { it.optionId }.toSet().size != options.size) {
@@ -242,8 +270,34 @@ object CompanionRoute {
                 options = options,
                 selectedOptionId = selected,
                 selectedBy = selectedBy,
+                commitInS = if (phase == RouteJunction.Phase.COMMITTED) {
+                    0.0
+                } else {
+                    frame.commitInS?.takeIf { it.isFinite() }?.coerceAtLeast(0.0)
+                },
+                approach = points(frame.approachPoints),
             )
         )
+    }
+
+    /** Points per arm of a junction diagram (0.13). */
+    const val MAX_ARM_POINTS = 16
+
+    /** How far from the junction a diagram point may be, in metres. Well past the 40 m drawn. */
+    const val MAX_ARM_METRES = 200.0
+
+    /**
+     * An arm of the diagram, or empty when it cannot be drawn as sent: too
+     * many points, one that is not an x and a y, or one far from the
+     * junction. Empty rather than refused, because an arm that cannot be drawn
+     * still has its arrow, and the card is worth more than the picture.
+     */
+    fun points(sent: List<List<Double>>?): List<RoutePoint> {
+        if (sent.isNullOrEmpty() || sent.size > MAX_ARM_POINTS) return emptyList()
+        return sent.map { xy ->
+            if (xy.size != 2 || xy.any { !it.isFinite() || kotlin.math.abs(it) > MAX_ARM_METRES }) return emptyList()
+            RoutePoint(xy[0], xy[1])
+        }
     }
 
     /**
@@ -293,6 +347,7 @@ object CompanionRoute {
                 kind = text(place.kind),
                 distanceM = place.distanceM?.takeIf { it.isFinite() && it >= 0.0 },
                 bearingDeg = place.bearingDeg?.takeIf { it.isFinite() }?.coerceIn(-180.0, 180.0),
+                category = PlaceCategory.fromWire(place.category),
             )
         }.take(MAX_PLACES_LIMIT)
 

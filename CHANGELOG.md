@@ -17,14 +17,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
   screen show them, and apps from before ranges ride the segment's power as
   before.
 - **Free rides in a companion game, with the turns chosen on the phone**
-  (companion protocol 0.12, Android). A game can start a free ride with no
+  (companion protocol 0.12 and 0.13, Android). A game can start a free ride with no
   length known in advance. As each junction comes up the phone shows a card
   with a button for every way on: an arrow at its bearing, the road's name,
   where it leads, and the climb and surface ahead. A tap takes that road, and
-  the card always shows what the game says the ride will do. **Go to a place**
-  searches the game's area, and the game then routes there, with the distance,
-  time and next turn on the phone. Specified with Col de Berg. iOS and Sailfish
-  speak 0.12 and leave the steering to the game for now.
+  the card always shows what the game says the ride will do, and draws the
+  junction as the game does when the game sends its shape. **Choose a
+  destination** lists the places nearby, nearest first, filtered by squares,
+  monuments, food and drink, or nature, and the game then routes there, with the
+  distance, time and next turn on the phone. Specified with Col de Berg. iOS
+  and Sailfish speak the protocol and leave the steering to the game for now.
 
 ### Fixed
 

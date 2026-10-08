@@ -251,6 +251,11 @@ receives `stateChanged: active` after `welcome`; a ride it had paused itself sta
 rider can end a paused ride, which saves it as completed. This is app behaviour, not a protocol
 version.
 
+**0.13** (section 8b, additive): junction diagram points (`options[].points`,
+`approachPoints`) and `commitInS`; one junction at a time with `passed` always sent; and
+destinations browsed by category (`placeCategories`, `placesQuery.category`,
+`places[].category`) instead of searched.
+
 **0.12** added free riding (section 8b): `course.mode`, and a `course` that carries it replaces
 the ride's description instead of merging (section 7a). With `routeChoice` the game sends
 `junction` frames and takes the rider's pick as a `turnChosen` event; with `navigation` it answers
@@ -964,8 +969,27 @@ one), `isNavigation` (at most one, only while navigating).
 with fewer than 2 or more than 6 options, a missing or duplicate `optionId`, no default or two,
 two navigation options, a `selectedOptionId` naming none of them, or an unknown `phase` or
 `selectedBy` is refused whole; the last good card stays, and a `rejected` warning names the
-field (`frame: "junction"`), once per field per connection. A missing field never closes the
-socket. Text over 48 characters is trimmed; an unknown `kind` is drawn from `bearingDeg`.
+field (`frame: "junction"`), once per field per connection. A missing or mistyped field never
+closes the socket. Text over 48 characters is trimmed; an unknown `kind` is drawn from
+`bearingDeg`.
+
+**0.13: the diagram.** Optional, all three:
+
+- `options[].points`: the first ~40 m of the way out, `[[x, y], ...]` in metres, x right, y
+  ahead, junction at the origin. At most 16 points, values to 0.1 m.
+- `approachPoints`: the road in, the same way, y below zero.
+- `commitInS`: seconds to the commit at the current speed.
+
+With two or more points on every option the phone draws the junction above the buttons, the
+selected way bold. Points it cannot draw (over 16, not a pair, over 200 m out) cost the
+diagram, not the card: `rejected` on `options.points` once, and the arrows at `bearingDeg`
+(still required) as before.
+
+**0.13: lifecycle.** One card at a time, always the next junction the rider reaches: `open`,
+then `committed`, then `passed`, then the next `open`. **Always send `passed`**, including when
+your junction tile goes away for any other reason (quit to menu, a ride ended without `finish`):
+the phone clears the card only on its `passed`, `finish`, a `course` with `mode`, or losing the
+controller. Pause clears nothing.
 
 ### `turnChosen`
 
@@ -999,17 +1023,31 @@ once, on arrival; the phone shows it for a few seconds; send `active: false` sho
 ### `placesQuery` and `places`
 
 ```json
-{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "markt", "limit": 20 }
+{ "t": "event", "event": "placesQuery", "requestId": "q7", "query": "", "limit": 50, "category": "monuments" }
 { "t": "places", "requestId": "q7", "places": [
-  { "placeId": "p-viktualienmarkt", "name": "Viktualienmarkt", "kind": "marketplace",
+  { "placeId": "p-siegestor", "name": "Siegestor", "kind": "monument", "category": "monuments",
     "distanceM": 2140, "bearingDeg": -35 } ] }
 ```
 
-Echo `requestId`; the phone drops an answer to anything but its latest query. An empty `query`
-means places worth going to near the rider, and is what the phone asks when the search opens.
-`limit` at most 50. Order by relevance, then riding distance. `placeId` stable for the area's
+Echo `requestId`; the phone drops an answer to anything but its latest query. Since 0.13 the
+phone **browses, never searches**: `query` is always empty (places worth going to near the
+rider, no streets) and `limit` 50. Order by riding distance. `placeId` stable for the area's
 release; `distanceM` by the network, not as the crow flies; `bearingDeg` relative to the rider's
 heading. A place with no `placeId` or `name` is left out.
+
+**0.13: categories.** List `placeCategories` in `hello.capabilities` if you sort places: put
+every place in exactly one category in `places[].category`, and answer a `placesQuery.category`
+with that category only (absent: every kind). Never more than four:
+
+| `category` | Contents |
+|---|---|
+| `squares` | Squares, marketplaces, village and suburb centres |
+| `monuments` | Monuments, castles, places of worship, museums, attractions, fountains, stations |
+| `food` | Restaurants, cafés, ice cream, beer gardens, pubs |
+| `nature` | Parks, gardens, water, beaches, peaks, viewpoints, waterfalls |
+
+That is all four; there is no fifth. Without `placeCategories` the phone sends no category and shows
+one list.
 
 ### `destinationChosen` and `destinationCleared`
 

@@ -399,7 +399,8 @@ fun RideScreen(
     val companionArrival by companionHost.arrival.collectAsStateWithLifecycle()
     val companionNavigationOffered by companionHost.navigationOffered.collectAsStateWithLifecycle()
     val companionPlaces by companionHost.placesSearch.collectAsStateWithLifecycle()
-    var placesSheetOpen by remember { mutableStateOf(false) }
+    val companionPlaceCategories by companionHost.placeCategoriesOffered.collectAsStateWithLifecycle()
+    var destinationsOpen by remember { mutableStateOf(false) }
     // Whose job it is to write this ride. The host's, when it is hosting the
     // session this ride belongs to; this screen's for every other ride,
     // including a companion ride continued from the unfinished-ride banner,
@@ -922,21 +923,28 @@ fun RideScreen(
                             navigationOffered = companionNavigationOffered && companionCourse.freeRide,
                             navigation = companionNavigation,
                             arrival = companionArrival,
-                            onSearchPlaces = { placesSheetOpen = true },
+                            onChooseDestination = { destinationsOpen = true },
                             onClearDestination = companionHost::clearDestination,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                    if (placesSheetOpen && companionNavigationOffered) {
-                        app.indoorbike.ui.screens.companion.CompanionPlacesSheet(
-                            search = companionPlaces,
-                            onQuery = companionHost::searchPlaces,
+                    // Over the HUD, under the ride's header: the pause button
+                    // and the clock stay where they were while the rider picks.
+                    if (destinationsOpen && companionNavigationOffered) {
+                        app.indoorbike.ui.screens.companion.CompanionDestinations(
+                            browse = companionPlaces,
+                            categories = if (companionPlaceCategories) {
+                                app.indoorbike.shared.companion.PlaceCategory.entries
+                            } else {
+                                emptyList()
+                            },
+                            onBrowse = companionHost::browsePlaces,
                             onChoose = { place ->
-                                placesSheetOpen = false
+                                destinationsOpen = false
                                 companionHost.chooseDestination(place.placeId)
                             },
-                            onDismiss = {
-                                placesSheetOpen = false
+                            onClose = {
+                                destinationsOpen = false
                                 companionHost.closePlacesSearch()
                             },
                         )

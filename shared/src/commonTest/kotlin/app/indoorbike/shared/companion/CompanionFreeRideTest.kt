@@ -36,7 +36,7 @@ private fun snapshot() = CompanionSnapshot(
 )
 
 private fun hello(capabilities: String = """["routeChoice","navigation"]""") =
-    """{"t":"hello","protoMin":"0.1","protoMax":"0.12","token":"$TOKEN","client":{"name":"Col de Berg"},""" +
+    """{"t":"hello","protoMin":"0.1","protoMax":"0.13","token":"$TOKEN","client":{"name":"Col de Berg"},""" +
         """"capabilities":$capabilities}"""
 
 private fun session(
@@ -76,7 +76,7 @@ private fun junction(
     """"selectedOptionId":"$selected","selectedBy":"$by","options":[$options]}"""
 
 /**
- * Companion protocol 0.12, the phone's side: a free ride, the junction card,
+ * Companion protocol 0.12 and 0.13, the phone's side: a free ride, the junction card,
  * and being taken somewhere. Section 10 of the Col de Berg proposal, case by
  * case, plus the shape checks the phone adds.
  */
@@ -85,9 +85,9 @@ class CompanionFreeRideTest {
     // Negotiation ────────────────────────────────────────────────────────────
 
     @Test
-    fun `0_12 is spoken, and route choice is listed only by a phone that draws it`() {
+    fun `0_13 is spoken, and route choice is listed only by a phone that draws it`() {
         val (_, plain) = session(phone = CompanionProtocol.CAPABILITIES)
-        assertEquals("0.12", plain.proto)
+        assertEquals("0.13", plain.proto)
         assertFalse(CompanionProtocol.ROUTE_CHOICE_CAPABILITY in plain.capabilities)
         assertFalse(CompanionProtocol.NAVIGATION_CAPABILITY in plain.capabilities)
 
@@ -386,13 +386,13 @@ class CompanionFreeRideTest {
     // Places ─────────────────────────────────────────────────────────────────
 
     @Test
-    fun `a search goes out numbered and only its answer is kept`() {
+    fun `a browse goes out numbered, with nothing typed, and only its answer is kept`() {
         val (s, _) = session()
-        val first = s.queryPlaces("mark", nowMs = 100).sent().filterIsInstance<EventFrame>().single()
-        val second = s.queryPlaces("markt", nowMs = 700).sent().filterIsInstance<EventFrame>().single()
+        val first = s.browsePlaces(nowMs = 100).sent().filterIsInstance<EventFrame>().single()
+        val second = s.browsePlaces(nowMs = 700).sent().filterIsInstance<EventFrame>().single()
         assertEquals(EventFrame.PLACES_QUERY, second.event)
-        assertEquals("markt", second.query)
-        assertEquals(CompanionRoute.DEFAULT_PLACES_LIMIT, second.limit)
+        assertEquals("", second.query)
+        assertEquals(CompanionRoute.MAX_PLACES_LIMIT, second.limit)
 
         val stale = s.onFrame(
             """{"t":"places","requestId":"${first.requestId}","places":[{"placeId":"p-1","name":"Old"}]}""",
@@ -426,8 +426,96 @@ class CompanionFreeRideTest {
     fun `no search goes to a game that did not list navigation`() {
         val (s, _) = session(game = """["routeChoice"]""")
         assertTrue(s.choosesRoute)
-        assertTrue(s.queryPlaces("markt", nowMs = 100).isEmpty())
+        assertTrue(s.browsePlaces(nowMs = 100).isEmpty())
         assertTrue(s.chooseDestination("p-1", nowMs = 100).isEmpty())
         assertTrue(s.onFrame(navigating, nowMs = 100).isEmpty())
+    }
+
+    // 0.13: categories ───────────────────────────────────────────────────────
+
+    @Test
+    fun `a category goes only to a game that sorts its places`() {
+        val (sorting, _) = session(game = """["routeChoice","navigation","placeCategories"]""")
+        assertTrue(sorting.sortsPlaces)
+        val asked = sorting.browsePlaces(nowMs = 100, category = PlaceCategory.MONUMENTS)
+            .sent().single() as EventFrame
+        assertEquals("monuments", asked.category)
+        assertEquals(
+            """{"event":"placesQuery","requestId":"q1","query":"","limit":50,"category":"monuments","t":"event"}""",
+            CompanionCodec.encode(asked),
+        )
+
+        // A 0.12 game is asked for everything rather than for a category it never heard of.
+        val (plain, _) = session()
+        assertFalse(plain.sortsPlaces)
+        assertNull((plain.browsePlaces(nowMs = 100, category = PlaceCategory.FOOD).sent().single() as EventFrame).category)
+    }
+
+    @Test
+    fun `a place keeps its category, and an unknown one is none`() {
+        val (s, _) = session(game = """["navigation","placeCategories"]""")
+        val id = (s.browsePlaces(nowMs = 100).sent().single() as EventFrame).requestId
+        val places = s.onFrame(
+            """{"t":"places","requestId":"$id","places":[""" +
+                """{"placeId":"p-1","name":"Marienplatz","kind":"square","category":"squares"},""" +
+                """{"placeId":"p-2","name":"Englischer Garten","kind":"park","category":"nature"},""" +
+                """{"placeId":"p-3","name":"Isar","kind":"river","category":"rivers"}]}""",
+            nowMs = 200,
+        ).filterIsInstance<CompanionEffect.SetPlaces>().single().places
+        assertEquals(listOf(PlaceCategory.SQUARES, PlaceCategory.NATURE, null), places.map { it.category })
+    }
+
+    @Test
+    fun `never more than four categories`() {
+        assertTrue(PlaceCategory.entries.size <= 4)
+    }
+
+    // 0.13: the junction diagram ─────────────────────────────────────────────
+
+    @Test
+    fun `a junction with points draws its diagram, and commitInS is kept`() {
+        val (s, _) = session()
+        val options = listOf(
+            option("a", -84, extra = ""","points":[[0,0],[-12.5,1.2],[-40,3]]"""),
+            option("b", 3, default = true, extra = ""","points":[[0,0],[0.4,20],[1.5,40]]"""),
+        ).joinToString(",")
+        val frame = junction(1, options = options).dropLast(1) +
+            ""","commitInS":4.5,"approachPoints":[[0,-40],[0,0]]}"""
+        val effects = s.onFrame(frame, nowMs = 100)
+        val shown = assertNotNull(effects.junction()?.junction)
+        assertTrue(shown.hasDiagram)
+        assertEquals(RoutePoint(-12.5, 1.2), shown.options[0].points[1])
+        assertEquals(listOf(RoutePoint(0.0, -40.0), RoutePoint(0.0, 0.0)), shown.approach)
+        assertEquals(4.5, shown.commitInS)
+        assertTrue(effects.warnings().isEmpty())
+    }
+
+    @Test
+    fun `points that cannot be drawn cost the diagram, said once, and the card stays`() {
+        val (s, _) = session()
+        val tooMany = (0..16).joinToString(",") { "[0,$it]" }
+        val options = listOf(
+            option("a", -84, extra = ""","points":[$tooMany]"""),
+            option("b", 3, default = true, extra = ""","points":[[0,0],[0,5,1]]"""),
+        ).joinToString(",")
+        val first = s.onFrame(junction(1, options = options), nowMs = 100)
+        val shown = assertNotNull(first.junction()?.junction)
+        assertFalse(shown.hasDiagram)
+        assertEquals(listOf("options.points"), first.warnings().map { it.field })
+        assertTrue(s.onFrame(junction(2, options = options), nowMs = 200).warnings().isEmpty(), "said once")
+    }
+
+    @Test
+    fun `a mistyped junction field never closes the socket`() {
+        val (s, _) = session()
+        val options = listOf(
+            option("a", -84, extra = ""","points":[["left","up"]]"""),
+            option("b", 3, default = true),
+        ).joinToString(",")
+        val effects = s.onFrame(junction(1, options = options), nowMs = 100)
+        assertTrue(effects.none { it is CompanionEffect.Close }, "got $effects")
+        assertTrue(effects.warnings().isNotEmpty())
+        // And it is said once, not at the two frames a second junctions come at.
+        assertTrue(s.onFrame(junction(2, options = options), nowMs = 600).warnings().isEmpty())
     }
 }

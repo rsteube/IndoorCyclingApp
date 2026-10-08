@@ -78,6 +78,14 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.13 came out of the first rides of 0.12. A junction may carry the
+     * shape of each way out (`options[].points`) and of the road in
+     * (`approachPoints`), so the card draws the junction the game draws, and
+     * `commitInS` for a countdown. Destinations are browsed rather than
+     * searched: a game that lists `placeCategories` sorts every place into one
+     * of [PlaceCategory] and answers a `placesQuery` naming one. Additive: a
+     * 0.12 phone ignores the new fields and a 0.12 game the category.
+     *
      * 0.12 added free riding. `course.mode` says whether a ride is a course or
      * a free ride, and a `course` that carries it replaces the ride's
      * description rather than merging into it. A game that lists `routeChoice`
@@ -150,7 +158,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 12)
+    val VERSION = ProtocolVersion(0, 13)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -208,6 +216,13 @@ object CompanionProtocol {
      * [ROUTE_CHOICE_CAPABILITY].
      */
     const val NAVIGATION_CAPABILITY = "navigation"
+
+    /**
+     * In `hello.capabilities` only: the game sorts its places into
+     * [PlaceCategory] and answers a `placesQuery` that names one. The phone
+     * offers the category filter only to such a game.
+     */
+    const val PLACE_CATEGORIES_CAPABILITY = "placeCategories"
 
     /**
      * What a `setPower` target is clamped to, in watts.

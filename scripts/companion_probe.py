@@ -430,14 +430,14 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.12",
+            "protoMin": "0.1", "protoMax": "0.13",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
             "role": "controller",
             "capabilities": [
                 "summary", "course", "setState", "controls", "drivetrain", "pair", "brand",
-                "screenshot", "routeChoice", "navigation",
+                "screenshot", "routeChoice", "navigation", "placeCategories",
             ],
         })
         for _ in range(50):
@@ -757,13 +757,35 @@ FREERIDE_JUNCTIONS = [
       (95, "right", "Ein sehr langer Straßenname, der nicht passt, Allee", "residential", "asphalt", -1.0, None)], 2),
 ]
 
+# (placeId, name, kind, category). Categories as in protocol 0.13, at most four.
 FREERIDE_PLACES = [
-    ("p-viktualienmarkt", "Viktualienmarkt", "marketplace"),
-    ("p-elisabethmarkt", "Elisabethmarkt", "marketplace"),
-    ("p-englischer-garten", "Englischer Garten", "park"),
-    ("p-flaucher", "Flaucher", "beergarden"),
-    ("p-marienplatz", "Marienplatz", "square"),
+    ("p-viktualienmarkt", "Viktualienmarkt", "marketplace", "squares"),
+    ("p-elisabethmarkt", "Elisabethmarkt", "marketplace", "squares"),
+    ("p-marienplatz", "Marienplatz", "square", "squares"),
+    ("p-odeonsplatz", "Odeonsplatz", "square", "squares"),
+    ("p-siegestor", "Siegestor", "monument", "monuments"),
+    ("p-frauenkirche", "Frauenkirche", "place_of_worship", "monuments"),
+    ("p-deutsches-museum", "Deutsches Museum", "museum", "monuments"),
+    ("p-flaucher", "Flaucher", "beergarden", "food"),
+    ("p-chinesischer-turm", "Chinesischer Turm", "beergarden", "food"),
+    ("p-tambosi", "Café Tambosi", "cafe", "food"),
+    ("p-englischer-garten", "Englischer Garten", "park", "nature"),
+    ("p-flaucher-isar", "Isar at Flaucher", "water", "nature"),
 ]
+
+
+def arm_points(bearing_deg, length_m=40.0):
+    """A way out of a junction as diagram points (0.13): a gentle curve that
+    leaves along the road in and settles onto its bearing, junction at the
+    origin, x right and y ahead, to 0.1 m."""
+    import math
+    points = []
+    for i in range(6):
+        d = length_m * i / 5
+        # The first few metres bend from straight ahead onto the bearing.
+        b = math.radians(bearing_deg * min(1.0, 0.35 + d / 20.0))
+        points.append([round(d * math.sin(b), 1), round(d * math.cos(b), 1)])
+    return points
 
 
 def scenario_freeride(p, args):
@@ -796,11 +818,12 @@ def scenario_freeride(p, args):
     end = time.time() + args.ride_seconds
 
     def junction_frame():
+        commit_in = max(junction["at"] - commit - distance, 0.0) if junction["phase"] == "open" else 0.0
         frame = {"t": "junction", "junctionId": junction["id"], "seq": seq, "phase": junction["phase"],
                  "distanceM": round(max(junction["at"] - distance, 0.0), 1),
-                 "commitInM": round(max(junction["at"] - commit - distance, 0.0), 1)
-                 if junction["phase"] == "open" else 0,
+                 "commitInM": round(commit_in, 1), "commitInS": round(commit_in / speed, 1),
                  "selectedOptionId": junction["selected"], "selectedBy": junction["by"],
+                 "approachPoints": [[0, -40], [0, -20], [0, 0]],
                  "options": junction["options"]}
         return frame
 
@@ -870,11 +893,14 @@ def scenario_freeride(p, args):
                     send_junction()   # the answer, either way
             elif name == "placesQuery":
                 query = (event.get("query") or "").lower()
+                category = event.get("category")
                 limit = min(int(event.get("limit") or 20), 50)
-                hits = [pl for pl in FREERIDE_PLACES if query in pl[1].lower()][:limit]
+                hits = [pl for pl in FREERIDE_PLACES
+                        if query in pl[1].lower() and category in (None, pl[3])][:limit]
                 p.send({"t": "places", "requestId": event.get("requestId"), "places": [
-                    {"placeId": pid, "name": nm, "kind": kind, "distanceM": 900 * (i + 1),
-                     "bearingDeg": (-60 + 40 * i)} for i, (pid, nm, kind) in enumerate(hits)]})
+                    {"placeId": pid, "name": nm, "kind": kind, "category": cat,
+                     "distanceM": 600 * (i + 1), "bearingDeg": (-60 + 25 * i + 180) % 360 - 180}
+                    for i, (pid, nm, kind, cat) in enumerate(hits)]})
             elif name == "destinationChosen":
                 place = next((pl for pl in FREERIDE_PLACES if pl[0] == event.get("placeId")), None)
                 destination = (place[0], place[1], distance + 1500.0) if place else None
@@ -895,7 +921,8 @@ def scenario_freeride(p, args):
             for i, (bearing, kind, road, cls, surface, grade, leads) in enumerate(options):
                 o = {"optionId": "o%d" % i, "bearingDeg": bearing, "kind": kind, "roadClass": cls,
                      "surface": surface, "gradientAheadPct": grade, "climbAheadM": round(max(grade, 0) * 5),
-                     "toNextJunctionM": every, "isDefault": i == default, "isNavigation": False}
+                     "toNextJunctionM": every, "isDefault": i == default, "isNavigation": False,
+                     "points": arm_points(bearing)}
                 if road:
                     o["roadName"] = road[:48]
                 if leads:

@@ -15,8 +15,10 @@
  */
 package app.indoorbike.ui.screens.companion
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -27,50 +29,52 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.AccountBalance
 import androidx.compose.material.icons.outlined.ArrowUpward
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Flag
+import androidx.compose.material.icons.outlined.Park
 import androidx.compose.material.icons.outlined.Place
-import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.outlined.Restaurant
+import androidx.compose.material.icons.outlined.Storefront
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
@@ -79,16 +83,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.indoorbike.shared.companion.CompanionHost
-import app.indoorbike.shared.companion.CompanionRoute
+import app.indoorbike.shared.companion.PlaceCategory
 import app.indoorbike.shared.companion.RouteJunction
 import app.indoorbike.shared.companion.RouteNavigation
 import app.indoorbike.shared.companion.RouteOption
 import app.indoorbike.shared.companion.RoutePlace
+import app.indoorbike.shared.companion.RoutePoint
 import app.indoorbike.shared.route.formatDistance
 import app.indoorbike.shared.workout.formatDurationPretty
-import app.indoorbike.ui.components.SheetHandle
-import app.indoorbike.ui.components.SheetScrim
-import app.indoorbike.ui.components.SheetShape
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Radii
@@ -138,14 +140,24 @@ fun CompanionJunctionCard(
                 color = CadenceColors.Fg1,
                 modifier = Modifier.weight(1f),
             )
+            val commitInS = junction.commitInS
             Text(
                 text = when {
                     !junction.isOpen -> "Set"
-                    junction.commitInM > 0 -> "Choose within " + formatDistance(roundTo10(junction.commitInM))
+                    commitInS != null && commitInS >= 1.0 -> "Choose within " + commitInS.roundToInt() + " s"
+                    commitInS == null && junction.commitInM > 0 ->
+                        "Choose within " + formatDistance(roundTo10(junction.commitInM))
                     else -> "Choose now"
                 },
                 style = CadenceType.small,
                 color = CadenceColors.Fg3,
+            )
+        }
+        if (junction.hasDiagram) {
+            JunctionDiagram(
+                junction = junction,
+                accent = accent ?: CadenceColors.Fg1,
+                modifier = Modifier.fillMaxWidth().height(DIAGRAM_HEIGHT),
             )
         }
         BoxWithConstraints {
@@ -169,6 +181,54 @@ fun CompanionJunctionCard(
         }
         why(junction)?.let { Text(text = it, style = CadenceType.micro, color = CadenceColors.Fg3) }
     }
+}
+
+private val DIAGRAM_HEIGHT = 132.dp
+
+/** How far out from the junction the diagram reaches, in metres: the 40 m the game sends, and a margin. */
+private const val DIAGRAM_REACH_M = 44.0
+
+/**
+ * The junction as the game draws it (0.13): the road in from below, each way
+ * out as it leaves, the selected one bold in the accent and the others faint.
+ *
+ * The same picture as the game's own tile and the markers over the road, so
+ * the card and the place on the big screen read as one thing. The buttons
+ * underneath are still what is tapped; this is for seeing which road is which.
+ */
+@Composable
+private fun JunctionDiagram(junction: RouteJunction, accent: Color, modifier: Modifier = Modifier) {
+    val road = CadenceColors.Bg3
+    val faint = CadenceColors.Fg4
+    // Clipped: the road in runs off the bottom, as it does on the game's tile,
+    // rather than on down behind the buttons.
+    Canvas(modifier = modifier.clipToBounds()) {
+        // Square metres, so a right angle looks like one. The junction sits
+        // two thirds of the way down, where the road in has room to arrive.
+        val scale = minOf(size.width / 2f, size.height * 0.62f) / DIAGRAM_REACH_M.toFloat()
+        val origin = Offset(size.width / 2f, size.height * 0.64f)
+        fun at(p: RoutePoint) = Offset(origin.x + p.x.toFloat() * scale, origin.y - p.y.toFloat() * scale)
+        val thin = 7.dp.toPx()
+        val bold = 11.dp.toPx()
+
+        val approach = junction.approach.ifEmpty { listOf(RoutePoint(0.0, -DIAGRAM_REACH_M), RoutePoint(0.0, 0.0)) }
+        drawArm(approach.map(::at), road, thin)
+        junction.options.filter { it.optionId != junction.selectedOptionId }.forEach { option ->
+            drawArm(option.points.map(::at), if (option.isNavigation) road else faint, thin)
+        }
+        // The selected arm last, so it is drawn over the others where they meet.
+        junction.selected?.let { drawArm(it.points.map(::at), accent, bold) }
+        drawCircle(color = road, radius = thin * 0.9f, center = origin)
+    }
+}
+
+private fun DrawScope.drawArm(points: List<Offset>, color: Color, width: Float) {
+    if (points.size < 2) return
+    val path = Path().apply {
+        moveTo(points.first().x, points.first().y)
+        points.drop(1).forEach { lineTo(it.x, it.y) }
+    }
+    drawPath(path, color, style = Stroke(width = width, cap = StrokeCap.Round, join = StrokeJoin.Round))
 }
 
 /** Why the filled option is filled, in a few words, or nothing for the default. */
@@ -322,50 +382,59 @@ private fun roadLine(option: RouteOption): String? {
 
 private fun roundTo10(metres: Double): Double = (metres / 10.0).roundToInt() * 10.0
 
+
 /**
- * Where the ride is taking the rider, or a way to say where to go.
+ * Where the ride is taking the rider, or the way to choose somewhere.
  *
- * With a destination: its name, how far and how long, and the next turn. With
- * none: one button, so a free ride shows the search exists without taking the
- * space a destination would.
+ * The same full-width bar either way, at the top of the screen, so the rider
+ * always reaches for the same place. With no destination it is one big button;
+ * with one, the name, how far and how long, and the next turn, with **Change**
+ * and a stop button at the end. Nothing in it needs a gesture: a pull-up sheet
+ * was hard to open with a hand on the bars, and fought the list inside it.
  */
 @Composable
 fun CompanionNavigationStrip(
     navigation: RouteNavigation?,
-    onSearch: () -> Unit,
+    onChoose: () -> Unit,
     onClear: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (navigation == null) {
         Row(
             modifier = modifier
-                .clip(RoundedCornerShape(Radii.pill))
+                .fillMaxWidth()
+                .heightIn(min = STRIP_HEIGHT)
+                .clip(RoundedCornerShape(Radii.lg))
                 .background(CadenceColors.Bg1)
-                .clickable(onClick = onSearch)
-                .padding(horizontal = Spacing.s4, vertical = Spacing.s2),
+                .clickable(onClickLabel = "Choose a destination", onClick = onChoose)
+                .padding(horizontal = Spacing.s4),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
         ) {
-            Icon(Icons.Outlined.Search, contentDescription = null, tint = CadenceColors.Fg2, modifier = Modifier.size(18.dp))
-            Text(text = "Go to a place", style = CadenceType.small, color = CadenceColors.Fg1)
+            Icon(Icons.Outlined.Flag, contentDescription = null, tint = CadenceColors.Fg2)
+            Text(
+                text = "Choose a destination",
+                style = CadenceType.bodyStrong,
+                color = CadenceColors.Fg1,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = CadenceColors.Fg3)
         }
         return
     }
 
     Row(
         modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = STRIP_HEIGHT)
             .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Bg1)
-            .padding(start = Spacing.s3, top = Spacing.s2, bottom = Spacing.s2, end = Spacing.s1),
+            .padding(start = Spacing.s4, end = Spacing.s1),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Outlined.Flag, contentDescription = null, tint = CadenceColors.Fg2, modifier = Modifier.size(20.dp))
-        Spacer(Modifier.width(Spacing.s2))
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .clickable(onClickLabel = "Change destination", onClick = onSearch),
-        ) {
+        Icon(Icons.Outlined.Flag, contentDescription = null, tint = CadenceColors.Fg2)
+        Spacer(Modifier.width(Spacing.s3))
+        Column(modifier = Modifier.weight(1f).padding(vertical = Spacing.s2)) {
             Text(
                 text = navigation.name,
                 style = CadenceType.bodyStrong,
@@ -393,7 +462,17 @@ fun CompanionNavigationStrip(
         }
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .heightIn(min = 48.dp)
+                .clip(RoundedCornerShape(Radii.pill))
+                .clickable(onClickLabel = "Change destination", onClick = onChoose)
+                .padding(horizontal = Spacing.s3),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(text = "Change", style = CadenceType.bodyStrong, color = CadenceColors.Fg1)
+        }
+        Box(
+            modifier = Modifier
+                .size(48.dp)
                 .clip(RoundedCornerShape(Radii.pill))
                 .clickable(onClickLabel = "Stop navigating", onClick = onClear),
             contentAlignment = Alignment.Center,
@@ -403,16 +482,21 @@ fun CompanionNavigationStrip(
     }
 }
 
+/** As tall as a paddle is wide on a phone: found by a thumb without looking. */
+private val STRIP_HEIGHT = 64.dp
+
 /** "You have arrived", for the few seconds the host keeps it. */
 @Composable
 fun CompanionArrivalBanner(name: String, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = STRIP_HEIGHT)
             .clip(RoundedCornerShape(Radii.lg))
             .background(CadenceColors.Success)
-            .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+            .padding(horizontal = Spacing.s4),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.s2),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
         Icon(Icons.Outlined.Flag, contentDescription = null, tint = CadenceColors.Bg0)
         Text(text = "Arrived at $name", style = CadenceType.bodyStrong, color = CadenceColors.Bg0)
@@ -420,81 +504,87 @@ fun CompanionArrivalBanner(name: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Search the game's area for somewhere to go.
+ * Places to go, nearest first, to browse rather than search.
  *
- * The phone holds nothing of the area: every list here is the game's answer to
- * what was typed, ranked by how far each place is to ride from where the rider
- * is now. Opened empty, it asks for the places worth going to nearby.
+ * A panel over the ride, not a sheet: it opens on one tap, closes on one tap or
+ * Back, and nothing in it is a drag, so scrolling the list never moves the
+ * panel. There is no text field and so no keyboard; a rider with a hand on the
+ * bars picks from what is near, narrowed by category when the game sorts its
+ * places. Tapping the chosen category again shows every kind.
+ *
+ * The phone holds nothing of the area: every list is the game's answer, ranked
+ * by how far each place is to ride from where the rider is now.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CompanionPlacesSheet(
-    search: CompanionHost.PlacesSearch?,
-    onQuery: (String) -> Unit,
+fun CompanionDestinations(
+    browse: CompanionHost.PlacesSearch?,
+    categories: List<PlaceCategory>,
+    onBrowse: (PlaceCategory?) -> Unit,
     onChoose: (RoutePlace) -> Unit,
-    onDismiss: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    var input by rememberSaveable { mutableStateOf("") }
-    // Opens on the game's suggestions with the keyboard down. A place nearby is
-    // one tap for a rider with a hand on the bars, and focusing the field while
-    // the sheet was still opening left the sheet behind the keyboard.
-    LaunchedEffect(Unit) { onQuery("") }
+    LaunchedEffect(Unit) { onBrowse(null) }
+    BackHandler(onBack = onClose)
+    val selected = browse?.category
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = CadenceColors.Bg1,
-        contentColor = CadenceColors.Fg1,
-        shape = SheetShape,
-        scrimColor = SheetScrim,
-        dragHandle = { SheetHandle() },
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(CadenceColors.Bg0)
+            // The ride underneath must not take a tap meant for this panel.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            .padding(horizontal = Spacing.s4, vertical = Spacing.s3),
+        verticalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .padding(horizontal = Spacing.s5)
-                .padding(bottom = Spacing.s5),
-        ) {
-            Text(text = "Go to", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
-            Spacer(Modifier.height(6.dp))
-            BasicTextField(
-                value = input,
-                onValueChange = {
-                    val next = it.take(CompanionRoute.MAX_TEXT_CHARS)
-                    input = next
-                    onQuery(next)
-                },
-                singleLine = true,
-                textStyle = CadenceType.bodyStrong.copy(color = CadenceColors.Fg1),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                keyboardActions = KeyboardActions(onSearch = { onQuery(input) }),
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Go to", style = CadenceType.h2, color = CadenceColors.Fg1)
+                Text(text = "Nearest first", style = CadenceType.small, color = CadenceColors.Fg3)
+            }
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(Radii.md))
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(Radii.pill))
                     .background(CadenceColors.Bg2)
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                decorationBox = { inner ->
-                    if (input.isEmpty()) {
-                        Text("A square, a park, a café", style = CadenceType.body, color = CadenceColors.Fg4)
-                    }
-                    inner()
+                    .clickable(onClickLabel = "Close", onClick = onClose),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(Icons.Outlined.Close, contentDescription = "Close", tint = CadenceColors.Fg1)
+            }
+        }
+
+        if (categories.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.s2)) {
+                categories.forEach { category ->
+                    CategoryChip(
+                        category = category,
+                        selected = category == selected,
+                        onClick = { onBrowse(if (category == selected) null else category) },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+
+        val places = browse?.places
+        when {
+            places == null -> Text(text = "Asking the game", style = CadenceType.body, color = CadenceColors.Fg3)
+            places.isEmpty() -> Text(
+                text = if (selected == null) {
+                    "The game has nowhere to suggest nearby."
+                } else {
+                    "No " + selected.label.lowercase() + " nearby. Tap the category again to see everything."
                 },
+                style = CadenceType.body,
+                color = CadenceColors.Fg3,
             )
-            Spacer(Modifier.height(Spacing.s3))
-            val places = search?.places
-            when {
-                places == null -> Text(text = "Asking the game", style = CadenceType.small, color = CadenceColors.Fg3)
-                places.isEmpty() -> Text(
-                    text = if (input.isBlank()) "The game suggested nowhere nearby." else "Nothing called that here.",
-                    style = CadenceType.small,
-                    color = CadenceColors.Fg3,
-                )
-                else -> LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                    items(places, key = { it.placeId }) { place ->
-                        PlaceRow(place = place, onClick = { onChoose(place) })
-                    }
+            else -> LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.s2),
+            ) {
+                items(places, key = { it.placeId }) { place ->
+                    PlaceRow(place = place, onClick = { onChoose(place) })
                 }
             }
         }
@@ -502,18 +592,66 @@ fun CompanionPlacesSheet(
 }
 
 @Composable
+private fun CategoryChip(
+    category: PlaceCategory,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val background by animateColorAsState(
+        targetValue = if (selected) CadenceColors.Fg1 else CadenceColors.Bg2,
+        animationSpec = tween(SlateMotion.Fast, easing = SlateMotion.Easing),
+        label = "categoryChip",
+    )
+    val ink = if (selected) CadenceColors.Bg0 else CadenceColors.Fg1
+    Column(
+        modifier = modifier
+            .heightIn(min = 64.dp)
+            .clip(RoundedCornerShape(Radii.md))
+            .background(background)
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                role = Role.Tab
+                this.selected = selected
+            }
+            .padding(horizontal = Spacing.s1, vertical = Spacing.s2),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically),
+    ) {
+        Icon(iconFor(category), contentDescription = null, tint = ink, modifier = Modifier.size(22.dp))
+        Text(
+            text = category.label,
+            style = CadenceType.small,
+            color = ink,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+private fun iconFor(category: PlaceCategory?): ImageVector = when (category) {
+    PlaceCategory.SQUARES -> Icons.Outlined.Storefront
+    PlaceCategory.MONUMENTS -> Icons.Outlined.AccountBalance
+    PlaceCategory.FOOD -> Icons.Outlined.Restaurant
+    PlaceCategory.NATURE -> Icons.Outlined.Park
+    null -> Icons.Outlined.Place
+}
+
+@Composable
 private fun PlaceRow(place: RoutePlace, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = 72.dp)
             .clip(RoundedCornerShape(Radii.md))
+            .background(CadenceColors.Bg1)
             .clickable(onClick = onClick)
-            .padding(horizontal = Spacing.s2, vertical = Spacing.s2),
+            .padding(horizontal = Spacing.s4, vertical = Spacing.s2),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.s3),
     ) {
-        Icon(Icons.Outlined.Place, contentDescription = null, tint = CadenceColors.Fg2)
+        Icon(iconFor(place.category), contentDescription = null, tint = CadenceColors.Fg2)
         Column(modifier = Modifier.weight(1f)) {
             Text(text = place.name, style = CadenceType.bodyStrong, color = CadenceColors.Fg1, maxLines = 1, overflow = TextOverflow.Ellipsis)
             place.kind?.let { kind ->
@@ -523,7 +661,7 @@ private fun PlaceRow(place: RoutePlace, onClick: () -> Unit) {
             }
         }
         place.distanceM?.let {
-            Text(text = formatDistance(roundTo10(it)), style = CadenceType.small, color = CadenceColors.Fg2)
+            Text(text = formatDistance(roundTo10(it)), style = CadenceType.body, color = CadenceColors.Fg2)
         }
         place.bearingDeg?.let {
             Icon(
@@ -531,7 +669,7 @@ private fun PlaceRow(place: RoutePlace, onClick: () -> Unit) {
                 contentDescription = null,
                 tint = CadenceColors.Fg3,
                 modifier = Modifier
-                    .size(18.dp)
+                    .size(20.dp)
                     .rotate(it.toFloat()),
             )
         }

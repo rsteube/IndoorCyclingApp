@@ -42,7 +42,7 @@ sealed interface Decoded {
      *   unhonoured field and an absent one both arrive as a default.
      * @param unreadable fields that were sent but could not be read, and were
      *   left out so the rest of the frame could be used, each with the reason.
-     *   Only ever filled for `course` and `finish`; see
+     *   Only ever filled for `course`, `finish` and `junction`; see
      *   [CompanionCodec.decodeClientFrame]. Nested fields are dotted, e.g.
      *   `summary.profile`.
      */
@@ -117,8 +117,9 @@ object CompanionCodec {
      * middle of it. So when one of them will not decode, each field is tried on
      * its own, the ones that cannot be read are left out and named in
      * [Decoded.Ok.unreadable], and the rest is used. Every field of both is
-     * optional, which is what makes that sound. Every other frame is still
-     * all-or-nothing.
+     * optional, which is what makes that sound. A `junction` (0.13) is read the
+     * same way, so a mistyped field costs the card the session then refuses,
+     * not the socket. Every other frame is still all-or-nothing.
      */
     fun decodeClientFrame(text: String): Decoded {
         // Measured on the raw text, before anything recursive sees it. No
@@ -257,6 +258,10 @@ object CompanionCodec {
         val serializer: DeserializationStrategy<ClientFrame> = when (type) {
             "course" -> CourseFrame.serializer()
             "finish" -> FinishFrame.serializer()
+            // Every field optional too, and a mistyped one (a diagram point
+            // spelled as a string) is a card the session refuses, not a socket
+            // closed in the middle of a free ride.
+            "junction" -> JunctionFrame.serializer()
             else -> return null
         }
         var body = root

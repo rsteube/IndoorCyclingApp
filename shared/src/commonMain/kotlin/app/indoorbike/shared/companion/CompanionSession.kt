@@ -396,7 +396,7 @@ class CompanionSession(
             }
         }
 
-        return unreadableWarnings(unreadable) + when (frame) {
+        return unreadableWarnings(frame, unreadable) + when (frame) {
             is HelloFrame -> emptyList() // a second hello is meaningless, not fatal
             is WorldFrame -> onWorld(frame, fields, nowMs)
             is RequestShiftFrame -> onRequestShift(frame, nowMs)
@@ -428,11 +428,13 @@ class CompanionSession(
      * ride ends, the name lands, and the map is simply missing from the saved
      * ride with nothing anywhere to say why.
      */
-    private fun unreadableWarnings(unreadable: Map<String, String>): List<CompanionEffect> =
+    private fun unreadableWarnings(frame: ClientFrame, unreadable: Map<String, String>): List<CompanionEffect> =
         if (!isController) {
             emptyList()
         } else {
-            unreadable.map { (field, reason) ->
+            // A junction comes twice a second, so its warnings are once per
+            // field per connection, like everything else said about one.
+            unreadable.filterKeys { frame !is JunctionFrame || warnedRouteFields.add("junction.$it") }.map { (field, reason) ->
                 CompanionEffect.Send(
                     WarningFrame(
                         code = CompanionWarning.REJECTED,
@@ -916,6 +918,23 @@ class CompanionSession(
         if (last != null && checked.seq < last) return emptyList()
         junctionSeq = checked.seq
 
+        // Diagram points that could not be drawn are dropped, not refused: the
+        // arrows still say everything. But the game should hear, once.
+        val warnings = if (droppedPoints(frame, checked)) {
+            refusedRoute(
+                "junction",
+                CompanionRoute.Checked.Refused(
+                    "options.points",
+                    "Diagram points must be [x, y] pairs in metres, at most " + CompanionRoute.MAX_ARM_POINTS +
+                        " per arm and within " + CompanionRoute.MAX_ARM_METRES.toInt() +
+                        " m of the junction; the arrows are drawn instead.",
+                ),
+                kept = "The card was shown without its diagram.",
+            )
+        } else {
+            emptyList()
+        }
+
         if (checked.phase == RouteJunction.Phase.PASSED) {
             // Only the card it describes is cleared. A late `passed` for the
             // junction before must not take down the one now coming up.
@@ -924,7 +943,17 @@ class CompanionSession(
             return listOf(CompanionEffect.SetJunction(null))
         }
         junction = checked
-        return listOf(CompanionEffect.SetJunction(checked))
+        return warnings + CompanionEffect.SetJunction(checked)
+    }
+
+    /** Points were sent for the diagram and some could not be used. */
+    private fun droppedPoints(frame: JunctionFrame, checked: RouteJunction): Boolean {
+        if (checked.phase == RouteJunction.Phase.PASSED) return false
+        val approachLost = !frame.approachPoints.isNullOrEmpty() && checked.approach.isEmpty()
+        val armLost = frame.options.zip(checked.options).any { (sent, kept) ->
+            !sent.points.isNullOrEmpty() && kept.points.isEmpty()
+        }
+        return approachLost || armLost
     }
 
     private fun onNavigation(frame: NavigationFrame): List<CompanionEffect> {
@@ -955,8 +984,12 @@ class CompanionSession(
         return listOf(CompanionEffect.SetPlaces(id, CompanionRoute.places(frame)))
     }
 
-    /** A 0.12 frame refused, said once per field per connection. */
-    private fun refusedRoute(frameType: String, refused: CompanionRoute.Checked.Refused): List<CompanionEffect> {
+    /** A free-ride frame or field refused, said once per field per connection. */
+    private fun refusedRoute(
+        frameType: String,
+        refused: CompanionRoute.Checked.Refused,
+        kept: String = "The frame was ignored and the last good one kept.",
+    ): List<CompanionEffect> {
         if (!warnedRouteFields.add(frameType + "." + refused.field)) return emptyList()
         return listOf(
             CompanionEffect.Send(
@@ -964,7 +997,7 @@ class CompanionSession(
                     code = CompanionWarning.REJECTED,
                     field = refused.field,
                     frame = frameType,
-                    message = refused.reason + " The frame was ignored and the last good one kept.",
+                    message = refused.reason + " " + kept,
                 )
             )
         )
@@ -991,12 +1024,22 @@ class CompanionSession(
         )
     }
 
+    /** A game that sorts its places into [PlaceCategory] and answers a `placesQuery.category`. */
+    val sortsPlaces: Boolean
+        get() = navigates && CompanionProtocol.PLACE_CATEGORIES_CAPABILITY in clientCapabilities
+
     /**
-     * Ask the game for places matching [query]. Debouncing the rider's typing
-     * is the host's; this numbers the request, so only its answer is shown,
-     * and drops anything past the rate.
+     * Ask the game for places to go, nearest first, in [category] or of every
+     * kind. Nothing is typed: the query is always empty, which a game reads as
+     * "places worth going to near the rider". The category goes only to a game
+     * that sorts places; any other is asked for everything. Numbered, so only
+     * the last answer is shown, and dropped past the rate.
      */
-    fun queryPlaces(query: String, nowMs: Long, limit: Int = CompanionRoute.DEFAULT_PLACES_LIMIT): List<CompanionEffect> {
+    fun browsePlaces(
+        nowMs: Long,
+        category: PlaceCategory? = null,
+        limit: Int = CompanionRoute.MAX_PLACES_LIMIT,
+    ): List<CompanionEffect> {
         if (!navigates) return emptyList()
         if (!allow(placesEvents, nowMs)) return emptyList()
         val id = "q" + nextPlacesRequest++
@@ -1006,8 +1049,9 @@ class CompanionSession(
                 EventFrame(
                     event = EventFrame.PLACES_QUERY,
                     requestId = id,
-                    query = query.trim().take(CompanionRoute.MAX_TEXT_CHARS),
+                    query = "",
                     limit = limit.coerceIn(1, CompanionRoute.MAX_PLACES_LIMIT),
+                    category = category?.wire?.takeIf { sortsPlaces },
                 )
             )
         )

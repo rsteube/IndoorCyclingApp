@@ -239,6 +239,13 @@ data class JunctionFrame(
     val options: List<JunctionOptionFrame> = emptyList(),
     val selectedOptionId: String? = null,
     val selectedBy: String? = null,
+    /** Seconds to the commit at the current speed (0.13), for a countdown. */
+    val commitInS: Double? = null,
+    /**
+     * The road in (0.13): `[[x, y], ...]` in metres, x right, y ahead, the
+     * junction at the origin, so every y is below zero. At most 16 points.
+     */
+    val approachPoints: List<List<Double>>? = null,
     val t: String = "junction",
 ) : ClientFrame {
     companion object {
@@ -276,6 +283,12 @@ data class JunctionOptionFrame(
     val leadsTo: String? = null,
     val isDefault: Boolean = false,
     val isNavigation: Boolean = false,
+    /**
+     * The first 40 m or so of this way out (0.13), in the same frame as
+     * [JunctionFrame.approachPoints]: the junction at the origin, at most 16
+     * points. Absent, the arrow is drawn at [bearingDeg].
+     */
+    val points: List<List<Double>>? = null,
 )
 
 /**
@@ -330,6 +343,8 @@ data class PlaceFrame(
     val distanceM: Double? = null,
     /** From the rider, relative to their heading, -180..180. */
     val bearingDeg: Double? = null,
+    /** Which [PlaceCategory] it falls in, from a game that sorts places. */
+    val category: String? = null,
 )
 
 /**
@@ -864,6 +879,11 @@ data class EventFrame(
     val query: String? = null,
     /** For [PLACES_QUERY]: how many places at most. */
     val limit: Int? = null,
+    /**
+     * For [PLACES_QUERY]: one of [PlaceCategory], or absent for every kind. Sent
+     * only to a game that listed `placeCategories`; a 0.12 game would ignore it.
+     */
+    val category: String? = null,
     /** For [DESTINATION_CHOSEN]: from a `places` answer. */
     val placeId: String? = null,
     val t: String = "event",

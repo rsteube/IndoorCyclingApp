@@ -454,10 +454,16 @@ description rather than merging, so send `distanceM` and `ascentM` as explicit `
 ```
 
 With `routeChoice` in both `hello` and `welcome` capabilities, describe each junction ahead in a
-`junction` frame and the rider taps a road on the phone; it comes back as `turnChosen`. With
-`navigation`, the phone searches your area with `placesQuery`, picks a place with
+`junction` frame and the rider taps a road on the phone; it comes back as `turnChosen`. From
+0.13, add `options[].points` and `approachPoints` and the phone draws your junction diagram. With
+`navigation`, the phone browses your area's places nearest first with `placesQuery` (no typed
+search; filtered by `category` if you list `placeCategories`), picks one with
 `destinationChosen`, and you keep it told with `navigation` frames. Full rules in
 `references/protocol.md` section 8b. What bites:
+
+- **One card at a time, and always send `passed`.** The phone clears the card only on its
+  `passed`, `finish`, a `course` with `mode`, or a disconnect. If your junction tile goes away
+  without one, the phone keeps offering a turn nobody is asking about.
 
 - **Branch on `welcome.capabilities`.** Android lists both; iOS and Sailfish speak 0.12 without
   them for now, and then you steer the free ride yourself.
