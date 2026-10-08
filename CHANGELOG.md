@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.10] (30) - 2026-10-08
+
 ### Added
 
 - **A segment can ask for a power range.** A workout can say "90-105% FTP"
