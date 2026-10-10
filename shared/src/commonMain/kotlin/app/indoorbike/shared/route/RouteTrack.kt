@@ -148,6 +148,67 @@ class RouteTrack internal constructor(
         )
     }
 
+    /**
+     * How far along the route the point nearest to [latitude], [longitude]
+     * is, in metres: what a tap on the map means.
+     *
+     * Every segment is tried, and the closest point on it wins, so a tap
+     * between two points lands between them rather than on whichever vertex
+     * happens to be near. Where the route passes the same place twice (a
+     * loop's start and finish, an out-and-back) the nearer pass wins, and on
+     * a tie the earlier one; the elevation profile is the way to tell the
+     * passes apart. Distances are measured on a local flat projection, which
+     * at the size of a tap is indistinguishable from the sphere.
+     */
+    fun distanceNearest(latitude: Double, longitude: Double): Double {
+        if (points.isEmpty()) return 0.0
+        if (points.size == 1) return 0.0
+        // Metres per degree here, so a degree of longitude is not taken for
+        // a degree of latitude away from the equator.
+        val metresPerLat = EARTH_RADIUS_METERS * DEG_TO_RAD
+        val metresPerLon = metresPerLat * cos(latitude * DEG_TO_RAD)
+        var best = Double.MAX_VALUE
+        var bestDistance = 0.0
+        for (i in 0 until points.size - 1) {
+            val a = points[i]
+            val b = points[i + 1]
+            val ax = (a.longitude - longitude) * metresPerLon
+            val ay = (a.latitude - latitude) * metresPerLat
+            val dx = (b.longitude - a.longitude) * metresPerLon
+            val dy = (b.latitude - a.latitude) * metresPerLat
+            val lengthSquared = dx * dx + dy * dy
+            val t = if (lengthSquared > 0.0) (-(ax * dx + ay * dy) / lengthSquared).coerceIn(0.0, 1.0) else 0.0
+            val px = ax + dx * t
+            val py = ay + dy * t
+            val off = px * px + py * py
+            if (off < best) {
+                best = off
+                bestDistance = a.distanceMeters + (b.distanceMeters - a.distanceMeters) * t
+            }
+        }
+        return bestDistance
+    }
+
+    /**
+     * Climbing from the start to [distanceMeters], on the same smoothed
+     * profile as [totalAscentMeters], so a ride started part way along
+     * carries the climb behind it the way a resumed one does.
+     */
+    fun ascentTo(distanceMeters: Double): Double {
+        if (elevationProfile.size < 2) return 0.0
+        val d = distanceMeters.coerceIn(0.0, totalDistanceMeters)
+        var gain = 0.0
+        val whole = (d / GRADIENT_SAMPLE_METERS).toInt().coerceAtMost(elevationProfile.size - 1)
+        for (i in 1..whole) {
+            val delta = elevationProfile[i] - elevationProfile[i - 1]
+            if (delta > 0) gain += delta
+        }
+        // The part of the last grid step before [d].
+        val rest = elevationAt(d) - elevationProfile[whole]
+        if (rest > 0) gain += rest
+        return gain
+    }
+
     /** Smoothed gradient as a fraction (0.064 = 6.4 %) at [distanceMeters]. */
     fun gradientAt(distanceMeters: Double): Double = sampleProfile(gradientProfile, distanceMeters)
 

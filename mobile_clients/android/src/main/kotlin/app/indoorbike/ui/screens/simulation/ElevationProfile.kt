@@ -18,10 +18,14 @@ package app.indoorbike.ui.screens.simulation
 import app.indoorbike.shared.route.gradientBand
 import app.indoorbike.shared.route.GradientBand
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -30,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import app.indoorbike.shared.route.RouteTrack
 import app.indoorbike.ui.theme.CadenceColors
@@ -62,8 +67,38 @@ fun ElevationProfile(
     modifier: Modifier = Modifier,
     /** Where this ride began; see [RouteShape]. */
     startedAtMeters: Double = 0.0,
+    /**
+     * A tap or a drag along the profile, as the distance under the finger.
+     * Null for a profile that only shows, which is every profile during a
+     * ride.
+     */
+    onPick: ((distanceMeters: Double) -> Unit)? = null,
 ) {
-    Box(modifier = modifier) {
+    val currentOnPick by rememberUpdatedState(onPick)
+    val total = route.totalDistanceMeters
+    // The x axis is linear in distance, so the distance under a finger is its
+    // share of the width. Dragging is the point: a long route is a few
+    // hundred metres a pixel, and sliding to the foot of the climb you want
+    // is easier than landing on it with one tap.
+    val picking = if (onPick == null || total <= 0.0) {
+        Modifier
+    } else {
+        Modifier
+            .pointerInput(route) {
+                detectTapGestures { at ->
+                    currentOnPick?.invoke((at.x / size.width).coerceIn(0f, 1f) * total)
+                }
+            }
+            .pointerInput(route) {
+                detectHorizontalDragGestures(
+                    onDragStart = { at -> currentOnPick?.invoke((at.x / size.width).coerceIn(0f, 1f) * total) },
+                ) { change, _ ->
+                    change.consume()
+                    currentOnPick?.invoke((change.position.x / size.width).coerceIn(0f, 1f) * total)
+                }
+            }
+    }
+    Box(modifier = modifier.then(picking)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (route.isEmpty || size.width < 2f || size.height < 2f) return@Canvas
             drawProfile(route, distanceMeters, size)

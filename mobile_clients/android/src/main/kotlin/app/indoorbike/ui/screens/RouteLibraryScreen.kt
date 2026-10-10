@@ -66,6 +66,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import app.indoorbike.shared.simulation.RouteProgress
+import app.indoorbike.shared.simulation.RouteStart
 import app.indoorbike.ui.components.AppBar
 import app.indoorbike.ui.components.marginRidges
 import app.indoorbike.ui.components.ContentMaxWidth
@@ -110,6 +111,11 @@ fun RouteLibraryScreen(
     onStartRoute: (RouteTrack, RouteProgress?) -> Unit,
     onFindMore: () -> Unit,
     onPairTrainer: () -> Unit = {},
+    /**
+     * A long route was tapped: show it whole and let the rider choose where
+     * to start. See [RouteStart.asksWhereToStart].
+     */
+    onChooseStart: (RouteTrack) -> Unit = {},
 ) {
     val container = LocalAppContainer.current
     val routes by container.routeCatalog.routes.collectAsStateWithLifecycle()
@@ -269,6 +275,9 @@ fun RouteLibraryScreen(
                         val saved = progress[route.id]
                         when {
                             !isTrainerLive -> onPairTrainer()
+                            // The start screen offers the saved mark too, so a
+                            // long route asks one question, not two.
+                            RouteStart.asksWhereToStart(route) -> onChooseStart(route)
                             saved != null -> choosingStart = route to saved
                             else -> onStartRoute(route, null)
                         }

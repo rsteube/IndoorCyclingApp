@@ -124,6 +124,7 @@ import app.indoorbike.ui.screens.RemoteRouteBrowserScreen
 import app.indoorbike.ui.screens.HomeScreen
 import app.indoorbike.ui.screens.RepositoriesScreen
 import app.indoorbike.ui.screens.RouteLibraryScreen
+import app.indoorbike.ui.screens.RouteStartScreen
 import app.indoorbike.ui.screens.WorkoutPickerScreen
 import app.indoorbike.ui.screens.STARTER_WORKOUT_ID
 import app.indoorbike.navigation.RouteLibrary
@@ -132,6 +133,8 @@ import app.indoorbike.navigation.RouteRemoteRepo
 import app.indoorbike.navigation.RouteRemoteRoutes
 import app.indoorbike.navigation.RouteRepositories
 import app.indoorbike.navigation.RouteRouteLibrary
+import app.indoorbike.navigation.RouteRouteStart
+import app.indoorbike.shared.simulation.RouteProgress
 import app.indoorbike.navigation.RouteWorkoutPicker
 import app.indoorbike.ui.HistoryTab
 import app.indoorbike.ui.HrmPairingScreen
@@ -661,8 +664,40 @@ private fun AppNavigator(entries: List<WorkoutEntry>) {
                 // use, so this lands on the repo list rather than a second,
                 // routes-only registry the rider would have to learn about.
                 onFindMore = { navigator.navigate(RouteLibrary) },
-                onPairTrainer = { navigator.navigate(RouteTrainerPairing) }
+                onPairTrainer = { navigator.navigate(RouteTrainerPairing) },
+                onChooseStart = { route -> navigator.navigate(RouteRouteStart(route.id)) },
             )
+        }
+        entry<RouteRouteStart> { key: RouteRouteStart ->
+            val route = container.routeCatalog.find(key.routeId)
+            // Read once: nothing writes a route's mark while nobody rides it.
+            var saved by remember(key.routeId) { mutableStateOf<RouteProgress?>(null) }
+            var savedRead by remember(key.routeId) { mutableStateOf(false) }
+            LaunchedEffect(key.routeId) {
+                saved = container.routeProgressStore.read()[key.routeId]
+                savedRead = true
+            }
+            if (route == null) {
+                // Removed while the rider was choosing. Nothing to show.
+                LaunchedEffect(Unit) { navigator.goBack() }
+            } else if (savedRead) {
+                RouteStartScreen(
+                    route = route,
+                    saved = saved,
+                    onBack = { navigator.goBack() },
+                    onStart = { startMeters, elevationGainMeters ->
+                        container.sessionManager.prepareSimulation(
+                            route = route,
+                            ftp = container.userSettings.ftp.value,
+                            startDistanceMeters = startMeters,
+                            startElevationGainMeters = elevationGainMeters,
+                        )
+                        // Replace: back from the ride is the route list, not
+                        // a chooser for a start already made.
+                        navigator.replace(RouteRideScreen(simulationWorkoutId(route.id)))
+                    },
+                )
+            }
         }
         entry<RouteQrScanner> { _ ->
             QrScannerScreen(

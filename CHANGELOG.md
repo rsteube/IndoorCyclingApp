@@ -6,6 +6,22 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Start a long route anywhere along it.** A route of 20 km or more now opens
+  on its whole map and elevation profile before the ride. Tap the map, or tap
+  or drag along the profile, to put the start where you want it: the foot of
+  the climb, the second half, the place you stopped last time (offered as a
+  button). The part before it is dimmed, the distance and climbing left are
+  shown, and the ride starts there like any other. Shorter routes start at the
+  beginning as before.
+
+### Fixed
+
+- **A route map that opened showing the whole route could hang the app.**
+  The map tried to fit the route before it had a size, which osmdroid never
+  finishes. It now waits until it is laid out.
+
 ## [2.10] (30) - 2026-10-08
 
 ### Added

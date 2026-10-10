@@ -102,6 +102,14 @@ data class RouteRemoteRoutes(val manifestUrl: String) : NavKey
 data object RouteRouteLibrary : NavKey
 
 /**
+ * Where on a long route to start, chosen on its map or profile before the
+ * ride. Only for routes of [app.indoorbike.shared.simulation.RouteStart.CHOOSE_FROM_METERS]
+ * or more; shorter ones start at the beginning, as before.
+ */
+@Serializable
+data class RouteRouteStart(val routeId: String) : NavKey
+
+/**
  * Pair a companion, then hand the ride over to it.
  *
  * Its own destination rather than a state of the ride screen because pairing is

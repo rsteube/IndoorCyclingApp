@@ -141,6 +141,44 @@ class RouteTrackTest {
     }
 
     @Test
+    fun `a tap on the map is the distance to the nearest point of the road`() {
+        val route = straightRoad(lengthMeters = 1_000.0, spacing = 100.0) { 0.0 }
+        // Between two recorded points, and 30 m off to the side.
+        val beside = route.distanceNearest(northOf(60.0, 450.0), 24.9 + 30.0 / 55_800.0)
+        assertTrue(abs(beside - 450.0) < 2.0, "got $beside")
+        // Before the start and past the finish clamp to the ends.
+        assertTrue(route.distanceNearest(northOf(60.0, -300.0), 24.9) < 1.0)
+        assertTrue(abs(route.distanceNearest(northOf(60.0, 5_000.0), 24.9) - route.totalDistanceMeters) < 1.0)
+    }
+
+    @Test
+    fun `a tap on a road that doubles back finds the nearer pass`() {
+        // North 1 km, then back south 1 km, 200 m to the east.
+        val points = ArrayList<RawRoutePoint>()
+        var d = 0.0
+        while (d <= 1_000.0) { points.add(RawRoutePoint(northOf(60.0, d), 24.9, 0.0)); d += 100.0 }
+        val east = 24.9 + 200.0 / 55_800.0
+        d = 1_000.0
+        while (d >= 0.0) { points.add(RawRoutePoint(northOf(60.0, d), east, 0.0)); d -= 100.0 }
+        val route = routeTrackOf("out-and-back", "Out and back", points)
+
+        val outward = route.distanceNearest(northOf(60.0, 300.0), 24.9 + 20.0 / 55_800.0)
+        val back = route.distanceNearest(northOf(60.0, 300.0), east - 20.0 / 55_800.0)
+        assertTrue(abs(outward - 300.0) < 3.0, "outward $outward")
+        assertTrue(back > 1_500.0, "the return pass, got $back")
+    }
+
+    @Test
+    fun `the climb to a point is the climb on the profile up to it`() {
+        // 50 m up over the first 500 m, flat after.
+        val route = straightRoad(lengthMeters = 1_000.0) { d -> if (d < 500.0) d * 0.1 else 50.0 }
+        assertEquals(0.0, route.ascentTo(0.0))
+        assertTrue(abs(route.ascentTo(250.0) - 25.0) < 4.0, "${route.ascentTo(250.0)}")
+        assertTrue(abs(route.ascentTo(1_000.0) - route.totalAscentMeters) < 0.01)
+        assertTrue(route.ascentTo(800.0) <= route.totalAscentMeters + 0.01)
+    }
+
+    @Test
     fun `positions past the end clamp to the finish`() {
         val route = straightRoad(lengthMeters = 500.0) { 0.0 }
         val past = route.positionAt(9_999.0)

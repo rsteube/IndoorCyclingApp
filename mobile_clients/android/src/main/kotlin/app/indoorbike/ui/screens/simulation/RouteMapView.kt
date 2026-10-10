@@ -28,7 +28,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
@@ -48,6 +50,8 @@ import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.Projection
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.Polyline
 import java.io.File
@@ -84,8 +88,21 @@ fun RouteMapView(
     followRider: Boolean,
     modifier: Modifier = Modifier,
     accent: Color = CadenceColors.Fg1,
+    /**
+     * The line from the start to [position]. The ride's own colour by default,
+     * because during a ride it is the road behind the rider; before one it is
+     * the part being skipped, and reads better dimmed.
+     */
+    riddenColor: Color = accent,
+    /**
+     * A tap on the map, as the latitude and longitude tapped. Null for a map
+     * that only shows, which is every map during a ride: a stray touch on the
+     * bars must not do anything.
+     */
+    onTap: ((latitude: Double, longitude: Double) -> Unit)? = null,
 ) {
     val context = LocalContext.current
+    val currentOnTap by rememberUpdatedState(onTap)
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // The MapView is built here rather than inside the factory so the
@@ -125,8 +142,22 @@ fun RouteMapView(
                         outlinePaint.strokeWidth = 9f
                         setPoints(geoPoints)
                     }
-                    riddenLine.outlinePaint.color = accent.toArgb()
+                    riddenLine.outlinePaint.color = riddenColor.toArgb()
                     riddenLine.outlinePaint.strokeWidth = 13f
+                    if (onTap != null) {
+                        // Underneath everything, and a single confirmed tap
+                        // only, so a pan or a pinch never reads as a choice.
+                        map.overlays.add(
+                            MapEventsOverlay(object : MapEventsReceiver {
+                                override fun singleTapConfirmedHelper(p: GeoPoint): Boolean {
+                                    currentOnTap?.invoke(p.latitude, p.longitude)
+                                    return currentOnTap != null
+                                }
+
+                                override fun longPressHelper(p: GeoPoint): Boolean = false
+                            })
+                        )
+                    }
                     map.overlays.add(fullLine)
                     map.overlays.add(riddenLine)
                     map.overlays.add(riderOverlay)
@@ -149,7 +180,18 @@ fun RouteMapView(
                     map.controller.setCenter(GeoPoint(here.latitude, here.longitude))
                 } else if (!followRider && !mapState.framedWholeRoute) {
                     mapState.framedWholeRoute = true
-                    map.zoomToBoundingBox(route.osmBounds(), false, OVERVIEW_PADDING_PX)
+                    // Only once the map has a size. osmdroid fits a box by
+                    // searching zoom levels against the view's pixels, and on a
+                    // view not yet laid out that search never ends: a map that
+                    // opens framed rather than following hung the app on its
+                    // first frame.
+                    if (map.width > 0 && map.height > 0) {
+                        map.zoomToBoundingBox(route.osmBounds(), false, OVERVIEW_PADDING_PX)
+                    } else {
+                        map.addOnFirstLayoutListener { _, _, _, _, _ ->
+                            map.zoomToBoundingBox(route.osmBounds(), false, OVERVIEW_PADDING_PX)
+                        }
+                    }
                 }
                 if (followRider) mapState.framedWholeRoute = false
                 map.invalidate()
