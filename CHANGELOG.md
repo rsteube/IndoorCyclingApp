@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.11] (31) - 2026-10-10
+
 ### Added
 
 - **Start a long route anywhere along it.** A route of 20 km or more now opens
