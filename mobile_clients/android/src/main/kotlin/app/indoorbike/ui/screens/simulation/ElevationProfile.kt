@@ -47,8 +47,8 @@ import kotlin.math.roundToInt
  * This is the piece of the HUD that answers the question a rider on a climb
  * actually asks, which is not "how steep is it here" (the gradient readout says
  * that) but "how much longer". So the whole route is always on screen, coloured
- * by steepness, with the rider's position marked and everything behind them
- * filled in.
+ * by steepness, with the rider's position marked and everything behind them,
+ * back to where the ride began, filled in.
  *
  * Each column is drawn in the colour of the gradient at that point
  * ([gradientColor]), which is the same scale the gradient readout uses. That
@@ -101,19 +101,7 @@ fun ElevationProfile(
     Box(modifier = modifier.then(picking)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             if (route.isEmpty || size.width < 2f || size.height < 2f) return@Canvas
-            drawProfile(route, distanceMeters, size)
-            // A line at the point the rider joined the road, so the shaded
-            // part reads as two sittings rather than one long one.
-            if (startedAtMeters > 0.0 && route.totalDistanceMeters > 0.0) {
-                val x = (startedAtMeters / route.totalDistanceMeters)
-                    .coerceIn(0.0, 1.0).toFloat() * size.width
-                drawLine(
-                    color = CadenceColors.Fg1.copy(alpha = 0.5f),
-                    start = Offset(x, 0f),
-                    end = Offset(x, size.height),
-                    strokeWidth = 2f,
-                )
-            }
+            drawProfile(route, distanceMeters, startedAtMeters, size)
         }
     }
 }
@@ -121,6 +109,7 @@ fun ElevationProfile(
 private fun DrawScope.drawProfile(
     route: RouteTrack,
     distanceMeters: Double,
+    startedAtMeters: Double,
     size: Size,
 ) {
     val columns = size.width.toInt().coerceIn(2, MAX_COLUMNS)
@@ -147,6 +136,18 @@ private fun DrawScope.drawProfile(
     } else {
         0f
     }
+    // Where this ride joined the road. Everything behind that is left as
+    // faint as the road ahead: it was not ridden today, whether skipped or
+    // done in an earlier sitting, and shading it would make a ride that
+    // began at 600 km look like 600 km of riding.
+    val startX = if (startedAtMeters > 0.0 && route.totalDistanceMeters > 0.0) {
+        val share = (startedAtMeters / route.totalDistanceMeters).coerceIn(0.0, 1.0).toFloat()
+        // Never past the rider: the engine does not go backwards from its
+        // start, but a drawing should not depend on that.
+        (share * size.width).coerceAtMost(progressX)
+    } else {
+        0f
+    }
 
     // Filled columns, coloured by steepness. Drawn as rectangles rather than as
     // one path with a gradient brush, because the colour has to follow the
@@ -154,7 +155,7 @@ private fun DrawScope.drawProfile(
     for (i in 0 until columns - 1) {
         val x = i * columnWidth
         val y = yFor(elevations[i])
-        val ridden = x + columnWidth <= progressX
+        val ridden = x >= startX && x + columnWidth <= progressX
         val colour = gradientColor(gradients[i])
         drawRect(
             color = colour.copy(alpha = if (ridden) 0.55f else 0.22f),
@@ -177,18 +178,37 @@ private fun DrawScope.drawProfile(
 
     // Everything behind the rider, washed in the brand colour so progress is
     // legible at a glance from across a room.
-    if (progressX > 0f) {
+    if (progressX > startX) {
         drawRect(
             brush = Brush.horizontalGradient(
                 colors = listOf(
                     CadenceColors.Fg1.copy(alpha = 0.05f),
                     CadenceColors.Fg1.copy(alpha = 0.18f),
                 ),
-                startX = 0f,
+                startX = startX,
                 endX = progressX,
             ),
-            topLeft = Offset(0f, top),
-            size = Size(progressX, baseline - top),
+            topLeft = Offset(startX, top),
+            size = Size(progressX - startX, baseline - top),
+        )
+    }
+
+    // Where the ride began, when that was not the trailhead: a hairline and
+    // a hollow dot on the road, the counterpart of the rider's filled one, so
+    // the start and the end of the ride are read off the same two marks.
+    if (startX > 0f) {
+        drawLine(
+            color = CadenceColors.Fg1.copy(alpha = 0.5f),
+            start = Offset(startX, top * 0.4f),
+            end = Offset(startX, baseline),
+            strokeWidth = 2f,
+        )
+        val startIndex = ((startX / columnWidth).toInt()).coerceIn(0, columns - 1)
+        drawCircle(
+            color = CadenceColors.Fg1,
+            radius = 4.5f,
+            center = Offset(startX, yFor(elevations[startIndex])),
+            style = Stroke(width = 1.5f),
         )
     }
 

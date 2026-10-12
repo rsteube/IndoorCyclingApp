@@ -21,11 +21,13 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import app.indoorbike.shared.route.RouteTrack
+import app.indoorbike.shared.simulation.RouteRideFigures
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -51,6 +53,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -452,33 +455,37 @@ private fun ShiftButton(
 }
 
 /**
- * Where the rider is on the route, as one line: speed, ground left, and the
+ * Where the ride is, as one line: speed, ridden, ground left, and the
  * climbing done so far.
  *
  * No progress bar. The elevation profile directly above this says the same
  * thing and says it against the terrain, so a second bare bar was the same
  * fact twice, the second time with nothing to read it against.
  *
- * Distance remaining rather than distance done is deliberate. On a route the
- * rider already knows how far they have come; what they are deciding is
- * whether to spend now or later, and that is a question about what is left.
+ * Every figure here is the ride's, not the road's ([RouteRideFigures]). A
+ * ride that joined the route at 600 km starts at "0 m" ridden, and its
+ * climbing is counted against the climbing in the stretch ahead of it rather
+ * than the whole road's. Distance to go stays beside distance ridden: what a
+ * rider is deciding on a route is whether to spend now or later, and that is
+ * a question about what is left.
  */
 @Composable
 fun RouteProgressStrip(
-    distanceMeters: Double,
-    totalDistanceMeters: Double,
-    elevationGainMeters: Double,
-    totalAscentMeters: Double,
+    figures: RouteRideFigures,
     speedKmh: Double,
     modifier: Modifier = Modifier,
 ) {
-    val remaining = (totalDistanceMeters - distanceMeters).coerceAtLeast(0.0)
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        // Equal thirds, each anchored at its own left edge. SpaceBetween sized
-        // the columns to their content, so every time a number gained or lost a
-        // digit the whole row shuffled sideways - a readout that twitches while
-        // the rider is trying to read it at a glance.
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        // Four figures across a phone held upright are a squeeze at full
+        // size, so below this width the numbers step down one size together,
+        // rather than the last column being clipped.
+        val compact = maxWidth < STRIP_COMPACT_BELOW
+        val valueStyle = if (compact) CadenceType.bodyStrong else CadenceType.h3
+        // Each column is weighted for the number it has to hold and anchored at
+        // its own left edge. SpaceBetween sized the columns to their content,
+        // so every time a number gained or lost a digit the whole row shuffled
+        // sideways - a readout that twitches while the rider is trying to read
+        // it at a glance.
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Bottom,
@@ -488,28 +495,52 @@ fun RouteProgressStrip(
                 value = formatOneDecimal(speedKmh),
                 unit = "km/h",
                 accent = CadenceColors.Fg1,
-                valueWidth = 54.dp,
+                valueWidth = if (compact) 44.dp else 54.dp,
+                valueStyle = valueStyle,
+                modifier = Modifier.weight(0.95f),
+            )
+            ProgressStat(
+                label = "Ridden",
+                value = formatStripDistance(figures.riddenMeters),
+                unit = "",
+                accent = CadenceColors.Fg1,
+                valueWidth = if (compact) 72.dp else 88.dp,
+                valueStyle = valueStyle,
                 modifier = Modifier.weight(1f),
             )
             ProgressStat(
-                label = "TO GO",
-                value = formatDistance(remaining),
+                label = "To go",
+                value = formatStripDistance(figures.toGoMeters),
                 unit = "",
                 accent = CadenceColors.Fg1,
-                valueWidth = 96.dp,
+                valueWidth = if (compact) 72.dp else 88.dp,
+                valueStyle = valueStyle,
                 modifier = Modifier.weight(1f),
             )
             ProgressStat(
                 label = "Climbed",
-                value = "${elevationGainMeters.roundToInt()}",
-                unit = "/ ${totalAscentMeters.roundToInt()} m",
+                value = "${figures.climbedMeters.roundToInt()}",
+                unit = "/ ${figures.stretchClimbMeters.roundToInt()} m",
                 accent = CadenceColors.Fg1,
-                valueWidth = 46.dp,
-                modifier = Modifier.weight(1f),
+                valueWidth = if (compact) 38.dp else 46.dp,
+                valueStyle = valueStyle,
+                modifier = Modifier.weight(1.2f),
             )
         }
     }
 }
+
+/**
+ * Distances on the strip: to the metre under a kilometre and to ten metres
+ * under a hundred, which is the resolution a rider feels tick by, and whole
+ * kilometres beyond that, where the hundredths would only take the room the
+ * fourth column needs.
+ */
+private fun formatStripDistance(meters: Double): String =
+    if (meters < 100_000.0) formatDistance(meters) else "${(meters / 1_000.0).roundToInt()} km"
+
+/** Below this width the strip's numbers step down a size; see [RouteProgressStrip]. */
+private val STRIP_COMPACT_BELOW = 440.dp
 
 @Composable
 private fun ProgressStat(
@@ -526,6 +557,8 @@ private fun ProgressStat(
      * future route should push the unit along rather than be clipped.
      */
     valueWidth: Dp,
+    /** The number's type, stepped down where four columns must share a phone's width. */
+    valueStyle: TextStyle = CadenceType.h3,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
@@ -537,7 +570,7 @@ private fun ProgressStat(
             ) {
                 Text(
                     text = value,
-                    style = CadenceType.h3,
+                    style = valueStyle,
                     color = accent,
                     maxLines = 1,
                 )

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.route.RoutePosition
 import app.indoorbike.shared.route.RouteTrack
 import app.indoorbike.shared.simulation.Drivetrain
+import app.indoorbike.shared.simulation.RouteRideFigures
 import app.indoorbike.ui.screens.CadenceFlankMetric
 import app.indoorbike.ui.screens.FlankMetric
 import app.indoorbike.ui.screens.WattsPerKgBar
@@ -94,6 +95,13 @@ fun SimulationHud(
     drivetrain: Drivetrain,
     gearIndex: Int,
     elevationGainMeters: Double,
+    /**
+     * Where this ride began on the road, so what is read back is the ride's
+     * distance and climbing rather than the road's position; see
+     * [RouteRideFigures]. Zero for a ride from the trailhead.
+     */
+    startedAtMeters: Double = 0.0,
+    startedAtElevationGainMeters: Double = 0.0,
     powerWatts: Int,
     isPowerStale: Boolean,
     wattsPerKg: Float,
@@ -135,15 +143,19 @@ fun SimulationHud(
             ElevationProfile(
                 route = route,
                 distanceMeters = distanceMeters,
+                startedAtMeters = startedAtMeters,
                 modifier = Modifier.fillMaxWidth().height(height),
             )
         }
         val progress = @Composable {
             RouteProgressStrip(
-                distanceMeters = distanceMeters,
-                totalDistanceMeters = route.totalDistanceMeters,
-                elevationGainMeters = elevationGainMeters,
-                totalAscentMeters = route.totalAscentMeters,
+                figures = RouteRideFigures.of(
+                    route = route,
+                    distanceMeters = distanceMeters,
+                    elevationGainMeters = elevationGainMeters,
+                    startedAtMeters = startedAtMeters,
+                    startedAtElevationGainMeters = startedAtElevationGainMeters,
+                ),
                 speedKmh = speedMps * 3.6,
             )
         }

@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.route.RouteTrack
+import app.indoorbike.shared.simulation.RouteRideFigures
 import app.indoorbike.ui.theme.CadenceColors
 import app.indoorbike.ui.theme.CadenceType
 import app.indoorbike.ui.theme.Spacing
@@ -89,17 +90,30 @@ fun RouteSummaryPanel(
     /** The honesty line. Shortened where space is tight, never dropped. */
     caption: String = "Simulated indoors. Gradient and distance from the route, " +
         "speed from the rider's own power.",
-    /** Appended when the ride was a continuation, so the picture is explained. */
-    continuedCaption: String = "Picked up from an earlier ride; the faint part " +
-        "of the road was ridden then.",
+    /**
+     * Appended when the ride began part way along, so the picture is
+     * explained. It says nothing about why: the start is stored, but whether
+     * it was picked or carried on from an earlier sitting is not, and "ridden
+     * last time" over a stretch the rider chose to skip would be a claim the
+     * panel cannot back.
+     */
+    continuedCaption: String = "Started part way along; the faint part of the " +
+        "road is before the start.",
 ) {
     val completed = riddenMeters >= route.totalDistanceMeters - 5.0
     val continued = startedAtMeters > 1.0
     // What this sitting covered, which is the number the rest of the summary
-    // is about. Floored at zero so a route republished shorter than the one
-    // the rider started cannot produce a negative ride.
-    val thisRideMeters = (riddenMeters - startedAtMeters).coerceAtLeast(0.0)
-    val thisRideClimb = (elevationGainMeters - startedAtElevationGainMeters).coerceAtLeast(0.0)
+    // is about. Counted from the start and never negative, the same way the
+    // ride screen counts it.
+    val figures = RouteRideFigures.of(
+        route = route,
+        distanceMeters = riddenMeters,
+        elevationGainMeters = elevationGainMeters,
+        startedAtMeters = startedAtMeters,
+        startedAtElevationGainMeters = startedAtElevationGainMeters,
+    )
+    val thisRideMeters = figures.riddenMeters
+    val thisRideClimb = figures.climbedMeters
     Column(
         modifier = modifier
             .then(if (fillHeight) Modifier.fillMaxHeight() else Modifier)

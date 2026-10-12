@@ -150,6 +150,20 @@ fun RouteShape(
             )
         }
 
+        // Where this ride began, when that was not the trailhead: a hollow
+        // mark on the line, the counterpart of the filled one where it ended,
+        // so the two ends of the ride are read off the same two marks.
+        if (startCount >= 2) {
+            val begin = at(startCount - 1)
+            drawCircle(color = CadenceColors.Bg1, radius = strokeWidth * 0.9f, center = begin)
+            drawCircle(
+                color = CadenceColors.Fg1,
+                radius = strokeWidth * 0.9f,
+                center = begin,
+                style = Stroke(width = strokeWidth * 0.35f),
+            )
+        }
+
         // Where the road started, so a loop reads as a loop.
         drawCircle(
             color = CadenceColors.Fg2,

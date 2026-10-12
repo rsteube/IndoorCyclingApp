@@ -249,6 +249,9 @@ fun RideScreen(
     val simulationGear by simulationEngine.gearIndex.collectAsStateWithLifecycle()
     val simulationDrivetrain by simulationEngine.drivetrain.collectAsStateWithLifecycle()
     val simulationClimb by simulationEngine.elevationGainMeters.collectAsStateWithLifecycle()
+    val simulationStartedAt by simulationEngine.startedAtMeters.collectAsStateWithLifecycle()
+    val simulationStartedAtClimb by
+        simulationEngine.startedAtElevationGainMeters.collectAsStateWithLifecycle()
 
     // Reading live values.
     //
@@ -1023,6 +1026,8 @@ fun RideScreen(
                             drivetrain = simulationDrivetrain,
                             gearIndex = simulationGear,
                             elevationGainMeters = simulationClimb,
+                            startedAtMeters = simulationStartedAt,
+                            startedAtElevationGainMeters = simulationStartedAtClimb,
                             powerWatts = currentPower,
                             isPowerStale = showStalePower,
                             wattsPerKg = wattsPerKg(),

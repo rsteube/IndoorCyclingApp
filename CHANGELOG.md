@@ -6,6 +6,25 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **A route ride started part way along is counted from where it started.**
+  The ride screen's distance, climbing and the shading of the profile now
+  begin at the start the rider chose, or where the last sitting stopped,
+  instead of at the trailhead: joining a 1,200 km route at its 600 km mark
+  reads as 0 km ridden, not 600 km. The strip under the profile gained a
+  **Ridden** figure beside speed, distance to go and climbing, and the
+  climbing figure counts the stretch being ridden rather than the whole road.
+
+### Fixed
+
+- **A ride that began part way along drew the road as ridden from the
+  trailhead** on the ride summary, in past rides and on the share image. The
+  elevation profile now shades only the stretch ridden, and both it and the
+  route shape mark where the ride began as well as where it ended. The
+  summary's caption no longer says the part before the start was ridden last
+  time, since it may have been skipped on purpose.
+
 ## [2.11] (31) - 2026-10-10
 
 ### Added
