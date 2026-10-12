@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.11.1] (32) - 2026-10-12
+
 ### Changed
 
 - **A route ride started part way along is counted from where it started.**
