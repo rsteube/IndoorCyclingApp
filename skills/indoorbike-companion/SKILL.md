@@ -30,6 +30,16 @@ rider's position on your course, and the phone records exactly that, second by s
 ride's FIT and TCX files so a shared ride shows the road it was ridden on. It never works a
 position out for itself: a second you said nothing fresh about is a gap in the track.
 
+**Send the real WGS 84 position, inverted exactly from whatever grid your world is laid out
+on.** A world on a projected grid (UTM, say) is not a flat earth round its origin: the grid's
+north leans off true north by its convergence, 1.9 degrees at Munich, so metres turned into
+degrees as if it were land put the track about 3% of the distance from the origin off. Col de
+Berg sent tracks up to 500 m beside the roads that way, until `Route.geo_of` became the exact
+UTM inverse (`Utm`, checked against the baker's own projection by `ride/tools/check_geo.gd`).
+Checking that a kilometre along the road is a kilometre across the earth does not catch it,
+because a rotation keeps every distance. Compare a known point with the projection the world
+was built with.
+
 **You own speed because the phone needs it and should not compute it.** The commanded force
 contains `0.5 * rho * CdA * v^2`, so the phone must *know* a speed. Letting you supply it is
 what makes drafting, surfaces, wind and power-ups your own arithmetic instead of protocol
