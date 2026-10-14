@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.12] (33) - 2026-10-14
+
 ### Added
 
 - **Run practice from the bike (Companion API 0.14).** A companion game can
