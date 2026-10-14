@@ -50,8 +50,8 @@ android {
         applicationId = "app.indoorbike"
         minSdk = 26
         targetSdk = 36
-        versionCode = 33
-        versionName = "2.12"
+        versionCode = 34
+        versionName = "2.13"
 
         // Community workout-repository registry. Hardcoded so the app picks it
         // up automatically once the file is hosted; absence is handled

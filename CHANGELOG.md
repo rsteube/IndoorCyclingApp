@@ -6,6 +6,8 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.13] (34) - 2026-10-15
+
 ### Added
 
 - **Run practice in ERG (Companion API 0.15).** With a game that offers it,
