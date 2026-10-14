@@ -139,6 +139,8 @@ data class BackupSession(
      */
     val routeShape: String? = null,
     val routeProfile: String? = null,
+    /** "run" for a companion run (0.14); omitted for a bike ride, which is every other. */
+    val sport: String? = null,
 )
 
 /**

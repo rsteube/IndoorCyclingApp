@@ -54,6 +54,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -62,6 +64,7 @@ import androidx.compose.ui.unit.sp
 import app.indoorbike.shared.companion.RemoteControls
 import app.indoorbike.shared.companion.RouteJunction
 import app.indoorbike.shared.companion.RouteNavigation
+import app.indoorbike.shared.companion.RunPace
 import app.indoorbike.shared.simulation.Drivetrain
 import app.indoorbike.ui.screens.CadenceFlankMetric
 import app.indoorbike.ui.screens.FlankMetric
@@ -139,6 +142,11 @@ fun CompanionHud(
     arrival: String? = null,
     onChooseDestination: () -> Unit = {},
     onClearDestination: () -> Unit = {},
+    /**
+     * The ride is a run (protocol 0.14): one gear and nothing to shift, so no
+     * paddles and no gear card, and [speedMps] is the runner's, shown as pace.
+     */
+    run: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -202,6 +210,7 @@ fun CompanionHud(
                         gearIndex = gearIndex,
                         speedMps = speedMps,
                         shiftingEnabled = shiftingEnabled,
+                        showGear = !run,
                         horizontalPadding = horizontalPadding,
                     )
                 } else CompanionReadouts(
@@ -221,6 +230,7 @@ fun CompanionHud(
                     hrSublabel = hrSublabel,
                     zoneColor = zoneColor,
                     shiftingEnabled = shiftingEnabled,
+                    run = run,
                     horizontalPadding = horizontalPadding,
                 )
                 // Over whichever of the two is showing, rather than in it. The pad is a visitor:
@@ -279,7 +289,14 @@ fun CompanionHud(
             }
         }
 
-        if (landscape) {
+        if (run) {
+            // A runner has one gear, so the whole screen is the readouts: a
+            // paddle that does nothing is a target a hand finds by mistake.
+            readouts(
+                Modifier.fillMaxSize().padding(bottom = Spacing.s3),
+                if (landscape) Spacing.s3 else Spacing.s4,
+            )
+        } else if (landscape) {
             // Full-height paddles on the two outer edges. A thumb resting on the
             // bars finds one anywhere along the side without aiming, which on a
             // tablet clamped to a handlebar is the difference between a shift
@@ -341,6 +358,7 @@ private fun CompanionPowerOnly(
     gearIndex: Int,
     speedMps: Double,
     shiftingEnabled: Boolean,
+    showGear: Boolean,
     horizontalPadding: Dp,
 ) {
     val animatedPower by animateIntAsState(
@@ -366,18 +384,20 @@ private fun CompanionPowerOnly(
         // the one thing, one of them a 46 dp circle, only invites the rider to
         // reach for the worse one. At the top because that is where the full view
         // keeps it, and because the bottom of this area belongs to a companion's
-        // control pad whenever it sends one.
-        GearShifter(
-            drivetrain = drivetrain,
-            gearIndex = gearIndex,
-            speedMps = speedMps,
-            onShiftDown = {},
-            onShiftUp = {},
-            compact = true,
-            enabled = shiftingEnabled,
-            shiftButtons = false,
-            modifier = Modifier.width(GearCardWidth),
-        )
+        // control pad whenever it sends one. A run has no gear to show.
+        if (showGear) {
+            GearShifter(
+                drivetrain = drivetrain,
+                gearIndex = gearIndex,
+                speedMps = speedMps,
+                onShiftDown = {},
+                onShiftUp = {},
+                compact = true,
+                enabled = shiftingEnabled,
+                shiftButtons = false,
+                modifier = Modifier.width(GearCardWidth),
+            )
+        }
         BoxWithConstraints(
             modifier = Modifier.fillMaxWidth().weight(1f),
             contentAlignment = Alignment.Center,
@@ -556,6 +576,7 @@ private fun CompanionReadouts(
     hrSublabel: String?,
     zoneColor: Color,
     shiftingEnabled: Boolean,
+    run: Boolean,
     horizontalPadding: Dp,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -600,18 +621,28 @@ private fun CompanionReadouts(
                 )
                 // A readout only. Shifting is the paddles' job, and a second,
                 // smaller pair of buttons in the middle of the screen would only
-                // be the wrong thing to reach for.
-                GearShifter(
-                    drivetrain = drivetrain,
-                    gearIndex = gearIndex,
-                    speedMps = speedMps,
-                    onShiftDown = {},
-                    onShiftUp = {},
-                    compact = compact,
-                    enabled = shiftingEnabled,
-                    shiftButtons = false,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
+                // be the wrong thing to reach for. A run has no gear to show,
+                // and its pace takes the place.
+                if (run) {
+                    RunPaceCard(
+                        speedMps = speedMps,
+                        compact = compact,
+                        valueFontSize = if (compact) 32.sp else 44.sp,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                } else {
+                    GearShifter(
+                        drivetrain = drivetrain,
+                        gearIndex = gearIndex,
+                        speedMps = speedMps,
+                        onShiftDown = {},
+                        onShiftUp = {},
+                        compact = compact,
+                        enabled = shiftingEnabled,
+                        shiftButtons = false,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
             }
         }
 
@@ -664,17 +695,26 @@ private fun CompanionReadouts(
                         valueFontSize = 30.sp,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
-                    GearShifter(
-                        drivetrain = drivetrain,
-                        gearIndex = gearIndex,
-                        speedMps = speedMps,
-                        onShiftDown = {},
-                        onShiftUp = {},
-                        compact = true,
-                        enabled = shiftingEnabled,
-                        shiftButtons = false,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
+                    if (run) {
+                        RunPaceCard(
+                            speedMps = speedMps,
+                            compact = true,
+                            valueFontSize = 30.sp,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    } else {
+                        GearShifter(
+                            drivetrain = drivetrain,
+                            gearIndex = gearIndex,
+                            speedMps = speedMps,
+                            onShiftDown = {},
+                            onShiftUp = {},
+                            compact = true,
+                            enabled = shiftingEnabled,
+                            shiftButtons = false,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    }
                     CompanionPowerReadout(
                         powerWatts = powerWatts,
                         isStale = isPowerStale,
@@ -763,6 +803,7 @@ private fun CompanionReadouts(
                     speedMps = speedMps,
                     distanceMeters = distanceMeters,
                     elevationGainMeters = elevationGainMeters,
+                    run = run,
                 )
             }
         }
@@ -833,13 +874,18 @@ private fun CompanionTotals(
     speedMps: Double,
     distanceMeters: Double,
     elevationGainMeters: Double,
+    run: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        CompanionStat("Speed", formatOneDecimal(speedMps * 3.6), "km/h", Modifier.weight(1f))
+        if (run) {
+            CompanionStat("Pace", RunPace.format(speedMps) ?: "--", "/km", Modifier.weight(1f))
+        } else {
+            CompanionStat("Speed", formatOneDecimal(speedMps * 3.6), "km/h", Modifier.weight(1f))
+        }
         CompanionStat("Distance", formatOneDecimal(distanceMeters / 1000.0), "km", Modifier.weight(1f))
         CompanionStat("Climbed", elevationGainMeters.roundToInt().toString(), "m", Modifier.weight(1f))
     }
@@ -861,6 +907,51 @@ private fun CompanionStat(
                 style = CadenceType.small,
                 color = CadenceColors.Fg3,
                 modifier = Modifier.padding(bottom = 2.dp),
+            )
+        }
+    }
+}
+
+/**
+ * A runner's pace, in the slot a bike's gear card takes (protocol 0.14).
+ *
+ * The game's speed, never the drivetrain's: cadence times the one gear a run
+ * is given is a bicycle's speed, and means nothing about a runner.
+ */
+@Composable
+private fun RunPaceCard(
+    speedMps: Double,
+    compact: Boolean,
+    valueFontSize: TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    val pace = RunPace.format(speedMps)
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(CadenceColors.Bg1.copy(alpha = 0.7f))
+            .padding(horizontal = Spacing.s4, vertical = if (compact) Spacing.s2 else Spacing.s4)
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (pace == null) "Pace: stopped" else "Pace: $pace per kilometre"
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(text = "Pace", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = pace ?: "--",
+                fontSize = valueFontSize,
+                lineHeight = valueFontSize,
+                fontFamily = DisplayFontFamily,
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+            )
+            Text(
+                text = " /km",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(bottom = 4.dp),
             )
         }
     }

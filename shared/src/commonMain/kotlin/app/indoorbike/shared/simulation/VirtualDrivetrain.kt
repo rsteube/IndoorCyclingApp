@@ -181,6 +181,20 @@ class VirtualDrivetrain(
      */
     private var shiftRelease = 1.0
 
+    /**
+     * Ride the road as a pure load: gravity and rolling at the gradient given,
+     * scaled by the gear, and nothing else. No air, no acceleration, no launch
+     * assist and no freewheel, because each of those is a bicycle's, keyed to
+     * a bicycle's speed and mass, and a companion run (protocol 0.14) has
+     * neither: the game sets the load the legs should feel and owns the
+     * runner's speed itself. Kept across [load], because the ride's
+     * description, which decides it, outlives the ride's start.
+     */
+    var pureLoad: Boolean
+        get() = lock.withLock { _pureLoad }
+        set(value) = lock.withLock { _pureLoad = value }
+    private var _pureLoad = false
+
     /** Put the rider on [drivetrain] in [gearIndex], with nothing measured yet. */
     fun load(drivetrain: Drivetrain, gearIndex: Int) = lock.withLock {
         _drivetrain.value = drivetrain
@@ -423,6 +437,16 @@ class VirtualDrivetrain(
         val drivetrain = _drivetrain.value
         val gearFactor = drivetrain.loadFactor(gearIndex)
         val totalMass = (rider + bikeMassKg()).toDouble()
+
+        if (_pureLoad) {
+            val load = RideDynamics.roadForceNewtons(
+                gradient = gradient,
+                speedMps = 0.0,
+                totalMassKg = totalMass,
+                crr = crr,
+            )
+            return softCeiling((load * gearFactor).coerceAtLeast(FREEWHEEL_DRAG_NEWTONS * gearFactor))
+        }
 
         val road = RideDynamics.roadForceNewtons(
             gradient = gradient,

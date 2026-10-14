@@ -186,6 +186,7 @@ class RideAttributionTest {
         routeProfile = "",
         ftp = 0L,
         segmentMarks = "",
+        sport = "",
     )
 
     private fun build(appVersion: String = "2.8.1", world: VirtualWorld? = null): ByteArray {

@@ -1,0 +1,11 @@
+-- Migrates HistoryDatabase v9 -> v10: what the rider was, on a ride a companion
+-- game drove.
+--
+-- A game that speaks Companion API 0.14 may describe a ride as a run: a runner
+-- on its course, driven from the bike trainer. The ride is recorded and
+-- exported as a bike ride on purpose, so an invented pace never lands in a
+-- runner's running records, but the app itself shows it as a run: pace rather
+-- than speed, and no distance estimated from power for a bicycle.
+--
+-- 'run' for a run. Empty for a bike ride, which is every row already here.
+ALTER TABLE WorkoutSession ADD COLUMN sport TEXT NOT NULL DEFAULT '';

@@ -31,11 +31,15 @@ sealed interface CompanionEffect {
     data class Send(val frame: ServerFrame) : CompanionEffect
     data class Close(val code: Int, val reason: String) : CompanionEffect
 
-    /** A new road, already clamped. */
+    /**
+     * A new road, already clamped. [courseGradient] is the grade to show, when
+     * the game sent one (0.14); it never reaches the force.
+     */
     data class ApplyRoad(
         val gradient: Double,
         val speedMps: Double,
         val crr: Double = CompanionProtocol.DEFAULT_CRR,
+        val courseGradient: Double? = null,
     ) : CompanionEffect
 
     /** Signed steps; positive is a harder gear. The drivetrain still clamps. */
@@ -205,6 +209,12 @@ class CompanionSession(
      * nor allowed to raise this connection's kept maximum.
      */
     private val rideState: () -> String = { CompanionState.PAUSED },
+    /**
+     * Whether the ride is a run (0.14), read live like [rideState]: the host
+     * owns the ride's description, and a run ends when the next ride is
+     * described or prepared, neither of which this class sees.
+     */
+    private val running: () -> Boolean = { false },
     val road: CompanionRoad = CompanionRoad(),
 ) {
 
@@ -286,6 +296,12 @@ class CompanionSession(
             CompanionProtocol.NAVIGATION_CAPABILITY in config.capabilities &&
             CompanionProtocol.NAVIGATION_CAPABILITY in clientCapabilities
 
+    /** A controller that says what sport a ride is, to a phone that rides a run (0.14). */
+    val runs: Boolean
+        get() = phase == Phase.READY && isController &&
+            CompanionProtocol.RUN_CAPABILITY in config.capabilities &&
+            CompanionProtocol.RUN_CAPABILITY in clientCapabilities
+
     /** The card on screen, for checking a tap against. */
     var junction: RouteJunction? = null
         private set
@@ -300,7 +316,7 @@ class CompanionSession(
     private var placesRequestId: String? = null
     private var nextPlacesRequest = 1L
 
-    /** 0.12 fields already refused on this connection, so a bad one is said once. */
+    /** Free ride (0.12) and run (0.14) refusals already said on this connection, so each is said once. */
     private val warnedRouteFields = mutableSetOf<String>()
 
     /** Recent `turnChosen`, `placesQuery` and destination events, each limited on its own. */
@@ -709,7 +725,7 @@ class CompanionSession(
             }
         }
 
-        effects += CompanionEffect.ApplyRoad(road.gradient, road.speedMps, road.crr)
+        effects += CompanionEffect.ApplyRoad(road.gradient, road.speedMps, road.crr, shownGradient(frame, effects))
         if (!untracked && (frame.distanceM != null || frame.ascentM != null)) {
             effects += CompanionEffect.ReportProgress(road.distanceM, road.ascentM)
         }
@@ -771,6 +787,29 @@ class CompanionSession(
     }
 
     /**
+     * The course's grade to show (0.14), or null to show the road's. Refused
+     * rather than clamped, once per connection: a grade pulled back inside the
+     * range is one the course does not have, and the rider would read it.
+     */
+    private fun shownGradient(frame: WorldFrame, effects: MutableList<CompanionEffect>): Double? {
+        val sent = frame.courseGradient ?: return null
+        if (sent.isFinite() && sent >= CompanionProtocol.MIN_COURSE_GRADIENT && sent <= CompanionProtocol.MAX_COURSE_GRADIENT) {
+            return sent
+        }
+        if (warnedPositionFields.add("courseGradient")) {
+            effects += CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.REJECTED,
+                    field = "courseGradient",
+                    frame = "world",
+                    message = "courseGradient must be rise over run between -1 and 1; the road's gradient is shown instead.",
+                )
+            )
+        }
+        return null
+    }
+
+    /**
      * Complain, once, about anything sent that this build will not act on.
      *
      * This is the single most useful thing in the protocol while it is still
@@ -808,6 +847,21 @@ class CompanionSession(
 
     private fun onRequestShift(frame: RequestShiftFrame, nowMs: Long): List<CompanionEffect> {
         if (!isController) return listOf(notController("requestShift"))
+
+        // A runner has one gear and nothing to shift (0.14). Said once: a game
+        // still wired to a shift button would otherwise be told at every press.
+        if (running()) {
+            if (!warnedRouteFields.add("requestShift")) return emptyList()
+            return listOf(
+                CompanionEffect.Send(
+                    WarningFrame(
+                        code = CompanionWarning.REJECTED,
+                        frame = "requestShift",
+                        message = "This ride is a run, which has one gear; shifts are ignored until the next ride.",
+                    )
+                )
+            )
+        }
 
         // A held gamepad button must not dump the rider into the top gear, and
         // must not kill the connection either. Refusing the surplus with a
@@ -860,6 +914,7 @@ class CompanionSession(
             shape = shape,
             profileMeters = profile,
             freeRide = frame.mode == CourseFrame.MODE_FREE_RIDE,
+            run = frame.mode != null && isRun(frame.sport, effects),
         )
         // A `mode` (0.12) makes this the whole description of a ride, sent at
         // its start: it replaces rather than merges, so a free ride after a
@@ -873,6 +928,29 @@ class CompanionSession(
             effects += CompanionEffect.SetCourse(course)
         }
         return effects
+    }
+
+    /**
+     * Whether a ride's `sport` makes it a run (0.14). Anything this build does
+     * not know is a bike ride, the ride every game meant before there was a
+     * choice, and the game hears so once. A `sport` from a game that never
+     * listed `run`, or sent to a phone that does not, is not read at all.
+     */
+    private fun isRun(sport: String?, effects: MutableList<CompanionEffect>): Boolean {
+        if (!runs || sport == null) return false
+        if (sport == CourseFrame.SPORT_RUN) return true
+        if (sport != CourseFrame.SPORT_RIDE && warnedRouteFields.add("sport")) {
+            effects += CompanionEffect.Send(
+                WarningFrame(
+                    code = CompanionWarning.REJECTED,
+                    field = "sport",
+                    frame = "course",
+                    message = "Unknown sport '" + sport.take(48) + "'; ridden as a bike ride. " +
+                        "This build knows '" + CourseFrame.SPORT_RIDE + "' and '" + CourseFrame.SPORT_RUN + "'.",
+                )
+            )
+        }
+        return false
     }
 
     // Free ride (0.12) ───────────────────────────────────────────────────────

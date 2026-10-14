@@ -200,6 +200,11 @@ class CompanionHost(
     private val routeChoice: Boolean = false,
     /** And it offers search and destinations, so it lists `navigation`. */
     private val navigation: Boolean = false,
+    /**
+     * This platform shows a run as a run (0.14): pace, no gears. Off until a
+     * platform does, so a game gives that phone's rider a bike's ride instead.
+     */
+    private val run: Boolean = false,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -272,6 +277,14 @@ class CompanionHost(
      */
     @Volatile
     private var companionDrivetrain: Drivetrain? = null
+
+    /**
+     * Whether the last ride described was a run (0.14). The bike a game gave
+     * its runner is one gear, and the bike ride after a run gets the rider's
+     * own bike back rather than carrying it on.
+     */
+    @Volatile
+    private var lastRideWasRun = false
 
 
     private val _status = MutableStateFlow(CompanionStatus())
@@ -593,6 +606,7 @@ class CompanionHost(
             roadAtFinish = null
             nextRideCourse = null
             companionDrivetrain = null
+            lastRideWasRun = false
             failuresByHost.clear()
             codeFailures.store(0)
 
@@ -772,6 +786,7 @@ class CompanionHost(
             roadAtFinish = null
             nextRideCourse = null
             companionDrivetrain = null
+            lastRideWasRun = false
             // The rides stay in history; the list of them belongs to the session
             // that is ending here, and the next one starts empty.
             _sessionRides.value = emptyList()
@@ -942,12 +957,14 @@ class CompanionHost(
                     listOfNotNull(
                         CompanionProtocol.ROUTE_CHOICE_CAPABILITY.takeIf { routeChoice },
                         CompanionProtocol.NAVIGATION_CAPABILITY.takeIf { navigation },
+                        CompanionProtocol.RUN_CAPABILITY.takeIf { run },
                     ),
             ),
             snapshot = ::snapshot,
             controllerConnected = { controller != null },
             pairedKeyFor = { pairedKeys[it] },
             rideState = ::rideState,
+            running = { engine.isRun },
         )
         val conn = Conn(session, ws, remoteHost)
         connections.add(conn)
@@ -1267,7 +1284,7 @@ class CompanionHost(
                 }
 
                 is CompanionEffect.ApplyRoad -> {
-                    engine.setRoad(effect.gradient, effect.speedMps, effect.crr)
+                    engine.setRoad(effect.gradient, effect.speedMps, effect.crr, courseGradient = effect.courseGradient)
                     if (!_status.value.receivingRoad) {
                         _status.update { it.copy(receivingRoad = true) }
                     }
@@ -2070,6 +2087,7 @@ class CompanionHost(
                 Log.i(TAG, "New ride described; the saved one is left as it was")
             }
             engine.setCourse(course, replace = true)
+            leaveRun(course.run)
             val replaced = engine.course.value
             _status.update { it.copy(label = replaced.name ?: it.label, world = replaced.world ?: it.world) }
             return
@@ -2096,6 +2114,27 @@ class CompanionHost(
         // engine keeps the whole course for the moment the ride is written.
         val merged = engine.course.value
         _status.update { it.copy(label = merged.name ?: it.label, world = merged.world ?: it.world) }
+    }
+
+    /**
+     * A ride has been described as a run or not. After a run, a ride that is
+     * not one puts the rider back on their own bike: the game's one gear was
+     * the runner's, and no game should have to undo it.
+     */
+    private fun leaveRun(run: Boolean) {
+        val wasRun = lastRideWasRun
+        lastRideWasRun = run
+        if (!wasRun || run || companionDrivetrain == null) return
+        companionDrivetrain = null
+        engine.restoreRiderDrivetrain()
+        broadcast(
+            EventFrame(
+                event = EventFrame.DRIVETRAIN_CHANGED,
+                index = engine.gearIndex.value,
+                gears = gearLadder(),
+            )
+        )
+        Log.i(TAG, "A ride after a run: back on the rider's own bike")
     }
 
     /**

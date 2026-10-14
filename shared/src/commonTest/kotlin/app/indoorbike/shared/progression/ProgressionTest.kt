@@ -52,6 +52,7 @@ private fun session(
     routeProfile = "",
     ftp = 0L,
     segmentMarks = "",
+    sport = "",
 )
 
 class StreakTest {

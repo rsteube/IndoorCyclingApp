@@ -63,6 +63,7 @@ class RideTrackTest {
         routeProfile = "",
         ftp = 0L,
         segmentMarks = "",
+        sport = "",
     )
 
     private fun records(bytes: ByteArray) = readFit(bytes).all(FitMessage.RECORD)

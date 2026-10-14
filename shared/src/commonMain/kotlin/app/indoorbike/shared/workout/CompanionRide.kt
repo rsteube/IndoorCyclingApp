@@ -61,6 +61,17 @@ const val COMPANION_NOMINAL_PERCENT_FTP = 65
  */
 const val COMPANION_MAX_SECONDS = 6 * 60 * 60
 
+/**
+ * The `sport` a saved ride carries when its companion described it as a run
+ * (protocol 0.14). Recorded and exported as a bike ride all the same; this is
+ * only what the app shows of it.
+ */
+const val SPORT_RUN = "run"
+
+/** True for a saved ride a companion described as a run. */
+val app.indoorbike.shared.db.WorkoutSession.isRun: Boolean
+    get() = sport == SPORT_RUN
+
 /** True for the synthetic workout backing a companion ride. */
 val Workout.isCompanion: Boolean
     get() = id == COMPANION_WORKOUT_ID

@@ -6,6 +6,22 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Run practice from the bike (Companion API 0.14).** A companion game can
+  make a ride a run: a trail runner on its course, driven by pedalling the
+  trainer, for learning a race course and cross-training before it. Specified
+  with Col de Berg, whose K110 Innsbruck course is the first. During a run the
+  ride screen shows pace in min/km instead of speed and the course's real
+  grade, with no shift paddles or gear card: the game gives the runner one
+  gear, and every shifter, Zwift Click included, is ignored. The trainer feels
+  the load the game sets and nothing of a bicycle's air or momentum. The ride
+  is saved and exported as a bike ride, so an invented pace never reaches
+  running records; the ride summary shows its distance and average pace
+  instead of a distance estimated from power. A bike ride after a run is back
+  on the rider's own bike. Android only for now; iOS and Sailfish keep riding
+  such a game as a bike.
+
 ## [2.11.1] (32) - 2026-10-12
 
 ### Changed

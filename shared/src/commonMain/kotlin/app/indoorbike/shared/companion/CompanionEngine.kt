@@ -123,6 +123,14 @@ class CompanionEngine(
     val speedMps: StateFlow<Double> = _speedMps.asStateFlow()
 
     /**
+     * The course's real grade as the companion last reported it (0.14), or
+     * null when its last road said nothing about one. For the rider to read
+     * and never in the force: on a run, [gradient] is a load, not a grade.
+     */
+    private val _courseGradient = MutableStateFlow<Double?>(null)
+    val courseGradient: StateFlow<Double?> = _courseGradient.asStateFlow()
+
+    /**
      * The gears, the shifting and the force a gear asks for, shared with route
      * mode so a change to how shifting feels is made once. See
      * [VirtualDrivetrain]. This engine's job is the companion's road, and its
@@ -340,6 +348,7 @@ class CompanionEngine(
         everReceived = false
         _gradient.value = 0.0
         _speedMps.value = 0.0
+        _courseGradient.value = null
         _distanceMeters.value = 0.0
         _elevationGainMeters.value = 0.0
         distanceReported.value = false
@@ -350,6 +359,7 @@ class CompanionEngine(
         _roadStale.value = false
         _receivingRoad.value = false
         _course.value = CompanionCourse()
+        gearing.pureLoad = false
         advanceSeeded = false
         lastSentWatts = null
         bikeSpeed.reset()
@@ -459,11 +469,13 @@ class CompanionEngine(
         speedMps: Double,
         crr: Double = CompanionProtocol.DEFAULT_CRR,
         nowMs: Long = getCurrentEpochMillis(),
+        courseGradient: Double? = null,
     ) = lock.withLock {
         rawGradient = gradient
         rawCrr = crr
         ridingCrr = crr
         _speedMps.value = speedMps
+        _courseGradient.value = courseGradient
         roadAtMs = nowMs
         everReceived = true
         if (!_receivingRoad.value) _receivingRoad.value = true
@@ -576,6 +588,16 @@ class CompanionEngine(
         if (_running.value) pushRoadToTrainer(force = true)
     }
 
+    /** Put the rider back on the bike they chose in settings, as a new ride does. */
+    fun restoreRiderDrivetrain() = setDrivetrain(drivetrainProvider())
+
+    /**
+     * Whether this ride is a run (0.14): one gear and nothing to shift, and the
+     * road ridden as a pure load. Decided by the ride's description, so it
+     * ends with it, at the next ride's or when a ride is prepared.
+     */
+    val isRun: Boolean get() = _course.value.run
+
     /**
      * The road this ride is on, laid over whatever was already known.
      *
@@ -591,6 +613,10 @@ class CompanionEngine(
     fun setCourse(update: CompanionCourse, replace: Boolean = false) = lock.withLock {
         if (replace) {
             _course.value = update
+            gearing.pureLoad = update.run
+            // A run's load is not a bike's road at the same gradient, so the
+            // trainer hears the new one now rather than at the next frame.
+            if (_running.value) pushRoadToTrainer(force = true)
             return
         }
         if (update.isEmpty) return
@@ -614,6 +640,10 @@ class CompanionEngine(
      * for the handlebar or whether its own request landed.
      */
     fun shiftBy(steps: Int, source: String = SOURCE_SCREEN): Int = lock.withLock {
+        // A runner has one gear (0.14). Every shifter, the screen, a Click, the
+        // keyboard and the game, comes through here, and none of them is
+        // answered: there is no gear display to tell anything to.
+        if (isRun) return gearing.gearIndex.value
         val before = gearing.gearIndex.value
         val next = gearing.shiftBy(steps)
         val changed = next != before

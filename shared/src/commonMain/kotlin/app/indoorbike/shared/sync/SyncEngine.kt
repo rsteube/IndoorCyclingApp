@@ -485,6 +485,7 @@ class SyncEngine(
                     // no catalogue entry for and could not reconstruct.
                     routeShape = s.routeShape.orEmpty(),
                     routeProfile = s.routeProfile.orEmpty(),
+                    sport = s.sport.orEmpty(),
                     // v1 deliberately drops telemetry from sync - sessions
                     // arriving from another device land without per-second
                     // power data. The post-ride chart on those rides will be
@@ -566,6 +567,7 @@ class SyncEngine(
         routeStartElevationGainMeters = row.routeStartElevationGainMeters.takeIf { it > 0.0 },
         routeShape = row.routeShape.takeIf { it.isNotBlank() },
         routeProfile = row.routeProfile.takeIf { it.isNotBlank() },
+        sport = row.sport.takeIf { it.isNotBlank() },
     )
 
     companion object {

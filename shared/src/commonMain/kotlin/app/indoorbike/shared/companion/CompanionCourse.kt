@@ -78,6 +78,13 @@ data class CompanionCourse(
      * Set only by a `course` that says so, and kept through later updates.
      */
     val freeRide: Boolean = false,
+    /**
+     * A run (0.14): a runner on the game's course, driven from the bike. No
+     * shifting, the road ridden as a pure load, and pace on screen. Set, like
+     * [freeRide], only by a `course` that carries a mode, and kept through
+     * later updates.
+     */
+    val run: Boolean = false,
 ) {
 
     /**
@@ -127,6 +134,7 @@ data class CompanionCourse(
         // Only a course with a mode says what kind of ride it is, and that
         // replaces rather than merges, so an update never changes it.
         freeRide = freeRide,
+        run = run,
     )
 
     companion object {

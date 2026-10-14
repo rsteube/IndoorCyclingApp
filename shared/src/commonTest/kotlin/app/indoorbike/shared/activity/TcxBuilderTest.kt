@@ -66,6 +66,7 @@ class TcxBuilderTest {
     routeProfile = "",
     ftp = 0L,
     segmentMarks = "",
+    sport = "",
         )
         return Triple(session, telemetry, workout)
     }

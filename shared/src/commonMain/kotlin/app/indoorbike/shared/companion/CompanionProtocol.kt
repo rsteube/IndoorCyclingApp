@@ -78,6 +78,16 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.14 added run practice. A `course` that carries a `mode` may say
+     * `sport: "run"`: a runner on the game's course, driven from the bike
+     * trainer. The game sends one gear in an ordinary `drivetrain`, the phone
+     * stops shifting, evaluates the road as a pure load (no air, no momentum,
+     * no launch assist, no freewheel) and shows pace. The ride is still saved
+     * as a bike ride. `world.courseGradient` carries the course's real grade
+     * for display while `gradient` carries what the pedals should feel.
+     * Additive, and per build like [ROUTE_CHOICE_CAPABILITY]: a phone lists
+     * [RUN_CAPABILITY] only where it draws a run.
+     *
      * 0.13 came out of the first rides of 0.12. A junction may carry the
      * shape of each way out (`options[].points`) and of the road in
      * (`approachPoints`), so the card draws the junction the game draws, and
@@ -158,7 +168,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 13)
+    val VERSION = ProtocolVersion(0, 14)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -223,6 +233,22 @@ object CompanionProtocol {
      * offers the category filter only to such a game.
      */
     const val PLACE_CATEGORIES_CAPABILITY = "placeCategories"
+
+    /**
+     * `course.sport: "run"` (0.14): the ride is a runner, so the phone stops
+     * shifting, rides the road as a pure load and shows pace. Per platform,
+     * like [ROUTE_CHOICE_CAPABILITY], because it promises a run's display; see
+     * `CompanionHost.run`. In `hello.capabilities` it means the game sends it.
+     */
+    const val RUN_CAPABILITY = "run"
+
+    /**
+     * Bounds on `world.courseGradient` (0.14), rise over run: straight up and
+     * straight down, near enough. Display only, so nothing is clamped: a grade
+     * outside these is not a grade, and is refused.
+     */
+    const val MIN_COURSE_GRADIENT = -1.0
+    const val MAX_COURSE_GRADIENT = 1.0
 
     /**
      * What a `setPower` target is clamped to, in watts.
@@ -378,7 +404,7 @@ object CompanionProtocol {
 
     /** World-frame fields this build acts on. Published in `welcome.honours`. */
     val HONOURED_WORLD_FIELDS =
-        setOf("gradient", "speedMps", "distanceM", "ascentM", "crr", "lat", "lon", "altM")
+        setOf("gradient", "speedMps", "distanceM", "ascentM", "crr", "lat", "lon", "altM", "courseGradient")
 
     /**
      * Bounds on a reported altitude, in metres above sea level: the shore of

@@ -479,6 +479,39 @@ search; filtered by `category` if you list `placeCategories`), picks one with
 - **Route from a junction that is already open** when a destination is chosen, and mark it
   `isNavigation`; otherwise the rider waits a whole junction to see the destination take effect.
 
+## Optional: a run, driven from the bike
+
+Protocol 0.14. A runner on your course while the rider pedals their trainer. You own the runner:
+watts to running speed is your model, and so is what the pedals feel. With `run` in both
+`hello` and `welcome` capabilities, start the ride with `"sport": "run"` on its `mode`-carrying
+`course`, then send a one-gear `drivetrain`:
+
+```json
+{ "t": "course", "mode": "course", "sport": "run", "name": "K110 run practice: Innsbruck to Birgitz",
+  "world": "Col de Berg", "distanceM": 23400, "ascentM": 1180 }
+{ "t": "drivetrain", "name": "Runner", "chainrings": [42], "sprockets": [17], "wheelCircumferenceMm": 2105 }
+```
+
+Full rules in `references/protocol.md` section 8c. What bites:
+
+- **`gradient` is a load dial, not a grade.** For a run the phone commands exactly
+  `m*g*(gradient + crr)/sqrt(1 + gradient^2) * loadFactor`, with no air, no acceleration term,
+  no launch assist and no freewheel. Take `m` from `welcome.rider` and `welcome.bike`, and
+  `loadFactor` from `drivetrainChanged.gears[0]`. Keep it under about 0.18 so the 265 N ceiling
+  never compresses it.
+- **Send the real grade as `world.courseGradient`** on every frame, from the same tick. The
+  phone shows it and never feels it. Without it the rider sees your load as their grade.
+- **`world.speedMps` is the runner's speed** and the phone shows it as pace. Ignore
+  `telemetry.speedMps` during a run: cadence times the one gear is a bike's speed.
+- **Nothing shifts.** `requestShift` gets one `rejected` warning and no `gearChanged`; the
+  phone hides its gears and ignores the rider's shifters.
+- **The saved ride is a bike ride** (FIT cycling, virtual activity) on purpose, so an invented
+  pace never lands in the runner's running records. `course.name` is its title.
+- **The next bike ride gets the rider's own bike back** at its `mode`-carrying `course`; you do
+  not need to undo the one gear.
+- **Branch on `welcome.capabilities`.** Only Android lists `run` for now. Elsewhere send no
+  `sport`; the one-gear `drivetrain` still works, with a bike's display.
+
 ## Do not chase the light feeling at the start of a ride
 
 The app helps riders off the line. Pulling away from a standstill is genuinely hard - almost

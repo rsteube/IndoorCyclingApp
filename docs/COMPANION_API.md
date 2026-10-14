@@ -85,16 +85,28 @@ The road force needs a speed for its aerodynamic term, and there are two in play
 about drafting, surfaces and wind that produced it. That is the speed on the `world` frame,
 and nothing here second-guesses it.
 
-**The phone owns the drivetrain.** A chain does not slip, so a gear decides how fast the road
-goes past for a given cadence - `v = cadence x development` - and the road force is evaluated
-at that. A virtual gear that does not decide it is not a gear at all, only a multiplier on a
-number somebody else chose, worth a few per cent a shift.
+**The road force is evaluated at your speed.** At the instant of a shift the bike is still doing
+the speed it was doing, so the force at the wheel has not moved and the rider meets it through a
+different ratio:
 
-The two are not rivals. A settled rider solves `P = F_road(v) . v` from either end and lands
-on the same speed, so they agree wherever the road is steady and part company only where a
-bicycle would: mid-acceleration, while coasting, and when a gear cannot turn the road out fast
-enough. Telemetry reports the phone's answer as well, so a disagreement is visible rather than
-mysterious.
+```
+force at the trainer = (road force at world.speedMps + m . a) x loadFactor(gear)
+```
+
+with `loadFactor` the virtual gear's development over the assumed real one (3.35 m per crank
+turn), as `welcome.gears[].loadFactor` gives it. The road used to be evaluated at
+`cadence x development` instead, which put the cube of the ratio on the legs in the seconds
+after a shift rather than the ratio.
+
+**The phone owns the drivetrain.** A chain does not slip, so a gear decides how fast the road
+goes past for a given cadence - `v = cadence x development` - and telemetry reports that as the
+phone's own speed. A settled rider solves `P = F_road(v) . v` from either end and lands on the
+same speed, so the two agree wherever the road is steady and part company only where a bicycle
+would: mid-acceleration, while coasting, and when a gear cannot turn the road out fast enough.
+Telemetry reports both, so a disagreement is visible rather than mysterious.
+
+A [run](#4c-run-practice-014) is the exception: there the road is a pure load, with no air and no
+mass, and the game decides what it is worth.
 
 The road force also carries an acceleration term, `m_eff . dv/dt`, differentiated off the
 speed *you* send. You are already integrating that equation to produce speed; the phone was
@@ -215,7 +227,16 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.13, and this build accepts everything back to 0.1.**
+**Current version: 0.14, and this build accepts everything back to 0.1.**
+
+0.14 added [run practice](#4c-run-practice-014): a `course` that carries a `mode` may say
+`"sport": "run"`, and the ride is a runner on the game's course driven from a bike trainer. The
+game sends one gear in an ordinary `drivetrain`, the phone stops shifting and hides the gears,
+evaluates the road as a pure load (no air, no momentum, no launch assist) and shows pace. The
+saved ride stays a cycling activity. A new optional `world.courseGradient` carries the real
+course grade for display while `gradient` carries the grade the trainer should feel. Additive,
+and per build like free ride: the phone lists `run` in `welcome.capabilities` where it draws a
+run (Android), and a game sends `sport` only to a phone that listed it.
 
 0.13 came out of the first rides of 0.12, and is additive. A `junction` may carry the shape of
 each way out and of the road in, so the phone draws the same junction the game does, and
@@ -425,6 +446,7 @@ the newest frame on its next 250 ms tick and rate-limits its own BLE writes, so 
 | `lat` | float | no | 0.11. The rider's latitude on your course, WGS 84 degrees. Only with `lon` |
 | `lon` | float | no | 0.11. The rider's longitude on your course, WGS 84 degrees. Only with `lat` |
 | `altM` | float | no | 0.11. The rider's altitude, metres above sea level, -500 to 9000. May be sent without `lat`/`lon` |
+| `courseGradient` | float | no | 0.14. The real grade of the course here, rise over run, for display only and never in the force. -1 to 1, refused outside it. Absent means the phone shows `gradient`. See [run practice](#4c-run-practice-014) |
 
 **The surface, and why it is the one road parameter the phone takes.** Drafting and wind change
 how fast the rider goes, and a companion that owns speed can put them into the speed it reports.
@@ -432,8 +454,7 @@ A gravel road changes how hard the pedals are, and no speed the companion report
 trainer push back harder - so the surface has to cross the socket. For a gravel bike: tarmac
 0.005, compacted gravel 0.009, mixed gravel 0.012, loose gravel 0.017, grass 0.016, with road
 tyres losing about half as much again. At 85 kg and 25 km/h, tarmac to mixed gravel is some
-fifty watts. It goes into the same force the gradient does, at the speed the rider's gear is
-turning out, and it does not touch the gradient the phone displays. Omit it and the road is
+fifty watts. It goes into the same force the gradient does, and it does not touch the gradient the phone displays. Omit it and the road is
 tarmac; a frame without it is a frame that has stopped describing a surface, not one asking for
 the last surface to be held. Past the deadman it ramps back to tarmac over the same 2000 ms the
 gradient flattens over.
@@ -484,6 +505,9 @@ moved, so a companion can give the rider a "no gears left" cue.
 Rate-limited to 10 per second. Excess requests are dropped with a `warning`, never an error: a
 held gamepad button must not kill the connection.
 
+During a [run](#4c-run-practice-014) there is nothing to shift: a `requestShift` is dropped with
+a `rejected` warning, once per connection, and no `gearChanged` answers it.
+
 #### `label`
 
 Name the ride. May be sent at any time; the last value before `finish` wins.
@@ -528,6 +552,7 @@ it.
 | `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. A sample with a fraction is rounded to the metre. 64 samples is plenty. Max 1 024 |
 | `mode` | string | `"course"` or `"freeRide"` (0.12). **Present, the frame replaces the ride's description instead of merging.** Absent means a course and merges, as before |
 | `area` | object | Free ride only: `{ "id", "name", "release" }`, the area being ridden |
+| `sport` | string | 0.14, only with `mode`: `"run"` for [run practice](#4c-run-practice-014), `"ride"` or absent for a bike. Sent only to a phone listing `run` |
 
 **A `course` with `mode` (0.12) is the whole description of a ride, sent at its start.** It
 replaces what the phone knew rather than merging into it, so a free ride after a course does not
@@ -709,6 +734,10 @@ Send it during setup, before `setState: "active"`. It is accepted later too, and
 bike changes mid-ride is kept in the nearest gear the new ladder has to the one they were
 turning, rather than thrown into a different one. Nothing here is persisted: the rider's own
 setting is untouched underneath and comes back when the ride ends.
+
+A [run](#4c-run-practice-014) uses this frame for its one gear, and the rider's own bike also
+comes back at the next `course` with `mode` that is not a run, so a bike ride after a run never
+inherits the runner's gear.
 
 #### `controls`
 
@@ -1406,6 +1435,94 @@ allowance of two a second.
 
 Every text field is at most 48 characters, trimmed by the game and again by the phone.
 
+## 4c. Run practice (0.14)
+
+A run is a trail runner on the game's course, driven by the rider pedalling an ordinary smart
+trainer: no treadmill, no foot pod. It is for runners learning a race course and for aerobic
+cross-training before one. Specified with Col de Berg, whose K110 Innsbruck course is the first.
+
+The game owns the runner. It turns watts into the runner's speed with its own model (Minetti's
+metabolic cost per grade), and decides what the pedals should feel. The phone keeps everything
+else exactly as for a bike ride: power, cadence and heart rate in telemetry, the deadman, the
+recording, `setState`, untracked riding and `setPower`.
+
+### Negotiation
+
+| Capability | In `hello` (the game) | In `welcome` (the phone) |
+|---|---|---|
+| `run` | Sends `course.sport` | Rides, shows and records a run as below |
+
+Per build, and both ends must list it, as for [free ride](#negotiation). The Android app lists
+it; iOS and Sailfish speak 0.14 without it. To a phone that does not list it the game sends no
+`sport`, and its one-gear `drivetrain` is the whole fallback: the rider gets the runner's gear
+and a bike's display.
+
+### Starting a run
+
+`sport` travels on a `course` that carries a `mode`, because a sport is part of the whole
+description of a ride. It is not a mode of its own: K110 is a `course`, and a free run on trails
+would be a `freeRide` with the same `sport`.
+
+```jsonc
+{ "t": "course", "mode": "course", "sport": "run",
+  "name": "K110 run practice: Innsbruck to Birgitz", "world": "Col de Berg",
+  "distanceM": 23400, "ascentM": 1180, "shape": "...", "profile": [574, 590, ...] }
+{ "t": "drivetrain", "name": "Runner", "chainrings": [42], "sprockets": [17],
+  "wheelCircumferenceMm": 2105 }
+{ "t": "setState", "state": "active" }
+```
+
+- `"run"` is a run. `"ride"` or no `sport` is a bike ride, as before. Any other value is a bike
+  ride, with a `rejected` warning naming `sport` once per connection.
+- A `course` without `mode` never changes the sport.
+- The sport changes only between rides: a different sport is a new ride, a `course` with `mode`.
+- `name` is the ride's title, as for any ride: it becomes the saved ride's name and its FIT
+  `virtual_route`. There is no separate activity name.
+- Send the one-gear `drivetrain` after the `course`, for each run. At the next `course` with
+  `mode` that is not a run, the phone puts the rider's own bike back.
+
+### What the phone does differently
+
+**No shifting.** The one gear is the only gear. The phone drops shifts from every source (its
+screen, Zwift Click and other controllers, the keyboard) and answers a `requestShift` with a
+`rejected` warning once per connection. There is no `gearChanged` during a run.
+
+**The road is a pure load.** The game sets the load with `world.gradient`: a base load plus a
+scaled share of the course's grade, clamped so that a 30 % wall is still turnable on one gear.
+For a run the phone commands exactly
+
+```
+F = m . g . (gradient + crr) / sqrt(1 + gradient^2) x loadFactor
+```
+
+and nothing else: no air drag, no acceleration term, no launch assist, no freewheel. `m` is
+`welcome.rider.massKg` plus `welcome.bike.massKg`, `crr` is `world.crr` (0.005 when absent) and
+`loadFactor` is the one gear's, as `drivetrainChanged.gears[0].loadFactor` reports it. What the
+phone keeps from a bike ride: `gradient` clamped to ±0.30 on arrival, the force compressed
+towards 265 N, and the deadman ramping the load to flat after 1.5 s of silence.
+
+The watts a force costs depend on the rider's real gear on the trainer, which neither end
+knows. In the assumed real gear (3.35 m a crank turn) 90 rpm is 5.0 m/s at the wheel, so a
+`gradient` of 0.02 at 87 kg and a factor of 1.55 is 33 N, about 165 W. Tune by feel and from
+the power in telemetry. With 87 kg and that gear the force reaches the ceiling at about 0.19,
+so keep the load below about 0.18 for it to stay linear.
+
+**Speed is the runner's.** `world.speedMps` is the runner's speed and is what the phone shows,
+as pace in min/km. `telemetry.speedMps`, cadence times the one gear, is a bike's speed and means
+nothing for a run; it is still sent, and a game ignores it.
+
+**The grade shown is the course's.** `world.courseGradient` is the real, smoothed grade under the
+runner. The phone shows it instead of `gradient`, which is a load rather than a grade, and never
+puts it into the force. Send it on every `world` frame from the same tick as `gradient`; a frame
+without it is shown its `gradient`. A value outside -1 to 1 is refused with a `rejected` warning
+once per connection. It is honoured in any sport, so a bike game can use it as well.
+
+**The record stays a bike ride.** The FIT file says cycling, sub-sport virtual activity, so an
+invented pace never lands in a runner's running records or their bests on Strava. Distance,
+ascent and the track are the runner's, from `world.distanceM`, `ascentM`, `lat`, `lon` and
+`altM` as for any ride. The phone does not estimate a bike's distance or speed from power for a
+run, and shows pace rather than speed.
+
 ## 5. Units and conventions
 
 | Quantity | Unit |
@@ -1671,6 +1788,7 @@ speed with no waiting and no flakiness. It also comes along free when iOS happen
 | [`CompanionSession.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionSession.kt) | One connection as a state machine: handshake, roles, warn-once, rate limiting |
 | [`CompanionScreenshot.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionScreenshot.kt) | A screenshot's format and size, read from its header without decoding it |
 | [`CompanionRoute.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/CompanionRoute.kt) | Free ride (0.12): the junction card, navigation and places as the phone shows them, and the shape checks |
+| [`RunPace.kt`](../shared/src/commonMain/kotlin/app/indoorbike/shared/companion/RunPace.kt) | Run practice (0.14): a runner's speed as minutes a kilometre, the same on every platform. The run's pure load is `VirtualDrivetrain.pureLoad` |
 
 `CompanionSession.onFrame(text, nowMs)` returns a list of `CompanionEffect`. The transport turns
 `Send` and `Close` into WebSocket writes; the ride turns `ApplyRoad`, `Shift`, `SetLabel`,
@@ -1753,6 +1871,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `drop` | Rides, drops the socket with no `finish`, stays away for `--menu-seconds` (make it long), reconnects, and checks the ride carried on by itself before finishing it properly |
 | `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
 | `freeride` | The game's side of 0.12: a free ride at a steady 8 m/s whatever the trainer says, a junction every 600 m offered from 400 m out and committed 200 m before it, taps answered as the spec says, search answered from a few made-up places, and a destination reached 1.5 km after it is chosen. Tap the junction card, search, choose a place and stop navigating on the phone |
+| `run` | The game's side of 0.14: a run course and a one-gear `drivetrain`, then a course climbing from 0 to 25 % with the load kept between 0.01 and 0.08 and the force printed beside the one the spec promises, two `requestShift` (one warning, no `gearChanged`), a `courseGradient` of 1.7 (refused), and with `--finish` a bike ride after it that must bring the rider's own bike back. Look for pace and no paddles on the phone |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last
 month still runs the same way.
@@ -1789,6 +1908,8 @@ Deliberately unresolved in 0.1, listed so neither end designs around their absen
 - **Free ride on iOS and Sailfish.** Both speak 0.12 but list neither `routeChoice` nor
   `navigation` until they draw a junction card and a search, so a game steers their free rides
   itself.
+- **Run practice on iOS and Sailfish.** Both speak 0.14 without listing `run`, so a game sends
+  them no `sport`: the rider gets its one gear with a bike's display, shifting and record.
 - **Trainer control tiers.** 0.1 assumes an FTMS `sim`-capable trainer, and 0.10 adds ERG for
   a `setPower` target while the ride is untracked, which is the one place a wattage is ever
   commanded on a companion's behalf.

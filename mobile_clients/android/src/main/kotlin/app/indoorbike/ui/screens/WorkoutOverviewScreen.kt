@@ -59,6 +59,8 @@ import app.indoorbike.shared.progression.timeInZoneSeconds
 import app.indoorbike.shared.workout.formatClock
 import app.indoorbike.shared.workout.FREE_RIDE_WORKOUT_ID
 import app.indoorbike.shared.workout.COMPANION_WORKOUT_ID
+import app.indoorbike.shared.workout.isRun
+import app.indoorbike.shared.companion.RunPace
 import app.indoorbike.shared.workout.simulationRouteId
 import app.indoorbike.ui.screens.simulation.RouteSummaryPanel
 import app.indoorbike.ui.components.AppBar
@@ -368,10 +370,37 @@ fun WorkoutOverviewScreen(
                 modifier = Modifier.enterReveal(index = 2),
             )
 
+            // A run (Companion API 0.14) covered the game's ground, not a
+            // bicycle's: its pace is the game's distance over the time, and no
+            // bike distance is estimated for it from the watts.
+            if (activeSession.isRun) {
+                val ranMeters = activeSession.routeDistanceMeters - activeSession.routeStartMeters
+                val pace = if (activeSession.durationSeconds > 0 && ranMeters > 0) {
+                    RunPace.format(ranMeters / activeSession.durationSeconds)
+                } else {
+                    null
+                }
+                if (pace != null) {
+                    Spacer(modifier = Modifier.height(Spacing.s3))
+                    SlateCard(modifier = Modifier.enterReveal(index = 2)) {
+                        StatGrid(
+                            listOf(
+                                Triple("Distance", "%.2f".format(ranMeters / 1000.0), "km"),
+                                Triple("Avg pace", pace, "/km"),
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(Spacing.s3))
+                        Text(
+                            text = "Run practice. Saved as a ride, so it stays out of your running records.",
+                            style = CadenceType.small,
+                            color = CadenceColors.Fg3
+                        )
+                    }
+                }
+            } else if (stats.distanceMeters > 0) {
             // A trainer measures no ground speed, so these are estimates from
             // power rather than readings. Absent entirely when the rider has no
             // weight set, since there is then nothing to estimate from.
-            if (stats.distanceMeters > 0) {
                 Spacer(modifier = Modifier.height(Spacing.s3))
                 SlateCard(modifier = Modifier.enterReveal(index = 2)) {
                     StatGrid(

@@ -555,8 +555,9 @@ class WorkoutSessionManager(
             // it does. Nothing else has a copy: the catalogue never had this
             // course and the socket did not survive either, so without this a
             // recovered ride saves as numbers with no shape while the same
-            // ride finished normally saves with one.
-            snapshot.companionCourse?.let { companionEngine?.setCourse(it) }
+            // ride finished normally saves with one. Whole rather than merged,
+            // because it is the whole description, a run included.
+            snapshot.companionCourse?.let { companionEngine?.setCourse(it, replace = true) }
         } else {
             simulationEngine?.clear()
             companionEngine?.clear()

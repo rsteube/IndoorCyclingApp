@@ -316,6 +316,8 @@ class AppContainer(
                 // The junction card and the destination search are drawn here.
                 routeChoice = true,
                 navigation = true,
+                // And a run is shown as one: pace, no gears.
+                run = true,
             )
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)

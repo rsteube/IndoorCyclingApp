@@ -430,14 +430,14 @@ class Probe:
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.13",
+            "protoMin": "0.1", "protoMax": "0.14",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
             "role": "controller",
             "capabilities": [
                 "summary", "course", "setState", "controls", "drivetrain", "pair", "brand",
-                "screenshot", "routeChoice", "navigation", "placeCategories",
+                "screenshot", "routeChoice", "navigation", "placeCategories", "run",
             ],
         })
         for _ in range(50):
@@ -446,10 +446,12 @@ class Probe:
             time.sleep(0.1)
         return False
 
-    def world(self, gradient, speed_mps, distance_m=None, ascent_m=None):
+    def world(self, gradient, speed_mps, distance_m=None, ascent_m=None, course_gradient=None):
         self.seq += 1
         frame = {"t": "world", "seq": self.seq,
                  "gradient": round(gradient, 4), "speedMps": round(speed_mps, 3)}
+        if course_gradient is not None:
+            frame["courseGradient"] = round(course_gradient, 4)
         if distance_m is not None:
             frame["distanceM"] = round(distance_m, 1)
         if ascent_m is not None:
@@ -1037,6 +1039,93 @@ def scenario_pair(p, args):
         print("\nnobody answered the prompt.")
 
 
+def run_load(course_gradient):
+    """What Col de Berg puts into `gradient` for a run: a base load plus a
+    scaled share of the course's grade, clamped so a wall is still turnable on
+    one gear. The numbers are the probe's, not the game's."""
+    return max(0.01, min(0.08, 0.02 + 0.25 * course_gradient))
+
+
+def scenario_run(p, args):
+    """A run on a course, driven from the bike (protocol 0.14): one gear,
+    nothing shifts, the road a pure load, pace on the phone, and the rider's
+    own bike back for the bike ride after."""
+    caps = (p.welcome or {}).get("capabilities", [])
+    if "run" not in caps:
+        print("this phone does not offer 'run'; nothing to test")
+        return
+    rider = ((p.welcome or {}).get("rider") or {}).get("massKg") or 75.0
+    bike = ((p.welcome or {}).get("bike") or {}).get("massKg") or 9.0
+
+    print("\n[1] describe a run, then give the runner one gear")
+    p.send({"t": "course", "mode": "course", "sport": "run",
+            "name": "Probe run practice", "world": "Test harness",
+            "distanceM": 5000, "ascentM": 250})
+    time.sleep(0.5)
+    p.send({"t": "drivetrain", "name": "Runner", "chainrings": [42], "sprockets": [17],
+            "wheelCircumferenceMm": 2105})
+    time.sleep(1.0)
+    ladder = next((e.get("gears") for e in reversed(p.events)
+                   if e.get("event") == "drivetrainChanged"), None) or []
+    factor = ladder[0].get("loadFactor") if len(ladder) == 1 else None
+    print("     ladder: %d gear(s), loadFactor %s" % (len(ladder), factor))
+
+    print("\n[2] run: the course climbs from 0 to 25 %, the load stays under 0.08")
+    p.send({"t": "setState", "state": "active"})
+    distance = 0.0
+    end = time.time() + args.ride_seconds
+    last_print = 0.0
+    while time.time() < end and not p._stop.is_set():
+        t_left = end - time.time()
+        grade = 0.25 * (1.0 - t_left / args.ride_seconds)
+        load = run_load(grade)
+        # A runner slows on the climb; this one goes 3.5 m/s down to 1.2.
+        speed = max(1.2, 3.5 - 9.0 * grade)
+        distance += speed * 0.1
+        p.world(load, speed, distance_m=distance, course_gradient=grade)
+        if time.time() - last_print > 1.0:
+            last_print = time.time()
+            t = p.telemetry or {}
+            expected = None
+            if factor:
+                weight = (rider + bike) * 9.8067
+                expected = weight * (load + 0.005) / (1 + load * load) ** 0.5 * factor
+            print("     grade %4.1f %%, load %.3f, %.1f m/s: %s N (expected %s), %s W" % (
+                grade * 100, load, speed, t.get("trainerForceN"),
+                "%.1f" % expected if expected else "?", t.get("power")))
+        time.sleep(0.1)
+
+    print("\n[3] shift, from the game: one rejected warning, no gearChanged")
+    before = len(p.events)
+    p.send({"t": "requestShift", "steps": 1})
+    time.sleep(0.4)
+    p.send({"t": "requestShift", "steps": 1})
+    time.sleep(1.0)
+    shifted = [e for e in p.events[before:] if e.get("event") == "gearChanged"]
+    refused = [w for w in p.warnings if w.get("frame") == "requestShift"]
+    print("     gearChanged: %d (want 0), rejected warnings: %d (want 1)" % (
+        len(shifted), len(refused)))
+
+    print("\n[4] a course grade that is not one: refused once")
+    p.world(0.02, 2.0, distance_m=distance, course_gradient=1.7)
+    time.sleep(0.5)
+    print("     look at the phone: pace in min/km, no paddles, no gear card")
+    p.drive(3.0, gradient=0.02, distance_m=distance)
+
+    if not args.finish:
+        print("\n[5] leaving the run running (--finish to end it and ride a bike after)")
+        return
+    print("\n[5] finish, then describe a bike ride: the rider's own bike comes back")
+    p.send({"t": "finish"})
+    time.sleep(2.0)
+    before = len(p.events)
+    p.send({"t": "course", "mode": "course", "name": "Probe lap", "world": "Test harness"})
+    time.sleep(1.0)
+    back = [e for e in p.events[before:] if e.get("event") == "drivetrainChanged"]
+    gears = len(back[-1].get("gears") or []) if back else 0
+    print("     drivetrainChanged: %d, with %d gears (want more than 1)" % (len(back), gears))
+
+
 SCENARIOS = {
     "brand": scenario_brand,
     "pair": scenario_pair,
@@ -1046,6 +1135,7 @@ SCENARIOS = {
     "world": scenario_world,
     "controls": scenario_controls,
     "freeride": scenario_freeride,
+    "run": scenario_run,
 }
 
 

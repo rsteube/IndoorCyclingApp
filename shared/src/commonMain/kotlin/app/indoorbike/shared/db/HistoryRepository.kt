@@ -72,6 +72,8 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
         ftp: Int = 0,
         /** Where each segment began, encoded by `SegmentMark.encode`; empty when not known. */
         segmentMarks: String = "",
+        /** [SPORT_RUN] for a companion run (0.14); empty for a bike ride. */
+        sport: String = "",
         externalId: String,
         telemetry: List<TelemetryPoint>
     ): Long {
@@ -93,6 +95,7 @@ class HistoryRepository(databaseDriverFactory: DatabaseDriverFactory) {
                     routeProfile = routeProfile,
                     ftp = ftp.toLong(),
                     segmentMarks = segmentMarks,
+                    sport = sport,
                     externalId = externalId
                 )
 

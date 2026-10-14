@@ -128,6 +128,12 @@ data class WorldFrame(
     val lon: Double? = null,
     /** Altitude in metres above sea level. May be sent with or without [lat] and [lon]. */
     val altM: Double? = null,
+    /**
+     * The course's real grade here (0.14), for the rider to read. Never in the
+     * force: on a run [gradient] is a load the game chose, not a grade, and
+     * this is what the HUD shows instead.
+     */
+    val courseGradient: Double? = null,
     val t: String = "world",
 ) : ClientFrame
 
@@ -185,6 +191,9 @@ data class RequestShiftFrame(
  *   instead of merging into it**, and always describes the ride under way or
  *   the next one, never one already finished. Absent merges, as before 0.12.
  * @param area the area a free ride is in.
+ * @param sport [SPORT_RUN] for a runner (0.14), or [SPORT_RIDE] or absent for
+ *   a bike. Read only from a frame that carries [mode], and only from a game
+ *   that listed `run`.
  */
 @Serializable
 data class CourseFrame(
@@ -196,11 +205,14 @@ data class CourseFrame(
     val profile: List<Int> = emptyList(),
     val mode: String? = null,
     val area: CourseAreaFrame? = null,
+    val sport: String? = null,
     val t: String = "course",
 ) : ClientFrame {
     companion object {
         const val MODE_COURSE = "course"
         const val MODE_FREE_RIDE = "freeRide"
+        const val SPORT_RIDE = "ride"
+        const val SPORT_RUN = "run"
     }
 }
 

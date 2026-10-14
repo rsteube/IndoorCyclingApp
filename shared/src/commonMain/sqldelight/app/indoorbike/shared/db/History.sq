@@ -53,7 +53,11 @@ CREATE TABLE WorkoutSession (
     -- Where each segment actually began, as `segment@sample` pairs joined by
     -- `;` (SegmentMark). The exports cut laps on these. Empty = not recorded,
     -- and they fall back to the planned segment lengths.
-    segmentMarks TEXT NOT NULL DEFAULT ''
+    segmentMarks TEXT NOT NULL DEFAULT '',
+    -- What the rider was, for a ride a companion game drove: 'run' for a run
+    -- (Companion API 0.14), empty for a bike ride. A run is still recorded and
+    -- exported as cycling; this only changes what the app shows of it.
+    sport TEXT NOT NULL DEFAULT ''
 );
 
 -- Non-unique because the v1 → v2 migration leaves multiple rows with the
@@ -87,8 +91,8 @@ CREATE TABLE WorkoutTelemetry (
 CREATE INDEX ix_workout_telemetry_session ON WorkoutTelemetry(sessionId, timestampEpoch);
 
 insertSession:
-INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters, routeShape, routeProfile, ftp, segmentMarks)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+INSERT INTO WorkoutSession (workoutId, workoutName, startTimeEpoch, durationSeconds, avgPower, avgCadence, avgHeartRate, externalId, routeDistanceMeters, routeElevationGainMeters, routeStartMeters, routeStartElevationGainMeters, routeShape, routeProfile, ftp, segmentMarks, sport)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 lastInsertRowId:
 SELECT last_insert_rowid();

@@ -382,6 +382,7 @@ fun RideScreen(
     val companionPowerReleased by companionEngine.powerReleased.collectAsStateWithLifecycle()
     val companionGradient by companionEngine.gradient.collectAsStateWithLifecycle()
     val companionSpeed by companionEngine.speedMps.collectAsStateWithLifecycle()
+    val companionCourseGradient by companionEngine.courseGradient.collectAsStateWithLifecycle()
     val companionDistance by companionEngine.distanceMeters.collectAsStateWithLifecycle()
     val companionClimb by companionEngine.elevationGainMeters.collectAsStateWithLifecycle()
     val companionDrivetrain by companionEngine.drivetrain.collectAsStateWithLifecycle()
@@ -896,7 +897,9 @@ fun RideScreen(
                     // rider is is exactly what this mode does not know.
                     Isolated {
                         CompanionHud(
-                            gradient = companionGradient,
+                            // The course's own grade when the game sends one: on a
+                            // run the road's gradient is a load, not a grade.
+                            gradient = companionCourseGradient ?: companionGradient,
                             speedMps = companionSpeed,
                             distanceMeters = companionDistance,
                             elevationGainMeters = companionClimb,
@@ -928,6 +931,7 @@ fun RideScreen(
                             arrival = companionArrival,
                             onChooseDestination = { destinationsOpen = true },
                             onClearDestination = companionHost::clearDestination,
+                            run = companionCourse.run,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

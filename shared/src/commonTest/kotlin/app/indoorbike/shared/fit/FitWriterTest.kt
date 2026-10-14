@@ -135,6 +135,7 @@ class FitWriterTest {
     routeProfile = "",
     ftp = 0L,
     segmentMarks = "",
+    sport = "",
         )
 
         val bytes = RideFitBuilder.build(session, telemetry, workout, ftp = 200)
@@ -185,6 +186,7 @@ class FitWriterTest {
     routeProfile = "",
     ftp = 0L,
     segmentMarks = "",
+    sport = "",
         )
 
         val laps = lapDeveloperFields(RideFitBuilder.build(session, telemetry, workout, ftp = 200))
@@ -215,6 +217,7 @@ class FitWriterTest {
     routeProfile = "",
     ftp = 0L,
     segmentMarks = "",
+    sport = "",
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(
@@ -341,6 +344,7 @@ class FitWriterTest {
         routeProfile = "",
         ftp = 0L,
         segmentMarks = "",
+        sport = "",
     )
 
     private fun telemetry(stamps: List<Long>) = stamps.mapIndexed { i, stamp ->
@@ -478,6 +482,7 @@ class FitWriterTest {
     routeProfile = "",
     ftp = 0L,
     segmentMarks = "",
+    sport = "",
         )
         val telemetry = (0 until 60).map { i ->
             WorkoutTelemetry(

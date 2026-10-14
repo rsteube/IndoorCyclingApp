@@ -20,6 +20,7 @@ import app.indoorbike.shared.activity.averageHeartRate
 import app.indoorbike.shared.companion.CompanionCourse
 import app.indoorbike.shared.db.HistoryRepository
 import app.indoorbike.shared.db.TelemetryPoint
+import app.indoorbike.shared.workout.SPORT_RUN
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
@@ -107,6 +108,8 @@ suspend fun writeRideToHistory(
         routeStartElevationGainMeters = road.startedAtElevationGainMeters,
         routeShape = course?.shape.orEmpty(),
         routeProfile = course?.let { CompanionCourse.encodeProfile(it.profileMeters) }.orEmpty(),
+        // A run is saved as a bike ride and shown as a run; see SPORT_RUN.
+        sport = if (course?.run == true) SPORT_RUN else "",
         // What the ride was ridden against, so an export made later cuts its
         // laps where the segments really fell and uses the FTP it was ridden
         // at, not the one set on the day of the export.

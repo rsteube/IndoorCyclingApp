@@ -53,7 +53,7 @@ class ExportRideTest {
         routeDistanceMeters = routeMetres, routeElevationGainMeters = 0.0,
         routeStartMeters = 0.0, routeStartElevationGainMeters = 0.0,
         routeShape = "", routeProfile = "",
-        ftp = ftp, segmentMarks = segmentMarks,
+        ftp = ftp, segmentMarks = segmentMarks, sport = "",
     )
 
     private fun samples(seconds: Int, watts: (Int) -> Long = { 150L }) = (0 until seconds).map { i ->

@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.11** (the app also accepts everything back to 0.1)
+- Protocol version: **0.14** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -433,6 +433,7 @@ The road. Send at 4-10 Hz. Faster buys nothing: the app applies the newest frame
 | `lat` | number | no | [-90, 90], refused outside | 0.11. Rider's latitude on your course, WGS 84 degrees. Only with `lon` |
 | `lon` | number | no | [-180, 180], refused outside | 0.11. Rider's longitude on your course, WGS 84 degrees. Only with `lat` |
 | `altM` | number | no | [-500, 9000], refused outside | 0.11. Rider's altitude in metres above sea level. May come alone |
+| `courseGradient` | number | no | [-1, 1], refused outside | 0.14. The course's real grade, for display only; never in the force. Absent: the phone shows `gradient`. See section 8c |
 
 Behaviour:
 
@@ -507,6 +508,9 @@ Rate limit: **10 requests per rolling second**. Excess is dropped with `warning`
 `rateLimited`, never an error and never a close - a held gamepad button must not kill the
 connection or dump the rider into the top gear.
 
+During a run (section 8c) it is dropped with a `rejected` warning once per connection, and
+nothing answers it.
+
 Observers get `error` `notController`.
 
 ---
@@ -556,6 +560,7 @@ GPX. Your course exists nowhere the app can reach, so it travels with the ride.
 | `profile` | int[] | Elevation in whole metres, evenly spaced along `shape`. Fractions are rounded. 64 is plenty. Max 1 024 |
 | `mode` | string | `"course"` or `"freeRide"` (0.12). Present: **replaces** the ride's description. Absent: a course, and merges |
 | `area` | object | Free ride only: `{ "id", "name", "release" }` |
+| `sport` | string | 0.14, only with `mode`: `"run"` for a run (section 8c); `"ride"` or absent for a bike. Send it only to a phone listing `run` |
 
 **A `course` with `mode` (0.12) replaces instead of merging.** Send one at the start of every
 ride. For a free ride, `name` is the area's name, and `distanceM` and `ascentM` are explicit
@@ -777,7 +782,9 @@ Send it during setup, before `setState: "active"`. Accepted later too: a rider w
 changes mid-ride is placed in the nearest gear by development rather than by index, so they keep
 turning the ground over at about the rate they were.
 
-Nothing is persisted. The rider's own setting comes back when the ride ends.
+Nothing is persisted. The rider's own setting comes back when the ride ends, and also at the
+next `course` with `mode` that is not a run, so a bike ride after a run (section 8c) never
+inherits the runner's one gear.
 
 ---
 
@@ -1067,6 +1074,74 @@ default again.
 `junction` 2/s, `navigation` 1/s, `places` in answer only; `turnChosen` 2/s, `placesQuery` 2/s,
 `destinationChosen` and `destinationCleared` 2/s together. Every text field at most 48
 characters. A `junction` is under 2 KB and 50 `places` under 8 KB.
+
+---
+
+## 8c. Run practice: `course.sport` and `world.courseGradient` (0.14)
+
+A runner on your course, driven by the rider pedalling an ordinary smart trainer (no treadmill,
+no foot pod). You own the runner: you turn watts into the runner's speed with your own model and
+decide what the pedals feel. The app keeps everything else as for a bike ride: telemetry, the
+deadman, the recording, `setState`, untracked riding and `setPower`.
+
+**Negotiation.** Capability `run`, listed by both ends: you in `hello.capabilities` (you send
+`course.sport`), the app in `welcome.capabilities` (it rides, shows and records a run). Per
+build: the Android app lists it, iOS and Sailfish speak 0.14 without it. Send `sport` only to a
+phone listing `run`; to any other, your one-gear `drivetrain` is the whole fallback.
+
+**Starting one.** `sport` rides on a `course` that carries `mode`, never on one without:
+
+```json
+{ "t": "course", "mode": "course", "sport": "run",
+  "name": "K110 run practice: Innsbruck to Birgitz", "world": "Col de Berg",
+  "distanceM": 23400, "ascentM": 1180, "shape": "...", "profile": [574, 590] }
+{ "t": "drivetrain", "name": "Runner", "chainrings": [42], "sprockets": [17], "wheelCircumferenceMm": 2105 }
+{ "t": "setState", "state": "active" }
+```
+
+| `sport` | Meaning |
+|---|---|
+| `"run"` | A run |
+| `"ride"` or absent | A bike ride, as before |
+| anything else | A bike ride, with a `rejected` warning naming `sport`, once per connection |
+
+- A `course` without `mode` never changes the sport. A different sport is a new ride.
+- `name` is the title (saved session name, FIT `virtual_route`). There is no other name field.
+- Send the one-gear `drivetrain` after the `course`, every run. The next `course` with `mode`
+  that is not a run gives the rider their own bike back.
+
+**No shifting.** The app drops shifts from every source (screen, Zwift Click and other
+controllers, keyboard), answers `requestShift` with one `rejected` warning per connection, and
+sends no `gearChanged` during a run. It hides the gear display.
+
+**The road is a pure load.** You set it with `world.gradient`. For a run the app commands exactly
+
+```
+F = m * g * (gradient + crr) / sqrt(1 + gradient^2) * loadFactor
+```
+
+- `m` = `welcome.rider.massKg` + `welcome.bike.massKg`; `g` = 9.8067; `crr` = `world.crr`, 0.005
+  when absent; `loadFactor` = `drivetrainChanged.gears[0].loadFactor` (development over 3.35 m).
+- **Off for a run:** air drag, the acceleration term `m * dv/dt`, launch assist, freewheel.
+- **Kept:** `gradient` clamped to ±0.30 on arrival, `F` compressed towards 265 N, the deadman.
+- With 87 kg and 42x17 at 2105 mm (factor 1.55) the ceiling bites from about 0.19; stay under
+  about 0.18 to keep it linear. `gradient` 0.02 is 33 N.
+- Watts = `F` x the rider's real wheel speed, which neither end knows. In the assumed real gear
+  (3.35 m a crank turn) 90 rpm is 5.0 m/s, so 33 N is about 165 W. Tune by feel and from
+  `telemetry.power`, not from that figure.
+
+**Speed is the runner's.** `world.speedMps` is the runner's speed; the app shows it as pace in
+min/km. `telemetry.speedMps` (cadence x the one gear) is a bike's speed: ignore it during a run.
+
+**`world.courseGradient`** is the course's real, smoothed grade, rise over run. Display only,
+never in the force. Send it on every `world` frame from the same tick as `gradient`; a frame
+without it is shown its `gradient`. Outside [-1, 1] it is refused with a `rejected` warning once
+per connection. Honoured in any sport, and listed in `welcome.honours`.
+
+**The record stays a bike ride**: FIT sport cycling, sub-sport virtual activity, so an invented
+pace never reaches a runner's running records. Distance, ascent and track are yours, from
+`world.distanceM`, `ascentM`, `lat`, `lon`, `altM`. The app shows no bike distance or speed
+estimated from power for a run.
 
 ---
 
