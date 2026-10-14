@@ -85,6 +85,12 @@ data class CompanionCourse(
      * later updates.
      */
     val run: Boolean = false,
+    /**
+     * A run held in ERG (0.15): both ends listed `runPower`. The run's power
+     * target, once the game sets one, is what the trainer holds, and the
+     * rider's + and - move it. Decided with [run], at the same moment.
+     */
+    val runPower: Boolean = false,
 ) {
 
     /**
@@ -135,6 +141,7 @@ data class CompanionCourse(
         // replaces rather than merges, so an update never changes it.
         freeRide = freeRide,
         run = run,
+        runPower = runPower,
     )
 
     companion object {

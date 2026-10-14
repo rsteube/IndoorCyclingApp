@@ -318,6 +318,8 @@ class AppContainer(
                 navigation = true,
                 // And a run is shown as one: pace, no gears.
                 run = true,
+                // And holds a run at a power target the paddles move (0.15).
+                runPower = true,
             )
             val historyRepository = HistoryRepository(DatabaseDriverFactory(application))
             val workoutImporter = WorkoutImporter(application)

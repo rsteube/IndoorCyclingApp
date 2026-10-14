@@ -3,7 +3,7 @@
 Exhaustive, machine-readable reference for the Indoor Bike Companion API as **implemented on
 the app side**. Written to be read by a model or a developer building the other end.
 
-- Protocol version: **0.14** (the app also accepts everything back to 0.1)
+- Protocol version: **0.15** (the app also accepts everything back to 0.1)
 - Transport: WebSocket, JSON text frames, UTF-8, local network only
 - Path: `/companion`
 - Status: app side implemented; see [Not implemented](#16-not-implemented) for the gaps
@@ -509,7 +509,8 @@ Rate limit: **10 requests per rolling second**. Excess is dropped with `warning`
 connection or dump the rider into the top gear.
 
 During a run (section 8c) it is dropped with a `rejected` warning once per connection, and
-nothing answers it.
+nothing answers it. During a run held in ERG (0.15, section 8c) it moves the power target by
+`steps` x 5 W instead, with no warning and no `gearChanged`.
 
 Observers get `error` `notController`.
 
@@ -1137,6 +1138,30 @@ min/km. `telemetry.speedMps` (cadence x the one gear) is a bike's speed: ignore 
 never in the force. Send it on every `world` frame from the same tick as `gradient`; a frame
 without it is shown its `gradient`. Outside [-1, 1] it is refused with a `rejected` warning once
 per connection. Honoured in any sport, and listed in `welcome.honours`.
+
+### A run held in ERG (0.15)
+
+With `runPower` listed by both ends (and `run`), a run is held in ERG at a power target:
+
+- **Open it once.** Send `setPower` with the run's endurance watts after the run's `course` and
+  one-gear `drivetrain`. It is honoured in any state during the run. Do **not** re-send it on
+  `stateChanged`: the phone keeps the target through pauses, `active`/`untracked` changes and
+  reconnects, and a re-send undoes the rider's presses. Send another only on a deliberate phase
+  change (warm-up hold, then the run). `setPower` with `null` returns the run to the 0.14 load.
+- **The paddle step is 5 W.** Each + or - on the phone, Zwift Click, keyboard, and each step of
+  your `requestShift`, moves the target 5 W, clamped to 0..1000. `requestShift` gets no warning
+  and no `gearChanged`.
+- **Follow `powerTargetChanged`** (`watts`, `source`: `screen`, `zwiftClick`, `companion`,
+  `state`); `telemetry.powerTarget` is on every frame while one is held.
+- **Ramps:** the opening target 2000 ms from the rider's power; a press 25 W per 0.5 s from
+  where the trainer is.
+- **The 0.10 hold still applies:** a rider at 20 rpm or below for 2 s is let go and taken back
+  over 3 s past 30 rpm; the 1.5 s lease decays the target, so keep `world` at 10 Hz. While held,
+  telemetry `appliedGradient`, `trainerForceN`, `trainerGradePercent` are 0 and `speedMps` is absent.
+- **No `powerTarget` in telemetry means the 0.14 load:** no target yet, trainer without an FTMS
+  control point (a `rejected` warning on `watts`), or no trainer.
+- **Cadence band: 80 to 100 rpm** (160 to 200 steps a minute at two steps a crank turn). The
+  phone shows cadence large with that band as a quiet hint, never an alarm; nothing enforces it.
 
 **The record stays a bike ride**: FIT sport cycling, sub-sport virtual activity, so an invented
 pace never reaches a runner's running records. Distance, ascent and track are yours, from

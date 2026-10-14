@@ -78,6 +78,14 @@ object CompanionProtocol {
     /**
      * What this build speaks.
      *
+     * 0.15 rides a run in ERG. Where both ends list [RUN_POWER_CAPABILITY], a
+     * run is held at a power target the game opens with `setPower` and the
+     * rider moves [RUN_POWER_STEP_WATTS] at a time with the buttons that shift
+     * on a bike; a game's `requestShift` moves it the same way. The phone keeps
+     * the target for the whole run, through pauses and state changes, and
+     * shows cadence against [RUN_CADENCE_MIN_RPM] to [RUN_CADENCE_MAX_RPM].
+     * Without the capability at either end a run is the 0.14 load.
+     *
      * 0.14 added run practice. A `course` that carries a `mode` may say
      * `sport: "run"`: a runner on the game's course, driven from the bike
      * trainer. The game sends one gear in an ordinary `drivetrain`, the phone
@@ -168,7 +176,7 @@ object CompanionProtocol {
      * always did. A companion learns which of the new frames this build will
      * act on from `welcome.capabilities`, not from the version number.
      */
-    val VERSION = ProtocolVersion(0, 14)
+    val VERSION = ProtocolVersion(0, 15)
     val SUPPORTED = VersionRange(ProtocolVersion(0, 1), VERSION)
 
     /**
@@ -241,6 +249,24 @@ object CompanionProtocol {
      * `CompanionHost.run`. In `hello.capabilities` it means the game sends it.
      */
     const val RUN_CAPABILITY = "run"
+
+    /**
+     * A run held in ERG at a power target (0.15) rather than ridden as a load.
+     * Per platform like [RUN_CAPABILITY]: it promises the target on screen and
+     * buttons to move it; see `CompanionHost.runPower`.
+     */
+    const val RUN_POWER_CAPABILITY = "runPower"
+
+    /** What one press of + or -, or one step of a `requestShift`, moves a run's target. */
+    const val RUN_POWER_STEP_WATTS = 5
+
+    /**
+     * The cadence a runner training on a bike is nudged towards (0.15): 160 to
+     * 200 steps a minute, at two steps a crank turn. A hint on screen, never an
+     * alarm and never a target the trainer enforces.
+     */
+    const val RUN_CADENCE_MIN_RPM = 80
+    const val RUN_CADENCE_MAX_RPM = 100
 
     /**
      * Bounds on `world.courseGradient` (0.14), rise over run: straight up and

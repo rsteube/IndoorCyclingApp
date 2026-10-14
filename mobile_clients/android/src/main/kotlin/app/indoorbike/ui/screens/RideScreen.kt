@@ -932,6 +932,8 @@ fun RideScreen(
                             onChooseDestination = { destinationsOpen = true },
                             onClearDestination = companionHost::clearDestination,
                             run = companionCourse.run,
+                            ergRun = companionCourse.run && companionCourse.runPower,
+                            runTargetWatts = companionPowerTarget,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

@@ -215,6 +215,8 @@ class CompanionSession(
      * described or prepared, neither of which this class sees.
      */
     private val running: () -> Boolean = { false },
+    /** Whether the run is held in ERG (0.15): a target may be set in any state, and a shift moves it. */
+    private val runningOnPower: () -> Boolean = { false },
     val road: CompanionRoad = CompanionRoad(),
 ) {
 
@@ -301,6 +303,12 @@ class CompanionSession(
         get() = phase == Phase.READY && isController &&
             CompanionProtocol.RUN_CAPABILITY in config.capabilities &&
             CompanionProtocol.RUN_CAPABILITY in clientCapabilities
+
+    /** And holds a run at a power target the rider moves (0.15). */
+    val runsOnPower: Boolean
+        get() = runs &&
+            CompanionProtocol.RUN_POWER_CAPABILITY in config.capabilities &&
+            CompanionProtocol.RUN_POWER_CAPABILITY in clientCapabilities
 
     /** The card on screen, for checking a tap against. */
     var junction: RouteJunction? = null
@@ -850,7 +858,9 @@ class CompanionSession(
 
         // A runner has one gear and nothing to shift (0.14). Said once: a game
         // still wired to a shift button would otherwise be told at every press.
-        if (running()) {
+        // A run held in ERG (0.15) takes the shift as a step of its target,
+        // through the same limiter below.
+        if (running() && !runningOnPower()) {
             if (!warnedRouteFields.add("requestShift")) return emptyList()
             return listOf(
                 CompanionEffect.Send(
@@ -915,7 +925,7 @@ class CompanionSession(
             profileMeters = profile,
             freeRide = frame.mode == CourseFrame.MODE_FREE_RIDE,
             run = frame.mode != null && isRun(frame.sport, effects),
-        )
+        ).let { it.copy(runPower = it.run && runsOnPower) }
         // A `mode` (0.12) makes this the whole description of a ride, sent at
         // its start: it replaces rather than merges, so a free ride after a
         // course does not inherit the course's length, and it is passed on
@@ -1398,7 +1408,8 @@ class CompanionSession(
             )
         }
 
-        if (rideState() != CompanionState.UNTRACKED) {
+        // A run held in ERG (0.15) is the one recorded ride a target may hold.
+        if (rideState() != CompanionState.UNTRACKED && !runningOnPower()) {
             return listOf(
                 CompanionEffect.Send(
                     WarningFrame(

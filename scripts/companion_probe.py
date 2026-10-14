@@ -424,13 +424,13 @@ class Probe:
             print("  -> %s" % json.dumps(frame))
         self.ws.send_text(json.dumps(frame))
 
-    def hello(self, code, name="companion_probe"):
+    def hello(self, code, name="companion_probe", extra_caps=()):
         # Both the token and the deviceId, always. If the phone knows us it
         # challenges and ignores the code; if it does not, the code gets us in.
         # Sending both means never having to guess which phone this is.
         self.send({
             "t": "hello",
-            "protoMin": "0.1", "protoMax": "0.14",
+            "protoMin": "0.1", "protoMax": "0.15",
             "token": code,
             "deviceId": self.state["deviceId"],
             "client": {"name": name, "version": "1.0", "platform": sys.platform},
@@ -438,7 +438,7 @@ class Probe:
             "capabilities": [
                 "summary", "course", "setState", "controls", "drivetrain", "pair", "brand",
                 "screenshot", "routeChoice", "navigation", "placeCategories", "run",
-            ],
+            ] + list(extra_caps),
         })
         for _ in range(50):
             if self.welcome or self.errors:
@@ -1126,6 +1126,76 @@ def scenario_run(p, args):
     print("     drivetrainChanged: %d, with %d gears (want more than 1)" % (len(back), gears))
 
 
+def scenario_runpower(p, args):
+    """A run held in ERG (protocol 0.15): the run's course and one gear, a
+    setPower once, requestShift as 5 W steps, the target kept through a pause.
+    Press + and - on the phone too, and watch the powerTargetChanged events."""
+    caps = (p.welcome or {}).get("capabilities", [])
+    if "runPower" not in caps:
+        print("this phone does not offer 'runPower'; nothing to test")
+        return
+
+    print("\n[1] describe a run, give the runner one gear, start")
+    p.send({"t": "course", "mode": "course", "sport": "run",
+            "name": "Probe ERG run", "world": "Test harness"})
+    time.sleep(0.5)
+    p.send({"t": "drivetrain", "name": "Runner", "chainrings": [42], "sprockets": [17],
+            "wheelCircumferenceMm": 2105})
+    time.sleep(0.5)
+    p.send({"t": "setState", "state": "active"})
+    time.sleep(0.5)
+
+    print("\n[2] the opening target, once")
+    p.send({"t": "setPower", "watts": 180})
+    distance = 0.0
+
+    def run_for(seconds):
+        nonlocal distance
+        end = time.time() + seconds
+        last_print = 0.0
+        while time.time() < end and not p._stop.is_set():
+            distance += 2.8 * 0.1
+            p.world(0.03, 2.8, distance_m=distance, course_gradient=0.06)
+            if time.time() - last_print > 1.0:
+                last_print = time.time()
+                t = p.telemetry or {}
+                print("     powerTarget %s, powerCommanded %s, power %s W, cadence %s" % (
+                    t.get("powerTarget"), t.get("powerCommanded"), t.get("power"), t.get("cadence")))
+            time.sleep(0.1)
+
+    run_for(args.ride_seconds / 2)
+
+    print("\n[3] requestShift +2 and -1: 5 W steps, no warning, no gearChanged")
+    before_events, before_warnings = len(p.events), len(p.warnings)
+    p.send({"t": "requestShift", "steps": 2})
+    time.sleep(0.3)
+    p.send({"t": "requestShift", "steps": -1})
+    run_for(1.0)
+    changes = [(e.get("watts"), e.get("source")) for e in p.events[before_events:]
+               if e.get("event") == "powerTargetChanged"]
+    gears = [e for e in p.events[before_events:] if e.get("event") == "gearChanged"]
+    print("     powerTargetChanged %s (want 190 then 185), gearChanged %d, warnings %d" % (
+        changes, len(gears), len(p.warnings) - before_warnings))
+
+    print("\n[4] pause and resume: the target is kept, and setPower is not sent again")
+    p.send({"t": "setState", "state": "paused"})
+    run_for(1.5)
+    p.send({"t": "setState", "state": "active"})
+    run_for(2.0)
+    print("     powerTarget after resume: %s (want 185)" % (p.telemetry or {}).get("powerTarget"))
+
+    print("\n[5] press + and - on the phone now; look for target, cadence band, paddles")
+    run_for(args.ride_seconds / 2)
+
+    if args.finish:
+        print("\n[6] finish: the target goes with the run")
+        p.send({"t": "finish"})
+        time.sleep(1.5)
+        print("     powerTarget after finish: %s (want none)" % (p.telemetry or {}).get("powerTarget"))
+    else:
+        print("\n[6] leaving the run running (--finish to end it)")
+
+
 SCENARIOS = {
     "brand": scenario_brand,
     "pair": scenario_pair,
@@ -1136,6 +1206,7 @@ SCENARIOS = {
     "controls": scenario_controls,
     "freeride": scenario_freeride,
     "run": scenario_run,
+    "runpower": scenario_runpower,
 }
 
 
@@ -1204,7 +1275,10 @@ def connect(host, port, args, state):
     probe = Probe(ws, state=state, godot_numbers=args.godot_numbers,
                   screenshot_reply=args.screenshot_reply, track=args.track)
     probe.start()
-    if not probe.hello(args.code):
+    # Only the runpower scenario says it rides a run in ERG (0.15), so the run
+    # scenario keeps checking the 0.14 load a game without it gets.
+    extra = ("runPower",) if args.scenario == "runpower" else ()
+    if not probe.hello(args.code, extra_caps=extra):
         print("handshake refused. Wrong pairing code, or a pairing the phone has forgotten?")
         probe.stop()
         ws.close()

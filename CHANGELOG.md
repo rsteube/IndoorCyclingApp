@@ -6,6 +6,16 @@ All notable changes to **Indoor Bike** are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Run practice in ERG (Companion API 0.15).** With a game that offers it,
+  a run is now ridden at a power target rather than as a load: the game sets
+  the opening watts and the trainer holds them, and the + and - paddles,
+  Zwift Click and the keyboard move the target 5 W at a time, shown where the
+  gear would be. Cadence is shown large with a quiet 80-100 rpm band, the
+  range a runner training on a bike should hold. The target is kept through
+  pauses. A game without it rides the run as before.
+
 ## [2.12] (33) - 2026-10-14
 
 ### Added

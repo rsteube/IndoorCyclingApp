@@ -205,6 +205,11 @@ class CompanionHost(
      * platform does, so a game gives that phone's rider a bike's ride instead.
      */
     private val run: Boolean = false,
+    /**
+     * And holds a run at a power target the rider moves with + and - (0.15),
+     * so it lists `runPower`. Only with [run].
+     */
+    private val runPower: Boolean = false,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -958,6 +963,7 @@ class CompanionHost(
                         CompanionProtocol.ROUTE_CHOICE_CAPABILITY.takeIf { routeChoice },
                         CompanionProtocol.NAVIGATION_CAPABILITY.takeIf { navigation },
                         CompanionProtocol.RUN_CAPABILITY.takeIf { run },
+                        CompanionProtocol.RUN_POWER_CAPABILITY.takeIf { run && runPower },
                     ),
             ),
             snapshot = ::snapshot,
@@ -965,6 +971,7 @@ class CompanionHost(
             pairedKeyFor = { pairedKeys[it] },
             rideState = ::rideState,
             running = { engine.isRun },
+            runningOnPower = { engine.isErgRun },
         )
         val conn = Conn(session, ws, remoteHost)
         connections.add(conn)
@@ -1419,7 +1426,7 @@ class CompanionHost(
 
                 is CompanionEffect.SetPowerTarget -> {
                     val watts = effect.watts
-                    if (watts != null && sessionManager.state.value != WorkoutState.Untracked) {
+                    if (watts != null && sessionManager.state.value != WorkoutState.Untracked && !engine.isErgRun) {
                         // Checked again here, where it is applied: the ride can
                         // leave untracked riding between the session checking
                         // and this line, and a target that landed then would

@@ -15,6 +15,7 @@
  */
 package app.indoorbike.shared.companion
 
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /**
@@ -62,6 +63,12 @@ class PowerHold {
     private var softStartFromWatts = 0
     private var setAtMs = 0L
 
+    /** How long the ramp to [target] that began at [setAtMs] takes. */
+    private var rampMs = SOFT_START_MS
+
+    /** Where the ramp had got to at the last [update], before the two gates. */
+    private var opened = 0.0
+
     private var leaseFactor = 1.0
     private var pedalFactor = 1.0
     private var lowCadenceSinceMs: Long? = null
@@ -85,11 +92,31 @@ class PowerHold {
         }
         softStartFromWatts = riderWatts.coerceIn(0, watts)
         setAtMs = nowMs
+        rampMs = SOFT_START_MS
+        opened = softStartFromWatts.toDouble()
         // A fresh target starts from a rider who is presumed to be turning the
         // cranks, and finds out otherwise within a couple of seconds if not.
         pedalFactor = 1.0
         lowCadenceSinceMs = null
         commanded = softStartFromWatts
+    }
+
+    /**
+     * Move a target already held to [watts], as the rider's own + and - do on a
+     * run (protocol 0.15).
+     *
+     * Not a new target, so not a soft start from the rider's power: the ramp
+     * starts where the old one had got to and moves at [ADJUST_WATTS_PER_SECOND],
+     * so one 5 W press lands in a tenth of a second and a held button climbs
+     * steadily rather than dipping back to the legs at every press. Nothing
+     * about the pedals or the lease is reset: a rider let go of stays let go.
+     */
+    fun adjust(watts: Int, nowMs: Long) {
+        if (target == null) return
+        target = watts
+        softStartFromWatts = opened.roundToInt()
+        setAtMs = nowMs
+        rampMs = (abs(watts - softStartFromWatts) * 1_000L / ADJUST_WATTS_PER_SECOND).coerceAtMost(SOFT_START_MS)
     }
 
     /**
@@ -126,13 +153,13 @@ class PowerHold {
             }
         }
 
-        val opened = if (nowMs - setAtMs >= SOFT_START_MS) {
+        opened = if (nowMs - setAtMs >= rampMs) {
             held.toDouble()
         } else {
-            val into = (nowMs - setAtMs).coerceAtLeast(0L).toDouble() / SOFT_START_MS
+            val into = (nowMs - setAtMs).coerceAtLeast(0L).toDouble() / rampMs
             softStartFromWatts + (held - softStartFromWatts) * into
         }
-        commanded = (opened * leaseFactor * pedalFactor).roundToInt().coerceIn(0, held)
+        commanded = (opened * leaseFactor * pedalFactor).roundToInt().coerceIn(0, maxOf(held, softStartFromWatts))
         return commanded
     }
 
@@ -164,5 +191,8 @@ class PowerHold {
 
         /** How long a newly set target takes to reach the rider. */
         const val SOFT_START_MS = 2_000L
+
+        /** How fast an [adjust] moves the wattage: 25 W in half a second. */
+        const val ADJUST_WATTS_PER_SECOND = 50L
     }
 }

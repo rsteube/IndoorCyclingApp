@@ -968,8 +968,9 @@ class WorkoutSessionManager(
             }
             WorkoutState.Untracked -> {
                 _untrackedLabel.value = null
-                // Whatever was being held goes with the state that allowed it.
-                companionEngine?.setPowerTarget(null)
+                // Whatever was being held goes with the state that allowed it,
+                // except on a run held in ERG (0.15), whose target is the run's.
+                if (companionEngine?.isErgRun != true) companionEngine?.setPowerTarget(null)
                 if (sessionStartTimeEpoch == 0L) {
                     // A warm-up that never counted. The ride begins here.
                     startActiveWorkout()
@@ -1216,8 +1217,11 @@ class WorkoutSessionManager(
                 // One set in the instant between a companion's request being
                 // checked and applied could otherwise survive into a recorded
                 // ride and hold it in ERG, which is the one thing the protocol
-                // promises cannot happen.
-                if (_state.value != WorkoutState.Untracked) companionEngine?.setPowerTarget(null)
+                // promises cannot happen. The exception is a run held in ERG
+                // (0.15), which is a recorded ride at a target by design.
+                if (_state.value != WorkoutState.Untracked && companionEngine?.isErgRun != true) {
+                    companionEngine?.setPowerTarget(null)
+                }
                 companionEngine?.start()
             }
             else -> updateTrainerTarget()

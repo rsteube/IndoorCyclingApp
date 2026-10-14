@@ -336,6 +336,11 @@ class CompanionEngine(
      */
     fun load(gearIndex: Int = USE_START_GEAR) = lock.withLock {
         stop()
+        // A run's target outlives a pause but not the run: a new ride has none.
+        if (_powerTarget.value != null) {
+            _powerTarget.value = null
+            onPowerTargetChanged?.invoke(null, SOURCE_STATE)
+        }
         val drivetrain = drivetrainProvider()
         gearing.load(
             drivetrain = drivetrain,
@@ -374,6 +379,11 @@ class CompanionEngine(
         advanceSeeded = false
         gearing.onStart()
         _running.value = true
+        // A run held in ERG picks up the target it kept through the pause, and
+        // opens it gently from the legs as any new target is opened.
+        if (isErgRun && hold.target == null) {
+            _powerTarget.value?.let { hold.set(it, powerWatts(), getCurrentEpochMillis()) }
+        }
         if (hold.target != null) pushPowerToTrainer(force = true) else pushRoadToTrainer(force = true)
         loop = scope.launch {
             while (isActive) {
@@ -408,10 +418,35 @@ class CompanionEngine(
         // anyway; this is the backstop that keeps the two from disagreeing.
         val wasHolding = _powerTarget.value != null
         hold.set(null, 0, getCurrentEpochMillis())
-        _powerTarget.value = null
         _powerCommanded.value = 0
         _powerReleased.value = false
+        // Except on a run held in ERG (0.15), whose target is the run's rather
+        // than a state's: the trainer is let go of here all the same, and
+        // [start] takes it back up, so a pause does not cost the rider the
+        // watts they set with their own buttons.
+        if (isErgRun) return
+        _powerTarget.value = null
         if (wasHolding) onPowerTargetChanged?.invoke(null, SOURCE_STATE)
+    }
+
+    /**
+     * Move a run's target by [deltaWatts], as the rider's + and - and a game's
+     * `requestShift` do on a run held in ERG (0.15). Ramps from where the
+     * trainer is rather than starting over; see [PowerHold.adjust]. Returns the
+     * target now held, or null when there is none to move.
+     */
+    fun adjustPowerTarget(
+        deltaWatts: Int,
+        source: String = SOURCE_SCREEN,
+        nowMs: Long = getCurrentEpochMillis(),
+    ): Int? = lock.withLock {
+        val current = _powerTarget.value ?: return null
+        val next = (current + deltaWatts).coerceIn(CompanionProtocol.MIN_POWER_WATTS, CompanionProtocol.MAX_POWER_WATTS)
+        if (next == current) return current
+        _powerTarget.value = next
+        hold.adjust(next, nowMs)
+        onPowerTargetChanged?.invoke(next, source)
+        next
     }
 
     fun clear() = lock.withLock {
@@ -599,6 +634,13 @@ class CompanionEngine(
     val isRun: Boolean get() = _course.value.run
 
     /**
+     * Whether this run is held in ERG (0.15). Its power target, once set, is
+     * kept through pauses and state changes until the run ends, and + and -
+     * move it rather than a gear.
+     */
+    val isErgRun: Boolean get() = _course.value.run && _course.value.runPower
+
+    /**
      * The road this ride is on, laid over whatever was already known.
      *
      * Merged rather than replaced so a companion can name the course while the
@@ -612,6 +654,9 @@ class CompanionEngine(
      */
     fun setCourse(update: CompanionCourse, replace: Boolean = false) = lock.withLock {
         if (replace) {
+            // A run's target belongs to that run. The next ride, even another
+            // run, starts without one until its game says otherwise.
+            if (isErgRun && _powerTarget.value != null) setPowerTarget(null, SOURCE_STATE)
             _course.value = update
             gearing.pureLoad = update.run
             // A run's load is not a bike's road at the same gradient, so the
@@ -642,8 +687,12 @@ class CompanionEngine(
     fun shiftBy(steps: Int, source: String = SOURCE_SCREEN): Int = lock.withLock {
         // A runner has one gear (0.14). Every shifter, the screen, a Click, the
         // keyboard and the game, comes through here, and none of them is
-        // answered: there is no gear display to tell anything to.
-        if (isRun) return gearing.gearIndex.value
+        // answered: there is no gear display to tell anything to. On a run held
+        // in ERG (0.15) the same press moves the target instead.
+        if (isRun) {
+            if (isErgRun) adjustPowerTarget(steps * CompanionProtocol.RUN_POWER_STEP_WATTS, source)
+            return gearing.gearIndex.value
+        }
         val before = gearing.gearIndex.value
         val next = gearing.shiftBy(steps)
         val changed = next != before

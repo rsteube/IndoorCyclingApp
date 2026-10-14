@@ -522,6 +522,16 @@ Full rules in `references/protocol.md` section 8c. What bites:
 - **Branch on `welcome.capabilities`.** Only Android lists `run` for now. Elsewhere send no
   `sport`; the one-gear `drivetrain` still works, with a bike's display.
 
+**Held in ERG (0.15).** With `runPower` in both capability lists as well, the run is ridden at
+a power target instead of the load above. Send `setPower` once, after the course and the
+drivetrain, with the run's endurance watts; the phone keeps it for the whole run, so never
+re-send it on `stateChanged` (that undoes the rider's presses). The paddle step is **5 W**:
+each + or - on the phone or a Click, and each step of your `requestShift`, moves the target
+5 W within 0..1000, with no warning and no `gearChanged`. Follow `powerTargetChanged` and
+`telemetry.powerTarget`; no `powerTarget` means the run is on the 0.14 load. Ask the rider for
+**80 to 100 rpm** (160 to 200 steps a minute): the phone shows cadence with that band as a
+quiet hint. Section 8c has the rest, ramps and releases included.
+
 ## Do not chase the light feeling at the start of a ride
 
 The app helps riders off the line. Pulling away from a standstill is genuinely hard - almost

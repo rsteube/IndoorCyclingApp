@@ -61,11 +61,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.indoorbike.shared.companion.CompanionProtocol
 import app.indoorbike.shared.companion.RemoteControls
 import app.indoorbike.shared.companion.RouteJunction
 import app.indoorbike.shared.companion.RouteNavigation
 import app.indoorbike.shared.companion.RunPace
 import app.indoorbike.shared.simulation.Drivetrain
+import app.indoorbike.shared.workout.CadenceTarget
 import app.indoorbike.ui.screens.CadenceFlankMetric
 import app.indoorbike.ui.screens.FlankMetric
 import app.indoorbike.ui.screens.simulation.GearShifter
@@ -147,6 +149,13 @@ fun CompanionHud(
      * paddles and no gear card, and [speedMps] is the runner's, shown as pace.
      */
     run: Boolean = false,
+    /**
+     * A run held in ERG (protocol 0.15): the paddles come back and move
+     * [runTargetWatts] five watts at a time, the target takes the gear card's
+     * place, and cadence is shown against the band a runner should hold.
+     */
+    ergRun: Boolean = false,
+    runTargetWatts: Int? = null,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier = modifier) {
@@ -159,8 +168,17 @@ fun CompanionHud(
         val roomy = maxWidth >= 560.dp && maxHeight >= 560.dp
         val symbolSize: TextUnit = if (roomy) 72.sp else 52.sp
 
-        val downEnabled = shiftingEnabled && gearIndex > 0
-        val upEnabled = shiftingEnabled && gearIndex < drivetrain.gearCount - 1
+        val downEnabled = if (ergRun) {
+            shiftingEnabled && runTargetWatts != null && runTargetWatts > CompanionProtocol.MIN_POWER_WATTS
+        } else {
+            shiftingEnabled && gearIndex > 0
+        }
+        val upEnabled = if (ergRun) {
+            shiftingEnabled && runTargetWatts != null && runTargetWatts < CompanionProtocol.MAX_POWER_WATTS
+        } else {
+            shiftingEnabled && gearIndex < drivetrain.gearCount - 1
+        }
+        val step = CompanionProtocol.RUN_POWER_STEP_WATTS
 
         // Easier on the left and harder on the right, in both layouts: the
         // same way round as the gear card, the ladder under the number, and
@@ -168,8 +186,8 @@ fun CompanionHud(
         val shiftDown = @Composable { slot: Modifier ->
             ShiftPaddle(
                 symbol = "\u2212",
-                label = "Easier",
-                description = "Shift to an easier gear",
+                label = if (ergRun) "Lower" else "Easier",
+                description = if (ergRun) "Lower the power target by $step watts" else "Shift to an easier gear",
                 enabled = downEnabled,
                 onShift = onShiftDown,
                 symbolSize = symbolSize,
@@ -181,8 +199,8 @@ fun CompanionHud(
         val shiftUp = @Composable { slot: Modifier ->
             ShiftPaddle(
                 symbol = "+",
-                label = "Harder",
-                description = "Shift to a harder gear",
+                label = if (ergRun) "Raise" else "Harder",
+                description = if (ergRun) "Raise the power target by $step watts" else "Shift to a harder gear",
                 enabled = upEnabled,
                 onShift = onShiftUp,
                 symbolSize = symbolSize,
@@ -211,6 +229,9 @@ fun CompanionHud(
                         speedMps = speedMps,
                         shiftingEnabled = shiftingEnabled,
                         showGear = !run,
+                        cadenceRpm = cadenceRpm,
+                        ergRun = ergRun,
+                        runTargetWatts = runTargetWatts,
                         horizontalPadding = horizontalPadding,
                     )
                 } else CompanionReadouts(
@@ -231,6 +252,8 @@ fun CompanionHud(
                     zoneColor = zoneColor,
                     shiftingEnabled = shiftingEnabled,
                     run = run,
+                    ergRun = ergRun,
+                    runTargetWatts = runTargetWatts,
                     horizontalPadding = horizontalPadding,
                 )
                 // Over whichever of the two is showing, rather than in it. The pad is a visitor:
@@ -289,9 +312,10 @@ fun CompanionHud(
             }
         }
 
-        if (run) {
+        if (run && !ergRun) {
             // A runner has one gear, so the whole screen is the readouts: a
             // paddle that does nothing is a target a hand finds by mistake.
+            // On a run held in ERG the paddles move the target, and stay.
             readouts(
                 Modifier.fillMaxSize().padding(bottom = Spacing.s3),
                 if (landscape) Spacing.s3 else Spacing.s4,
@@ -359,6 +383,9 @@ private fun CompanionPowerOnly(
     speedMps: Double,
     shiftingEnabled: Boolean,
     showGear: Boolean,
+    cadenceRpm: Int,
+    ergRun: Boolean,
+    runTargetWatts: Int?,
     horizontalPadding: Dp,
 ) {
     val animatedPower by animateIntAsState(
@@ -384,8 +411,17 @@ private fun CompanionPowerOnly(
         // the one thing, one of them a 46 dp circle, only invites the rider to
         // reach for the worse one. At the top because that is where the full view
         // keeps it, and because the bottom of this area belongs to a companion's
-        // control pad whenever it sends one. A run has no gear to show.
-        if (showGear) {
+        // control pad whenever it sends one. A run has no gear to show; a run
+        // held in ERG shows its target there instead, which is what the
+        // paddles beside it move.
+        if (ergRun) {
+            RunTargetCard(
+                watts = runTargetWatts,
+                compact = true,
+                valueFontSize = 32.sp,
+                modifier = Modifier.width(GearCardWidth),
+            )
+        } else if (showGear) {
             GearShifter(
                 drivetrain = drivetrain,
                 gearIndex = gearIndex,
@@ -483,6 +519,18 @@ private fun CompanionPowerOnly(
                 )
             }
         }
+        // A runner on a bike is asked to keep the legs turning fast, so on a
+        // run held in ERG the cadence sits under the power with its band: a
+        // hint, quiet when they are inside it.
+        if (ergRun) {
+            CadenceFlankMetric(
+                rpm = cadenceRpm,
+                target = RunCadence,
+                cardWidth = 200.dp,
+                valueFontSize = 40.sp,
+                compact = true,
+            )
+        }
     }
 }
 
@@ -577,6 +625,8 @@ private fun CompanionReadouts(
     zoneColor: Color,
     shiftingEnabled: Boolean,
     run: Boolean,
+    ergRun: Boolean,
+    runTargetWatts: Int?,
     horizontalPadding: Dp,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -622,8 +672,15 @@ private fun CompanionReadouts(
                 // A readout only. Shifting is the paddles' job, and a second,
                 // smaller pair of buttons in the middle of the screen would only
                 // be the wrong thing to reach for. A run has no gear to show,
-                // and its pace takes the place.
-                if (run) {
+                // and its pace takes the place, or on a run held in ERG its target.
+                if (ergRun) {
+                    RunTargetCard(
+                        watts = runTargetWatts,
+                        compact = compact,
+                        valueFontSize = if (compact) 32.sp else 44.sp,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                } else if (run) {
                     RunPaceCard(
                         speedMps = speedMps,
                         compact = compact,
@@ -653,7 +710,7 @@ private fun CompanionReadouts(
             ) {
                 CadenceFlankMetric(
                     rpm = cadenceRpm,
-                    target = null,
+                    target = if (run) RunCadence else null,
                     cardWidth = flankWidth,
                     valueFontSize = flankFont,
                     compact = short,
@@ -695,7 +752,14 @@ private fun CompanionReadouts(
                         valueFontSize = 30.sp,
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                     )
-                    if (run) {
+                    if (ergRun) {
+                        RunTargetCard(
+                            watts = runTargetWatts,
+                            compact = true,
+                            valueFontSize = 30.sp,
+                            modifier = Modifier.weight(1f).fillMaxHeight(),
+                        )
+                    } else if (run) {
                         RunPaceCard(
                             speedMps = speedMps,
                             compact = true,
@@ -734,7 +798,7 @@ private fun CompanionReadouts(
                 ) {
                     CadenceFlankMetric(
                         rpm = cadenceRpm,
-                        target = null,
+                        target = if (run) RunCadence else null,
                         cardWidth = cardWidth,
                         valueFontSize = 28.sp,
                         compact = true,
@@ -949,6 +1013,51 @@ private fun RunPaceCard(
             )
             Text(
                 text = " /km",
+                style = CadenceType.small,
+                color = CadenceColors.Fg3,
+                modifier = Modifier.padding(bottom = 4.dp),
+            )
+        }
+    }
+}
+
+/** The cadence a runner on a bike is nudged towards (protocol 0.15). */
+private val RunCadence = CadenceTarget(CompanionProtocol.RUN_CADENCE_MIN_RPM, CompanionProtocol.RUN_CADENCE_MAX_RPM)
+
+/**
+ * A run's power target, in the slot a bike's gear card takes (protocol 0.15),
+ * between the paddles that move it. "--" until the game has set one.
+ */
+@Composable
+private fun RunTargetCard(
+    watts: Int?,
+    compact: Boolean,
+    valueFontSize: TextUnit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(Radii.lg))
+            .background(CadenceColors.Bg1.copy(alpha = 0.7f))
+            .padding(horizontal = Spacing.s4, vertical = if (compact) Spacing.s2 else Spacing.s4)
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (watts == null) "No power target yet" else "Power target $watts watts"
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(text = "Target", style = CadenceType.eyebrow, color = CadenceColors.Fg3)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                text = watts?.toString() ?: "--",
+                fontSize = valueFontSize,
+                lineHeight = valueFontSize,
+                fontFamily = DisplayFontFamily,
+                color = CadenceColors.Fg1,
+                maxLines = 1,
+            )
+            Text(
+                text = " W",
                 style = CadenceType.small,
                 color = CadenceColors.Fg3,
                 modifier = Modifier.padding(bottom = 4.dp),

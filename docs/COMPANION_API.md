@@ -227,7 +227,13 @@ message a human can act on when they do not.
 semver 0.x, and it is the honest description of a protocol being designed alongside its first
 client. When the first companion ships, this goes to 1.0 and the rules below become binding.
 
-**Current version: 0.14, and this build accepts everything back to 0.1.**
+**Current version: 0.15, and this build accepts everything back to 0.1.**
+
+0.15 rides a run in ERG, where both ends list `runPower`: the game opens the run with a
+`setPower`, the phone holds the trainer at it for the whole run, and the rider moves it 5 W at a
+time with the buttons that shift on a bike. A `requestShift` does the same. Cadence is shown
+against a band of 80 to 100 rpm. Without the capability at either end a run is the 0.14 load.
+See [a run held in ERG](#a-run-held-in-erg-015).
 
 0.14 added [run practice](#4c-run-practice-014): a `course` that carries a `mode` may say
 `"sport": "run"`, and the ride is a runner on the game's course driven from a bike trainer. The
@@ -506,7 +512,9 @@ Rate-limited to 10 per second. Excess requests are dropped with a `warning`, nev
 held gamepad button must not kill the connection.
 
 During a [run](#4c-run-practice-014) there is nothing to shift: a `requestShift` is dropped with
-a `rejected` warning, once per connection, and no `gearChanged` answers it.
+a `rejected` warning, once per connection, and no `gearChanged` answers it. A run
+[held in ERG](#a-run-held-in-erg-015) (0.15) takes it as `steps` x 5 W on its power target
+instead, with no warning.
 
 #### `label`
 
@@ -1517,6 +1525,56 @@ puts it into the force. Send it on every `world` frame from the same tick as `gr
 without it is shown its `gradient`. A value outside -1 to 1 is refused with a `rejected` warning
 once per connection. It is honoured in any sport, so a bike game can use it as well.
 
+### A run held in ERG (0.15)
+
+Where both ends list `runPower`, a run is ridden in ERG: the trainer holds a power target, and
+the rider moves it with the buttons that shift on a bike. The game turns the watts into the
+runner's speed as before, and the rider's cadence into the runner's steps.
+
+| Capability | In `hello` (the game) | In `welcome` (the phone) |
+|---|---|---|
+| `runPower` | Sends the run's opening `setPower`, takes `powerTargetChanged` | Holds a run in ERG; + and - move the target |
+
+Only with `run` at both ends as well. The Android app lists both; to a phone or a game without
+`runPower` a run is the 0.14 load above, unchanged.
+
+**One target, the run's.** The game sends `setPower` once at the start of each run, after the
+`course` and the one-gear `drivetrain`: the endurance watts it already paces runs at. It is
+honoured in any state (`active`, `paused`, `untracked`), the one recorded ride a target may
+hold. The phone keeps it for the whole run, through pauses, `active` and `untracked` and a
+controller reconnecting, and clears it only at `finish`, at the next `course` with `mode`, when
+the rider takes back control, and on `setPower` with `null`. So the game does not send it again
+after a `stateChanged`: that would undo the rider's own presses. It sends another only when it
+changes phase on purpose, such as a warm-up held in `untracked` and then the run itself.
+
+**The rider moves it.** Each press of + or -, on the screen's paddles, on Zwift Click and other
+controllers or on the keyboard, moves the target by **5 W**, clamped to 0 to 1000 W. A game's
+`requestShift` during the run does the same, `steps` x 5 W, under the same limit of ten a second,
+with no warning and no `gearChanged`. Every change is said in a `powerTargetChanged` event with
+`watts` and a `source` of `screen`, `zwiftClick`, `companion` or `state`, and every `telemetry`
+frame carries `powerTarget`. A press before the game has set a target does nothing.
+
+**Ramps.** The opening target opens from the rider's current power over 2000 ms, as any new
+target does. A press ramps from what the trainer is being told at 25 W per half second, so one
+5 W step lands in a tenth of a second.
+
+**What the 0.10 hold already does still applies.** A rider at 20 rpm or below for 2 s is let go
+and taken back over 3 s once past 30 rpm; a game that goes quiet decays the target to nothing
+over 2 s after the 1.5 s lease, so keep sending `world` at 10 Hz. While held, telemetry's
+`appliedGradient`, `trainerForceN` and `trainerGradePercent` are 0, `speedMps` is absent and
+`powerCommanded` is there. `world.gradient` is still read, for nothing but the record of the
+road; `courseGradient` is still what the phone shows.
+
+**Before a target, or without one.** Until the first `setPower`, after `setPower` with `null`,
+or where the trainer cannot take a target (no FTMS control point, or no trainer, answered with a
+`rejected` warning on `watts`), the run rides the 0.14 load. A game sees this as no
+`powerTarget` in telemetry.
+
+**Cadence.** A runner training on a bike should keep the legs turning fast: **80 to 100 rpm**,
+160 to 200 steps a minute at two steps a crank turn. The phone shows cadence large during a run,
+with that band as a quiet hint rather than an alarm, and the game shows it on its own screen.
+Nothing enforces it.
+
 **The record stays a bike ride.** The FIT file says cycling, sub-sport virtual activity, so an
 invented pace never lands in a runner's running records or their bests on Strava. Distance,
 ascent and the track are the runner's, from `world.distanceM`, `ascentM`, `lat`, `lon` and
@@ -1872,6 +1930,7 @@ The scenarios, in `SCENARIOS` at the bottom of the file:
 | `twice` | A whole session down one socket: rides, finishes, checks the ride was written with nothing tapped, rides again with the game's distance counter running straight through, and sends the second course *after* its finish |
 | `freeride` | The game's side of 0.12: a free ride at a steady 8 m/s whatever the trainer says, a junction every 600 m offered from 400 m out and committed 200 m before it, taps answered as the spec says, search answered from a few made-up places, and a destination reached 1.5 km after it is chosen. Tap the junction card, search, choose a place and stop navigating on the phone |
 | `run` | The game's side of 0.14: a run course and a one-gear `drivetrain`, then a course climbing from 0 to 25 % with the load kept between 0.01 and 0.08 and the force printed beside the one the spec promises, two `requestShift` (one warning, no `gearChanged`), a `courseGradient` of 1.7 (refused), and with `--finish` a bike ride after it that must bring the rider's own bike back. Look for pace and no paddles on the phone |
+| `runpower` | The game's side of 0.15: lists `runPower`, starts a run, sends one `setPower` of 180 W, two `requestShift` (190 then 185 W, no warning, no `gearChanged`), pauses and resumes without sending the target again (it must still read 185 W), and with `--finish` ends the run, which clears it. Press the paddles on the phone during it and watch the `powerTargetChanged` events say `screen` |
 
 Add a scenario rather than editing one. The value of the file is that a scenario you ran last
 month still runs the same way.
